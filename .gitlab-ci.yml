@@ -73,15 +73,22 @@ build:
       buildctl --addr "${BUILDKIT_HOST}" debug info
   script:
     - |
-      TAGS="--output type=image,name=${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA},push=true"
+      IMAGE="${REGISTRY}/${IMAGE_NAME}"
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-        TAGS="${TAGS} --output type=image,name=${REGISTRY}/${IMAGE_NAME}:latest,push=true"
+        # Push both SHA and latest tags for main branch
+        buildctl --addr "${BUILDKIT_HOST}" build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
+      else
+        # Only SHA tag for non-main branches
+        buildctl --addr "${BUILDKIT_HOST}" build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
       fi
-      buildctl --addr "${BUILDKIT_HOST}" build \
-        --frontend dockerfile.v0 \
-        --local context=. \
-        --local dockerfile=. \
-        ${TAGS}
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
