@@ -16,8 +16,9 @@ import (
 )
 
 type Client struct {
-	clientset *kubernetes.Clientset
-	config    config.K8sConfig
+	clientset  *kubernetes.Clientset
+	restConfig *rest.Config
+	config     config.K8sConfig
 }
 
 func NewClient(cfg config.K8sConfig) (*Client, error) {
@@ -49,8 +50,9 @@ func NewClient(cfg config.K8sConfig) (*Client, error) {
 	}
 
 	return &Client{
-		clientset: clientset,
-		config:    cfg,
+		clientset:  clientset,
+		restConfig: restConfig,
+		config:     cfg,
 	}, nil
 }
 
@@ -127,4 +129,8 @@ func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) 
 
 func (c *Client) Clientset() *kubernetes.Clientset {
 	return c.clientset
+}
+
+func (c *Client) Config() *rest.Config {
+	return c.restConfig
 }

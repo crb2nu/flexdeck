@@ -9,13 +9,13 @@ import (
 )
 
 func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	services, err := h.k8sClient.GetServices(r.Context(), ns)
+	services, err := h.k8s.GetServices(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -26,12 +26,12 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
-	nodes, err := h.k8sClient.GetNodes(r.Context())
+	nodes, err := h.k8s.GetNodes(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -42,13 +42,13 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	deployments, err := h.k8sClient.GetDeployments(r.Context(), ns)
+	deployments, err := h.k8s.GetDeployments(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -59,13 +59,13 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	pods, err := h.k8sClient.GetPods(r.Context(), ns)
+	pods, err := h.k8s.GetPods(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -76,13 +76,13 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	ingresses, err := h.k8sClient.GetIngresses(r.Context(), ns)
+	ingresses, err := h.k8s.GetIngresses(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -93,7 +93,7 @@ func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -108,7 +108,7 @@ func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.k8sClient.ScaleDeployment(r.Context(), ns, name, int32(replicas)); err != nil {
+	if err := h.k8s.ScaleDeployment(r.Context(), ns, name, int32(replicas)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -122,7 +122,7 @@ func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
-	if h.k8sClient == nil {
+	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -130,7 +130,7 @@ func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	if err := h.k8sClient.RestartDeployment(r.Context(), ns, name); err != nil {
+	if err := h.k8s.RestartDeployment(r.Context(), ns, name); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

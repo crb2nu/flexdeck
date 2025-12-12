@@ -66,25 +66,17 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client) chi.Router {
 
 		r.Route("/api/vllm", func(r chi.Router) {
 			r.Get("/health", h.VLLMHealth)
-			r.Get("/models", h.VLLMModels)
-			r.Get("/deployments", h.VLLMDeployments)
-			r.Post("/deployments/{name}/activate", h.VLLMActivate)
-			r.Post("/agents/homepage", h.VLLMAgent)
-		})
-
-		r.Route("/api/cache", func(r chi.Router) {
-			r.Get("/stats", h.CacheStats)
-			r.Get("/models", h.CacheModels)
-			r.Post("/download", h.CacheDownload)
-			r.Delete("/models", h.CacheDelete)
+			r.Get("/models", h.VLLMListModels)
+			r.Get("/models/{model}", h.VLLMGetModel)
+			r.Post("/v1/chat/completions", h.VLLMChatCompletions)
+			r.Post("/v1/completions", h.VLLMCompletions)
 		})
 
 		r.Route("/api/flux", func(r chi.Router) {
-			r.Get("/kustomizations", h.FluxKustomizations)
-			r.Post("/kustomizations/{name}/reconcile", h.FluxReconcile)
+			r.Get("/kustomizations", h.FluxListKustomizations)
+			r.Get("/helmreleases", h.FluxListHelmReleases)
+			r.Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
 		})
-
-		r.Get("/api/aistack/status", h.AIStackStatus)
 	})
 
 	fileServer(r, "/", cfg.StaticDir)

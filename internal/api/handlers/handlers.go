@@ -6,13 +6,13 @@ import (
 )
 
 type Handler struct {
-	cfg       *config.Config
-	k8sClient *k8s.Client
+	cfg *config.Config
+	k8s *k8s.Client
 }
 
 func New(cfg *config.Config, k8sClient *k8s.Client) *Handler {
 	return &Handler{
-		cfg:       cfg,
-		k8sClient: k8sClient,
+		cfg: cfg,
+		k8s: k8sClient,
 	}
 }
