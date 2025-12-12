@@ -1,0 +1,57 @@
+:root {
+  /* --- Colors: Cyberpunk Palette --- */
+  /* Neon Accents */
+  --neon-cyan: #00f0ff;
+  --neon-pink: #ff003c;
+  --neon-yellow: #fcee0a;
+  --neon-purple: #bd00ff;
+  --neon-green: #0aff68;
+
+  /* Backgrounds */
+  --bg-deep: #050a14;
+  --bg-dark: #0b1020;
+  --bg-panel: rgba(16, 24, 40, 0.7);
+
+  /* Text */
+  --text-main: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.3);
+
+  /* Semantic Map */
+  --color-ok: var(--neon-cyan);
+  --color-warn: var(--neon-yellow);
+  --color-error: var(--neon-pink);
+  --color-ready: var(--neon-cyan);
+  --color-accent: var(--neon-purple);
+
+  /* --- Glassmorphism --- */
+  --glass-bg: rgba(10, 16, 32, 0.65);
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+
+  /* --- Geometry --- */
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 16px;
+  --radius-pill: 9999px;
+  --space-xs: 4px;
+  --space-s: 8px;
+  --space-m: 16px;
+  --space-l: 24px;
+  --space-xl: 32px;
+
+  /* --- Typography --- */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+
+  /* --- Aliases for Legacy/Shared Components --- */
+  --accent-primary: var(--neon-cyan);
+  --accent-secondary: var(--neon-purple);
+  --accent-tertiary: var(--neon-pink);
+
+  --status-ok: var(--neon-cyan);
+  --status-warn: var(--neon-yellow);
+  --status-error: var(--neon-pink);
+}

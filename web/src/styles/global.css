@@ -1,0 +1,128 @@
+@import './variables.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Base Styles --- */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--bg-deep);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* --- Glass Panel Component --- */
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: var(--glass-border);
+    border-radius: var(--radius-m);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-panel-hover {
+    @apply glass-panel transition-all duration-200;
+  }
+
+  .glass-panel-hover:hover {
+    background: rgba(10, 16, 32, 0.8);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Neon text glow */
+  .neon-text {
+    text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+  }
+
+  /* Status indicator dot */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+
+  .status-dot-ok {
+    @apply status-dot;
+    background: var(--status-ok);
+    box-shadow: 0 0 6px var(--status-ok);
+  }
+
+  .status-dot-warn {
+    @apply status-dot;
+    background: var(--status-warn);
+    box-shadow: 0 0 6px var(--status-warn);
+  }
+
+  .status-dot-error {
+    @apply status-dot;
+    background: var(--status-error);
+    box-shadow: 0 0 6px var(--status-error);
+  }
+}
+
+/* --- Animations --- */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes flow {
+  from {
+    stroke-dashoffset: 8;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* --- Focus States --- */
+:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+/* --- Selection --- */
+::selection {
+  background: var(--neon-cyan);
+  color: var(--bg-deep);
+}

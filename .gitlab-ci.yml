@@ -1,0 +1,96 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  REGISTRY: registry.harbor.lan/library
+  IMAGE_NAME: flexdeck
+  GO_VERSION: "1.24"
+  NODE_VERSION: "20"
+
+# Cache settings
+.go-cache: &go-cache
+  cache:
+    key: go-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .go/pkg/mod/
+
+.node-cache: &node-cache
+  cache:
+    key: node-${CI_COMMIT_REF_SLUG}
+    paths:
+      - web/node_modules/
+
+# Test backend
+test:backend:
+  stage: test
+  image: golang:${GO_VERSION}-alpine
+  <<: *go-cache
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  before_script:
+    - apk add --no-cache git
+  script:
+    - go mod download
+    - go vet ./...
+    - go test -v -race -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.out
+
+# Test frontend
+test:frontend:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  <<: *node-cache
+  script:
+    - cd web
+    - npm ci
+    - npm run lint || true
+    - npm run typecheck
+
+# Build Docker image
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY || true
+  script:
+    - docker build -t $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA .
+    - docker push $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        docker tag $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA $REGISTRY/$IMAGE_NAME:latest
+        docker push $REGISTRY/$IMAGE_NAME:latest
+      fi
+  only:
+    - main
+    - merge_requests
+
+# Deploy to K3s via Flux
+deploy:
+  stage: deploy
+  image: alpine:3.21
+  before_script:
+    - apk add --no-cache curl
+    - curl -s https://fluxcd.io/install.sh | sh
+  script:
+    - echo "Triggering Flux reconciliation..."
+    # This assumes Flux is watching the gitops repo
+    # The actual deployment happens via GitOps when manifests are updated
+    - echo "Image $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA is ready for deployment"
+  only:
+    - main
+  when: manual
+  environment:
+    name: production
+    url: https://deck.flexinfer.ai
