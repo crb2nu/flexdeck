@@ -8,7 +8,9 @@ import './styles/global.css';
 // Lazy load route components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const Services = lazy(() => import('./components/Services'));
-const ComingSoon = lazy(() => import('./components/ComingSoon'));
+const Logs = lazy(() => import('./components/Logs'));
+const Metrics = lazy(() => import('./components/Metrics'));
+const Models = lazy(() => import('./components/Models'));
 
 const root = document.getElementById('root');
 
@@ -21,9 +23,9 @@ render(
     <HashRouter root={AppLayout}>
       <Route path="/" component={Dashboard} />
       <Route path="/services" component={Services} />
-      <Route path="/logs" component={ComingSoon} />
-      <Route path="/metrics" component={ComingSoon} />
-      <Route path="/models" component={ComingSoon} />
+      <Route path="/logs" component={Logs} />
+      <Route path="/metrics" component={Metrics} />
+      <Route path="/models" component={Models} />
     </HashRouter>
   ),
   root

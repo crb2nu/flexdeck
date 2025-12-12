@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	k8s.io/api v0.34.3
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3

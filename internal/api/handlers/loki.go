@@ -1,11 +1,16 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 )
 
 func (h *Handler) LokiLabels(w http.ResponseWriter, r *http.Request) {
@@ -111,8 +116,7 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement WebSocket-to-SSE bridge
-	// For now, return not implemented
+	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -124,11 +128,100 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build Loki WebSocket URL
+	lokiURL := h.cfg.Loki.URL
+	lokiURL = strings.Replace(lokiURL, "http://", "ws://", 1)
+	lokiURL = strings.Replace(lokiURL, "https://", "wss://", 1)
+
+	wsURL := fmt.Sprintf("%s/loki/api/v1/tail?query=%s", lokiURL, url.QueryEscape(query))
+	if delay := r.URL.Query().Get("delay_for"); delay != "" {
+		wsURL += "&delay_for=" + url.QueryEscape(delay)
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		wsURL += "&limit=" + url.QueryEscape(limit)
+	}
+	if start := r.URL.Query().Get("start"); start != "" {
+		wsURL += "&start=" + url.QueryEscape(start)
+	}
+
+	// Connect to Loki WebSocket
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		log.Printf("Failed to connect to Loki WebSocket: %v", err)
+		// Send error as SSE event
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", "Failed to connect to Loki")
+		flusher.Flush()
+		return
+	}
+	defer conn.Close()
+
 	// Send ready event
-	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true,\"message\":\"SSE bridge not yet implemented\"}\n\n")
+	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
 	flusher.Flush()
 
-	// Keep connection open briefly then close
-	// Full implementation will use gorilla/websocket to connect to Loki
-	<-r.Context().Done()
+	// Create done channel for cleanup
+	done := make(chan struct{})
+
+	// Handle client disconnect
+	go func() {
+		<-r.Context().Done()
+		close(done)
+		conn.Close()
+	}()
+
+	// Read from WebSocket and write to SSE
+	for {
+		select {
+		case <-done:
+			return
+		default:
+			// Set read deadline
+			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					return
+				}
+				// Check if context was cancelled
+				select {
+				case <-done:
+					return
+				default:
+				}
+				log.Printf("Loki WebSocket read error: %v", err)
+				fmt.Fprintf(w, "event: error\ndata: {\"error\":\"connection lost\"}\n\n")
+				flusher.Flush()
+				return
+			}
+
+			// Parse the Loki response and forward as SSE
+			var lokiResp lokiTailResponse
+			if err := json.Unmarshal(message, &lokiResp); err != nil {
+				log.Printf("Failed to parse Loki response: %v", err)
+				continue
+			}
+
+			// Send each stream as a log event
+			if len(lokiResp.Streams) > 0 {
+				data, _ := json.Marshal(lokiResp)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+// lokiTailResponse represents the Loki tail WebSocket response
+type lokiTailResponse struct {
+	Streams []lokiStream `json:"streams"`
+}
+
+type lokiStream struct {
+	Stream map[string]string `json:"stream"`
+	Values [][]string        `json:"values"`
 }
