@@ -1,9 +1,10 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
+import { Component, createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { api } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService, K8sList } from '../../lib/types';
+import TopologyGraph from './TopologyGraph';
 
 const REFRESH_INTERVAL = 15000; // 15 seconds
 
@@ -180,23 +181,33 @@ const Dashboard: Component = () => {
         />
       </div>
 
-      {/* Topology Graph Placeholder */}
-      <div class="glass-panel flex flex-1 items-center justify-center">
-        <div class="text-center">
-          <div class="mb-4 text-6xl text-neon-cyan/30">⬡</div>
-          <h3 class="mb-2 text-lg font-semibold text-text-main">Topology Graph</h3>
-          <p class="text-sm text-text-muted">
-            Coming in Phase 3 - D3 force-directed visualization
-          </p>
-          <p class="mt-2 font-mono text-xs text-text-dim">
-            {nodes().length} nodes • {pods().length} pods • {services().length} services
-          </p>
-          <Show when={lastUpdated() > 0}>
-            <p class="mt-1 font-mono text-xs text-text-muted">
-              Last updated: {new Date(lastUpdated()).toLocaleTimeString()}
-            </p>
-          </Show>
-        </div>
+      {/* Topology Graph */}
+      <div class="glass-panel flex-1 overflow-hidden">
+        <Show
+          when={nodes().length > 0 || pods().length > 0}
+          fallback={
+            <div class="flex h-full items-center justify-center">
+              <div class="text-center">
+                <div class="mb-4 text-6xl text-neon-cyan/30">⬡</div>
+                <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
+                <p class="text-sm text-text-muted">
+                  {podLoading() || nodeLoading() ? 'Loading cluster data...' : 'No resources found'}
+                </p>
+              </div>
+            </div>
+          }
+        >
+          <TopologyGraph
+            nodes={nodes()}
+            pods={pods()}
+            services={services()}
+          />
+        </Show>
+        <Show when={lastUpdated() > 0}>
+          <div class="absolute bottom-2 right-2 text-xs text-text-dim">
+            Updated: {new Date(lastUpdated()).toLocaleTimeString()}
+          </div>
+        </Show>
       </div>
     </div>
   );
