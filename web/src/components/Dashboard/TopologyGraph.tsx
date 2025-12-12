@@ -202,14 +202,16 @@ const TopologyGraph: Component<Props> = (props) => {
     // Create node groups
     const nodeGroup = g.append('g')
       .attr('class', 'nodes')
-      .selectAll('g')
+      .selectAll<SVGGElement, D3Node>('g')
       .data(nodes)
       .join('g')
-      .attr('cursor', 'pointer')
-      .call(d3.drag<SVGGElement, D3Node>()
-        .on('start', dragStarted)
-        .on('drag', dragged)
-        .on('end', dragEnded));
+      .attr('cursor', 'pointer');
+
+    // Add drag behavior with proper typing
+    nodeGroup.call(d3.drag<SVGGElement, D3Node>()
+      .on('start', dragStarted)
+      .on('drag', dragged)
+      .on('end', dragEnded) as any);
 
     // Add circles to nodes
     nodeGroup.append('circle')
