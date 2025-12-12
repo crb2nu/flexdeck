@@ -55,27 +55,36 @@ test:frontend:
     - npm run lint || true
     - npm run typecheck
 
-# Build Docker image
+# Build Docker image via BuildKit
 build:
   stage: build
-  image: docker:24
-  services:
-    - docker:24-dind
+  image: registry.harbor.lan/library/ci-builder:latest
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY || true
-  script:
-    - docker build -t $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA .
-    - docker push $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA
     - |
+      echo "Waiting for BuildKit..."
+      for i in $(seq 1 30); do
+        if buildctl --addr "${BUILDKIT_HOST}" debug info >/dev/null 2>&1; then
+          echo "BuildKit is ready"; break
+        fi
+        echo "[$i/30] not ready yet"; sleep 2
+      done
+      buildctl --addr "${BUILDKIT_HOST}" debug info
+  script:
+    - |
+      TAGS="--output type=image,name=${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA},push=true"
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-        docker tag $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA $REGISTRY/$IMAGE_NAME:latest
-        docker push $REGISTRY/$IMAGE_NAME:latest
+        TAGS="${TAGS} --output type=image,name=${REGISTRY}/${IMAGE_NAME}:latest,push=true"
       fi
-  only:
-    - main
-    - merge_requests
+      buildctl --addr "${BUILDKIT_HOST}" build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        ${TAGS}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # Deploy to K3s via Flux
 deploy:
