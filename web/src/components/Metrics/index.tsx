@@ -295,21 +295,17 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
         </Show>
 
         {/* Hover tooltip */}
-        <Show when={hoveredIndex() !== null && props.panel.values[hoveredIndex()!]}>
-          {() => {
-            const idx = hoveredIndex()!;
-            const val = props.panel.values[idx];
-            return (
-              <div class="absolute top-0 left-1/2 -translate-x-1/2 rounded-md bg-surface-raised px-2 py-1 text-xs shadow-lg border border-white/10 pointer-events-none z-10">
-                <div class="font-mono text-text-main">
-                  {val.value.toFixed(2)}{props.panel.unit}
-                </div>
-                <div class="text-text-dim text-[10px]">
-                  {new Date(val.time).toLocaleTimeString()}
-                </div>
+        <Show when={hoveredIndex() !== null && props.panel.values[hoveredIndex()!]} keyed>
+          {(val) => (
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 rounded-md bg-surface-raised px-2 py-1 text-xs shadow-lg border border-white/10 pointer-events-none z-10">
+              <div class="font-mono text-text-main">
+                {val.value.toFixed(2)}{props.panel.unit}
               </div>
-            );
-          }}
+              <div class="text-text-dim text-[10px]">
+                {new Date(val.time).toLocaleTimeString()}
+              </div>
+            </div>
+          )}
         </Show>
       </div>
 
@@ -476,9 +472,8 @@ const EnhancedChart: Component<{
       />
 
       {/* Endpoint dot with pulse */}
-      <Show when={props.values.length > 0 && scales()}>
-        {() => {
-          const s = scales()!;
+      <Show when={props.values.length > 0 && scales()} keyed>
+        {(s) => {
           const lastIdx = props.values.length - 1;
           const x = s.x(lastIdx);
           const y = s.y(props.values[lastIdx].value);
