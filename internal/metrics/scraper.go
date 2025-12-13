@@ -11,11 +11,13 @@ import (
 
 // Scraper periodically scrapes LiteLLM metrics and stores them
 type Scraper struct {
-	litellm  *litellm.Client
-	store    *Store
-	interval time.Duration
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	litellm          *litellm.Client
+	store            *Store
+	interval         time.Duration
+	stopCh           chan struct{}
+	doneCh           chan struct{}
+	metricsAvailable bool
+	checkedOnce      bool
 }
 
 // NewScraper creates a new metrics scraper
@@ -61,13 +63,30 @@ func (s *Scraper) Stop() {
 }
 
 func (s *Scraper) scrape(ctx context.Context) {
+	// Skip scraping if we've determined metrics endpoint is unavailable
+	if s.checkedOnce && !s.metricsAvailable {
+		return
+	}
+
 	scrapeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	metrics, err := s.litellm.ScrapeMetrics(scrapeCtx)
 	if err != nil {
-		slog.Warn("failed to scrape litellm metrics", "error", err)
+		// Only log the first failure, then silently skip
+		if !s.checkedOnce {
+			s.checkedOnce = true
+			s.metricsAvailable = false
+			slog.Info("litellm metrics endpoint not available, disabling metrics scraping", "error", err)
+		}
 		return
+	}
+
+	// Mark metrics as available on first success
+	if !s.checkedOnce {
+		s.checkedOnce = true
+		s.metricsAvailable = true
+		slog.Info("litellm metrics endpoint available")
 	}
 
 	if len(metrics) == 0 {
