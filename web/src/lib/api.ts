@@ -124,3 +124,34 @@ export const modelsApi = {
       body: JSON.stringify({ replicas }),
     }),
 };
+
+export const agentsApi = {
+  list: () => api<any>('/agents/'),
+  get: (id: string) => api<any>(`/agents/${encodeURIComponent(id)}`),
+  create: (agent: any) =>
+    api<any>('/agents/', {
+      method: 'POST',
+      body: JSON.stringify(agent),
+    }),
+  update: (id: string, agent: any) =>
+    api<any>(`/agents/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(agent),
+    }),
+  delete: (id: string) =>
+    api<any>(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  health: () => api<any>('/agents/health'),
+  checkHealth: (id: string) =>
+    api<any>(`/agents/${encodeURIComponent(id)}/health`),
+  test: (id: string, input: Record<string, any>) =>
+    api<any>(`/agents/${encodeURIComponent(id)}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ input }),
+    }),
+  invoke: (id: string, request: any) =>
+    api<any>(`/agents/${encodeURIComponent(id)}/invoke`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+  usage: (id: string) => api<any>(`/agents/${encodeURIComponent(id)}/usage`),
+};

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/api"
 	"github.com/flexinfer/flexdeck/internal/api/handlers"
 	"github.com/flexinfer/flexdeck/internal/config"
@@ -109,6 +110,24 @@ func main() {
 		}
 	} else {
 		slog.Info("models subsystem disabled")
+	}
+
+	// Initialize agents subsystem
+	if !cfg.Agents.Disabled {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+
+		agentsRegistry, err := agents.NewRegistry(cfg.Agents)
+		if err != nil {
+			slog.Warn("failed to create agents registry", "error", err)
+		} else {
+			handlerDeps.AgentsRegistry = agentsRegistry
+			handlerDeps.AgentsProxy = agents.NewProxy(agentsRegistry)
+			slog.Info("agents registry initialized", "path", cfg.Agents.RegistryPath)
+		}
+	} else {
+		slog.Info("agents subsystem disabled")
 	}
 
 	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)

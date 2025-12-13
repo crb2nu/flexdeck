@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
@@ -20,6 +21,10 @@ type Handler struct {
 	hfClient         *models.HuggingFaceClient
 	civitClient      *models.CivitAIClient
 	gitopsGen        *models.GitOpsGenerator
+
+	// Agents management
+	agentsRegistry *agents.Registry
+	agentsProxy    *agents.Proxy
 }
 
 // HandlerDeps contains optional dependencies for the handler
@@ -29,6 +34,8 @@ type HandlerDeps struct {
 	HFClient         *models.HuggingFaceClient
 	CivitClient      *models.CivitAIClient
 	GitOpsGen        *models.GitOpsGenerator
+	AgentsRegistry   *agents.Registry
+	AgentsProxy      *agents.Proxy
 }
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
@@ -55,6 +62,8 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		h.hfClient = deps.HFClient
 		h.civitClient = deps.CivitClient
 		h.gitopsGen = deps.GitOpsGen
+		h.agentsRegistry = deps.AgentsRegistry
+		h.agentsProxy = deps.AgentsProxy
 	}
 
 	return h

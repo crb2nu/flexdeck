@@ -44,6 +44,9 @@ type Config struct {
 
 	// Models
 	Models ModelsConfig
+
+	// Agents
+	Agents AgentsConfig
 }
 
 type K8sConfig struct {
@@ -99,6 +102,11 @@ type ModelsConfig struct {
 	DownloadPath   string // Path to store downloaded models
 	GitOpsRepoPath string // Path to GitOps repository for manifests
 	AINamespace    string // Kubernetes namespace for AI workloads
+}
+
+type AgentsConfig struct {
+	Disabled     bool
+	RegistryPath string // Path to agents registry JSON file
 }
 
 func Load() (*Config, error) {
@@ -166,6 +174,11 @@ func Load() (*Config, error) {
 			DownloadPath:   getEnv("MODELS_DOWNLOAD_PATH", "/models"),
 			GitOpsRepoPath: getEnv("GITOPS_REPO_PATH", ""),
 			AINamespace:    getEnv("AI_NAMESPACE", "ai"),
+		},
+
+		Agents: AgentsConfig{
+			Disabled:     parseBool(getEnv("AGENTS_DISABLED", "false")),
+			RegistryPath: getEnv("AGENTS_REGISTRY_PATH", "/data/agents.json"),
 		},
 	}
 

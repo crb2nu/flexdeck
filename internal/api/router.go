@@ -103,6 +103,20 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Post("/{id}/deploy", h.ModelsDeploy)
 			r.Post("/{id}/scale", h.ModelsScale)
 		})
+
+		r.Route("/api/agents", func(r chi.Router) {
+			r.Get("/", h.AgentsList)
+			r.Post("/", h.AgentsCreate)
+			r.Get("/health", h.AgentsHealth)
+			r.Get("/{id}", h.AgentsGet)
+			r.Put("/{id}", h.AgentsUpdate)
+			r.Delete("/{id}", h.AgentsDelete)
+			r.Get("/{id}/health", h.AgentsCheckHealth)
+			r.Post("/{id}/test", h.AgentsTest)
+			r.Post("/{id}/invoke", h.AgentsInvoke)
+			r.Post("/{id}/stream", h.AgentsStream)
+			r.Get("/{id}/usage", h.AgentsUsage)
+		})
 	})
 
 	fileServer(r, "/", cfg.StaticDir)
