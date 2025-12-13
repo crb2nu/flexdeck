@@ -83,3 +83,10 @@ export const loki = {
       `/loki/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}${limit ? `&limit=${limit}` : ''}`
     ),
 };
+
+export const litellm = {
+  health: () => api<any>('/litellm/health'),
+  metrics: () => api<any>('/litellm/metrics'),
+  modelMetrics: (model: string) =>
+    api<any>(`/litellm/metrics/${encodeURIComponent(model)}`),
+};

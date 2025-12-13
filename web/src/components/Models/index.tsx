@@ -1,6 +1,8 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { K8sDeployment, K8sPod } from '../../lib/types';
+import type { K8sDeployment, K8sPod, ModelThroughput } from '../../lib/types';
+import { litellm } from '../../lib/api';
+import { Sparkline } from '../shared';
 
 interface ModelInstance {
   name: string;
@@ -12,6 +14,7 @@ interface ModelInstance {
   gpuType?: string;
   endpoint?: string;
   pod?: K8sPod;
+  metrics?: ModelThroughput;
 }
 
 const Models: Component = () => {
@@ -22,18 +25,29 @@ const Models: Component = () => {
 
   const fetchModels = async () => {
     try {
-      // Fetch vLLM deployments (labeled with app=vllm or similar)
-      const [deploymentsRes, podsRes] = await Promise.all([
+      // Fetch vLLM deployments, pods, and LiteLLM metrics
+      const [deploymentsRes, podsRes, metricsData] = await Promise.all([
         fetch('/api/k8s/deployments'),
         fetch('/api/k8s/pods'),
+        litellm.metrics().catch(() => ({ models: [] })),
       ]);
 
       if (!deploymentsRes.ok || !podsRes.ok) {
         throw new Error('Failed to fetch K8s resources');
       }
 
-      const deployments: K8sDeployment[] = await deploymentsRes.json();
-      const pods: K8sPod[] = await podsRes.json();
+      const deploymentsData = await deploymentsRes.json();
+      const podsData = await podsRes.json();
+
+      // API returns K8s list objects with items array
+      const deployments: K8sDeployment[] = deploymentsData.items || deploymentsData;
+      const pods: K8sPod[] = podsData.items || podsData;
+
+      // Build metrics lookup by model name
+      const metricsMap = new Map<string, ModelThroughput>();
+      (metricsData.models || []).forEach((m: ModelThroughput) => {
+        metricsMap.set(m.model.toLowerCase(), m);
+      });
 
       // Filter for AI/ML workloads
       const aiLabels = ['vllm', 'llama', 'ollama', 'sglang', 'tgi'];
@@ -79,6 +93,17 @@ const Models: Component = () => {
           status = 'error';
         }
 
+        // Try to match metrics by deployment name or model name
+        const deploymentNameLower = d.metadata.name.toLowerCase();
+        const modelLower = model.toLowerCase();
+        const metrics = metricsMap.get(deploymentNameLower) ||
+                        metricsMap.get(modelLower) ||
+                        // Try partial match for model names like "llama-3.1-8b"
+                        Array.from(metricsMap.entries()).find(([k]) =>
+                          k.includes(deploymentNameLower) || deploymentNameLower.includes(k) ||
+                          k.includes(modelLower) || modelLower.includes(k)
+                        )?.[1];
+
         return {
           name: d.metadata.name,
           namespace: d.metadata.namespace || 'default',
@@ -88,6 +113,7 @@ const Models: Component = () => {
           readyReplicas: d.status.readyReplicas || 0,
           gpuType,
           pod: runningPod,
+          metrics,
         };
       });
 
@@ -259,6 +285,45 @@ const Models: Component = () => {
                       </div>
                     </Show>
                   </div>
+
+                  {/* Metrics */}
+                  <Show when={model.metrics}>
+                    <div class="mb-4 rounded-md bg-white/5 p-3">
+                      <div class="mb-2 flex items-center justify-between">
+                        <span class="text-xs font-medium text-text-dim">Throughput</span>
+                        <Sparkline
+                          data={model.metrics!.sparkline || []}
+                          trend={model.metrics!.trend}
+                          width={60}
+                          height={20}
+                        />
+                      </div>
+                      <div class="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div class="text-lg font-semibold text-neon-cyan">
+                            {model.metrics!.tok_per_sec_1m.toFixed(0)}
+                          </div>
+                          <div class="text-xs text-text-dim">tok/s 1m</div>
+                        </div>
+                        <div>
+                          <div class="text-lg font-semibold text-text-muted">
+                            {model.metrics!.tok_per_sec_5m.toFixed(0)}
+                          </div>
+                          <div class="text-xs text-text-dim">tok/s 5m</div>
+                        </div>
+                        <div>
+                          <div class="text-lg font-semibold text-text-muted">
+                            {model.metrics!.tok_per_sec_15m.toFixed(0)}
+                          </div>
+                          <div class="text-xs text-text-dim">tok/s 15m</div>
+                        </div>
+                      </div>
+                      <div class="mt-2 flex justify-between text-xs text-text-dim">
+                        <span>{model.metrics!.requests_per_min.toFixed(1)} req/min</span>
+                        <span>{model.metrics!.avg_latency_ms.toFixed(0)}ms latency</span>
+                      </div>
+                    </div>
+                  </Show>
 
                   {/* Actions */}
                   <div class="flex gap-2">

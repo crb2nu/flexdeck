@@ -35,6 +35,12 @@ type Config struct {
 
 	// Cache
 	Cache CacheConfig
+
+	// LiteLLM
+	LiteLLM LiteLLMConfig
+
+	// Redis
+	Redis RedisConfig
 }
 
 type K8sConfig struct {
@@ -66,6 +72,19 @@ type VLLMConfig struct {
 type CacheConfig struct {
 	HFPath      string
 	CivitAIPath string
+}
+
+type LiteLLMConfig struct {
+	Disabled       bool
+	URL            string
+	ScrapeInterval time.Duration
+}
+
+type RedisConfig struct {
+	Disabled bool
+	URL      string
+	Password string
+	DB       int
 }
 
 func Load() (*Config, error) {
@@ -110,6 +129,19 @@ func Load() (*Config, error) {
 			HFPath:      getEnv("HF_CACHE_PATH", ""),
 			CivitAIPath: getEnv("CIVITAI_CACHE_PATH", ""),
 		},
+
+		LiteLLM: LiteLLMConfig{
+			Disabled:       parseBool(getEnv("LITELLM_DISABLED", "false")),
+			URL:            getEnv("LITELLM_URL", "http://litellm.ai.svc.cluster.local:8000"),
+			ScrapeInterval: parseDurationSeconds(getEnv("LITELLM_SCRAPE_INTERVAL", "15")),
+		},
+
+		Redis: RedisConfig{
+			Disabled: parseBool(getEnv("REDIS_DISABLED", "false")),
+			URL:      getEnv("REDIS_URL", ""),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       parseInt(getEnv("REDIS_DB", "0")),
+		},
 	}
 
 	return cfg, nil
@@ -132,6 +164,22 @@ func parseDuration(s string) time.Duration {
 		return 30
 	}
 	return time.Duration(days)
+}
+
+func parseDurationSeconds(s string) time.Duration {
+	secs, err := strconv.Atoi(s)
+	if err != nil {
+		return 15 * time.Second
+	}
+	return time.Duration(secs) * time.Second
+}
+
+func parseInt(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return i
 }
 
 func parseLogLevel(s string) slog.Level {

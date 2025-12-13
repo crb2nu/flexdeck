@@ -12,6 +12,8 @@ import (
 	"github.com/flexinfer/flexdeck/internal/api"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/flexinfer/flexdeck/internal/litellm"
+	"github.com/flexinfer/flexdeck/internal/metrics"
 )
 
 func main() {
@@ -38,7 +40,35 @@ func main() {
 		slog.Info("k8s client disabled")
 	}
 
-	router := api.NewRouter(cfg, k8sClient)
+	// Initialize LiteLLM client and metrics store
+	var litellmClient *litellm.Client
+	var metricsStore *metrics.Store
+	var metricsScraper *metrics.Scraper
+
+	if !cfg.LiteLLM.Disabled && cfg.LiteLLM.URL != "" {
+		litellmClient = litellm.NewClient(cfg.LiteLLM.URL)
+		slog.Info("litellm client initialized", "url", cfg.LiteLLM.URL)
+
+		// Initialize Redis store for metrics if configured
+		if !cfg.Redis.Disabled && cfg.Redis.URL != "" {
+			metricsStore, err = metrics.NewStore(cfg.Redis)
+			if err != nil {
+				slog.Warn("failed to create metrics store, metrics buffering disabled", "error", err)
+			} else {
+				slog.Info("redis metrics store initialized")
+
+				// Start the metrics scraper
+				metricsScraper = metrics.NewScraper(cfg.LiteLLM, metricsStore)
+				go metricsScraper.Start(context.Background())
+			}
+		} else {
+			slog.Info("redis disabled, metrics buffering unavailable")
+		}
+	} else {
+		slog.Info("litellm client disabled")
+	}
+
+	router := api.NewRouter(cfg, k8sClient, litellmClient, metricsStore)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -67,6 +97,20 @@ func main() {
 
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("server shutdown error", "error", err)
+	}
+
+	// Stop the metrics scraper
+	if metricsScraper != nil {
+		slog.Info("stopping metrics scraper")
+		metricsScraper.Stop()
+	}
+
+	// Close the metrics store
+	if metricsStore != nil {
+		slog.Info("closing metrics store")
+		if err := metricsStore.Close(); err != nil {
+			slog.Error("metrics store close error", "error", err)
+		}
 	}
 
 	slog.Info("server stopped")

@@ -13,9 +13,11 @@ import (
 	"github.com/flexinfer/flexdeck/internal/auth"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/flexinfer/flexdeck/internal/litellm"
+	"github.com/flexinfer/flexdeck/internal/metrics"
 )
 
-func NewRouter(cfg *config.Config, k8sClient *k8s.Client) chi.Router {
+func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -26,7 +28,7 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client) chi.Router {
 
 	authMiddleware := auth.NewMiddleware(cfg)
 
-	h := handlers.New(cfg, k8sClient)
+	h := handlers.New(cfg, k8sClient, litellmClient, metricsStore)
 
 	r.Get("/api/health", h.Health)
 
@@ -76,6 +78,12 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client) chi.Router {
 			r.Get("/kustomizations", h.FluxListKustomizations)
 			r.Get("/helmreleases", h.FluxListHelmReleases)
 			r.Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
+		})
+
+		r.Route("/api/litellm", func(r chi.Router) {
+			r.Get("/health", h.LiteLLMHealth)
+			r.Get("/metrics", h.LiteLLMMetrics)
+			r.Get("/metrics/{model}", h.LiteLLMModelMetrics)
 		})
 	})
 
