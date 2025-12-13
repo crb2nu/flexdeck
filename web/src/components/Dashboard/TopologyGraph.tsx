@@ -1,6 +1,15 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, Show, createMemo } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+
+// Debounce utility
+const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return ((...args: unknown[]) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), ms);
+  }) as T;
+};
 
 interface Props {
   nodes: K8sNode[];
@@ -39,10 +48,21 @@ const TopologyGraph: Component<Props> = (props) => {
   let svgRef: SVGSVGElement | undefined;
   let containerRef: HTMLDivElement | undefined;
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
+  let rafId: number | null = null;
+  let lastDataKey = '';
 
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
+
+  // Generate a key to detect meaningful data changes
+  const getDataKey = (): string => {
+    const nodeIds = props.nodes.map(n => n.metadata.name).sort().join(',');
+    const podIds = props.pods.map(p => `${p.metadata.namespace}/${p.metadata.name}:${p.status.phase}`).sort().join(',');
+    const svcIds = props.services.map(s => `${s.metadata.namespace}/${s.metadata.name}`).sort().join(',');
+    const dims = dimensions();
+    return `${nodeIds}|${podIds}|${svcIds}|${dims.width}x${dims.height}`;
+  };
 
   // Build graph data from K8s resources
   const buildGraph = (): { nodes: D3Node[]; links: D3Link[]; namespaceMap: Map<string, number> } => {
@@ -175,6 +195,12 @@ const TopologyGraph: Component<Props> = (props) => {
   const initializeSimulation = () => {
     if (!svgRef) return;
 
+    // Stop existing simulation before creating new one
+    if (simulation) {
+      simulation.stop();
+      simulation = null;
+    }
+
     const { width, height } = dimensions();
     const { nodes, links, namespaceMap } = buildGraph();
 
@@ -275,7 +301,8 @@ const TopologyGraph: Component<Props> = (props) => {
       .force('x', d3.forceX(width / 2).strength(0.03))
       .force('y', d3.forceY(height / 2).strength(0.03));
 
-    // Create link gradients
+    // Create link gradients and cache selections for tick updates
+    const gradientSelections: d3.Selection<SVGLinearGradientElement, unknown, null, undefined>[] = [];
     links.forEach((link, i) => {
       const gradient = defs.append('linearGradient')
         .attr('id', `link-gradient-${i}`)
@@ -290,6 +317,8 @@ const TopologyGraph: Component<Props> = (props) => {
         .attr('offset', '100%')
         .attr('stop-color', link.type === 'hosts' ? '#00d9ff' : '#a855f7')
         .attr('stop-opacity', 0.1);
+
+      gradientSelections.push(gradient);
     });
 
     // Create links with animation
@@ -326,7 +355,7 @@ const TopologyGraph: Component<Props> = (props) => {
       .attr('stroke', (d) => getNodeColor(d, namespaceMap))
       .attr('stroke-width', 1)
       .attr('stroke-opacity', 0.3)
-      .style('animation', 'pulse-ring 2s ease-in-out infinite');
+      .style('animation', 'topology-pulse-ring 2s ease-in-out infinite');
 
     // Add main circles with gradient fill
     nodeGroup.append('circle')
@@ -355,7 +384,7 @@ const TopologyGraph: Component<Props> = (props) => {
       .attr('stroke', (d) => getNodeColor(d, namespaceMap))
       .attr('stroke-width', 1)
       .attr('stroke-opacity', 0.5)
-      .style('animation', 'pulse-expand 2s ease-out infinite');
+      .style('animation', 'topology-pulse-expand 2s ease-out infinite');
 
     // Add labels with background
     const labelGroup = nodeGroup.append('g')
@@ -389,7 +418,7 @@ const TopologyGraph: Component<Props> = (props) => {
       nodeGroup.select('circle').attr('stroke-width', (d) => d.type === 'node' ? 2.5 : 1.5);
     });
 
-    // Simulation tick
+    // Simulation tick - use cached selections for better performance
     simulation.on('tick', () => {
       link
         .attr('x1', (d) => (d.source as D3Node).x!)
@@ -397,16 +426,16 @@ const TopologyGraph: Component<Props> = (props) => {
         .attr('x2', (d) => (d.target as D3Node).x!)
         .attr('y2', (d) => (d.target as D3Node).y!);
 
-      // Update gradients for links
-      links.forEach((l, i) => {
-        const source = l.source as D3Node;
-        const target = l.target as D3Node;
-        d3.select(`#link-gradient-${i}`)
+      // Update gradients using cached selections (avoids DOM lookup per tick)
+      for (let i = 0; i < links.length; i++) {
+        const source = links[i].source as D3Node;
+        const target = links[i].target as D3Node;
+        gradientSelections[i]
           .attr('x1', source.x!)
           .attr('y1', source.y!)
           .attr('x2', target.x!)
           .attr('y2', target.y!);
-      });
+      }
 
       nodeGroup.attr('transform', (d) => `translate(${d.x},${d.y})`);
     });
@@ -439,7 +468,7 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  // Handle resize
+  // Handle resize with debouncing
   const handleResize = () => {
     if (containerRef) {
       const rect = containerRef.getBoundingClientRect();
@@ -447,46 +476,51 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
+  const debouncedResize = debounce(handleResize, 150);
+
   onMount(() => {
-    handleResize();
-    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial measurement without debounce
+    window.addEventListener('resize', debouncedResize);
   });
 
   onCleanup(() => {
-    window.removeEventListener('resize', handleResize);
+    window.removeEventListener('resize', debouncedResize);
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+    }
     simulation?.stop();
   });
 
-  // Re-initialize when data changes
+  // Re-initialize when data meaningfully changes
   createEffect(() => {
-    // Track dependencies
+    // Track dependencies (accessing them triggers re-run)
     props.nodes;
     props.pods;
     props.services;
     dimensions();
 
-    // Delay to ensure DOM is ready
-    setTimeout(initializeSimulation, 0);
+    // Check if data actually changed
+    const newKey = getDataKey();
+    if (newKey === lastDataKey) {
+      return; // Skip if no meaningful change
+    }
+    lastDataKey = newKey;
+
+    // Cancel pending animation frame
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+    }
+
+    // Use requestAnimationFrame for smoother initialization
+    rafId = requestAnimationFrame(() => {
+      initializeSimulation();
+      rafId = null;
+    });
   });
 
   return (
     <div ref={containerRef} class="relative h-full w-full overflow-hidden">
-      {/* CSS for animations */}
-      <style>{`
-        @keyframes pulse-expand {
-          0% { r: ${8}; opacity: 0.6; }
-          100% { r: ${20}; opacity: 0; }
-        }
-        @keyframes pulse-ring {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.6; }
-        }
-        @keyframes flow {
-          from { stroke-dashoffset: 10; }
-          to { stroke-dashoffset: 0; }
-        }
-      `}</style>
-
+      {/* Animations now in global.css: topology-pulse-expand, topology-pulse-ring, flow */}
       <svg
         ref={svgRef}
         width={dimensions().width}
