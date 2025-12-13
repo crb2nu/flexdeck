@@ -9,6 +9,7 @@ const tabs = [
   { id: 'logs', label: 'Logs', path: '/logs' },
   { id: 'metrics', label: 'Metrics', path: '/metrics' },
   { id: 'models', label: 'Models', path: '/models' },
+  { id: 'agents', label: 'Agents', path: '/agents' },
 ];
 
 const AppLayout: Component<ParentProps> = (props) => {
