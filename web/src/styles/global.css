@@ -20,6 +20,46 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* --- Background Effects Layer --- */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    /* Subtle radial gradient for depth */
+    radial-gradient(ellipse at 20% 20%, rgba(0, 217, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%),
+    /* Grid pattern */
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
+}
+
+/* Scan lines overlay - subtle CRT effect */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  opacity: 0.5;
+}
+
 #root {
   height: 100%;
 }
@@ -90,6 +130,116 @@ body {
     background: var(--status-error);
     box-shadow: 0 0 6px var(--status-error);
   }
+
+  /* Colored glass panels */
+  .glass-panel-cyan {
+    @apply glass-panel;
+    border-color: rgba(0, 217, 255, 0.2);
+    box-shadow:
+      var(--glass-shadow),
+      inset 0 0 30px rgba(0, 217, 255, 0.03),
+      0 0 20px rgba(0, 217, 255, 0.05);
+  }
+
+  .glass-panel-purple {
+    @apply glass-panel;
+    border-color: rgba(168, 85, 247, 0.2);
+    box-shadow:
+      var(--glass-shadow),
+      inset 0 0 30px rgba(168, 85, 247, 0.03),
+      0 0 20px rgba(168, 85, 247, 0.05);
+  }
+
+  .glass-panel-green {
+    @apply glass-panel;
+    border-color: rgba(34, 197, 94, 0.2);
+    box-shadow:
+      var(--glass-shadow),
+      inset 0 0 30px rgba(34, 197, 94, 0.03),
+      0 0 20px rgba(34, 197, 94, 0.05);
+  }
+
+  .glass-panel-orange {
+    @apply glass-panel;
+    border-color: rgba(249, 115, 22, 0.2);
+    box-shadow:
+      var(--glass-shadow),
+      inset 0 0 30px rgba(249, 115, 22, 0.03),
+      0 0 20px rgba(249, 115, 22, 0.05);
+  }
+
+  /* Glow utilities */
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.3), 0 0 40px rgba(0, 217, 255, 0.1);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3), 0 0 40px rgba(168, 85, 247, 0.1);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1);
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.3), 0 0 40px rgba(249, 115, 22, 0.1);
+  }
+
+  /* Text glow utilities */
+  .text-glow-cyan {
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5), 0 0 20px rgba(0, 217, 255, 0.3);
+  }
+
+  .text-glow-purple {
+    text-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 0 20px rgba(168, 85, 247, 0.3);
+  }
+
+  /* Corner accents for panels */
+  .corner-accents::before,
+  .corner-accents::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: rgba(0, 217, 255, 0.5);
+    border-style: solid;
+    pointer-events: none;
+  }
+
+  .corner-accents::before {
+    top: -1px;
+    left: -1px;
+    border-width: 2px 0 0 2px;
+  }
+
+  .corner-accents::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 2px 2px 0;
+  }
+
+  /* Data stream effect */
+  .data-stream {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .data-stream::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 217, 255, 0.5),
+      transparent
+    );
+    animation: scan 3s linear infinite;
+    opacity: 0.5;
+  }
 }
 
 /* --- Animations --- */
@@ -111,8 +261,82 @@ body {
   }
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes border-glow {
+  0%, 100% {
+    border-color: rgba(0, 217, 255, 0.3);
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.1);
+  }
+  50% {
+    border-color: rgba(0, 217, 255, 0.6);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-border-glow {
+  animation: border-glow 2s ease-in-out infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
 }
 
 /* --- Focus States --- */

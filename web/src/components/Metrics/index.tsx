@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 interface MetricValue {
@@ -63,6 +63,7 @@ const Metrics: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [timeRange, setTimeRange] = createSignal('1h');
+  const [lastUpdated, setLastUpdated] = createSignal<Date | null>(null);
 
   const timeRanges = [
     { label: '15m', value: '15m' },
@@ -75,7 +76,7 @@ const Metrics: Component = () => {
 
   const parseTimeRange = (range: string): number => {
     const match = range.match(/^(\d+)([mhd])$/);
-    if (!match) return 3600; // default 1h in seconds
+    if (!match) return 3600;
     const [, num, unit] = match;
     const multipliers: Record<string, number> = { m: 60, h: 3600, d: 86400 };
     return parseInt(num) * (multipliers[unit] || 3600);
@@ -87,7 +88,7 @@ const Metrics: Component = () => {
 
     const now = Math.floor(Date.now() / 1000);
     const start = now - parseTimeRange(timeRange());
-    const step = Math.max(15, Math.floor((now - start) / 100)); // ~100 data points
+    const step = Math.max(15, Math.floor((now - start) / 100));
 
     try {
       await Promise.all(
@@ -119,6 +120,7 @@ const Metrics: Component = () => {
           setPanels(index, 'values', values);
         })
       );
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch metrics');
     } finally {
@@ -132,10 +134,96 @@ const Metrics: Component = () => {
     onCleanup(() => clearInterval(interval));
   });
 
-  // Re-fetch when time range changes
   createEffect(() => {
-    timeRange(); // Track dependency
+    timeRange();
     fetchMetrics();
+  });
+
+  return (
+    <div class="flex h-full flex-col gap-4">
+      {/* Header */}
+      <div class="glass-panel flex items-center justify-between px-4 py-3">
+        <div class="flex items-center gap-4">
+          <h2 class="text-lg font-medium text-text-main">Cluster Metrics</h2>
+          <Show when={lastUpdated()}>
+            <span class="text-xs text-text-dim">
+              Updated {lastUpdated()?.toLocaleTimeString()}
+            </span>
+          </Show>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="flex rounded-lg bg-surface-raised p-0.5">
+            <For each={timeRanges}>
+              {(range) => (
+                <button
+                  onClick={() => setTimeRange(range.value)}
+                  class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                    timeRange() === range.value
+                      ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
+                      : 'text-text-muted hover:text-text-main'
+                  }`}
+                >
+                  {range.label}
+                </button>
+              )}
+            </For>
+          </div>
+
+          <button
+            onClick={fetchMetrics}
+            disabled={loading()}
+            class="flex items-center gap-2 rounded-lg bg-neon-cyan/10 px-4 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50 border border-neon-cyan/20"
+          >
+            <span class={loading() ? 'animate-spin' : ''}>↻</span>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <Show when={error()}>
+        <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
+          <span class="text-lg">⚠</span>
+          {error()}
+        </div>
+      </Show>
+
+      {/* Metrics Grid */}
+      <div class="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <For each={panels}>
+          {(panel) => (
+            <MetricCard
+              panel={panel}
+              loading={loading()}
+            />
+          )}
+        </For>
+      </div>
+    </div>
+  );
+};
+
+// Enhanced metric card component
+const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) => {
+  const [hoveredIndex, setHoveredIndex] = createSignal<number | null>(null);
+
+  const stats = createMemo(() => {
+    const values = props.panel.values;
+    if (values.length === 0) return { current: 0, min: 0, max: 0, avg: 0, trend: 'stable' as const };
+
+    const nums = values.map(v => v.value);
+    const current = nums[nums.length - 1];
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+
+    // Calculate trend based on last 20% of values
+    const recentStart = Math.floor(nums.length * 0.8);
+    const recentAvg = nums.slice(recentStart).reduce((a, b) => a + b, 0) / (nums.length - recentStart);
+    const earlierAvg = nums.slice(0, recentStart).reduce((a, b) => a + b, 0) / recentStart || recentAvg;
+    const trend = recentAvg > earlierAvg * 1.05 ? 'up' : recentAvg < earlierAvg * 0.95 ? 'down' : 'stable';
+
+    return { current, min, max, avg, trend };
   });
 
   const getColorClass = (color: string) => {
@@ -150,130 +238,140 @@ const Metrics: Component = () => {
     return colors[color] || 'text-text-main';
   };
 
-  const getGradientId = (color: string) => `gradient-${color}`;
+  const getTrendIcon = () => {
+    switch (stats().trend) {
+      case 'up': return '↑';
+      case 'down': return '↓';
+      default: return '→';
+    }
+  };
 
-  const getStrokeColor = (color: string) => {
-    const colors: Record<string, string> = {
-      cyan: '#00d9ff',
-      purple: '#a855f7',
-      green: '#22c55e',
-      orange: '#f97316',
-      blue: '#60a5fa',
-      pink: '#ec4899',
-    };
-    return colors[color] || '#888';
+  const getTrendColor = () => {
+    if (props.panel.title.includes('Restart')) {
+      return stats().trend === 'up' ? 'text-status-error' : stats().trend === 'down' ? 'text-status-ok' : 'text-text-dim';
+    }
+    return stats().trend === 'up' ? 'text-status-ok' : stats().trend === 'down' ? 'text-status-error' : 'text-text-dim';
   };
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="glass-panel-hover group flex flex-col p-4 transition-all hover:border-white/10">
       {/* Header */}
-      <div class="glass-panel flex items-center justify-between px-4 py-3">
-        <h2 class="text-lg font-medium text-text-main">Cluster Metrics</h2>
-
-        <div class="flex items-center gap-4">
-          <select
-            value={timeRange()}
-            onChange={(e) => setTimeRange(e.currentTarget.value)}
-            class="rounded-md border border-white/10 bg-surface-raised px-3 py-1.5 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
-          >
-            <For each={timeRanges}>{(range) => <option value={range.value}>{range.label}</option>}</For>
-          </select>
-
-          <button
-            onClick={fetchMetrics}
-            disabled={loading()}
-            class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
-          >
-            Refresh
-          </button>
+      <div class="mb-3 flex items-center justify-between">
+        <span class={`text-sm font-medium ${getColorClass(props.panel.color)}`}>
+          {props.panel.title}
+        </span>
+        <div class="flex items-center gap-2">
+          <span class={`text-sm ${getTrendColor()}`}>{getTrendIcon()}</span>
+          <span class="text-2xl font-bold text-text-main tabular-nums">
+            {props.panel.values.length > 0
+              ? `${stats().current.toFixed(1)}${props.panel.unit}`
+              : '-'}
+          </span>
         </div>
       </div>
 
-      <Show when={error()}>
-        <div class="glass-panel p-4 text-sm text-status-error">{error()}</div>
-      </Show>
-
-      {/* Metrics Grid */}
-      <div class="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <For each={panels}>
-          {(panel) => (
-            <div class="glass-panel flex flex-col p-4">
-              <div class="mb-2 flex items-center justify-between">
-                <span class={`text-sm font-medium ${getColorClass(panel.color)}`}>{panel.title}</span>
-                <span class="text-lg font-bold text-text-main">
-                  {panel.values.length > 0
-                    ? `${panel.values[panel.values.length - 1].value.toFixed(1)}${panel.unit}`
-                    : '-'}
-                </span>
-              </div>
-
-              <div class="relative h-24 flex-1">
-                <Show
-                  when={panel.values.length > 1}
-                  fallback={
-                    <div class="flex h-full items-center justify-center text-xs text-text-dim">
-                      {loading() ? 'Loading...' : 'No data'}
-                    </div>
-                  }
-                >
-                  <SparklineChart values={panel.values} color={panel.color} />
-                </Show>
+      {/* Chart */}
+      <div class="relative h-32 flex-1">
+        <Show
+          when={props.panel.values.length > 1}
+          fallback={
+            <div class="flex h-full items-center justify-center">
+              <div class="text-center">
+                {props.loading ? (
+                  <div class="h-5 w-5 mx-auto animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                ) : (
+                  <span class="text-xs text-text-dim">No data available</span>
+                )}
               </div>
             </div>
-          )}
-        </For>
+          }
+        >
+          <EnhancedChart
+            values={props.panel.values}
+            color={props.panel.color}
+            unit={props.panel.unit}
+            onHover={setHoveredIndex}
+          />
+        </Show>
+
+        {/* Hover tooltip */}
+        <Show when={hoveredIndex() !== null && props.panel.values[hoveredIndex()!]}>
+          {() => {
+            const idx = hoveredIndex()!;
+            const val = props.panel.values[idx];
+            return (
+              <div class="absolute top-0 left-1/2 -translate-x-1/2 rounded-md bg-surface-raised px-2 py-1 text-xs shadow-lg border border-white/10 pointer-events-none z-10">
+                <div class="font-mono text-text-main">
+                  {val.value.toFixed(2)}{props.panel.unit}
+                </div>
+                <div class="text-text-dim text-[10px]">
+                  {new Date(val.time).toLocaleTimeString()}
+                </div>
+              </div>
+            );
+          }}
+        </Show>
+      </div>
+
+      {/* Stats footer */}
+      <div class="mt-3 flex justify-between border-t border-white/5 pt-3 text-[10px] text-text-dim">
+        <div class="flex gap-3">
+          <span>Min: <span class="text-text-muted font-mono">{stats().min.toFixed(1)}</span></span>
+          <span>Avg: <span class="text-text-muted font-mono">{stats().avg.toFixed(1)}</span></span>
+          <span>Max: <span class="text-text-muted font-mono">{stats().max.toFixed(1)}</span></span>
+        </div>
       </div>
     </div>
   );
 };
 
-// Simple sparkline chart component
-const SparklineChart: Component<{ values: MetricValue[]; color: string }> = (props) => {
-  const getPath = () => {
-    if (props.values.length < 2) return '';
+// Enhanced sparkline chart with grid and hover
+const EnhancedChart: Component<{
+  values: MetricValue[];
+  color: string;
+  unit: string;
+  onHover: (index: number | null) => void;
+}> = (props) => {
+  const width = 300;
+  const height = 100;
+  const padding = { top: 8, right: 8, bottom: 4, left: 35 };
 
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const scales = createMemo(() => {
     const values = props.values;
-    const min = Math.min(...values.map((v) => v.value));
-    const max = Math.max(...values.map((v) => v.value));
+    if (values.length < 2) return null;
+
+    const nums = values.map(v => v.value);
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
     const range = max - min || 1;
+    const paddedMin = min - range * 0.1;
+    const paddedMax = max + range * 0.1;
 
-    const width = 100;
-    const height = 100;
-    const padding = 5;
+    return {
+      x: (i: number) => padding.left + (chartWidth * i) / (values.length - 1),
+      y: (v: number) => padding.top + chartHeight - (chartHeight * (v - paddedMin)) / (paddedMax - paddedMin),
+      min: paddedMin,
+      max: paddedMax,
+    };
+  });
 
-    const points = values.map((v, i) => {
-      const x = padding + ((width - 2 * padding) * i) / (values.length - 1);
-      const y = height - padding - ((height - 2 * padding) * (v.value - min)) / range;
-      return `${x},${y}`;
-    });
+  const linePath = createMemo(() => {
+    const s = scales();
+    if (!s) return '';
+    return props.values
+      .map((v, i) => `${i === 0 ? 'M' : 'L'} ${s.x(i)},${s.y(v.value)}`)
+      .join(' ');
+  });
 
-    return `M ${points.join(' L ')}`;
-  };
-
-  const getAreaPath = () => {
-    if (props.values.length < 2) return '';
-
-    const values = props.values;
-    const min = Math.min(...values.map((v) => v.value));
-    const max = Math.max(...values.map((v) => v.value));
-    const range = max - min || 1;
-
-    const width = 100;
-    const height = 100;
-    const padding = 5;
-
-    const points = values.map((v, i) => {
-      const x = padding + ((width - 2 * padding) * i) / (values.length - 1);
-      const y = height - padding - ((height - 2 * padding) * (v.value - min)) / range;
-      return `${x},${y}`;
-    });
-
-    const firstX = padding;
-    const lastX = padding + ((width - 2 * padding) * (values.length - 1)) / (values.length - 1);
-    const bottomY = height - padding;
-
-    return `M ${firstX},${bottomY} L ${points.join(' L ')} L ${lastX},${bottomY} Z`;
-  };
+  const areaPath = createMemo(() => {
+    const s = scales();
+    if (!s) return '';
+    const line = props.values.map((v, i) => `${s.x(i)},${s.y(v.value)}`).join(' L ');
+    return `M ${padding.left},${padding.top + chartHeight} L ${line} L ${padding.left + chartWidth},${padding.top + chartHeight} Z`;
+  });
 
   const strokeColor = () => {
     const colors: Record<string, string> = {
@@ -287,16 +385,137 @@ const SparklineChart: Component<{ values: MetricValue[]; color: string }> = (pro
     return colors[props.color] || '#888';
   };
 
+  const yTicks = createMemo(() => {
+    const s = scales();
+    if (!s) return [];
+    const ticks = [];
+    const step = (s.max - s.min) / 4;
+    for (let i = 0; i <= 4; i++) {
+      const value = s.min + step * i;
+      ticks.push({ value, y: s.y(value) });
+    }
+    return ticks;
+  });
+
+  const handleMouseMove = (e: MouseEvent) => {
+    const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const svgX = (x / rect.width) * width;
+    const relativeX = svgX - padding.left;
+    const index = Math.round((relativeX / chartWidth) * (props.values.length - 1));
+    if (index >= 0 && index < props.values.length) {
+      props.onHover(index);
+    }
+  };
+
   return (
-    <svg class="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <svg
+      class="h-full w-full"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => props.onHover(null)}
+    >
       <defs>
-        <linearGradient id={`gradient-${props.color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color={strokeColor()} stop-opacity="0.3" />
+        <linearGradient id={`chart-gradient-${props.color}`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color={strokeColor()} stop-opacity="0.4" />
           <stop offset="100%" stop-color={strokeColor()} stop-opacity="0" />
         </linearGradient>
+        <filter id={`chart-glow-${props.color}`}>
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
-      <path d={getAreaPath()} fill={`url(#gradient-${props.color})`} />
-      <path d={getPath()} fill="none" stroke={strokeColor()} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+      {/* Grid lines */}
+      <For each={yTicks()}>
+        {(tick) => (
+          <>
+            <line
+              x1={padding.left}
+              y1={tick.y}
+              x2={padding.left + chartWidth}
+              y2={tick.y}
+              stroke="rgba(255,255,255,0.05)"
+              stroke-width="1"
+            />
+            <text
+              x={padding.left - 4}
+              y={tick.y}
+              text-anchor="end"
+              dominant-baseline="middle"
+              font-size="8"
+              fill="rgba(255,255,255,0.3)"
+            >
+              {tick.value.toFixed(0)}
+            </text>
+          </>
+        )}
+      </For>
+
+      {/* Area fill */}
+      <path
+        d={areaPath()}
+        fill={`url(#chart-gradient-${props.color})`}
+        class="transition-all duration-300"
+      />
+
+      {/* Line */}
+      <path
+        d={linePath()}
+        fill="none"
+        stroke={strokeColor()}
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter={`url(#chart-glow-${props.color})`}
+        class="transition-all duration-300"
+      />
+
+      {/* Endpoint dot with pulse */}
+      <Show when={props.values.length > 0 && scales()}>
+        {() => {
+          const s = scales()!;
+          const lastIdx = props.values.length - 1;
+          const x = s.x(lastIdx);
+          const y = s.y(props.values[lastIdx].value);
+          return (
+            <>
+              <circle
+                cx={x}
+                cy={y}
+                r={6}
+                fill={strokeColor()}
+                opacity={0.3}
+              >
+                <animate
+                  attributeName="r"
+                  values="4;8;4"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="opacity"
+                  values="0.3;0.1;0.3"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+              <circle
+                cx={x}
+                cy={y}
+                r={3}
+                fill={strokeColor()}
+                stroke="rgba(0,0,0,0.3)"
+                stroke-width={1}
+              />
+            </>
+          );
+        }}
+      </Show>
     </svg>
   );
 };
