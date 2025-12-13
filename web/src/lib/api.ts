@@ -90,3 +90,37 @@ export const litellm = {
   modelMetrics: (model: string) =>
     api<any>(`/litellm/metrics/${encodeURIComponent(model)}`),
 };
+
+export const modelsApi = {
+  list: () => api<any>('/models/'),
+  get: (id: string) => api<any>(`/models/${encodeURIComponent(id)}`),
+  register: (source: string, sourceId: string) =>
+    api<any>('/models/register', {
+      method: 'POST',
+      body: JSON.stringify({ source, source_id: sourceId }),
+    }),
+  delete: (id: string) =>
+    api<any>(`/models/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  searchHuggingFace: (query: string, filter?: string, limit?: number) =>
+    api<any>(
+      `/models/search/huggingface?q=${encodeURIComponent(query)}${filter ? `&filter=${encodeURIComponent(filter)}` : ''}${limit ? `&limit=${limit}` : ''}`
+    ),
+  searchCivitAI: (query: string, type?: string, limit?: number) =>
+    api<any>(
+      `/models/search/civitai?q=${encodeURIComponent(query)}${type ? `&type=${encodeURIComponent(type)}` : ''}${limit ? `&limit=${limit}` : ''}`
+    ),
+  startDownload: (id: string) =>
+    api<any>(`/models/${encodeURIComponent(id)}/download`, { method: 'POST' }),
+  cancelDownload: (id: string) =>
+    api<any>(`/models/${encodeURIComponent(id)}/download`, { method: 'DELETE' }),
+  deploy: (id: string, config: any) =>
+    api<any>(`/models/${encodeURIComponent(id)}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+  scale: (id: string, replicas: number) =>
+    api<any>(`/models/${encodeURIComponent(id)}/scale`, {
+      method: 'POST',
+      body: JSON.stringify({ replicas }),
+    }),
+};

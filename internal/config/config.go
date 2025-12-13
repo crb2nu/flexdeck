@@ -41,6 +41,9 @@ type Config struct {
 
 	// Redis
 	Redis RedisConfig
+
+	// Models
+	Models ModelsConfig
 }
 
 type K8sConfig struct {
@@ -85,6 +88,16 @@ type RedisConfig struct {
 	URL      string
 	Password string
 	DB       int
+}
+
+type ModelsConfig struct {
+	Disabled       bool
+	RegistryPath   string // Path to models registry JSON file
+	HFToken        string // HuggingFace API token
+	CivitAIKey     string // CivitAI API key
+	DownloadPath   string // Path to store downloaded models
+	GitOpsRepoPath string // Path to GitOps repository for manifests
+	AINamespace    string // Kubernetes namespace for AI workloads
 }
 
 func Load() (*Config, error) {
@@ -141,6 +154,16 @@ func Load() (*Config, error) {
 			URL:      getEnv("REDIS_URL", ""),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       parseInt(getEnv("REDIS_DB", "0")),
+		},
+
+		Models: ModelsConfig{
+			Disabled:       parseBool(getEnv("MODELS_DISABLED", "false")),
+			RegistryPath:   getEnv("MODELS_REGISTRY_PATH", "/data/models.json"),
+			HFToken:        getEnv("HF_TOKEN", ""),
+			CivitAIKey:     getEnv("CIVITAI_API_KEY", ""),
+			DownloadPath:   getEnv("MODELS_DOWNLOAD_PATH", "/models"),
+			GitOpsRepoPath: getEnv("GITOPS_REPO_PATH", ""),
+			AINamespace:    getEnv("AI_NAMESPACE", "ai"),
 		},
 	}
 

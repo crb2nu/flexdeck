@@ -18,6 +18,10 @@ import (
 )
 
 func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) chi.Router {
+	return NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, nil)
+}
+
+func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store, deps *handlers.HandlerDeps) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -28,7 +32,7 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm
 
 	authMiddleware := auth.NewMiddleware(cfg)
 
-	h := handlers.New(cfg, k8sClient, litellmClient, metricsStore)
+	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)
 
 	r.Get("/api/health", h.Health)
 
@@ -84,6 +88,20 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm
 			r.Get("/health", h.LiteLLMHealth)
 			r.Get("/metrics", h.LiteLLMMetrics)
 			r.Get("/metrics/{model}", h.LiteLLMModelMetrics)
+		})
+
+		r.Route("/api/models", func(r chi.Router) {
+			r.Get("/", h.ModelsList)
+			r.Post("/register", h.ModelsRegister)
+			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
+			r.Get("/search/civitai", h.ModelsSearchCivitAI)
+			r.Get("/{id}", h.ModelsGet)
+			r.Delete("/{id}", h.ModelsDelete)
+			r.Post("/{id}/download", h.ModelsStartDownload)
+			r.Get("/{id}/download/progress", h.ModelsDownloadProgress)
+			r.Delete("/{id}/download", h.ModelsCancelDownload)
+			r.Post("/{id}/deploy", h.ModelsDeploy)
+			r.Post("/{id}/scale", h.ModelsScale)
 		})
 	})
 

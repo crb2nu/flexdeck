@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/api"
+	"github.com/flexinfer/flexdeck/internal/api/handlers"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
+	"github.com/flexinfer/flexdeck/internal/models"
 )
 
 func main() {
@@ -68,7 +70,48 @@ func main() {
 		slog.Info("litellm client disabled")
 	}
 
-	router := api.NewRouter(cfg, k8sClient, litellmClient, metricsStore)
+	// Initialize models subsystem
+	var handlerDeps *handlers.HandlerDeps
+	if !cfg.Models.Disabled {
+		handlerDeps = &handlers.HandlerDeps{}
+
+		// Initialize model registry
+		modelsRegistry, err := models.NewRegistry(cfg.Models)
+		if err != nil {
+			slog.Warn("failed to create models registry", "error", err)
+		} else {
+			handlerDeps.ModelsRegistry = modelsRegistry
+			slog.Info("models registry initialized", "path", cfg.Models.RegistryPath)
+
+			// Initialize downloader
+			handlerDeps.ModelsDownloader = models.NewDownloader(
+				cfg.Models.DownloadPath,
+				cfg.Models.HFToken,
+				cfg.Models.CivitAIKey,
+				modelsRegistry,
+			)
+		}
+
+		// Initialize HuggingFace client
+		handlerDeps.HFClient = models.NewHuggingFaceClient(cfg.Models.HFToken)
+		slog.Info("huggingface client initialized")
+
+		// Initialize CivitAI client
+		if cfg.Models.CivitAIKey != "" {
+			handlerDeps.CivitClient = models.NewCivitAIClient(cfg.Models.CivitAIKey)
+			slog.Info("civitai client initialized")
+		}
+
+		// Initialize GitOps generator
+		if cfg.Models.GitOpsRepoPath != "" {
+			handlerDeps.GitOpsGen = models.NewGitOpsGenerator(cfg.Models.GitOpsRepoPath, cfg.Models.AINamespace)
+			slog.Info("gitops generator initialized", "path", cfg.Models.GitOpsRepoPath)
+		}
+	} else {
+		slog.Info("models subsystem disabled")
+	}
+
+	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
