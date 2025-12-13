@@ -15,6 +15,7 @@ import (
 // Client interacts with LiteLLM's metrics and health endpoints
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
@@ -30,12 +31,20 @@ type ModelMetrics struct {
 }
 
 // NewClient creates a new LiteLLM client
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL, apiKey string) *Client {
 	return &Client{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
+		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+	}
+}
+
+// addAuthHeader adds the API key to the request if configured
+func (c *Client) addAuthHeader(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 }
 
@@ -45,6 +54,7 @@ func (c *Client) Health(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("create request: %w", err)
 	}
+	c.addAuthHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -61,6 +71,7 @@ func (c *Client) ScrapeMetrics(ctx context.Context) ([]ModelMetrics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	c.addAuthHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

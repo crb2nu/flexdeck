@@ -48,7 +48,7 @@ func main() {
 	var metricsScraper *metrics.Scraper
 
 	if !cfg.LiteLLM.Disabled && cfg.LiteLLM.URL != "" {
-		litellmClient = litellm.NewClient(cfg.LiteLLM.URL)
+		litellmClient = litellm.NewClient(cfg.LiteLLM.URL, cfg.LiteLLM.APIKey)
 		slog.Info("litellm client initialized", "url", cfg.LiteLLM.URL)
 
 		// Initialize Redis store for metrics if configured

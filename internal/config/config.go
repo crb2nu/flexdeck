@@ -80,6 +80,7 @@ type CacheConfig struct {
 type LiteLLMConfig struct {
 	Disabled       bool
 	URL            string
+	APIKey         string
 	ScrapeInterval time.Duration
 }
 
@@ -146,6 +147,7 @@ func Load() (*Config, error) {
 		LiteLLM: LiteLLMConfig{
 			Disabled:       parseBool(getEnv("LITELLM_DISABLED", "false")),
 			URL:            getEnv("LITELLM_URL", "http://litellm.ai.svc.cluster.local:8000"),
+			APIKey:         getEnv("LITELLM_API_KEY", ""),
 			ScrapeInterval: parseDurationSeconds(getEnv("LITELLM_SCRAPE_INTERVAL", "15")),
 		},
 

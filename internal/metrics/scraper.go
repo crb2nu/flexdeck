@@ -21,7 +21,7 @@ type Scraper struct {
 // NewScraper creates a new metrics scraper
 func NewScraper(cfg config.LiteLLMConfig, store *Store) *Scraper {
 	return &Scraper{
-		litellm:  litellm.NewClient(cfg.URL),
+		litellm:  litellm.NewClient(cfg.URL, cfg.APIKey),
 		store:    store,
 		interval: cfg.ScrapeInterval,
 		stopCh:   make(chan struct{}),
