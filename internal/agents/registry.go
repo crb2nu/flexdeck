@@ -113,13 +113,13 @@ func (r *Registry) load() error {
 	return nil
 }
 
+// save writes the registry to disk
+// Note: caller must hold the lock (read or write)
 func (r *Registry) save() error {
-	r.mu.RLock()
 	agents := make([]*Agent, 0, len(r.agents))
 	for _, a := range r.agents {
 		agents = append(agents, a)
 	}
-	r.mu.RUnlock()
 
 	data, err := json.MarshalIndent(agents, "", "  ")
 	if err != nil {
@@ -169,11 +169,7 @@ func (r *Registry) Register(agent *Agent) error {
 
 	r.agents[agent.ID] = agent
 
-	r.mu.Unlock()
-	err := r.save()
-	r.mu.Lock()
-
-	return err
+	return r.save()
 }
 
 // Update updates an existing agent
@@ -190,11 +186,7 @@ func (r *Registry) Update(agent *Agent) error {
 	agent.UpdatedAt = time.Now()
 	r.agents[agent.ID] = agent
 
-	r.mu.Unlock()
-	err := r.save()
-	r.mu.Lock()
-
-	return err
+	return r.save()
 }
 
 // Delete removes an agent from the registry
@@ -209,11 +201,7 @@ func (r *Registry) Delete(id string) error {
 	delete(r.agents, id)
 	delete(r.usage, id)
 
-	r.mu.Unlock()
-	err := r.save()
-	r.mu.Lock()
-
-	return err
+	return r.save()
 }
 
 // CheckHealth checks the health of an agent

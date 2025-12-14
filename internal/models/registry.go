@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -129,13 +130,12 @@ func (r *Registry) load() error {
 }
 
 // save writes the registry to disk
+// Note: caller must hold the lock (read or write)
 func (r *Registry) save() error {
-	r.mu.RLock()
 	models := make([]*Model, 0, len(r.models))
 	for _, m := range r.models {
 		models = append(models, m)
 	}
-	r.mu.RUnlock()
 
 	data, err := json.MarshalIndent(models, "", "  ")
 	if err != nil {
@@ -143,7 +143,8 @@ func (r *Registry) save() error {
 	}
 
 	// Ensure directory exists
-	if dir := r.filePath[:len(r.filePath)-len("/models.json")]; dir != "" {
+	dir := filepath.Dir(r.filePath)
+	if dir != "" && dir != "." {
 		os.MkdirAll(dir, 0755)
 	}
 
