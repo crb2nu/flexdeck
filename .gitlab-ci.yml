@@ -10,17 +10,22 @@ variables:
   NODE_VERSION: "20"
 
 # Cache settings
+# Note: Requires 'runner-cache' bucket in MinIO at gitlab-backup-minio-svc
 .go-cache: &go-cache
   cache:
     key: go-${CI_COMMIT_REF_SLUG}
     paths:
       - .go/pkg/mod/
+    policy: pull-push
+    when: on_success
 
 .node-cache: &node-cache
   cache:
     key: node-${CI_COMMIT_REF_SLUG}
     paths:
       - web/node_modules/
+    policy: pull-push
+    when: on_success
 
 # Test backend
 test:backend:
