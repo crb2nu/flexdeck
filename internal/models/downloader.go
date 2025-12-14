@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,15 +152,19 @@ func (d *Downloader) runDownload(ctx context.Context, model *Model, task *downlo
 	switch model.Source {
 	case SourceHuggingFace:
 		downloadURL, fileName = d.getHFDownloadInfo(model)
+		if downloadURL == "" {
+			d.completeWithError(task, model.ID, "could not determine download URL for HuggingFace model")
+			return
+		}
 	case SourceCivitAI:
-		downloadURL, fileName = d.getCivitDownloadInfo(model)
+		var err error
+		downloadURL, fileName, err = d.getCivitDownloadInfo(model)
+		if err != nil {
+			d.completeWithError(task, model.ID, err.Error())
+			return
+		}
 	default:
 		d.completeWithError(task, model.ID, "unsupported model source")
-		return
-	}
-
-	if downloadURL == "" {
-		d.completeWithError(task, model.ID, "could not determine download URL")
 		return
 	}
 
@@ -208,16 +213,9 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	// Add auth headers
-	switch source {
-	case SourceHuggingFace:
-		if d.hfToken != "" {
-			req.Header.Set("Authorization", "Bearer "+d.hfToken)
-		}
-	case SourceCivitAI:
-		if d.civitKey != "" {
-			req.Header.Set("Authorization", "Bearer "+d.civitKey)
-		}
+	// Add auth headers (HuggingFace only - CivitAI uses query param auth)
+	if source == SourceHuggingFace && d.hfToken != "" {
+		req.Header.Set("Authorization", "Bearer "+d.hfToken)
 	}
 
 	resp, err := d.httpClient.Do(req)
@@ -227,7 +225,21 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		// Read error body for more details
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if len(body) > 0 {
+			return fmt.Errorf("download failed (HTTP %d): %s", resp.StatusCode, string(body))
+		}
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return fmt.Errorf("download failed (HTTP 401): unauthorized - check API key")
+		case http.StatusForbidden:
+			return fmt.Errorf("download failed (HTTP 403): access denied")
+		case http.StatusNotFound:
+			return fmt.Errorf("download failed (HTTP 404): file not found")
+		default:
+			return fmt.Errorf("download failed (HTTP %d)", resp.StatusCode)
+		}
 	}
 
 	totalSize := resp.ContentLength
@@ -338,7 +350,12 @@ func (d *Downloader) getHFDownloadInfo(model *Model) (string, string) {
 	return url, filepath.Base(bestFile.Path)
 }
 
-func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string) {
+func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string, error) {
+	// Validate API key is configured
+	if d.civitKey == "" {
+		return "", "", fmt.Errorf("CIVITAI_API_KEY not configured - required for CivitAI downloads")
+	}
+
 	var downloadURL string
 	var fileName string
 
@@ -350,8 +367,8 @@ func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string) {
 	}
 
 	// For CivitAI, the download URL should be stored in metadata
-	if url, ok := model.Metadata["download_url"].(string); ok && url != "" {
-		downloadURL = url
+	if u, ok := model.Metadata["download_url"].(string); ok && u != "" {
+		downloadURL = u
 	} else {
 		// Fetch fresh info
 		civitClient := NewCivitAIClient(d.civitKey)
@@ -360,23 +377,24 @@ func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string) {
 
 		civitModel, err := civitClient.GetModel(context.Background(), modelID)
 		if err != nil {
-			slog.Warn("failed to get CivitAI model", "model", model.SourceID, "error", err)
-			return "", ""
+			return "", "", fmt.Errorf("failed to fetch model info from CivitAI: %w", err)
 		}
 
 		downloadURL = civitClient.GetDownloadURL(civitModel)
 	}
 
-	// CivitAI requires token as query parameter (CDN doesn't accept Authorization header)
-	if downloadURL != "" && d.civitKey != "" {
-		if strings.Contains(downloadURL, "?") {
-			downloadURL = downloadURL + "&token=" + d.civitKey
-		} else {
-			downloadURL = downloadURL + "?token=" + d.civitKey
-		}
+	if downloadURL == "" {
+		return "", "", fmt.Errorf("no download URL available for model")
 	}
 
-	return downloadURL, fileName
+	// CivitAI requires token as query parameter (CDN doesn't accept Authorization header)
+	if strings.Contains(downloadURL, "?") {
+		downloadURL = downloadURL + "&token=" + url.QueryEscape(d.civitKey)
+	} else {
+		downloadURL = downloadURL + "?token=" + url.QueryEscape(d.civitKey)
+	}
+
+	return downloadURL, fileName, nil
 }
 
 func (d *Downloader) completeWithError(task *downloadTask, modelID, errMsg string) {
