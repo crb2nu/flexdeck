@@ -63,6 +63,8 @@ func NewDownloader(basePath, hfToken, civitKey string, registry *Registry) *Down
 }
 
 // StartDownload begins downloading a model
+// Note: We use context.Background() instead of the passed context because downloads
+// run in the background and should not be canceled when the HTTP request completes.
 func (d *Downloader) StartDownload(ctx context.Context, model *Model, callback ProgressCallback) error {
 	d.mu.Lock()
 	if _, exists := d.downloads[model.ID]; exists {
@@ -70,7 +72,8 @@ func (d *Downloader) StartDownload(ctx context.Context, model *Model, callback P
 		return fmt.Errorf("download already in progress for %s", model.ID)
 	}
 
-	downloadCtx, cancel := context.WithCancel(ctx)
+	// Use Background context so download continues after HTTP request completes
+	downloadCtx, cancel := context.WithCancel(context.Background())
 	task := &downloadTask{
 		modelID: model.ID,
 		cancel:  cancel,
