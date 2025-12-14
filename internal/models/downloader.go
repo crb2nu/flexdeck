@@ -140,6 +140,8 @@ func (d *Downloader) SubscribeProgress(modelID string, callback ProgressCallback
 }
 
 func (d *Downloader) runDownload(ctx context.Context, model *Model, task *downloadTask) {
+	slog.Info("starting download", "model_id", model.ID, "source", model.Source)
+
 	defer func() {
 		d.mu.Lock()
 		delete(d.downloads, model.ID)
@@ -160,6 +162,7 @@ func (d *Downloader) runDownload(ctx context.Context, model *Model, task *downlo
 		var err error
 		downloadURL, fileName, err = d.getCivitDownloadInfo(model)
 		if err != nil {
+			slog.Error("failed to get CivitAI download info", "model_id", model.ID, "error", err)
 			d.completeWithError(task, model.ID, err.Error())
 			return
 		}
@@ -168,11 +171,15 @@ func (d *Downloader) runDownload(ctx context.Context, model *Model, task *downlo
 		return
 	}
 
+	slog.Info("download info resolved", "model_id", model.ID, "file", fileName, "url_length", len(downloadURL))
+
 	task.progress.FileName = fileName
 
 	// Create destination directory
 	destDir := filepath.Join(d.basePath, model.ID)
+	slog.Info("creating download directory", "path", destDir)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
+		slog.Error("failed to create directory", "path", destDir, "error", err)
 		d.completeWithError(task, model.ID, fmt.Sprintf("create directory: %v", err))
 		return
 	}
@@ -180,8 +187,10 @@ func (d *Downloader) runDownload(ctx context.Context, model *Model, task *downlo
 	destPath := filepath.Join(destDir, fileName)
 
 	// Perform download
+	slog.Info("starting file download", "model_id", model.ID, "dest", destPath)
 	err := d.downloadFile(ctx, downloadURL, destPath, model.Source, task)
 	if err != nil {
+		slog.Error("download failed", "model_id", model.ID, "error", err)
 		if ctx.Err() != nil {
 			d.completeWithError(task, model.ID, "download cancelled")
 		} else {
