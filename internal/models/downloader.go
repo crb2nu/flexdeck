@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -338,24 +339,44 @@ func (d *Downloader) getHFDownloadInfo(model *Model) (string, string) {
 }
 
 func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string) {
+	var downloadURL string
+	var fileName string
+
+	// Get filename from metadata or generate one
+	if fn, ok := model.Metadata["file_name"].(string); ok && fn != "" {
+		fileName = fn
+	} else {
+		fileName = model.Name + ".safetensors"
+	}
+
 	// For CivitAI, the download URL should be stored in metadata
-	if downloadURL, ok := model.Metadata["download_url"].(string); ok {
-		return downloadURL, model.Name + ".safetensors"
+	if url, ok := model.Metadata["download_url"].(string); ok && url != "" {
+		downloadURL = url
+	} else {
+		// Fetch fresh info
+		civitClient := NewCivitAIClient(d.civitKey)
+		var modelID int
+		fmt.Sscanf(model.SourceID, "%d", &modelID)
+
+		civitModel, err := civitClient.GetModel(context.Background(), modelID)
+		if err != nil {
+			slog.Warn("failed to get CivitAI model", "model", model.SourceID, "error", err)
+			return "", ""
+		}
+
+		downloadURL = civitClient.GetDownloadURL(civitModel)
 	}
 
-	// Fetch fresh info
-	civitClient := NewCivitAIClient(d.civitKey)
-	var modelID int
-	fmt.Sscanf(model.SourceID, "%d", &modelID)
-
-	civitModel, err := civitClient.GetModel(context.Background(), modelID)
-	if err != nil {
-		slog.Warn("failed to get CivitAI model", "model", model.SourceID, "error", err)
-		return "", ""
+	// CivitAI requires token as query parameter (CDN doesn't accept Authorization header)
+	if downloadURL != "" && d.civitKey != "" {
+		if strings.Contains(downloadURL, "?") {
+			downloadURL = downloadURL + "&token=" + d.civitKey
+		} else {
+			downloadURL = downloadURL + "?token=" + d.civitKey
+		}
 	}
 
-	downloadURL := civitClient.GetDownloadURL(civitModel)
-	return downloadURL, model.Name + ".safetensors"
+	return downloadURL, fileName
 }
 
 func (d *Downloader) completeWithError(task *downloadTask, modelID, errMsg string) {

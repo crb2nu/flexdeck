@@ -232,11 +232,18 @@ func (c *CivitAIClient) setAuthHeader(req *http.Request) {
 // ToModel converts a CivitAI model to our Model type
 func (c *CivitAIClient) ToModel(civit *CivitAIModel) *Model {
 	var size int64
+	var downloadURL string
+	var fileName string
 	version := c.GetLatestVersion(civit)
 	if version != nil {
 		file := c.GetPrimaryFile(version)
 		if file != nil {
 			size = int64(file.SizeKB * 1024)
+			downloadURL = file.DownloadURL
+			fileName = file.Name
+		}
+		if downloadURL == "" {
+			downloadURL = version.DownloadURL
 		}
 	}
 
@@ -263,6 +270,8 @@ func (c *CivitAIClient) ToModel(civit *CivitAIModel) *Model {
 			"civit_type":    civit.Type,
 			"base_model":    baseModel,
 			"nsfw":          civit.NSFW,
+			"download_url":  downloadURL,
+			"file_name":     fileName,
 		},
 	}
 }
