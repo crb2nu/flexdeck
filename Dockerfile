@@ -19,7 +19,7 @@ RUN npm run build
 # ==============================================================================
 # BACKEND BUILD STAGE
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 

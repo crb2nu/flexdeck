@@ -6,7 +6,7 @@ stages:
 variables:
   REGISTRY: registry.harbor.lan/library
   IMAGE_NAME: flexdeck
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.23"
   NODE_VERSION: "20"
   # BuildKit configuration
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
