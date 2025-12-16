@@ -1,0 +1,50 @@
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output binary
+/flexdeck
+
+# Go workspace
+.go/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.gitlab-ci.yml
+.github/
+
+# Documentation
+*.md
+!README.md
+
+# Node
+web/node_modules/
+web/.cache/
+web/coverage/
+
+# Test files
+*_test.go
+**/*.test.ts
+**/*.spec.ts
+
+# Development
+.env
+.env.local
+*.log
+
+# Agent/Plans (not needed in image)
+.agent/

@@ -1,46 +1,65 @@
-# Build frontend
+# syntax=docker/dockerfile:1.7
+
+# ==============================================================================
+# FRONTEND BUILD STAGE
+# ==============================================================================
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+
 WORKDIR /app/web
 
+# Install dependencies with cache mount
 COPY web/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline
 
+# Build frontend (source changes trigger rebuild, but deps are cached)
 COPY web/ ./
 RUN npm run build
 
-# Build backend
+# ==============================================================================
+# BACKEND BUILD STAGE
+# ==============================================================================
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS backend-builder
+
 WORKDIR /app
 
-RUN apk add --no-cache git
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates
 
+# Download Go modules (cached separately from source)
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
+# Build binary with caches
 COPY . .
-ARG TARGETOS
-ARG TARGETARCH
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /flexdeck ./cmd/server
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w" -trimpath -o /flexdeck ./cmd/server
 
-# Runtime
-FROM alpine:3.21
+# ==============================================================================
+# RUNTIME STAGE (minimal)
+# ==============================================================================
+FROM alpine:3.21 AS runtime
 
+# Install runtime dependencies in single layer
 RUN apk add --no-cache ca-certificates tzdata && \
     adduser -D -u 1000 flexdeck
 
 WORKDIR /app
 
-COPY --from=backend-builder /flexdeck /app/flexdeck
-COPY --from=frontend-builder /app/web/dist /app/web/dist
-
-RUN chown -R flexdeck:flexdeck /app
+# Copy artifacts from builders
+COPY --from=backend-builder --chown=flexdeck:flexdeck /flexdeck /app/flexdeck
+COPY --from=frontend-builder --chown=flexdeck:flexdeck /app/web/dist /app/web/dist
 
 USER flexdeck
 
-ENV PORT=8080
-ENV STATIC_DIR=/app/web/dist
+ENV PORT=8080 \
+    STATIC_DIR=/app/web/dist
 
 EXPOSE 8080
 

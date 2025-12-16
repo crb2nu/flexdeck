@@ -8,9 +8,10 @@ variables:
   IMAGE_NAME: flexdeck
   GO_VERSION: "1.24"
   NODE_VERSION: "20"
+  # BuildKit configuration
+  BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
 
-# Cache settings
-# Note: Requires 'runner-cache' bucket in MinIO at gitlab-backup-minio-svc
+# Cache settings for GitLab runner cache (S3/MinIO)
 .go-cache: &go-cache
   cache:
     key: go-${CI_COMMIT_REF_SLUG}
@@ -26,6 +27,10 @@ variables:
       - web/node_modules/
     policy: pull-push
     when: on_success
+
+# ==============================================================================
+# TEST STAGE
+# ==============================================================================
 
 # Test backend (disabled: no tests exist yet)
 test:backend:
@@ -49,25 +54,33 @@ test:backend:
         coverage_format: cobertura
         path: coverage.out
   rules:
-    - when: never  # Re-enable when tests are added
+    - when: never # Re-enable when tests are added
 
-# Test frontend
+# Test frontend (typecheck only - fast)
 test:frontend:
   stage: test
   image: node:${NODE_VERSION}-alpine
   <<: *node-cache
+  variables:
+    npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
   script:
     - cd web
-    - npm ci
-    - npm run lint || true
+    - npm ci --prefer-offline
     - npm run typecheck
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
-# Build Docker image via BuildKit
+# ==============================================================================
+# BUILD STAGE
+# ==============================================================================
+
 build:
   stage: build
   image: registry.harbor.lan/library/ci-builder:latest
   variables:
-    BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
+    # Use GZIP for faster cache compression
+    BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
   before_script:
     - |
       echo "Waiting for BuildKit..."
@@ -81,46 +94,57 @@ build:
   script:
     - |
       IMAGE="${REGISTRY}/${IMAGE_NAME}"
+      CACHE_REPO="${REGISTRY}/${IMAGE_NAME}-cache"
+
+      # Common build args
+      BUILD_ARGS=(
+        --frontend dockerfile.v0
+        --local context=.
+        --local dockerfile=.
+        --opt build-arg:TARGETOS=linux
+        --opt build-arg:TARGETARCH=amd64
+        # Registry-based cache (cross-build persistence)
+        --export-cache type=registry,ref=${CACHE_REPO}:buildcache,mode=max
+        --import-cache type=registry,ref=${CACHE_REPO}:buildcache
+      )
+
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-        # Push both SHA and latest tags for main branch
+        # Main branch: push SHA + latest tags
         buildctl --addr "${BUILDKIT_HOST}" build \
-          --frontend dockerfile.v0 \
-          --local context=. \
-          --local dockerfile=. \
+          "${BUILD_ARGS[@]}" \
           --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
       else
-        # Only SHA tag for non-main branches
+        # Feature branches: SHA tag only
         buildctl --addr "${BUILDKIT_HOST}" build \
-          --frontend dockerfile.v0 \
-          --local context=. \
-          --local dockerfile=. \
+          "${BUILD_ARGS[@]}" \
           --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
       fi
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
-# Deploy to K3s via Flux
+# ==============================================================================
+# DEPLOY STAGE
+# ==============================================================================
+
 deploy:
   stage: deploy
   image: alpine:3.21
   before_script:
     - |
-      # Ensure CA bundle exists so apk/curl can verify TLS.
-      # If the runner environment breaks TLS verification, fall back to HTTP
-      # repositories just for bootstrapping ca-certificates.
+      # Bootstrap CA certificates
       if ! apk add --no-cache ca-certificates >/dev/null 2>&1; then
         sed -i 's/^https:/http:/' /etc/apk/repositories
         apk add --no-cache ca-certificates
       fi
       update-ca-certificates || true
-      apk add --no-cache curl
-    - curl -fsSL https://fluxcd.io/install.sh | sh
+      apk add --no-cache curl bash
+    - curl -fsSL https://fluxcd.io/install.sh | bash
   script:
     - echo "Triggering Flux reconciliation..."
-    # This assumes Flux is watching the gitops repo
-    # The actual deployment happens via GitOps when manifests are updated
     - echo "Image $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA is ready for deployment"
+    # Optionally trigger Flux directly if you have cluster access:
+    # - flux reconcile kustomization flexdeck --with-source
   only:
     - main
   when: manual
