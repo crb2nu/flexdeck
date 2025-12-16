@@ -60,6 +60,15 @@ export default {
       boxShadow: {
         glass: '0 4px 12px rgba(0, 0, 0, 0.4)',
       },
+      keyframes: {
+        fadeInScale: {
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+      },
+      animation: {
+        'fade-in-scale': 'fadeInScale 0.2s ease-out',
+      },
     },
   },
   plugins: [],

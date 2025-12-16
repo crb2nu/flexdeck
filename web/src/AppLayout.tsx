@@ -2,6 +2,7 @@ import { Component, createSignal, onMount, Show, ParentProps, Suspense } from 's
 import { A, useLocation } from '@solidjs/router';
 import { healthStore, fetchHealth } from './stores/health';
 import { uiConfigStore, fetchUIConfig } from './stores/ui-config';
+import CommandPalette from './components/QuickLaunch/CommandPalette';
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', path: '/' },
@@ -29,6 +30,8 @@ const AppLayout: Component<ParentProps> = (props) => {
 
   return (
     <div class="flex h-full flex-col">
+      <CommandPalette />
+      
       {/* Header */}
       <header class="glass-panel m-4 mb-0 flex items-center justify-between px-6 py-4">
         <div class="flex items-center gap-4">
@@ -43,7 +46,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         </div>
 
         {/* Navigation */}
-        <nav class="flex gap-1">
+        <nav class="flex gap-1 items-center">
           {tabs.map((tab) => (
             <A
               href={tab.path}
@@ -56,6 +59,17 @@ const AppLayout: Component<ParentProps> = (props) => {
               {tab.label}
             </A>
           ))}
+          
+          {/* Command Palette Hint */}
+          <div class="ml-2 pl-2 border-l border-white/10 hidden lg:block">
+            <button 
+                class="flex items-center gap-2 rounded bg-white/5 px-3 py-1.5 text-xs text-text-dim hover:bg-white/10 hover:text-text-main transition-colors"
+                onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+            >
+                <span class="text-[10px]">⌘K</span>
+                <span>Command</span>
+            </button>
+          </div>
         </nav>
 
         {/* Status indicator */}

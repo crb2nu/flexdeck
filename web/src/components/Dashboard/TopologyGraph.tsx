@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, Show, createMemo } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 
@@ -25,10 +25,24 @@ interface D3Node extends d3.SimulationNodeDatum {
   namespace?: string;
   status: 'ok' | 'warn' | 'error';
   data: K8sNode | K8sPod | K8sService;
+  x?: number;
+  y?: number;
+  fx?: number | null;
+  fy?: number | null;
 }
 
 interface D3Link extends d3.SimulationLinkDatum<D3Node> {
+  source: string | D3Node;
+  target: string | D3Node;
   type: 'hosts' | 'selects';
+}
+
+interface Particle {
+  source: D3Node;
+  target: D3Node;
+  progress: number;
+  speed: number;
+  color: string;
 }
 
 // Namespace color palette
@@ -45,17 +59,27 @@ const getNamespaceColor = (namespace: string, namespaceMap: Map<string, number>)
 };
 
 const TopologyGraph: Component<Props> = (props) => {
-  let svgRef: SVGSVGElement | undefined;
+  let canvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
   let rafId: number | null = null;
   let lastDataKey = '';
-
+  
+  // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
+  const [hoverNode, setHoverNode] = createSignal<D3Node | null>(null);
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
+  
+  // View transform state
+  let transform = d3.zoomIdentity;
+  
+  // Data state
+  let graphNodes: D3Node[] = [];
+  let graphLinks: D3Link[] = [];
+  let namespaceMap = new Map<string, number>();
+  let particles: Particle[] = [];
 
-  // Generate a key to detect meaningful data changes
   const getDataKey = (): string => {
     const nodeIds = props.nodes.map(n => n.metadata.name).sort().join(',');
     const podIds = props.pods.map(p => `${p.metadata.namespace}/${p.metadata.name}:${p.status.phase}`).sort().join(',');
@@ -64,18 +88,15 @@ const TopologyGraph: Component<Props> = (props) => {
     return `${nodeIds}|${podIds}|${svcIds}|${dims.width}x${dims.height}`;
   };
 
-  // Build graph data from K8s resources
-  const buildGraph = (): { nodes: D3Node[]; links: D3Link[]; namespaceMap: Map<string, number> } => {
-    const graphNodes: D3Node[] = [];
-    const graphLinks: D3Link[] = [];
+  const buildGraph = () => {
+    const nodes: D3Node[] = [];
+    const links: D3Link[] = [];
     const nodeMap = new Map<string, D3Node>();
-    const namespaceMap = new Map<string, number>();
+    const nsMap = new Map<string, number>();
 
     // Add K8s nodes
     for (const node of props.nodes) {
-      const isReady = node.status.conditions.some(
-        (c) => c.type === 'Ready' && c.status === 'True'
-      );
+      const isReady = node.status.conditions.some(c => c.type === 'Ready' && c.status === 'True');
       const d3Node: D3Node = {
         id: `node-${node.metadata.name}`,
         type: 'node',
@@ -83,7 +104,7 @@ const TopologyGraph: Component<Props> = (props) => {
         status: isReady ? 'ok' : 'error',
         data: node,
       };
-      graphNodes.push(d3Node);
+      nodes.push(d3Node);
       nodeMap.set(d3Node.id, d3Node);
     }
 
@@ -94,7 +115,7 @@ const TopologyGraph: Component<Props> = (props) => {
         pod.status.phase === 'Pending' ? 'warn' : 'error';
 
       const ns = pod.metadata.namespace || 'default';
-      getNamespaceColor(ns, namespaceMap); // Register namespace
+      getNamespaceColor(ns, nsMap);
 
       const d3Node: D3Node = {
         id: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
@@ -104,14 +125,13 @@ const TopologyGraph: Component<Props> = (props) => {
         status,
         data: pod,
       };
-      graphNodes.push(d3Node);
+      nodes.push(d3Node);
       nodeMap.set(d3Node.id, d3Node);
 
-      // Link pod to its node
       if (pod.spec.nodeName) {
         const nodeId = `node-${pod.spec.nodeName}`;
         if (nodeMap.has(nodeId)) {
-          graphLinks.push({
+          links.push({
             source: d3Node.id,
             target: nodeId,
             type: 'hosts',
@@ -123,7 +143,7 @@ const TopologyGraph: Component<Props> = (props) => {
     // Add services
     for (const svc of props.services) {
       const ns = svc.metadata.namespace || 'default';
-      getNamespaceColor(ns, namespaceMap);
+      getNamespaceColor(ns, nsMap);
 
       const d3Node: D3Node = {
         id: `svc-${svc.metadata.namespace}-${svc.metadata.name}`,
@@ -133,10 +153,9 @@ const TopologyGraph: Component<Props> = (props) => {
         status: 'ok',
         data: svc,
       };
-      graphNodes.push(d3Node);
+      nodes.push(d3Node);
       nodeMap.set(d3Node.id, d3Node);
 
-      // Link service to matching pods
       if (svc.spec.selector) {
         for (const pod of props.pods) {
           if (pod.metadata.namespace === svc.metadata.namespace) {
@@ -144,7 +163,7 @@ const TopologyGraph: Component<Props> = (props) => {
               ([k, v]) => pod.metadata.labels?.[k] === v
             );
             if (matches) {
-              graphLinks.push({
+              links.push({
                 source: d3Node.id,
                 target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
                 type: 'selects',
@@ -155,22 +174,20 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     }
 
-    return { nodes: graphNodes, links: graphLinks, namespaceMap };
+    graphNodes = nodes;
+    graphLinks = links;
+    namespaceMap = nsMap;
+    setNodeCount(nodes.length);
   };
 
-  const getNodeColor = (node: D3Node, namespaceMap: Map<string, number>): string => {
+  const getNodeColor = (node: D3Node): string => {
     if (node.type === 'node') {
       return node.status === 'ok' ? '#00d9ff' : '#ef4444';
     }
-    // For pods and services, use namespace color
     if (node.namespace) {
       return getNamespaceColor(node.namespace, namespaceMap);
     }
-    const statusColors = {
-      ok: '#22c55e',
-      warn: '#f97316',
-      error: '#ef4444',
-    };
+    const statusColors = { ok: '#22c55e', warn: '#f97316', error: '#ef4444' };
     return statusColors[node.status];
   };
 
@@ -192,433 +209,429 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  const initializeSimulation = () => {
-    if (!svgRef) return;
-
-    // Stop existing simulation before creating new one
-    if (simulation) {
-      simulation.stop();
-      simulation = null;
-    }
-
-    const { width, height } = dimensions();
-    const { nodes, links, namespaceMap } = buildGraph();
-
-    // Clear previous
-    d3.select(svgRef).selectAll('*').remove();
-
-    if (nodes.length === 0) return;
-
-    setNodeCount(nodes.length);
-
-    const svg = d3.select(svgRef);
-
-    // Calculate initial zoom based on node count
-    const baseZoom = Math.max(0.3, Math.min(0.8, 50 / nodes.length));
-
-    // Add zoom behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-      });
-
-    svg.call(zoom);
-
-    // Create defs for gradients and filters
-    const defs = svg.append('defs');
-
-    // Add glow filter
-    const glowFilter = defs.append('filter')
-      .attr('id', 'glow')
-      .attr('x', '-50%')
-      .attr('y', '-50%')
-      .attr('width', '200%')
-      .attr('height', '200%');
-
-    glowFilter.append('feGaussianBlur')
-      .attr('stdDeviation', '3')
-      .attr('result', 'coloredBlur');
-
-    const glowMerge = glowFilter.append('feMerge');
-    glowMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    glowMerge.append('feMergeNode').attr('in', 'SourceGraphic');
-
-    // Add stronger glow for selected nodes
-    const selectedGlow = defs.append('filter')
-      .attr('id', 'selected-glow')
-      .attr('x', '-100%')
-      .attr('y', '-100%')
-      .attr('width', '300%')
-      .attr('height', '300%');
-
-    selectedGlow.append('feGaussianBlur')
-      .attr('stdDeviation', '6')
-      .attr('result', 'coloredBlur');
-
-    const selectedMerge = selectedGlow.append('feMerge');
-    selectedMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    selectedMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    selectedMerge.append('feMergeNode').attr('in', 'SourceGraphic');
-
-    // Grid pattern
-    const gridPattern = defs.append('pattern')
-      .attr('id', 'grid')
-      .attr('width', 40)
-      .attr('height', 40)
-      .attr('patternUnits', 'userSpaceOnUse');
-
-    gridPattern.append('path')
-      .attr('d', 'M 40 0 L 0 0 0 40')
-      .attr('fill', 'none')
-      .attr('stroke', 'rgba(255,255,255,0.03)')
-      .attr('stroke-width', 1);
-
-    // Create main group for zoom/pan
-    const g = svg.append('g');
-
-    // Add grid background
-    g.append('rect')
-      .attr('width', width * 4)
-      .attr('height', height * 4)
-      .attr('x', -width * 1.5)
-      .attr('y', -height * 1.5)
-      .attr('fill', 'url(#grid)');
-
-    // Calculate adaptive force parameters
-    const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(nodes.length)));
-    const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(nodes.length)));
-
-    // Create simulation with better spread
-    simulation = d3.forceSimulation<D3Node>(nodes)
-      .force('link', d3.forceLink<D3Node, D3Link>(links)
-        .id((d) => d.id)
-        .distance(linkDistance)
-        .strength(0.3))
-      .force('charge', d3.forceManyBody().strength(chargeStrength))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 15))
-      .force('x', d3.forceX(width / 2).strength(0.03))
-      .force('y', d3.forceY(height / 2).strength(0.03));
-
-    // Create link gradients and cache selections for tick updates
-    const gradientSelections: d3.Selection<SVGLinearGradientElement, unknown, null, undefined>[] = [];
-    links.forEach((link, i) => {
-      const gradient = defs.append('linearGradient')
-        .attr('id', `link-gradient-${i}`)
-        .attr('gradientUnits', 'userSpaceOnUse');
-
-      gradient.append('stop')
-        .attr('offset', '0%')
-        .attr('stop-color', link.type === 'hosts' ? '#00d9ff' : '#a855f7')
-        .attr('stop-opacity', 0.6);
-
-      gradient.append('stop')
-        .attr('offset', '100%')
-        .attr('stop-color', link.type === 'hosts' ? '#00d9ff' : '#a855f7')
-        .attr('stop-opacity', 0.1);
-
-      gradientSelections.push(gradient);
-    });
-
-    // Create links with animation
-    const link = g.append('g')
-      .attr('class', 'links')
-      .selectAll('line')
-      .data(links)
-      .join('line')
-      .attr('stroke', (_, i) => `url(#link-gradient-${i})`)
-      .attr('stroke-width', (d) => d.type === 'hosts' ? 1.5 : 1)
-      .attr('stroke-dasharray', (d) => d.type === 'selects' ? '6,4' : 'none')
-      .style('animation', (d) => d.type === 'selects' ? 'flow 1s linear infinite' : 'none');
-
-    // Create node groups
-    const nodeGroup = g.append('g')
-      .attr('class', 'nodes')
-      .selectAll<SVGGElement, D3Node>('g')
-      .data(nodes)
-      .join('g')
-      .attr('cursor', 'pointer')
-      .style('filter', 'url(#glow)');
-
-    // Add drag behavior
-    nodeGroup.call(d3.drag<SVGGElement, D3Node>()
-      .on('start', dragStarted)
-      .on('drag', dragged)
-      .on('end', dragEnded) as any);
-
-    // Add outer glow ring for nodes
-    nodeGroup.filter((d) => d.type === 'node')
-      .append('circle')
-      .attr('r', (d) => getNodeRadius(d) + 6)
-      .attr('fill', 'none')
-      .attr('stroke', (d) => getNodeColor(d, namespaceMap))
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.3)
-      .style('animation', 'topology-pulse-ring 2s ease-in-out infinite');
-
-    // Add main circles with gradient fill
-    nodeGroup.append('circle')
-      .attr('r', (d) => getNodeRadius(d))
-      .attr('fill', (d) => {
-        const color = getNodeColor(d, namespaceMap);
-        return d.type === 'node' ? `${color}33` : `${color}44`;
-      })
-      .attr('stroke', (d) => getNodeColor(d, namespaceMap))
-      .attr('stroke-width', (d) => d.type === 'node' ? 2.5 : 1.5);
-
-    // Add inner highlight for depth
-    nodeGroup.filter((d) => d.type === 'node')
-      .append('circle')
-      .attr('r', (d) => getNodeRadius(d) - 4)
-      .attr('fill', 'none')
-      .attr('stroke', 'rgba(255,255,255,0.15)')
-      .attr('stroke-width', 1);
-
-    // Add pulsing effect for running pods
-    nodeGroup.filter((d) => d.type === 'pod' && d.status === 'ok')
-      .append('circle')
-      .attr('class', 'pulse-circle')
-      .attr('r', (d) => getNodeRadius(d))
-      .attr('fill', 'none')
-      .attr('stroke', (d) => getNodeColor(d, namespaceMap))
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.5)
-      .style('animation', 'topology-pulse-expand 2s ease-out infinite');
-
-    // Add labels with background
-    const labelGroup = nodeGroup.append('g')
-      .attr('class', 'label-group')
-      .attr('transform', (d) => `translate(0, ${getNodeRadius(d) + 12})`);
-
-    labelGroup.append('text')
-      .text((d) => d.label.length > 14 ? d.label.slice(0, 14) + '…' : d.label)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', (d) => d.type === 'node' ? '11px' : '9px')
-      .attr('font-weight', (d) => d.type === 'node' ? '500' : '400')
-      .attr('fill', '#999')
-      .attr('dy', '0.3em');
-
-    // Click handler
-    nodeGroup.on('click', (event, d) => {
-      event.stopPropagation();
-      setSelectedNode(d);
-
-      // Highlight selected node
-      nodeGroup.style('filter', (n) => n.id === d.id ? 'url(#selected-glow)' : 'url(#glow)');
-      nodeGroup.select('circle').attr('stroke-width', (n) => n.id === d.id ? 3 : (n.type === 'node' ? 2.5 : 1.5));
-
-      props.onNodeClick?.(d);
-    });
-
-    // Clear selection on background click
-    svg.on('click', () => {
-      setSelectedNode(null);
-      nodeGroup.style('filter', 'url(#glow)');
-      nodeGroup.select('circle').attr('stroke-width', (d) => d.type === 'node' ? 2.5 : 1.5);
-    });
-
-    // Simulation tick - use cached selections for better performance
-    simulation.on('tick', () => {
-      link
-        .attr('x1', (d) => (d.source as D3Node).x!)
-        .attr('y1', (d) => (d.source as D3Node).y!)
-        .attr('x2', (d) => (d.target as D3Node).x!)
-        .attr('y2', (d) => (d.target as D3Node).y!);
-
-      // Update gradients using cached selections (avoids DOM lookup per tick)
-      for (let i = 0; i < links.length; i++) {
-        const source = links[i].source as D3Node;
-        const target = links[i].target as D3Node;
-        gradientSelections[i]
-          .attr('x1', source.x!)
-          .attr('y1', source.y!)
-          .attr('x2', target.x!)
-          .attr('y2', target.y!);
-      }
-
-      nodeGroup.attr('transform', (d) => `translate(${d.x},${d.y})`);
-    });
-
-    // Apply initial zoom to fit content
-    setTimeout(() => {
-      svg.transition()
-        .duration(750)
-        .call(zoom.transform, d3.zoomIdentity
-          .translate(width / 2, height / 2)
-          .scale(baseZoom)
-          .translate(-width / 2, -height / 2));
-    }, 100);
-
-    function dragStarted(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>, d: D3Node) {
-      if (!event.active) simulation?.alphaTarget(0.3).restart();
-      d.fx = d.x;
-      d.fy = d.y;
-    }
-
-    function dragged(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>, d: D3Node) {
-      d.fx = event.x;
-      d.fy = event.y;
-    }
-
-    function dragEnded(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>, d: D3Node) {
-      if (!event.active) simulation?.alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
+  const spawnParticles = () => {
+    // Randomly spawn particles on links
+    if (graphLinks.length > 0 && particles.length < 50 && Math.random() > 0.8) {
+        const link = graphLinks[Math.floor(Math.random() * graphLinks.length)];
+        // Only spawn if nodes have positions
+        if ((link.source as D3Node).x && (link.target as D3Node).x) {
+            particles.push({
+                source: link.source as D3Node,
+                target: link.target as D3Node,
+                progress: 0,
+                speed: 0.01 + Math.random() * 0.02,
+                color: link.type === 'hosts' ? '#00d9ff' : '#a855f7'
+            });
+        }
     }
   };
 
-  // Handle resize with debouncing
+  /**
+   * Main Draw Cycle
+   */
+  const draw = () => {
+    if (!canvasRef) return;
+    const ctx = canvasRef.getContext('2d');
+    if (!ctx) return;
+
+    const { width, height } = dimensions();
+    
+    // Clear & Background
+    ctx.clearRect(0, 0, width, height);
+    
+    // Custom Background Gradient (simulating CSS: bg-gradient-to-br from-[#050a14] via-[#0a1020] to-[#0d1528])
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#050a14');
+    gradient.addColorStop(0.5, '#0a1020');
+    gradient.addColorStop(1, '#0d1528');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    ctx.save();
+    // Apply Zoom/Pan
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+
+    // Grid (Simulated with simple dots or lines for performance)
+    // Actually, drawing a grid on every frame for a large area is expensive. 
+    // Let's rely on the background gradient for now, or add a subtle static pattern.
+
+    // Draw Links
+    ctx.lineCap = 'round';
+    graphLinks.forEach(link => {
+      const source = link.source as D3Node;
+      const target = link.target as D3Node;
+      if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) return;
+
+      const isSelects = link.type === 'selects';
+      ctx.beginPath();
+      ctx.moveTo(source.x, source.y);
+      ctx.lineTo(target.x, target.y);
+      
+      // Style
+      if (isSelects) {
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.2)'; 
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1 / transform.k; // Constant width regardless of zoom? No, stick to physical
+      } else {
+        ctx.strokeStyle = 'rgba(0, 217, 255, 0.2)';
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5;
+      }
+      ctx.stroke();
+    });
+    ctx.setLineDash([]); // Reset
+
+    // Draw Particles
+    spawnParticles();
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.progress += p.speed;
+        if (p.progress >= 1) {
+            particles.splice(i, 1);
+            continue;
+        }
+        
+        const sx = p.source.x ?? 0;
+        const sy = p.source.y ?? 0;
+        const tx = p.target.x ?? 0;
+        const ty = p.target.y ?? 0;
+
+        const x = sx * (1 - p.progress) + tx * p.progress;
+        const y = sy * (1 - p.progress) + ty * p.progress;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = p.color;
+        
+        // Glow trail
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 4;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    // Draw Nodes
+    graphNodes.forEach(node => {
+      if (node.x === undefined || node.y === undefined) return;
+      const r = getNodeRadius(node);
+      const color = getNodeColor(node);
+      const isSelected = selectedNode()?.id === node.id;
+      const isHovered = hoverNode()?.id === node.id;
+
+      // Glow 
+      if (isSelected || isHovered) {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r + (isSelected ? 8 : 4), 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.2;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Main Circle Background
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.fillStyle = '#0a1020'; 
+      ctx.fill();
+      
+      // Filled tint
+      ctx.fillStyle = color;
+      ctx.globalAlpha = node.type === 'node' ? 0.2 : 0.4;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+
+      // Stroke
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isSelected ? 3 : (node.type === 'node' ? 2 : 1.5);
+      ctx.stroke();
+
+      // Inner Highlight Ring
+      if (node.type === 'node') {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r - 4, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      // Icon or Center Dot
+      if (node.type === 'pod') {
+         ctx.beginPath();
+         ctx.arc(node.x, node.y, 2, 0, 2 * Math.PI);
+         ctx.fillStyle = color;
+         ctx.fill();
+      }
+    });
+
+    // Draw Labels (Separate loop to be on top)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    graphNodes.forEach(node => {
+        if (node.x === undefined || node.y === undefined) return;
+        const shouldDrawLabel = node.type === 'node' || node.type === 'service' || 
+                                selectedNode()?.id === node.id || hoverNode()?.id === node.id;
+        
+        if (shouldDrawLabel && transform.k > 0.4) {
+            const r = getNodeRadius(node);
+            ctx.font = node.type === 'node' ? '500 11px Inter, system-ui' : '400 9px Inter, system-ui';
+            ctx.fillStyle = '#cccccc';
+            ctx.fillText(
+                node.label.length > 14 && !hoverNode() ? node.label.slice(0, 12)+'...' : node.label, 
+                node.x, 
+                node.y + r + 12
+            );
+        }
+    });
+
+    ctx.restore();
+    
+    rafId = requestAnimationFrame(draw);
+  };
+
+  // Click & Hover detection
+  const getKeyUnderMouse = (event: MouseEvent): D3Node | null => {
+      if (!canvasRef) return null;
+      const rect = canvasRef.getBoundingClientRect();
+      const x = (event.clientX - rect.left - transform.x) / transform.k;
+      const y = (event.clientY - rect.top - transform.y) / transform.k;
+      
+      let minDist = Infinity;
+      let found: D3Node | null = null;
+      
+      for (let i = graphNodes.length - 1; i >= 0; i--) {
+          const n = graphNodes[i];
+          if (!n.x || !n.y) continue;
+          const dx = x - n.x;
+          const dy = y - n.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          const r = getNodeRadius(n);
+          // 4px padding for easier selection
+          if (dist < (r + 4) && dist < minDist) {
+              minDist = dist;
+              found = n;
+          }
+      }
+      return found;
+  };
+
+  const handleCanvasClick = (event: MouseEvent) => {
+      const node = getKeyUnderMouse(event);
+      if (node) {
+          setSelectedNode(node);
+          props.onNodeClick?.(node);
+      } else {
+          setSelectedNode(null);
+      }
+  };
+
+  const handleMouseMove = (event: MouseEvent) => {
+      const node = getKeyUnderMouse(event);
+      if (node !== hoverNode()) {
+          setHoverNode(node);
+          if (canvasRef) canvasRef.style.cursor = node ? 'pointer' : 'default';
+      }
+  };
+
+  const initializeSimulation = () => {
+    if (!canvasRef) return;
+    buildGraph();
+    
+    if (simulation) simulation.stop();
+
+    const { width, height } = dimensions();
+    
+    // Adaptive forces
+    const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(graphNodes.length || 1)));
+    const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(graphNodes.length || 1)));
+
+    simulation = d3.forceSimulation<D3Node>(graphNodes)
+        .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
+            .id(d => d.id)
+            .distance(linkDistance)
+            .strength(0.3))
+        .force('charge', d3.forceManyBody().strength(chargeStrength))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 15))
+        .force('x', d3.forceX(width / 2).strength(0.04))
+        .force('y', d3.forceY(height / 2).strength(0.04));
+    
+    // Zoom behavior
+    const zoom = d3.zoom<HTMLCanvasElement, unknown>()
+        .scaleExtent([0.1, 8])
+        .on('zoom', (e) => {
+            transform = e.transform;
+            // Loop handles redraw
+        });
+        
+    d3.select(canvasRef)
+        .call(zoom)
+        .on("dblclick.zoom", null);
+
+    // Initial positioning if not defined
+    if (graphNodes.length > 0 && !graphNodes[0].x) {
+        // Apply initial Zoom Fit
+        const baseZoom = Math.max(0.3, Math.min(0.8, 50 / (graphNodes.length || 1)));
+        d3.select(canvasRef).call(zoom.transform, 
+            d3.zoomIdentity.translate(width/2, height/2).scale(baseZoom).translate(-width/2, -height/2));
+    }
+    
+    // Drag behavior
+    const drag = d3.drag<HTMLCanvasElement, unknown>()
+        .subject((e) => {
+            const node = getKeyUnderMouse(e.sourceEvent);
+            return node ? node : null;
+        })
+        .on('start', (e) => {
+            if (!e.active) simulation?.alphaTarget(0.3).restart();
+            const n = e.subject as D3Node;
+            n.fx = n.x;
+            n.fy = n.y;
+        })
+        .on('drag', (e) => {
+             const n = e.subject as D3Node;
+            n.fx = e.x;
+            n.fy = e.y;
+        })
+        .on('end', (e) => {
+            if (!e.active) simulation?.alphaTarget(0);
+             const n = e.subject as D3Node;
+            n.fx = null;
+            n.fy = null;
+        });
+
+    d3.select(canvasRef).call(drag);
+  };
+
   const handleResize = () => {
     if (containerRef) {
       const rect = containerRef.getBoundingClientRect();
       setDimensions({ width: rect.width, height: rect.height });
+      if (simulation && rect.width > 0) {
+        simulation.force('center', d3.forceCenter(rect.width/2, rect.height/2));
+        simulation.force('x', d3.forceX(rect.width/2).strength(0.04));
+        simulation.force('y', d3.forceY(rect.height/2).strength(0.04));
+        simulation.alpha(0.3).restart();
+      }
     }
   };
-
+  
   const debouncedResize = debounce(handleResize, 150);
 
   onMount(() => {
-    handleResize(); // Initial measurement without debounce
+    handleResize();
     window.addEventListener('resize', debouncedResize);
+    rafId = requestAnimationFrame(draw);
   });
 
   onCleanup(() => {
     window.removeEventListener('resize', debouncedResize);
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-    }
+    if (rafId !== null) cancelAnimationFrame(rafId);
     simulation?.stop();
   });
 
-  // Re-initialize when data meaningfully changes
   createEffect(() => {
-    // Track dependencies (accessing them triggers re-run)
-    props.nodes;
-    props.pods;
-    props.services;
-    dimensions();
-
-    // Check if data actually changed
-    const newKey = getDataKey();
-    if (newKey === lastDataKey) {
-      return; // Skip if no meaningful change
+    props.nodes; props.pods; props.services;
+    const key = getDataKey();
+    if (key !== lastDataKey) {
+        lastDataKey = key;
+        initializeSimulation();
     }
-    lastDataKey = newKey;
-
-    // Cancel pending animation frame
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-    }
-
-    // Use requestAnimationFrame for smoother initialization
-    rafId = requestAnimationFrame(() => {
-      initializeSimulation();
-      rafId = null;
-    });
   });
 
   return (
-    <div ref={containerRef} class="relative h-full w-full overflow-hidden">
-      {/* Animations now in global.css: topology-pulse-expand, topology-pulse-ring, flow */}
-      <svg
-        ref={svgRef}
-        width={dimensions().width}
-        height={dimensions().height}
-        class="bg-gradient-to-br from-[#050a14] via-[#0a1020] to-[#0d1528]"
-      />
-
-      {/* Stats overlay */}
-      <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-surface/60 px-3 py-1.5 text-xs backdrop-blur">
-        <span class="text-text-dim">Nodes:</span>
-        <span class="font-mono text-neon-cyan">{nodeCount()}</span>
-      </div>
-
-      {/* Legend */}
-      <div class="absolute bottom-4 left-4 rounded-lg bg-surface/70 p-3 text-xs backdrop-blur-md border border-white/5">
-        <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
-        <div class="flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <div class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-neon-cyan bg-neon-cyan/20">
-              <span class="text-[8px] text-neon-cyan">⬡</span>
-            </div>
-            <span class="text-text-dim">Node</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="flex h-4 w-4 items-center justify-center rounded-full border border-neon-purple bg-neon-purple/20">
-              <span class="text-[8px] text-neon-purple">◆</span>
-            </div>
-            <span class="text-text-dim">Service</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="flex h-3 w-3 items-center justify-center rounded-full border border-status-ok bg-status-ok/20" />
-            <span class="text-text-dim">Pod</span>
-          </div>
-          <div class="mt-1 border-t border-white/5 pt-2">
-            <div class="flex items-center gap-2">
-              <div class="h-px w-4 bg-gradient-to-r from-neon-cyan to-transparent" />
-              <span class="text-text-dim">Hosts</span>
-            </div>
-            <div class="flex items-center gap-2 mt-1">
-              <div class="h-px w-4 border-t border-dashed border-neon-purple" />
-              <span class="text-text-dim">Selects</span>
-            </div>
-          </div>
+    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
+        <canvas 
+            ref={canvasRef}
+            width={dimensions().width}
+            height={dimensions().height}
+            class="block touch-none"
+        />
+        
+        {/* Stats Overlay */}
+        <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-surface/60 px-3 py-1.5 text-xs backdrop-blur pointer-events-none border border-white/5">
+            <span class="text-text-dim">Nodes:</span>
+            <span class="font-mono text-neon-cyan">{nodeCount()}</span>
+            <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
+            <span class="font-mono text-neon-purple hidden sm:inline">Canvas/GPU</span>
         </div>
-      </div>
 
-      {/* Selected node info */}
-      <Show when={selectedNode()}>
-        {(node) => (
-          <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-surface/80 p-4 backdrop-blur-md border border-white/10 shadow-xl">
-            <div class="mb-3 flex items-center gap-3">
-              <div class={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
-                node().type === 'node' ? 'border-neon-cyan bg-neon-cyan/20' :
-                node().type === 'service' ? 'border-neon-purple bg-neon-purple/20' :
-                'border-status-ok bg-status-ok/20'
-              }`}>
-                <span class={`text-sm ${
-                  node().type === 'node' ? 'text-neon-cyan' :
-                  node().type === 'service' ? 'text-neon-purple' :
-                  'text-status-ok'
-                }`}>
-                  {getNodeIcon(node())}
-                </span>
-              </div>
-              <div>
-                <div class="font-medium text-text-main">{node().label}</div>
-                <div class="text-[10px] uppercase tracking-wider text-text-dim">{node().type}</div>
-              </div>
-            </div>
-            <div class="space-y-2 text-xs">
-              <div class="flex justify-between rounded bg-white/5 px-2 py-1">
-                <span class="text-text-dim">Status</span>
-                <span class={`capitalize font-medium ${
-                  node().status === 'ok' ? 'text-status-ok' :
-                  node().status === 'warn' ? 'text-status-warn' :
-                  'text-status-error'
-                }`}>
-                  {node().status === 'ok' ? 'Ready' : node().status}
-                </span>
-              </div>
-              <Show when={node().namespace}>
-                <div class="flex justify-between rounded bg-white/5 px-2 py-1">
-                  <span class="text-text-dim">Namespace</span>
-                  <span class="font-mono text-text-muted">{node().namespace}</span>
+        {/* Legend */}
+        <div class="absolute bottom-4 left-4 rounded-lg bg-surface/70 p-3 text-xs backdrop-blur-md border border-white/5 pointer-events-none">
+            <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                    <div class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-neon-cyan bg-neon-cyan/20">
+                        <span class="text-[8px] text-neon-cyan">⬡</span>
+                    </div>
+                    <span class="text-text-dim">Node</span>
                 </div>
-              </Show>
-              <Show when={node().type === 'pod'}>
-                <div class="flex justify-between rounded bg-white/5 px-2 py-1">
-                  <span class="text-text-dim">Phase</span>
-                  <span class="text-text-muted">
-                    {(node().data as K8sPod).status.phase}
-                  </span>
+                <div class="flex items-center gap-2">
+                    <div class="flex h-4 w-4 items-center justify-center rounded-full border border-neon-purple bg-neon-purple/20">
+                        <span class="text-[8px] text-neon-purple">◆</span>
+                    </div>
+                    <span class="text-text-dim">Service</span>
                 </div>
-              </Show>
+                <div class="flex items-center gap-2">
+                    <div class="flex h-3 w-3 items-center justify-center rounded-full border border-status-ok bg-status-ok/20" />
+                    <span class="text-text-dim">Pod</span>
+                </div>
+                <div class="mt-1 border-t border-white/5 pt-2">
+                     <span class="text-[10px] text-text-dim flex items-center gap-1">
+                        <span class="inline-block w-2 h-2 rounded-full bg-neon-cyan animate-pulse"></span>
+                        Traffic
+                     </span>
+                </div>
             </div>
-          </div>
-        )}
-      </Show>
+        </div>
+
+        {/* Selected Node Info */}
+        <Show when={selectedNode()}>
+            {(node) => (
+                <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-surface/80 p-4 backdrop-blur-md border border-white/10 shadow-xl z-10 transition-all duration-200">
+                    <div class="mb-3 flex items-center gap-3">
+                        <div class={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
+                            node().type === 'node' ? 'border-neon-cyan bg-neon-cyan/20' :
+                            node().type === 'service' ? 'border-neon-purple bg-neon-purple/20' :
+                            'border-status-ok bg-status-ok/20'
+                        }`}>
+                            <span class={`text-sm ${
+                                node().type === 'node' ? 'text-neon-cyan' :
+                                node().type === 'service' ? 'text-neon-purple' :
+                                'text-status-ok'
+                            }`}>
+                                {getNodeIcon(node())}
+                            </span>
+                        </div>
+                        <div>
+                            <div class="font-medium text-text-main">{node().label}</div>
+                            <div class="text-[10px] uppercase tracking-wider text-text-dim">{node().type}</div>
+                        </div>
+                    </div>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between rounded bg-white/5 px-2 py-1">
+                            <span class="text-text-dim">Status</span>
+                            <span class={`capitalize font-medium ${
+                                node().status === 'ok' ? 'text-status-ok' :
+                                node().status === 'warn' ? 'text-status-warn' :
+                                'text-status-error'
+                            }`}>
+                                {node().status === 'ok' ? 'Ready' : node().status}
+                            </span>
+                        </div>
+                        <Show when={node().namespace}>
+                            <div class="flex justify-between rounded bg-white/5 px-2 py-1">
+                                <span class="text-text-dim">Namespace</span>
+                                <span class="font-mono text-text-muted">{node().namespace}</span>
+                            </div>
+                        </Show>
+                    </div>
+                </div>
+            )}
+        </Show>
     </div>
   );
 };
