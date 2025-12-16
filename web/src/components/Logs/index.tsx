@@ -29,7 +29,7 @@ const Logs: Component = () => {
   const [streaming, setStreaming] = createSignal(false);
   const [limit, setLimit] = createSignal(100);
   const [timeRange, setTimeRange] = createSignal('1h');
-  const [viewMode, setViewMode] = createSignal<'list' | 'flow'>('list');
+  const [viewMode, setViewMode] = createSignal<'list' | 'flow' | 'rain'>('list');
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -262,6 +262,12 @@ const Logs: Component = () => {
                >
                    FLOW
                </button>
+               <button 
+                onClick={() => setViewMode('rain')}
+                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
+               >
+                   MATRIX
+               </button>
            </div>
         </div>
 
@@ -280,14 +286,16 @@ const Logs: Component = () => {
             </div>
             <button
               onClick={() => setLogs([])}
-              class="text-xs text-text-dim hover:text-text-muted mr-32" // Margin for controls
+              class="text-xs text-text-dim hover:text-text-muted mr-48" // Margin for controls
             >
               Clear
             </button>
           </div>
 
           {/* Visualization Switcher */}
-          <Show when={viewMode() === 'list'} fallback={<LogStream logs={logs} />}>
+          <Show when={viewMode() === 'list'} fallback={
+              <LogStream logs={logs} mode={viewMode() === 'rain' ? 'rain' : 'warp'} />
+          }>
             <div
               ref={logContainerRef}
               class="flex-1 overflow-auto font-mono text-xs"
