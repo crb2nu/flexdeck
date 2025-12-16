@@ -94,8 +94,8 @@ build:
   script:
     - |
       IMAGE="${REGISTRY}/${IMAGE_NAME}"
-      # Use the same repository for cache, just with a different tag
-      CACHE_REPO="${IMAGE}"
+      # Use the shared build-cache repository
+      CACHE_REPO="registry.harbor.lan/library/build-cache"
 
       # Common build args
       BUILD_ARGS=(
@@ -105,8 +105,8 @@ build:
         --opt build-arg:TARGETOS=linux
         --opt build-arg:TARGETARCH=amd64
         # Registry-based cache (cross-build persistence)
-        --export-cache type=registry,ref=${CACHE_REPO}:buildcache,mode=max
-        --import-cache type=registry,ref=${CACHE_REPO}:buildcache
+        --export-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME},mode=max
+        --import-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME}
       )
 
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
