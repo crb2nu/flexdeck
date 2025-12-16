@@ -61,8 +61,8 @@ const Logs: Component = () => {
       const params = new URLSearchParams({
         query: query(),
         limit: limit().toString(),
-        start: (start * 1000000).toString(), // nanoseconds
-        end: (now * 1000000).toString(),
+        start: (BigInt(start) * 1000000n).toString(), // nanoseconds
+        end: (BigInt(now) * 1000000n).toString(),
       });
 
       const response = await fetch(`/api/loki/query_range?${params}`);
@@ -73,14 +73,16 @@ const Logs: Component = () => {
       const data: LokiQueryResponse = await response.json();
 
       const entries: LogEntry[] = [];
-      for (const stream of data.data.result) {
-        for (const [ts, line] of stream.values) {
-          entries.push({
-            timestamp: new Date(parseInt(ts) / 1000000).toISOString(),
-            line,
-            labels: stream.stream,
-          });
-        }
+      if (data.data && data.data.result) {
+          for (const stream of data.data.result) {
+            for (const [ts, line] of stream.values) {
+              entries.push({
+                timestamp: new Date(Number(BigInt(ts) / 1000000n)).toISOString(),
+                line,
+                labels: stream.stream,
+              });
+            }
+          }
       }
 
       // Sort by timestamp descending (newest first)
@@ -100,7 +102,7 @@ const Logs: Component = () => {
 
     setStreaming(true);
     const params = new URLSearchParams({ query: query() });
-    eventSource = new EventSource(`/api/loki/tail?${params}`);
+    eventSource = new EventSource(`/api/loki/tail-sse?${params}`);
 
     eventSource.onmessage = (event) => {
       try {
@@ -109,7 +111,7 @@ const Logs: Component = () => {
           for (const stream of data.streams) {
             for (const [ts, line] of stream.values) {
               const entry: LogEntry = {
-                timestamp: new Date(parseInt(ts) / 1000000).toISOString(),
+                timestamp: new Date(Number(BigInt(ts) / 1000000n)).toISOString(),
                 line,
                 labels: stream.stream,
               };
@@ -185,7 +187,7 @@ const Logs: Component = () => {
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder='{namespace="default"}'
-              class="w-full rounded-md border border-white/10 bg-surface-raised px-4 py-2 text-sm text-text-main placeholder-text-dim focus:border-neon-cyan focus:outline-none"
+              class="w-full rounded-md border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder-white/30 focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 transition-all font-mono"
             />
           </div>
 
@@ -193,7 +195,7 @@ const Logs: Component = () => {
             <select
               value={timeRange()}
               onChange={(e) => setTimeRange(e.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-surface-raised px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
             >
               <For each={timeRanges}>{(range) => <option value={range.value}>{range.label}</option>}</For>
             </select>
@@ -201,7 +203,7 @@ const Logs: Component = () => {
             <select
               value={limit()}
               onChange={(e) => setLimit(parseInt(e.currentTarget.value))}
-              class="rounded-md border border-white/10 bg-surface-raised px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
             >
               <option value="50">50</option>
               <option value="100">100</option>

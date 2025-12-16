@@ -67,12 +67,14 @@ const LogStream: Component<Props> = (props) => {
     }
   };
 
-  const drawWarp = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const drawWarp = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
     ctx.fillStyle = 'rgba(5, 10, 20, 0.3)';
     ctx.fillRect(0, 0, width, height);
 
     const centerX = width / 2;
     const centerY = height / 2;
+    // Rotate entire field slightly over time
+    const rotation = time * 0.0001; 
     
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -84,8 +86,15 @@ const LogStream: Component<Props> = (props) => {
       }
 
       const perspective = 300 / (10 + p.z);
-      const screenX = centerX + p.x * width * perspective;
-      const screenY = centerY + p.y * height * perspective;
+      // Apply rotation
+      const ca = Math.cos(rotation);
+      const sa = Math.sin(rotation);
+      const rx = p.x * ca - p.y * sa;
+      const ry = p.x * sa + p.y * ca;
+
+      const screenX = centerX + rx * width * perspective;
+      const screenY = centerY + ry * height * perspective;
+      
       const alpha = Math.min(1, (2000 - p.z) / 500); 
       const fontSize = Math.max(0, p.size * perspective * 2);
       
@@ -101,16 +110,16 @@ const LogStream: Component<Props> = (props) => {
         ctx.lineWidth = 0.5 * perspective;
         ctx.beginPath();
         ctx.moveTo(screenX, screenY);
-        const originX = centerX + p.x * width * (300 / (10 + p.z + 100));
-        const originY = centerY + p.y * height * (300 / (10 + p.z + 100));
+        const originX = centerX + rx * width * (300 / (10 + p.z + 100));
+        const originY = centerY + ry * height * (300 / (10 + p.z + 100));
         ctx.lineTo(originX, originY);
         ctx.stroke();
       }
     }
   };
 
-  const drawRain = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-      ctx.fillStyle = 'rgba(5, 10, 20, 0.1)'; // Slower fade for trails
+  const drawRain = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
+      ctx.fillStyle = 'rgba(5, 10, 20, 0.15)'; // Trail fade
       ctx.fillRect(0, 0, width, height);
       
       ctx.font = '14px "JetBrains Mono", monospace';
@@ -128,21 +137,27 @@ const LogStream: Component<Props> = (props) => {
           const y = p.y * height;
 
           // Draw vertical text
-          ctx.fillStyle = p.color;
           ctx.globalAlpha = 1;
           
           // Draw characters vertically
           for (let c = 0; c < p.text.length; c++) {
               const char = p.text[c];
               // First char is bright/white (head of raindrop)
-              if (c === 0) ctx.fillStyle = '#ffffff';
-              else ctx.fillStyle = p.color;
+              if (c === 0) {
+                  ctx.fillStyle = '#ffffff';
+                  ctx.globalAlpha = 1;
+              } else {
+                  ctx.fillStyle = p.color;
+                  ctx.globalAlpha = Math.max(0.1, 1 - (c / p.text.length)); // Fade tail
+              }
               
-              // Random glitch effect
-              const renderChar = Math.random() > 0.95 ? String.fromCharCode(33 + Math.random() * 90) : char;
+              // Random glitch effect - more frequent in rain mode
+              const renderChar = Math.random() > 0.98 ? String.fromCharCode(0x30A0 + Math.random() * 96) : char; // Katakana glitch
               
-              ctx.globalAlpha = 1 - (c / p.text.length); // Fade tail
-              ctx.fillText(renderChar, x, y - (c * 16));
+              const charY = y - (c * 16);
+              if (charY > 0 && charY < height) {
+                 ctx.fillText(renderChar, x, charY);
+              }
           }
       }
   };
@@ -166,11 +181,12 @@ const LogStream: Component<Props> = (props) => {
       animationId = requestAnimationFrame(loop);
       const width = canvasRef.clientWidth;
       const height = canvasRef.clientHeight;
+      const time = performance.now();
       
       if (props.mode === 'rain') {
-          drawRain(ctx, width, height);
+          drawRain(ctx, width, height, time);
       } else {
-          drawWarp(ctx, width, height);
+          drawWarp(ctx, width, height, time);
       }
       
       if (particles.length < (props.mode === 'rain' ? 30 : 50) && props.logs.length > 0) {
