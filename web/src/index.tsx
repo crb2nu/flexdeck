@@ -12,6 +12,7 @@ const Logs = lazy(() => import('./components/Logs'));
 const Metrics = lazy(() => import('./components/Metrics'));
 const Models = lazy(() => import('./components/Models'));
 const Agents = lazy(() => import('./components/Agents'));
+const Pipeline = lazy(() => import('./components/Pipeline'));
 
 const root = document.getElementById('root');
 
@@ -28,6 +29,7 @@ render(
       <Route path="/metrics" component={Metrics} />
       <Route path="/models" component={Models} />
       <Route path="/agents" component={Agents} />
+      <Route path="/pipeline" component={Pipeline} />
     </HashRouter>
   ),
   root
