@@ -1,115 +1,113 @@
-import { Component, createSignal, onMount, Show, ParentProps, Suspense } from 'solid-js';
-import { A, useLocation } from '@solidjs/router';
-import { healthStore, fetchHealth } from './stores/health';
-import { uiConfigStore, fetchUIConfig } from './stores/ui-config';
+import { Component, ParentProps, Show, createSignal, onMount, createEffect, Suspense } from 'solid-js';
+import { useLocation, A } from '@solidjs/router';
+import { healthApi, uiApi } from './lib/api';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
-
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard', path: '/' },
-  { id: 'services', label: 'Services', path: '/services' },
-  { id: 'logs', label: 'Logs', path: '/logs' },
-  { id: 'metrics', label: 'Metrics', path: '/metrics' },
-  { id: 'models', label: 'Models', path: '/models' },
-  { id: 'agents', label: 'Agents', path: '/agents' },
-];
+import SystemCore from './components/Navigation/SystemCore';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [loading, setLoading] = createSignal(true);
+  
+  const [systemHealth, setSystemHealth] = createSignal<any>(null);
+  const [uiConfig, setUiConfig] = createSignal<any>(null);
+
+  const fetchHealth = async () => {
+    try {
+      const data = await healthApi.check();
+      setSystemHealth(data);
+    } catch (e) {
+      console.error('Health check failed', e);
+    }
+  };
+
+  const fetchUIConfig = async () => {
+    try {
+      const config = await uiApi.getConfig();
+      setUiConfig(config);
+    } catch (e) {
+      console.error('Failed to load UI config', e);
+    }
+  };
 
   onMount(async () => {
     await Promise.all([fetchHealth(), fetchUIConfig()]);
     setLoading(false);
   });
-
-  const activeTab = () => {
-    const path = location.pathname;
-    const tab = tabs.find((t) => t.path === path);
-    return tab?.id ?? 'dashboard';
-  };
+  
+  const navItems = [
+    { label: 'Dashboard', path: '/' },
+    { label: 'Services', path: '/services' },
+    { label: 'Logs', path: '/logs' },
+    { label: 'Models', path: '/models' },
+    { label: 'Agents', path: '/agents' }, 
+  ];
 
   return (
-    <div class="flex h-full flex-col">
-      <CommandPalette />
+    <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
+      {/* Scanline Overlay */}
+      <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden opacity-[0.03]">
+        <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
+      </div>
       
       {/* Header */}
-      <header class="glass-panel m-4 mb-0 flex items-center justify-between px-6 py-4">
-        <div class="flex items-center gap-4">
-          <h1 class="text-xl font-bold tracking-wider">
-            <span class="text-neon-cyan">FLEX</span>
-            <span class="text-text-dim">DECK</span>
-          </h1>
-          <Show when={uiConfigStore.title && uiConfigStore.title !== 'FLEXDECK'}>
-            <span class="text-text-muted">•</span>
-            <span class="text-text-dim text-sm">{uiConfigStore.title}</span>
-          </Show>
-        </div>
-
-        {/* Navigation */}
-        <nav class="flex gap-1 items-center">
-          {tabs.map((tab) => (
-            <A
-              href={tab.path}
-              class={`rounded-m px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab() === tab.id
-                  ? 'bg-neon-cyan/10 text-neon-cyan'
-                  : 'text-text-dim hover:bg-white/5 hover:text-text-main'
-              }`}
-            >
-              {tab.label}
-            </A>
-          ))}
-          
-          {/* Command Palette Hint */}
-          <div class="ml-2 pl-2 border-l border-white/10 hidden lg:block">
-            <button 
-                class="flex items-center gap-2 rounded bg-white/5 px-3 py-1.5 text-xs text-text-dim hover:bg-white/10 hover:text-text-main transition-colors"
-                onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-            >
-                <span class="text-[10px]">⌘K</span>
-                <span>Command</span>
-            </button>
-          </div>
-        </nav>
-
-        {/* Status indicator */}
-        <div class="flex items-center gap-3">
-          <Show
-            when={healthStore.ok}
-            fallback={
-              <div class="flex items-center gap-2 text-sm text-status-error">
-                <span class="status-dot-error" />
-                Disconnected
-              </div>
-            }
-          >
-            <div class="flex items-center gap-2 text-sm text-status-ok">
-              <span class="status-dot-ok" />
-              Connected
+      <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
+        <div class="flex h-16 items-center justify-between px-6">
+          {/* Logo */}
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
+              <span class="font-mono text-xl font-bold text-white">F</span>
             </div>
-          </Show>
+            <h1 class="text-xl font-bold tracking-tight text-white">
+              Flex<span class="text-neon-cyan">Deck</span>
+            </h1>
+          </div>
+
+          {/* Navigation */}
+          <nav class="hidden md:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
+            {navItems.map((item) => (
+              <A
+                href={item.path}
+                class="rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 hover:text-white"
+                classList={{
+                  'bg-white/10 text-white shadow-sm': location.pathname === item.path,
+                  'text-text-muted hover:bg-white/5': location.pathname !== item.path,
+                }}
+              >
+                {item.label}
+              </A>
+            ))}
+          </nav>
+
+          {/* Status & Settings */}
+          <div class="flex items-center gap-4">
+             {/* Key Hint for Command Palette */}
+             <div class="hidden lg:flex items-center gap-2 text-xs text-text-dim px-3 py-1.5 rounded-md border border-white/10 bg-white/5">
+                <span class="text-xs">⌘K</span>
+                <span class="opacity-50">Command</span>
+             </div>
+
+            <SystemCore />
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main class="flex-1 overflow-auto p-4">
-        <Show when={!loading()} fallback={<LoadingScreen />}>
-          <Suspense fallback={<LoadingScreen />}>
-            {props.children}
-          </Suspense>
-        </Show>
+      <main class="flex-1 overflow-hidden p-4 relative z-0">
+        <Suspense fallback={
+            <div class="flex h-full w-full items-center justify-center">
+                <div class="flex flex-col items-center gap-4">
+                    <div class="h-12 w-12 border-4 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin"></div>
+                    <div class="text-neon-cyan/50 font-mono text-sm tracking-widest animate-pulse">INITIALIZING...</div>
+                </div>
+            </div>
+        }>
+          {props.children}
+        </Suspense>
       </main>
+
+      <CommandPalette />
     </div>
   );
 };
-
-const LoadingScreen: Component = () => (
-  <div class="flex h-full items-center justify-center">
-    <div class="text-center">
-      <div class="mb-4 text-4xl animate-pulse-glow text-neon-cyan">⬡</div>
-      <p class="text-text-dim">Loading FlexDeck...</p>
-    </div>
-  </div>
-);
 
 export default AppLayout;

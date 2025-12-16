@@ -1,7 +1,8 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { Agent, AgentUsage } from '../../lib/types';
+import type { Agent } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
+import AgentChat from './AgentChat';
 
 const Agents: Component = () => {
   const [agents, setAgents] = createStore<Agent[]>([]);
@@ -23,11 +24,8 @@ const Agents: Component = () => {
     tags: '',
   });
 
-  // Test dialog state
-  const [testingAgent, setTestingAgent] = createSignal<Agent | null>(null);
-  const [testInput, setTestInput] = createSignal('{"message": "Hello"}');
-  const [testResult, setTestResult] = createSignal<string | null>(null);
-  const [testLoading, setTestLoading] = createSignal(false);
+  // Chat/Test state
+  const [chatAgent, setChatAgent] = createSignal<Agent | null>(null);
 
   const fetchAgents = async () => {
     try {
@@ -148,27 +146,8 @@ const Agents: Component = () => {
     }
   };
 
-  const openTestDialog = (agent: Agent) => {
-    setTestingAgent(agent);
-    setTestResult(null);
-    setTestInput('{"message": "Hello"}');
-  };
-
-  const handleTest = async () => {
-    const agent = testingAgent();
-    if (!agent) return;
-
-    setTestLoading(true);
-    setTestResult(null);
-    try {
-      const input = JSON.parse(testInput());
-      const result = await agentsApi.test(agent.id, input);
-      setTestResult(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setTestResult(`Error: ${err instanceof Error ? err.message : 'Test failed'}`);
-    } finally {
-      setTestLoading(false);
-    }
+  const openChat = (agent: Agent) => {
+    setChatAgent(agent);
   };
 
   const getStatusColor = (status: string) => {
@@ -301,11 +280,10 @@ const Agents: Component = () => {
 
                   <div class="flex gap-2">
                     <button
-                      onClick={() => openTestDialog(agent)}
-                      disabled={agent.status !== 'healthy'}
-                      class="flex-1 rounded-md bg-neon-purple/20 px-3 py-1.5 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
+                      onClick={() => openChat(agent)}
+                      class="flex-1 rounded-md bg-neon-cyan/10 border border-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:shadow-[0_0_10px_rgba(0,217,255,0.2)]"
                     >
-                      Test
+                      Neural Link
                     </button>
                     <button
                       onClick={() => handleCheckHealth(agent.id)}
@@ -454,52 +432,14 @@ const Agents: Component = () => {
         </div>
       </Show>
 
-      {/* Test Dialog Modal */}
-      <Show when={testingAgent()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div class="glass-panel w-full max-w-lg p-6">
-            <h3 class="mb-4 text-lg font-medium text-text-main">
-              Test: {testingAgent()?.name}
-            </h3>
-
-            <div class="space-y-4">
-              <div>
-                <label class="mb-1 block text-xs text-text-dim">Input (JSON)</label>
-                <textarea
-                  value={testInput()}
-                  onInput={(e) => setTestInput(e.target.value)}
-                  rows={4}
-                  class="w-full rounded-md bg-white/10 px-3 py-2 font-mono text-sm text-text-main placeholder-text-dim"
-                />
-              </div>
-
-              <Show when={testResult()}>
-                <div>
-                  <label class="mb-1 block text-xs text-text-dim">Result</label>
-                  <pre class="max-h-48 overflow-auto rounded-md bg-white/5 p-3 font-mono text-xs text-text-muted">
-                    {testResult()}
-                  </pre>
-                </div>
-              </Show>
-            </div>
-
-            <div class="mt-6 flex gap-3">
-              <button
-                onClick={() => setTestingAgent(null)}
-                class="flex-1 rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-white/20"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleTest}
-                disabled={testLoading()}
-                class="flex-1 rounded-md bg-neon-purple/20 px-4 py-2 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
-              >
-                {testLoading() ? 'Testing...' : 'Run Test'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Neural Link Chat Modal */}
+      <Show when={chatAgent()}>
+        {(agent) => (
+          <AgentChat 
+            agent={agent()} 
+            onClose={() => setChatAgent(null)} 
+          />
+        )}
       </Show>
     </div>
   );

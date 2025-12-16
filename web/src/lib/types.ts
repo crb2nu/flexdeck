@@ -2,6 +2,7 @@
 export interface K8sMetadata {
   name: string;
   namespace?: string;
+  uid?: string;
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
   creationTimestamp?: string;
@@ -9,7 +10,7 @@ export interface K8sMetadata {
 
 export interface K8sCondition {
   type: string;
-  status: 'True' | 'False' | 'Unknown';
+  status: "True" | "False" | "Unknown";
   lastTransitionTime?: string;
   reason?: string;
   message?: string;
@@ -34,7 +35,7 @@ export interface K8sPod {
     }>;
   };
   status: {
-    phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
+    phase: "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
     conditions?: K8sCondition[];
     containerStatuses?: Array<{
       name: string;
@@ -47,7 +48,7 @@ export interface K8sPod {
 export interface K8sService {
   metadata: K8sMetadata;
   spec: {
-    type: 'ClusterIP' | 'NodePort' | 'LoadBalancer' | 'ExternalName';
+    type: "ClusterIP" | "NodePort" | "LoadBalancer" | "ExternalName";
     clusterIP?: string;
     ports?: Array<{
       name?: string;
@@ -148,16 +149,16 @@ export interface ResourcePulse extends PulseData {
 // Topology graph types
 export interface TopologyNode {
   id: string;
-  type: 'node' | 'pod' | 'service';
+  type: "node" | "pod" | "service";
   label: string;
-  status: 'ok' | 'warn' | 'error';
+  status: "ok" | "warn" | "error";
   data: K8sNode | K8sPod | K8sService;
 }
 
 export interface TopologyLink {
   source: string;
   target: string;
-  type: 'hosts' | 'selects';
+  type: "hosts" | "selects";
 }
 
 export interface TopologyGraph {
@@ -175,7 +176,7 @@ export interface ModelThroughput {
   requests_per_min: number;
   avg_latency_ms: number;
   sparkline: number[];
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   last_updated: string;
 }
 
@@ -190,10 +191,15 @@ export interface LiteLLMHealthResponse {
 }
 
 // Model Management types
-export type ModelSource = 'huggingface' | 'civitai' | 'local';
-export type ModelType = 'llm' | 'diffusion' | 'embedding' | 'other';
-export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed';
-export type DeploymentStatus = 'none' | 'pending' | 'deployed' | 'stopped' | 'failed';
+export type ModelSource = "huggingface" | "civitai" | "local";
+export type ModelType = "llm" | "diffusion" | "embedding" | "other";
+export type DownloadStatus = "pending" | "downloading" | "completed" | "failed";
+export type DeploymentStatus =
+  | "none"
+  | "pending"
+  | "deployed"
+  | "stopped"
+  | "failed";
 
 export interface RegisteredModel {
   id: string;
@@ -232,7 +238,7 @@ export interface DownloadProgress {
   downloaded: number;
   percent: number;
   bytes_per_sec: number;
-  status: 'downloading' | 'completed' | 'failed';
+  status: "downloading" | "completed" | "failed";
   error?: string;
 }
 
@@ -256,8 +262,8 @@ export interface ModelSearchResult {
 }
 
 // Agent types
-export type AgentType = 'langgraph' | 'custom';
-export type AgentStatus = 'unknown' | 'healthy' | 'unhealthy';
+export type AgentType = "langgraph" | "custom";
+export type AgentStatus = "unknown" | "healthy" | "unhealthy";
 
 export interface Agent {
   id: string;
