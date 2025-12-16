@@ -1,7 +1,7 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect } from 'solid-js';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
-interface PipelineJob {
+export interface PipelineJob {
   id: string;
   name: string;
   stage: string;
@@ -11,12 +11,12 @@ interface PipelineJob {
   finishedAt?: string;
 }
 
-interface PipelineStage {
+export interface PipelineStage {
   name: string;
   jobs: PipelineJob[];
 }
 
-interface Pipeline {
+export interface Pipeline {
   id: string;
   ref: string;
   status: 'pending' | 'running' | 'success' | 'failed';
@@ -24,72 +24,23 @@ interface Pipeline {
   createdAt: string;
 }
 
-// Particle system for data flow animation
-interface Particle {
-  id: number;
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  progress: number;
-  speed: number;
-  color: string;
-  size: number;
-  trail: { x: number; y: number }[];
-}
+// ... (keep Particle and createDemoPipeline)
 
-// Demo pipeline data matching your .gitlab-ci.yml
-const createDemoPipeline = (): Pipeline => ({
-  id: 'pipeline-12847',
-  ref: 'main',
-  status: 'running',
-  createdAt: new Date().toISOString(),
-  stages: [
-    {
-      name: 'test',
-      jobs: [
-        { id: 'job-1', name: 'test:backend', stage: 'test', status: 'skipped', duration: 0 },
-        { id: 'job-2', name: 'test:frontend', stage: 'test', status: 'success', duration: 45 },
-      ]
-    },
-    {
-      name: 'build',
-      jobs: [
-        { id: 'job-3', name: 'build', stage: 'build', status: 'running', duration: 120 },
-      ]
-    },
-    {
-      name: 'deploy',
-      jobs: [
-        { id: 'job-4', name: 'deploy', stage: 'deploy', status: 'manual' },
-      ]
-    }
-  ]
-});
+// ...
 
-const getStatusColor = (status: PipelineJob['status']): string => {
-  switch (status) {
-    case 'success': return '#00f0ff'; // neon-cyan
-    case 'running': return '#0aff68'; // neon-green
-    case 'failed': return '#ff003c'; // neon-pink
-    case 'pending': return '#fcee0a'; // neon-yellow
-    case 'manual': return '#bd00ff'; // neon-purple
-    case 'skipped': return 'rgba(255,255,255,0.3)';
-    default: return '#ffffff';
-  }
-};
-
-const getStatusGlow = (status: PipelineJob['status']): string => {
-  const color = getStatusColor(status);
-  return `0 0 20px ${color}40, 0 0 40px ${color}20`;
-};
-
-const CIPipelineViz: Component = () => {
+const CIPipelineViz: Component<{ pipeline?: Pipeline }> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let canvasRef: HTMLCanvasElement | undefined;
   let animationId: number;
   
-  const [pipeline, setPipeline] = createSignal<Pipeline>(createDemoPipeline());
+  const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
+
+  createEffect(() => {
+    if (props.pipeline) {
+      setPipeline(props.pipeline);
+    }
+  });
+
   const [hoveredJob, setHoveredJob] = createSignal<string | null>(null);
   const [particles, setParticles] = createSignal<Particle[]>([]);
   const [time, setTime] = createSignal(0);

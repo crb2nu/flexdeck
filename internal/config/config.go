@@ -9,17 +9,18 @@ import (
 )
 
 type Config struct {
-	Port        string
-	LogLevel    slog.Level
-	StaticDir   string
-	UIConfigDir string
+	Port         string
+	LogLevel     slog.Level
+	StaticDir    string
+	UIConfigDir  string
+	WorkspaceDir string
 
 	// Auth
-	Token           string
-	TokenCookie     string
-	TokenCookieTTL  time.Duration
-	CookieSecure    bool
-	AllowedOrigins  []string
+	Token          string
+	TokenCookie    string
+	TokenCookieTTL time.Duration
+	CookieSecure   bool
+	AllowedOrigins []string
 
 	// K8s
 	K8s K8sConfig
@@ -111,10 +112,12 @@ type AgentsConfig struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:        getEnv("PORT", "8080"),
-		LogLevel:    parseLogLevel(getEnv("LOG_LEVEL", "info")),
-		StaticDir:   getEnv("STATIC_DIR", "./web/dist"),
-		UIConfigDir: getEnv("UI_CONFIG_DIR", "/config"),
+		Port:     getEnv("PORT", "8080"),
+		LogLevel: parseLogLevel(getEnv("LOG_LEVEL", "info")),
+
+		StaticDir:    getEnv("STATIC_DIR", "./web/dist"),
+		UIConfigDir:  getEnv("UI_CONFIG_DIR", "/config"),
+		WorkspaceDir: getEnv("WORKSPACE_DIR", os.Getenv("HOME")+"/workspace"),
 
 		Token:          getEnv("FLEXDECK_TOKEN", ""),
 		TokenCookie:    getEnv("FLEXDECK_TOKEN_COOKIE", "flexdeck_token"),

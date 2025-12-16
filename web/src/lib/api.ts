@@ -174,3 +174,15 @@ export const healthApi = {
 export const uiApi = {
   getConfig: () => api<{ title?: string; theme?: string }>("/ui/config"),
 };
+
+export interface RepoInfo {
+  name: string;
+  path: string;
+  type: string;
+  hasConfig: boolean;
+  configContent?: string;
+}
+
+export const ciApi = {
+  listRepos: () => api<RepoInfo[]>("/ci/repos"),
+};
