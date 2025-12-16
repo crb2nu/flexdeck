@@ -18,8 +18,8 @@ This plan outlines the next generation of features to transform FlexDeck from a 
 ### 1. "Holo-Deck" 3D Cluster Visualization
 
 - [x] **Goal**: Upgrade the 2D Topology Graph to a fully interactive 3D scene using Three.js.
-- **Visuals**: Implemented "Server Towers" and Orbiting Pods on a Cyber Grid.
-- **Interactivity**: OrbitControls and Toggle in Dashboard.
+- [x] **Visuals**: Implemented "Server Towers" with Neon Bloom, Custom Grid Shaders, and Particle Traffic along Bézier curves.
+- [x] **Interactivity**: OrbitControls, Raycasting for Hover/Click, and "Holographic" aesthetic.
 
 ### 2. Generative UI Expansion
 
