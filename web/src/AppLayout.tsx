@@ -1,6 +1,7 @@
 import { Component, ParentProps, Show, createSignal, onMount, createEffect, Suspense } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import { healthApi, uiApi } from './lib/api';
+import { fetchHealth } from './stores/health';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
 import SystemCore from './components/Navigation/SystemCore';
 
@@ -8,17 +9,7 @@ const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [loading, setLoading] = createSignal(true);
   
-  const [systemHealth, setSystemHealth] = createSignal<any>(null);
   const [uiConfig, setUiConfig] = createSignal<any>(null);
-
-  const fetchHealth = async () => {
-    try {
-      const data = await healthApi.check();
-      setSystemHealth(data);
-    } catch (e) {
-      console.error('Health check failed', e);
-    }
-  };
 
   const fetchUIConfig = async () => {
     try {

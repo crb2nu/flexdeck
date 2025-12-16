@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createMemo, onMount, onCleanup, For, Show, createEffect } from 'solid-js';
 import { healthStore } from '../../stores/health';
 import { api } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
@@ -115,8 +115,15 @@ const Services: Component = () => {
   }
 
   onMount(() => {
-    fetchData();
-    refreshInterval = setInterval(fetchData, REFRESH_INTERVAL);
+    refreshInterval = setInterval(() => {
+        if (!healthStore.loading) fetchData();
+    }, REFRESH_INTERVAL);
+  });
+
+  createEffect(() => {
+      if (!healthStore.loading && healthStore.ok) {
+          fetchData();
+      }
   });
 
   onCleanup(() => {

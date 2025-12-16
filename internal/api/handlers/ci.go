@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
-	"io/fs"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+	"time"
 )
 
 type RepoInfo struct {
@@ -18,63 +18,95 @@ type RepoInfo struct {
 }
 
 func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
-	workspace := h.cfg.WorkspaceDir
 	repos := []RepoInfo{}
 
-	// Max depth to search
-	maxDepth := 3
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
 
-	filepath.WalkDir(workspace, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	if token == "" {
+		// Log warning or return empty if no token
+		slog.Warn("GitLab token not configured")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(repos)
+		return
+	}
+
+	// 1. Fetch Projects
+	// Using simple membership=true to get user's projects
+	apiURL := fmt.Sprintf("%s/api/v4/projects?membership=true&simple=true&per_page=20", gitlabURL)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to fetch GitLab projects", "error", err)
+		http.Error(w, "Failed to fetch projects", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Error("GitLab API error", "status", resp.Status)
+		http.Error(w, "GitLab API error", http.StatusBadGateway)
+		return
+	}
+
+	var projects []struct {
+		ID                int    `json:"id"`
+		PathWithNamespace string `json:"path_with_namespace"`
+		Name              string `json:"name"`
+		DefaultBranch     string `json:"default_branch"`
+		WebURL            string `json:"web_url"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		slog.Error("Failed to decode projects", "error", err)
+		http.Error(w, "Failed to decode projects", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. For each project, check for .gitlab-ci.yml
+	// In production, you might want to do this async or on-demand, fetching content only when selected.
+	// For now, we'll fetch it for the list as requested, but maybe limited to top 20
+	// To optimize, we could maybe search for files... but let's just try fetching the file.
+
+	for _, p := range projects {
+		repo := RepoInfo{
+			Name: p.PathWithNamespace,
+			Path: p.WebURL,
+			Type: "gitlab",
 		}
-		if !d.IsDir() {
-			return nil
+
+		// Fetch .gitlab-ci.yml
+		// /projects/:id/repository/files/:file_path/raw?ref=master
+		ciFileObj := ".gitlab-ci.yml"
+		// Only attempt if default branch is set
+		ref := p.DefaultBranch
+		if ref == "" {
+			ref = "main" // fallback
 		}
 
-		// Calculate depth
-		rel, err := filepath.Rel(workspace, path)
-		if err != nil {
-			return nil
+		fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s", gitlabURL, p.ID, ciFileObj, ref)
+		fileReq, _ := http.NewRequest("GET", fileURL, nil)
+		fileReq.Header.Set("PRIVATE-TOKEN", token)
+
+		fileResp, err := client.Do(fileReq)
+		if err == nil && fileResp.StatusCode == http.StatusOK {
+			content, _ := io.ReadAll(fileResp.Body)
+			repo.HasConfig = true
+			repo.ConfigContent = string(content)
+			fileResp.Body.Close()
+		} else if fileResp != nil {
+			fileResp.Body.Close()
 		}
 
-		if rel == "." {
-			return nil
-		}
-
-		depth := strings.Count(rel, string(os.PathSeparator)) + 1
-
-		// Check if .git exists in this dir
-		if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
-			// Found a repo
-			repo := RepoInfo{
-				Name:      filepath.Base(path),
-				Path:      path,
-				Type:      "none",
-				HasConfig: false,
-			}
-
-			// Check for .gitlab-ci.yml
-			if content, err := os.ReadFile(filepath.Join(path, ".gitlab-ci.yml")); err == nil {
-				repo.Type = "gitlab"
-				repo.HasConfig = true
-				repo.ConfigContent = string(content)
-			} else if _, err := os.Stat(filepath.Join(path, ".github", "workflows")); err == nil {
-				repo.Type = "github"
-				repo.HasConfig = true
-				// For GitHub, we might need to list files, but for now just mark as present
-			}
-
-			repos = append(repos, repo)
-			return fs.SkipDir // Don't traverse inside a repo (assume no nested repos)
-		}
-
-		if depth >= maxDepth {
-			return fs.SkipDir
-		}
-
-		return nil
-	})
+		repos = append(repos, repo)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(repos)

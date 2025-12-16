@@ -48,6 +48,9 @@ type Config struct {
 
 	// Agents
 	Agents AgentsConfig
+
+	// GitLab
+	GitLab GitLabConfig
 }
 
 type K8sConfig struct {
@@ -58,6 +61,11 @@ type K8sConfig struct {
 	Token         string
 	CAFile        string
 	SkipTLSVerify bool
+}
+
+type GitLabConfig struct {
+	URL   string
+	Token string
 }
 
 type PrometheusConfig struct {
@@ -182,6 +190,11 @@ func Load() (*Config, error) {
 		Agents: AgentsConfig{
 			Disabled:     parseBool(getEnv("AGENTS_DISABLED", "false")),
 			RegistryPath: getEnv("AGENTS_REGISTRY_PATH", "/data/agents.json"),
+		},
+
+		GitLab: GitLabConfig{
+			URL:   getEnv("GITLAB_URL", "https://gitlab.com"),
+			Token: getEnv("GITLAB_TOKEN", ""),
 		},
 	}
 
