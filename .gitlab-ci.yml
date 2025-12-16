@@ -6,7 +6,7 @@ stages:
 variables:
   REGISTRY: registry.harbor.lan/library
   IMAGE_NAME: flexdeck
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.24"
   NODE_VERSION: "20"
   # BuildKit configuration
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
@@ -94,7 +94,7 @@ build:
   script:
     - |
       IMAGE="${REGISTRY}/${IMAGE_NAME}"
-      CACHE_REPO="${REGISTRY}/${IMAGE_NAME}-cache"
+      CACHE_REPO="registry.harbor.lan/flexdeck-cache/flexdeck"
 
       # Common build args
       BUILD_ARGS=(
