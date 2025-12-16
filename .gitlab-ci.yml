@@ -94,7 +94,8 @@ build:
   script:
     - |
       IMAGE="${REGISTRY}/${IMAGE_NAME}"
-      CACHE_REPO="registry.harbor.lan/flexdeck-cache/flexdeck"
+      # Use the same repository for cache, just with a different tag
+      CACHE_REPO="${IMAGE}"
 
       # Common build args
       BUILD_ARGS=(
