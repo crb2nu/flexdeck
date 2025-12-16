@@ -105,7 +105,7 @@ build:
         --opt build-arg:TARGETOS=linux
         --opt build-arg:TARGETARCH=amd64
         # Registry-based cache (cross-build persistence)
-        --export-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME},mode=max
+        --export-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME},mode=max,image-manifest=true
         --import-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME}
       )
 
