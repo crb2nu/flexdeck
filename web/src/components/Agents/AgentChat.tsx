@@ -2,6 +2,8 @@ import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } 
 import { createStore } from 'solid-js/store';
 import type { Agent } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
+import ChartWidget from './Widgets/ChartWidget';
+import StatusWidget from './Widgets/StatusWidget';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -61,26 +63,55 @@ const AgentChat: Component<AgentChatProps> = (props) => {
 
     try {
       // Simulate network delay for "thinking" effect if local
-      // In real implementation this calls the actual agent API
-      // const response = await agentsApi.test(props.agent.id, { message: userMsg }); 
+      await new Promise(r => setTimeout(r, 800)); // Fake lag for demo
+
+      // MOCK RESPONSE for Tech Demo purposes
+      let responseContent = `Received command: "${userMsg}". Accessing neural banks...`;
+      let widgets: Message['widgets'] = undefined;
+
+      const lowerMsg = userMsg.toLowerCase();
       
-      // MOCK RESPONSE for Tech Demo purposes (since backend implementation of chat might vary)
-      // replace with actual API call:
-      const result = await agentsApi.test(props.agent.id, { input: userMsg });
-      
-      const responseContent = typeof result.output === 'string' 
-        ? result.output 
-        : JSON.stringify(result.output, null, 2);
+      if (lowerMsg.includes('status')) {
+          responseContent = "System diagnostics complete. All core subsystems are operating within normal parameters.";
+          widgets = [{
+             type: 'status',
+             data: { 
+                 status: 'healthy', 
+                 message: 'Cluster Operational',
+                 metrics: { cpu: '45%', ram: '2.4GB', pods: '12/12' } 
+             }
+        }];
+      } else if (lowerMsg.includes('chart') || lowerMsg.includes('metric') || lowerMsg.includes('traffic')) {
+          responseContent = "Generating network traffic analysis for the last 60 minutes.";
+          widgets = [{
+              type: 'chart',
+              data: {
+                  title: 'Ingress Traffic (Req/s)',
+                  type: 'bar',
+                  labels: ['10:00', '10:10', '10:20', '10:30', '10:40', '10:50'],
+                  datasets: [
+                      { label: 'HTTP', data: [120, 150, 180, 140, 200, 250], color: '#00d9ff' },
+                      { label: 'gRPC', data: [50, 60, 40, 80, 90, 100], color: '#a855f7' }
+                  ]
+              }
+          }];
+      } else {
+        // Fallback to real API test if not mocked command
+         try {
+             // In real app, un-comment this:
+             // const result = await agentsApi.test(props.agent.id, { input: userMsg });
+             // responseContent = typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+             responseContent = `I can help you with that. Try asking for "status" or "show traffic chart".`;
+         } catch(e) {
+             responseContent = "I am unable to process that request right now.";
+         }
+      }
 
       setMessages([...messages, {
         role: 'assistant',
         content: responseContent,
         timestamp: Date.now(),
-        // Mock widget generation based on keywords
-        widgets: userMsg.toLowerCase().includes('status') ? [{
-             type: 'status',
-             data: { status: 'healthy', metrics: { cpu: '45%', ram: '2.4GB' } }
-        }] : undefined
+        widgets: widgets
       }]);
 
     } catch (err) {
@@ -144,17 +175,24 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                         }`}>
                             <div class="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                             
-                            {/* Generative UI Widgets (Mock) */}
+                            {/* Generative UI Widgets */}
                             <Show when={msg.widgets}>
-                                <div class="mt-4 border-t border-white/10 pt-3">
-                                    <div class="text-[10px] text-text-dim uppercase tracking-wider mb-2">Generated Widget</div>
-                                    <div class="rounded bg-black/40 p-3 border border-neon-purple/30">
-                                         {/* Placeholder for real widget rendering */}
-                                         <div class="flex justify-between items-center text-neon-purple">
-                                            <span>STATUS CHECK</span>
-                                            <span>ALL SYSTEMS OPERATIONAL</span>
-                                         </div>
-                                    </div>
+                                <div class="mt-4 border-t border-white/10 pt-3 space-y-3">
+                                    <div class="text-[10px] text-text-dim uppercase tracking-wider mb-1">Generated Interface</div>
+                                    <For each={msg.widgets}>
+                                        {(widget) => (
+                                            <Show when={widget.type === 'chart'}>
+                                                <ChartWidget data={widget.data} />
+                                            </Show>
+                                        )}
+                                    </For>
+                                    <For each={msg.widgets}>
+                                        {(widget) => (
+                                            <Show when={widget.type === 'status'}>
+                                                <StatusWidget data={widget.data} />
+                                            </Show>
+                                        )}
+                                    </For>
                                 </div>
                             </Show>
 

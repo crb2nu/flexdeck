@@ -1,5 +1,6 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import LogStream from './LogStream';
 
 interface LogEntry {
   timestamp: string;
@@ -28,6 +29,7 @@ const Logs: Component = () => {
   const [streaming, setStreaming] = createSignal(false);
   const [limit, setLimit] = createSignal(100);
   const [timeRange, setTimeRange] = createSignal('1h');
+  const [viewMode, setViewMode] = createSignal<'list' | 'flow'>('list');
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -139,7 +141,7 @@ const Logs: Component = () => {
 
   // Auto-scroll to bottom when new logs arrive
   createEffect(() => {
-    if (logs.length > 0 && logContainerRef) {
+    if (logs.length > 0 && logContainerRef && viewMode() === 'list') {
       // Only auto-scroll if already near bottom
       const { scrollTop, scrollHeight, clientHeight } = logContainerRef;
       if (scrollHeight - scrollTop - clientHeight < 100) {
@@ -244,7 +246,25 @@ const Logs: Component = () => {
       </div>
 
       {/* Log Display */}
-      <div class="glass-panel flex-1 overflow-hidden">
+      <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
+         {/* Controls */}
+         <div class="absolute right-4 top-2 z-10 flex gap-2">
+            <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1 backdrop-blur">
+               <button 
+                onClick={() => setViewMode('list')}
+                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
+               >
+                   TERMINAL
+               </button>
+               <button 
+                onClick={() => setViewMode('flow')}
+                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
+               >
+                   FLOW
+               </button>
+           </div>
+        </div>
+
         <div class="flex h-full flex-col">
           {/* Header */}
           <div class="flex items-center justify-between border-b border-white/5 px-4 py-2">
@@ -260,46 +280,48 @@ const Logs: Component = () => {
             </div>
             <button
               onClick={() => setLogs([])}
-              class="text-xs text-text-dim hover:text-text-muted"
+              class="text-xs text-text-dim hover:text-text-muted mr-32" // Margin for controls
             >
               Clear
             </button>
           </div>
 
-          {/* Log entries */}
-          <div
-            ref={logContainerRef}
-            class="flex-1 overflow-auto font-mono text-xs"
-          >
-            <Show
-              when={logs.length > 0}
-              fallback={
-                <div class="flex h-full items-center justify-center text-text-dim">
-                  {loading() ? 'Loading logs...' : 'No logs to display. Run a query to fetch logs.'}
-                </div>
-              }
+          {/* Visualization Switcher */}
+          <Show when={viewMode() === 'list'} fallback={<LogStream logs={logs} />}>
+            <div
+              ref={logContainerRef}
+              class="flex-1 overflow-auto font-mono text-xs"
             >
-              <table class="w-full">
-                <tbody>
-                  <For each={logs}>
-                    {(entry) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
-                        <td class="whitespace-nowrap px-3 py-1 text-text-dim">
-                          {formatTimestamp(entry.timestamp)}
-                        </td>
-                        <td class="whitespace-nowrap px-3 py-1 text-neon-cyan">
-                          {entry.labels.pod || entry.labels.container || '-'}
-                        </td>
-                        <td class={`px-3 py-1 ${getLogLevelClass(entry.line)}`}>
-                          <pre class="whitespace-pre-wrap break-all">{entry.line}</pre>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
-          </div>
+              <Show
+                when={logs.length > 0}
+                fallback={
+                  <div class="flex h-full items-center justify-center text-text-dim">
+                    {loading() ? 'Loading logs...' : 'No logs to display. Run a query to fetch logs.'}
+                  </div>
+                }
+              >
+                <table class="w-full">
+                  <tbody>
+                    <For each={logs}>
+                      {(entry) => (
+                        <tr class="border-b border-white/5 hover:bg-white/5 group">
+                          <td class="whitespace-nowrap px-3 py-1 text-text-dim w-24 align-top">
+                            {formatTimestamp(entry.timestamp)}
+                          </td>
+                          <td class="whitespace-nowrap px-3 py-1 text-neon-cyan w-32 align-top opacity-70 group-hover:opacity-100">
+                            {entry.labels.pod || entry.labels.container || '-'}
+                          </td>
+                          <td class={`px-3 py-1 ${getLogLevelClass(entry.line)} align-top`}>
+                            <pre class="whitespace-pre-wrap break-all">{entry.line}</pre>
+                          </td>
+                        </tr>
+                      )}
+                    </For>
+                  </tbody>
+                </table>
+              </Show>
+            </div>
+          </Show>
         </div>
       </div>
     </div>
