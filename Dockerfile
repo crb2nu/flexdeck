@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Build backend
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS backend-builder
 WORKDIR /app
 
 RUN apk add --no-cache git
