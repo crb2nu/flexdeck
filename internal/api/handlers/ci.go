@@ -7,9 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type RepoInfo struct {
+	ID            int    `json:"id"`
 	Name          string `json:"name"`
 	Path          string `json:"path"`
 	Type          string `json:"type"` // "gitlab", "github", "none"
@@ -77,6 +80,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 
 	for _, p := range projects {
 		repo := RepoInfo{
+			ID:   p.ID,
 			Name: p.PathWithNamespace,
 			Path: p.WebURL,
 			Type: "gitlab",
@@ -110,4 +114,148 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(repos)
+}
+
+func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		http.Error(w, "GitLab token not configured", http.StatusUnauthorized)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// 1. Get Latest Pipeline
+	pipelineURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=1", gitlabURL, idStr)
+	req, _ := http.NewRequest("GET", pipelineURL, nil)
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		http.Error(w, "Failed to fetch pipeline", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	var pipelines []struct {
+		ID        int       `json:"id"`
+		Status    string    `json:"status"`
+		Ref       string    `json:"ref"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil || len(pipelines) == 0 {
+		http.Error(w, "No pipeline found", http.StatusNotFound)
+		return
+	}
+	latest := pipelines[0]
+
+	// 2. Get Pipeline Jobs
+	jobsURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", gitlabURL, idStr, latest.ID)
+	jReq, _ := http.NewRequest("GET", jobsURL, nil)
+	jReq.Header.Set("PRIVATE-TOKEN", token)
+
+	jResp, err := client.Do(jReq)
+	if err != nil || jResp.StatusCode != http.StatusOK {
+		http.Error(w, "Failed to fetch jobs", http.StatusInternalServerError)
+		return
+	}
+	defer jResp.Body.Close()
+
+	var jobs []struct {
+		ID         int     `json:"id"`
+		Name       string  `json:"name"`
+		Stage      string  `json:"stage"`
+		Status     string  `json:"status"`
+		Duration   float64 `json:"duration"`
+		StartedAt  string  `json:"started_at"`
+		FinishedAt string  `json:"finished_at"`
+	}
+	json.NewDecoder(jResp.Body).Decode(&jobs)
+
+	// Map to frontend Pipeline structure
+	type Job struct {
+		ID         string  `json:"id"`
+		Name       string  `json:"name"`
+		Stage      string  `json:"stage"`
+		Status     string  `json:"status"`
+		Duration   float64 `json:"duration"`
+		StartedAt  string  `json:"startedAt"`
+		FinishedAt string  `json:"finishedAt"`
+	}
+
+	type Stage struct {
+		Name string `json:"name"`
+		Jobs []Job  `json:"jobs"`
+	}
+
+	type PipelineResponse struct {
+		ID        string  `json:"id"`
+		Ref       string  `json:"ref"`
+		Status    string  `json:"status"`
+		CreatedAt string  `json:"createdAt"`
+		Stages    []Stage `json:"stages"`
+	}
+
+	// Group jobs by stage
+	stageMap := make(map[string][]Job)
+
+	// GitLab jobs typically come newest first, we reverse this iteration potentially if we want execution order
+	// but standard grouping is safer.
+
+	seenStages := []string{}
+	seenStagesSet := make(map[string]bool)
+
+	// Pre-define standard order
+	stdOrder := []string{".pre", "build", "test", "deploy", ".post"}
+	for _, s := range stdOrder {
+		if !seenStagesSet[s] {
+			seenStagesSet[s] = true
+			seenStages = append(seenStages, s)
+		}
+	}
+
+	for _, j := range jobs {
+		jobFormatted := Job{
+			ID:         fmt.Sprintf("%d", j.ID),
+			Name:       j.Name,
+			Stage:      j.Stage,
+			Status:     j.Status,
+			Duration:   j.Duration,
+			StartedAt:  j.StartedAt,
+			FinishedAt: j.FinishedAt,
+		}
+
+		if _, exists := stageMap[j.Stage]; !exists {
+			stageMap[j.Stage] = []Job{}
+			if !seenStagesSet[j.Stage] {
+				seenStages = append(seenStages, j.Stage)
+				seenStagesSet[j.Stage] = true
+			}
+		}
+		stageMap[j.Stage] = append(stageMap[j.Stage], jobFormatted)
+	}
+
+	stages := []Stage{}
+	for _, sName := range seenStages {
+		if jList, ok := stageMap[sName]; ok && len(jList) > 0 {
+			stages = append(stages, Stage{
+				Name: sName,
+				Jobs: jList,
+			})
+		}
+	}
+
+	respData := PipelineResponse{
+		ID:        fmt.Sprintf("%d", latest.ID),
+		Ref:       latest.Ref,
+		Status:    latest.Status,
+		CreatedAt: latest.CreatedAt.Format(time.RFC3339),
+		Stages:    stages,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(respData)
 }

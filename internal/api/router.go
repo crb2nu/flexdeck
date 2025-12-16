@@ -43,6 +43,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 		r.Get("/api/ui/config", h.UIConfig)
 		r.Get("/api/ci/repos", h.ListRepositories)
+		r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
 
 		r.Route("/api/k8s", func(r chi.Router) {
 			r.Get("/services", h.K8sServices)

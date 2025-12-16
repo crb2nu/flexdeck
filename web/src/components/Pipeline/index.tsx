@@ -21,12 +21,30 @@ const Pipeline: Component = () => {
     }
   });
 
-  const selectRepo = (repo: RepoInfo) => {
+  const fetchPipelineStatus = async (repoId: number) => {
+      try {
+          const liveData = await ciApi.getPipeline(repoId);
+          if (liveData) {
+              setPipelineData(liveData);
+          }
+      } catch (e) {
+          console.error("Failed to fetch live pipeline", e);
+          // Fallback handled by initial parsing if needed, or leave as undefined
+      }
+  };
+
+  const selectRepo = async (repo: RepoInfo) => {
     setSelectedRepo(repo);
+    // Optimistic / Static load from YAML first
     if (repo.hasConfig && repo.configContent) {
         setPipelineData(parseGitLabCi(repo.configContent, repo.name));
     } else {
         setPipelineData(undefined);
+    }
+    
+    // Then fetch live status
+    if (repo.id) {
+        await fetchPipelineStatus(repo.id);
     }
   };
 

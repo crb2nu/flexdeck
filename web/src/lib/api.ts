@@ -176,6 +176,7 @@ export const uiApi = {
 };
 
 export interface RepoInfo {
+  id: number;
   name: string;
   path: string;
   type: string;
@@ -185,4 +186,5 @@ export interface RepoInfo {
 
 export const ciApi = {
   listRepos: () => api<RepoInfo[]>("/ci/repos"),
+  getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
 };
