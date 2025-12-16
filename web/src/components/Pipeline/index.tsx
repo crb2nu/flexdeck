@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import { ciApi, RepoInfo } from '../../lib/api';
 
@@ -29,79 +30,87 @@ const Pipeline: Component = () => {
     }
   };
 
+  const [selectedJob, setSelectedJob] = createSignal<any>(null);
+  const [repoFilter, setRepoFilter] = createSignal('');
+
+  const filteredRepos = () => {
+    return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
+  };
+  
+  // ...
+
   const parseGitLabCi = (content: string, repoName: string): VizPipeline => {
-      // Basic stage extraction
-      const stagesMatch = content.match(/stages:\s*([\s\S]*?)(?:\n\S|$)/);
-      let stages: string[] = [];
-      if (stagesMatch) {
-          const stagesBlock = stagesMatch[1];
-          stages = stagesBlock.split('\n')
-            .map(l => l.trim())
-            .filter(l => l.startsWith('-'))
-            .map(l => l.replace(/^-\s*/, '').trim());
-      } 
-      
-      if (stages.length === 0) {
-          stages = ['build', 'test', 'deploy']; // Default fallback
+      let parsed: any;
+      try {
+          parsed = parse(content);
+      } catch (e) {
+          console.error("Failed to parse YAML", e);
+          return {
+              id: `pipeline-${repoName}-error`,
+              ref: 'main',
+              status: 'failed',
+              createdAt: new Date().toISOString(),
+              stages: []
+          };
       }
 
-      // Initialize stages
+      if (!parsed) return {
+          id: `pipeline-${repoName}-empty`,
+          ref: 'main',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          stages: []
+      };
+
+      // Extract stages
+      let stages: string[] = parsed.stages || ['build', 'test', 'deploy'];
+      
+      // Normalize stages if it's not an array (unlikely but possible in some valid yamls)
+      if (!Array.isArray(stages)) stages = ['build', 'test', 'deploy'];
+
+      // Initialize pipeline stages
       const pipelineStages: PipelineStage[] = stages.map(name => ({
           name,
           jobs: []
       }));
 
-      // Hacky job extraction
-      // Looking for top level keys that have "script" or "stage"
-      const lines = content.split('\n');
-      let currentJob: { name: string, stage?: string } | null = null;
+      // Reserved keys in GitLab CI that are NOT jobs
+      const reservedKeys = new Set([
+          'stages', 'types', 'variables', 'cache', 'include', 'image', 'services', 
+          'before_script', 'after_script', 'workflow', 'default'
+      ]);
 
-      // Identify job names (lines starting with non-space and ending with :)
-      // This logic is fragile but suffices for a demo visualization of simple yamls
-      for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const trimmed = line.trim();
-          
-          if (!trimmed || trimmed.startsWith('#')) continue;
+      // Iterate over keys to find jobs
+      Object.entries(parsed).forEach(([key, value]: [string, any]) => {
+          if (reservedKeys.has(key) || key.startsWith('.')) return; // Skip reserved and hidden jobs
+          if (typeof value !== 'object' || !value) return; 
 
-          // Start of a job block?
-          if (!line.startsWith(' ') && line.trim().endsWith(':')) {
-              const name = line.split(':')[0].trim();
-              if (['stages', 'variables', 'services', 'image', 'before_script', 'after_script', 'cache', 'include'].includes(name)) {
-                  currentJob = null;
-                  continue;
-              }
-              currentJob = { name };
-          } 
+          // Determine stage
+          const jobStage = value.stage || 'test'; // Default stage is 'test' per GitLab spec (usually)
           
-          // Inside a job block, look for stage
-          if (currentJob && trimmed.startsWith('stage:')) {
-             currentJob.stage = trimmed.split(':')[1].trim();
-             
-             // Add job to stage
-             const s = pipelineStages.find(st => st.name === currentJob!.stage);
-             if (s && !s.jobs.find(j => j.name === currentJob!.name)) {
-                 s.jobs.push({
-                     id: `job-${currentJob.name}`,
-                     name: currentJob.name,
-                     stage: currentJob.stage!,
-                     status: 'pending' 
-                 });
-             }
+          // Find or create stage (if someone uses a stage not in the 'stages' array, unlikely but handled)
+          let stage = pipelineStages.find(s => s.name === jobStage);
+          if (!stage) {
+               // If strict, we might ignore. For viz, let's add it or map to 'unknown'? 
+               // GitLab validation would fail, but we want to show something.
+               // Let's check if there is a 'test' stage if stage is missing from definition
+               if (parsed.stages && !parsed.stages.includes(jobStage)) {
+                   // Job references undefined stage.
+                   stage = pipelineStages.find(s => s.name === 'test');
+                   if (!stage && pipelineStages.length > 0) stage = pipelineStages[0];
+               }
           }
-      }
-      
-      // Auto-populate some fake jobs if parsing failed to extract any, just to show something
-      if (pipelineStages.every(s => s.jobs.length === 0)) {
-           pipelineStages.forEach((s, i) => {
-               s.jobs.push({
-                   id: `job-${s.name}-${i}`,
-                   name: `${s.name}-job`,
-                   stage: s.name,
-                   status: 'pending'
-               });
-           });
-      }
+          
+          if (stage) {
+              stage.jobs.push({
+                  id: `job-${key}`,
+                  name: key,
+                  stage: jobStage,
+                  status: 'pending',
+                  details: value
+              });
+          }
+      });
 
       return {
           id: `pipeline-${repoName}`,
@@ -113,17 +122,24 @@ const Pipeline: Component = () => {
   };
 
   return (
-    <div class="flex h-full w-full">
+    <div class="flex h-full w-full overflow-hidden">
         {/* Sidebar */}
-        <div class="w-64 border-r border-white/10 bg-black/20 overflow-y-auto flex flex-col">
-            <div class="p-4 border-b border-white/5">
+        <div class="w-64 border-r border-white/10 bg-black/20 flex flex-col">
+            <div class="p-4 border-b border-white/5 space-y-3">
                 <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
+                <input 
+                    type="text" 
+                    placeholder="Filter..." 
+                    class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-neon-cyan focus:outline-none"
+                    value={repoFilter()}
+                    onInput={(e) => setRepoFilter(e.currentTarget.value)}
+                />
             </div>
-            <div class="flex-1 p-2 flex flex-col gap-1">
+            <div class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
                 <Show when={loading()}>
                     <div class="px-3 py-2 text-xs text-text-dim">Loading...</div>
                 </Show>
-                <For each={repos()}>
+                <For each={filteredRepos()}>
                     {(repo) => (
                         <button
                             class={`text-left px-3 py-2 rounded text-sm font-medium transition-colors group relative ${
@@ -131,13 +147,16 @@ const Pipeline: Component = () => {
                                     ? 'bg-neon-cyan/20 text-neon-cyan' 
                                     : 'text-text-dim hover:bg-white/5'
                             }`}
-                            onClick={() => selectRepo(repo)}
+                            onClick={() => {
+                                selectRepo(repo);
+                                setSelectedJob(null);
+                            }}
                         >
                             <div class="truncate">{repo.name}</div>
                             <div class="text-[10px] opacity-50 font-mono mt-0.5 flex items-center justify-between">
                                 <span>{repo.type}</span>
                                 <Show when={repo.hasConfig}>
-                                    <span class="w-1.5 h-1.5 rounded-full bg-neon-green" title="Config found"></span>
+                                    <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found"></span>
                                 </Show>
                             </div>
                         </button>
@@ -147,7 +166,7 @@ const Pipeline: Component = () => {
         </div>
         
         {/* Main Content */}
-        <div class="flex-1 p-4 overflow-hidden relative bg-[#050a14]">
+        <div class="flex-1 overflow-hidden relative bg-[#050a14] flex flex-col">
             <Show when={selectedRepo()} fallback={
                 <div class="flex h-full items-center justify-center text-text-muted flex-col gap-2">
                     <div class="text-xl">Select a repository</div>
@@ -162,7 +181,67 @@ const Pipeline: Component = () => {
                         </div>
                     </div>
                 }>
-                    <CIPipelineViz pipeline={pipelineData()} />
+                    <div class="flex-1 relative p-4">
+                        <CIPipelineViz 
+                            pipeline={pipelineData()} 
+                            onJobClick={(job) => setSelectedJob(job)}
+                        />
+                    </div>
+
+                    {/* Job Details Panel */}
+                    <Show when={selectedJob()}>
+                        <div class="h-64 border-t border-white/10 bg-black/40 backdrop-blur-md p-4 animate-slide-up overflow-y-auto">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="text-lg font-mono font-bold text-white">{selectedJob().name}</div>
+                                    <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{selectedJob().stage}</span>
+                                </div>
+                                <button 
+                                    class="text-text-muted hover:text-white"
+                                    onClick={() => setSelectedJob(null)}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-8">
+                                <Show when={selectedJob().details?.script}>
+                                    <div class="flex flex-col gap-2">
+                                        <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>
+                                        <div class="bg-black/50 rounded p-3 font-mono text-xs text-text-dim border border-white/5">
+                                            <For each={selectedJob().details.script}>
+                                                {(line) => <div class="whitespace-pre-wrap">$ {line}</div>}
+                                            </For>
+                                        </div>
+                                    </div>
+                                </Show>
+                                
+                                <div class="flex flex-col gap-4">
+                                    <Show when={selectedJob().details?.image}>
+                                        <div>
+                                            <div class="text-xs font-bold uppercase text-neon-purple tracking-wider mb-1">Image</div>
+                                            <div class="font-mono text-sm text-white">{selectedJob().details.image}</div>
+                                        </div>
+                                    </Show>
+                                    
+                                    {/* Other properties */}
+                                    <div class="flex flex-col gap-2">
+                                        <div class="text-xs font-bold uppercase text-text-muted tracking-wider">Configuration</div>
+                                        <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                                            <For each={Object.entries(selectedJob().details || {}).filter(([k]) => !['script', 'before_script', 'after_script', 'image', 'name', 'stage'].includes(k))}>
+                                                {([key, val]) => (
+                                                    <>
+                                                        <div class="text-text-dim">{key}:</div>
+                                                        <div class="text-white truncate" title={String(val)}>{String(val)}</div>
+                                                    </>
+                                                )}
+                                            </For>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
                 </Show>
             </Show>
         </div>

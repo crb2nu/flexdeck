@@ -9,6 +9,7 @@ export interface PipelineJob {
   duration?: number;
   startedAt?: string;
   finishedAt?: string;
+  details?: Record<string, any>;
 }
 
 export interface PipelineStage {
@@ -24,11 +25,70 @@ export interface Pipeline {
   createdAt: string;
 }
 
-// ... (keep Particle and createDemoPipeline)
+// Particle system for data flow animation
+interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  progress: number;
+  speed: number;
+  color: string;
+  size: number;
+  trail: { x: number; y: number }[];
+}
 
-// ...
+// Demo pipeline data matching your .gitlab-ci.yml
+const createDemoPipeline = (): Pipeline => ({
+  id: 'pipeline-12847',
+  ref: 'main',
+  status: 'running',
+  createdAt: new Date().toISOString(),
+  stages: [
+    {
+      name: 'test',
+      jobs: [
+        { id: 'job-1', name: 'test:backend', stage: 'test', status: 'skipped', duration: 0 },
+        { id: 'job-2', name: 'test:frontend', stage: 'test', status: 'success', duration: 45 },
+      ]
+    },
+    {
+      name: 'build',
+      jobs: [
+        { id: 'job-3', name: 'build', stage: 'build', status: 'running', duration: 120 },
+      ]
+    },
+    {
+      name: 'deploy',
+      jobs: [
+        { id: 'job-4', name: 'deploy', stage: 'deploy', status: 'manual' },
+      ]
+    }
+  ]
+});
 
-const CIPipelineViz: Component<{ pipeline?: Pipeline }> = (props) => {
+const getStatusColor = (status: PipelineJob['status']): string => {
+  switch (status) {
+    case 'success': return '#00f0ff'; // neon-cyan
+    case 'running': return '#0aff68'; // neon-green
+    case 'failed': return '#ff003c'; // neon-pink
+    case 'pending': return '#fcee0a'; // neon-yellow
+    case 'manual': return '#bd00ff'; // neon-purple
+    case 'skipped': return 'rgba(255,255,255,0.3)';
+    default: return '#ffffff';
+  }
+};
+
+const getStatusGlow = (status: PipelineJob['status']): string => {
+  const color = getStatusColor(status);
+  return `0 0 20px ${color}40, 0 0 40px ${color}20`;
+};
+
+const CIPipelineViz: Component<{ 
+  pipeline?: Pipeline;
+  onJobClick?: (job: PipelineJob) => void;
+}> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let canvasRef: HTMLCanvasElement | undefined;
   let animationId: number;
@@ -374,6 +434,10 @@ const CIPipelineViz: Component<{ pipeline?: Pipeline }> = (props) => {
                       class="group relative"
                       onMouseEnter={() => setHoveredJob(job.id)}
                       onMouseLeave={() => setHoveredJob(null)}
+                      onClick={(e) => {
+                          e.stopPropagation();
+                          props.onJobClick?.(job);
+                      }}
                     >
                       {/* Job card */}
                       <div 
