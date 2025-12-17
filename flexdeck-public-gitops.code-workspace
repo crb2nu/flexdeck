@@ -8,6 +8,9 @@
 	},
 	{
 		"path": "../flexinfer-site"
+	},
+	{
+		"path": "../.."
 	}
 ],
   "settings": {}
