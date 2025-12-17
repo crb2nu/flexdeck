@@ -39,21 +39,24 @@ const LogStream: Component<Props> = (props) => {
   };
 
   const spawnParticle = (log: LogEntry) => {
+    const isError = /error|fatal|panic/i.test(log.line);
+    
     if (props.mode === 'rain') {
+        const depth = Math.random(); // 0 (close) to 1 (far)
         particles.push({
-            x: Math.random(), // 0-1
-            y: -0.1, // Start above screen
-            z: 0,
-            text: log.line.length > 20 ? log.line.substring(0, 20) : log.line, // Short snippets for rain
+            x: Math.random(), // 0-1 across screen
+            y: -0.2 - Math.random() * 0.3, // Start varying distances above
+            z: depth, 
+            text: log.line.substring(0, 40), // Longer strands
             color: getLogColor(log.line),
-            size: 14,
-            speed: 0.005 + Math.random() * 0.005,
-            column: Math.floor(Math.random() * 50) 
+            size: 14 * (1 - depth * 0.5), // Farther = smaller
+            speed: (0.005 + Math.random() * 0.008) * (1 - depth * 0.5), // Farther = apparent slowness
+            column: Math.floor(Math.random() * 100)
         });
     } else {
         // Warp mode
         const angle = Math.random() * Math.PI * 2;
-        const radius = 0.2 + Math.random() * 0.8; 
+        const radius = 0.1 + Math.random() * 0.9; 
         particles.push({
           x: Math.cos(angle) * radius, 
           y: Math.sin(angle) * radius,
@@ -73,7 +76,6 @@ const LogStream: Component<Props> = (props) => {
 
     const centerX = width / 2;
     const centerY = height / 2;
-    // Rotate entire field slightly over time
     const rotation = time * 0.0001; 
     
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -86,7 +88,6 @@ const LogStream: Component<Props> = (props) => {
       }
 
       const perspective = 300 / (10 + p.z);
-      // Apply rotation
       const ca = Math.cos(rotation);
       const sa = Math.sin(rotation);
       const rx = p.x * ca - p.y * sa;
@@ -110,6 +111,7 @@ const LogStream: Component<Props> = (props) => {
         ctx.lineWidth = 0.5 * perspective;
         ctx.beginPath();
         ctx.moveTo(screenX, screenY);
+        // Motion blur trails
         const originX = centerX + rx * width * (300 / (10 + p.z + 100));
         const originY = centerY + ry * height * (300 / (10 + p.z + 100));
         ctx.lineTo(originX, originY);
@@ -119,46 +121,66 @@ const LogStream: Component<Props> = (props) => {
   };
 
   const drawRain = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
-      ctx.fillStyle = 'rgba(5, 10, 20, 0.15)'; // Trail fade
+      // Clear with slight transparency for trails
+      ctx.fillStyle = 'rgba(5, 7, 15, 0.2)'; 
       ctx.fillRect(0, 0, width, height);
       
-      ctx.font = '14px "JetBrains Mono", monospace';
-
+      // Separate particles by depth for painter's algorithm (though usually not strictly needed for text)
+      // but helps with density perception if needed. For performance, we just draw.
+      
       for (let i = particles.length - 1; i >= 0; i--) {
           const p = particles[i];
           p.y += p.speed * (props.speed || 2);
 
-          if (p.y > 1.1) {
+          if (p.y > 1.2) { // Allow to fall slightly off screen
               particles.splice(i, 1);
               continue;
           }
 
           const x = p.x * width;
           const y = p.y * height;
-
-          // Draw vertical text
-          ctx.globalAlpha = 1;
+          const fontSize = p.size;
           
+          ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+
           // Draw characters vertically
           for (let c = 0; c < p.text.length; c++) {
               const char = p.text[c];
-              // First char is bright/white (head of raindrop)
+              
+              // Base Opacity based on depth (z) and position in tail (d)
+              const depthOpacity = 1 - (p.z * 0.6); // Farther = more transparent
+              const tailOpacity = 1 - (c / p.text.length); // End of tail = transparent
+              
+              // Head character logic
               if (c === 0) {
                   ctx.fillStyle = '#ffffff';
-                  ctx.globalAlpha = 1;
+                  ctx.globalAlpha = depthOpacity;
+                  // Bloom effect for head
+                  if (p.z < 0.2) { // Only bloom close particles
+                      ctx.shadowBlur = 8;
+                      ctx.shadowColor = p.color;
+                  } else {
+                      ctx.shadowBlur = 0;
+                  }
               } else {
                   ctx.fillStyle = p.color;
-                  ctx.globalAlpha = Math.max(0.1, 1 - (c / p.text.length)); // Fade tail
+                  ctx.globalAlpha = depthOpacity * tailOpacity * 0.8;
+                  ctx.shadowBlur = 0;
               }
               
-              // Random glitch effect - more frequent in rain mode
-              const renderChar = Math.random() > 0.98 ? String.fromCharCode(0x30A0 + Math.random() * 96) : char; // Katakana glitch
+              // Glitch effect: Randomly swap characters occasionally
+              // Use katakana/kanji range for Matrix feel: 0x30A0
+              const isGlitch = Math.random() > 0.99;
+              const renderChar = isGlitch ? String.fromCharCode(0x30A0 + Math.random() * 96) : char;
               
-              const charY = y - (c * 16);
-              if (charY > 0 && charY < height) {
+              const charY = y - (c * (fontSize * 1.1));
+              
+              // Cull off-screen chars
+              if (charY > -20 && charY < height + 20) {
                  ctx.fillText(renderChar, x, charY);
               }
           }
+          ctx.shadowBlur = 0; // Reset
       }
   };
 
