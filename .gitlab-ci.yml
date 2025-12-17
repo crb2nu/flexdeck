@@ -144,8 +144,7 @@ deploy:
   script:
     - echo "Triggering Flux reconciliation..."
     - echo "Image $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA is ready for deployment"
-    # Optionally trigger Flux directly if you have cluster access:
-    # - flux reconcile kustomization flexdeck --with-source
+    - flux reconcile kustomization flexdeck --with-source
   only:
     - main
   when: manual
