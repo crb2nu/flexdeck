@@ -51,10 +51,10 @@ func NewSpecDecodeExecutor(cfg SpecDecodeConfig) *SpecDecodeExecutor {
 		cfg.MaxIterations = 2
 	}
 	if cfg.DraftModel == "" {
-		cfg.DraftModel = "qwen2.5-7b"
+		cfg.DraftModel = "qwen2.5-7b-spec"
 	}
 	if cfg.VerifyModel == "" {
-		cfg.VerifyModel = "nemotron-8b"
+		cfg.VerifyModel = "nemotron-orchestrator"
 	}
 	return &SpecDecodeExecutor{
 		config: cfg,
@@ -377,8 +377,8 @@ func GetDefaultAgentBuilder() *Agent {
 		Tags:        []string{"built-in", "agent-design", "spec-decode"},
 		Metadata: map[string]any{
 			"spec_decode":  true,
-			"draft_model":  "qwen2.5-7b",
-			"verify_model": "nemotron-8b",
+			"draft_model":  "qwen2.5-7b-spec",
+			"verify_model": "nemotron-orchestrator",
 			"vector_dbs":   []string{"qdrant", "weaviate"},
 		},
 		Status: AgentStatusHealthy,
