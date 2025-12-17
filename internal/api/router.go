@@ -110,6 +110,21 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/", h.AgentsList)
 			r.Post("/", h.AgentsCreate)
 			r.Get("/health", h.AgentsHealth)
+
+			// Built-in Agent Builder
+			r.Get("/builder", h.AgentBuilderInfo)
+			r.Post("/builder/chat", h.AgentBuilderChat)
+
+			// External Agent Frameworks
+			r.Get("/frameworks", h.ExternalAgentsFrameworks)
+
+			// Dify integration
+			r.Post("/dify/chat", h.DifyChat)
+
+			// LangGraph integration
+			r.Get("/langgraph/assistants", h.LangGraphListAssistants)
+			r.Post("/langgraph/run", h.LangGraphRun)
+
 			r.Get("/{id}", h.AgentsGet)
 			r.Put("/{id}", h.AgentsUpdate)
 			r.Delete("/{id}", h.AgentsDelete)

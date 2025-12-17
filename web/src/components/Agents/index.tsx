@@ -30,7 +30,23 @@ const Agents: Component = () => {
   const fetchAgents = async () => {
     try {
       const data = await agentsApi.list();
-      setAgents(data.agents || []);
+      
+      // Fetch built-in Agent Builder info
+      try {
+        const builderInfo = await agentsApi.builderInfo();
+        // Prepend agent builder to the list
+        const agentsList = data.agents || [];
+        const hasBuilder = agentsList.some((a: Agent) => a.id === 'agent-builder');
+        if (!hasBuilder && builderInfo) {
+          setAgents([builderInfo, ...agentsList]);
+        } else {
+          setAgents(agentsList);
+        }
+      } catch {
+        // If builder not available, just use regular agents
+        setAgents(data.agents || []);
+      }
+      
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch agents');
@@ -230,84 +246,110 @@ const Agents: Component = () => {
         >
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             <For each={agents}>
-              {(agent) => (
-                <div class="glass-panel p-4">
-                  <div class="mb-3 flex items-start justify-between">
-                    <div class="flex-1 min-w-0">
-                      <h3 class="font-medium text-text-main truncate">{agent.name}</h3>
-                      <p class="text-xs text-text-dim font-mono truncate">{agent.id}</p>
+              {(agent) => {
+                const isBuiltIn = agent.id === 'agent-builder' || agent.tags?.includes('built-in');
+                return (
+                  <div class={`glass-panel p-4 ${isBuiltIn ? 'border-neon-cyan/40 shadow-[0_0_20px_rgba(0,217,255,0.1)]' : ''}`}>
+                    <div class="mb-3 flex items-start justify-between">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                          <h3 class={`font-medium truncate ${isBuiltIn ? 'text-neon-cyan' : 'text-text-main'}`}>
+                            {agent.name}
+                          </h3>
+                          <Show when={isBuiltIn}>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-neon-purple/20 text-neon-purple border border-neon-purple/30">
+                              ⚡ BUILT-IN
+                            </span>
+                          </Show>
+                        </div>
+                        <p class="text-xs text-text-dim font-mono truncate">{agent.id}</p>
+                      </div>
+                      <div class="flex items-center gap-2 ml-2">
+                        <span class={getStatusDot(agent.status)} />
+                        <span class={`text-sm capitalize ${getStatusColor(agent.status)}`}>
+                          {agent.status}
+                        </span>
+                      </div>
                     </div>
-                    <div class="flex items-center gap-2 ml-2">
-                      <span class={getStatusDot(agent.status)} />
-                      <span class={`text-sm capitalize ${getStatusColor(agent.status)}`}>
-                        {agent.status}
-                      </span>
-                    </div>
-                  </div>
 
-                  <p class="mb-3 text-xs text-text-dim line-clamp-2">
-                    {agent.description || 'No description'}
-                  </p>
+                    <p class="mb-3 text-xs text-text-dim line-clamp-2">
+                      {agent.description || 'No description'}
+                    </p>
 
-                  <div class="mb-3 space-y-1 text-xs">
-                    <div class="flex justify-between">
-                      <span class="text-text-dim">Type</span>
-                      <span class="text-text-muted capitalize">{agent.type}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-text-dim">URL</span>
-                      <span class="text-text-muted truncate max-w-[150px]">{agent.url}</span>
-                    </div>
-                    <Show when={agent.model}>
+                    <div class="mb-3 space-y-1 text-xs">
                       <div class="flex justify-between">
-                        <span class="text-text-dim">Model</span>
-                        <span class="text-neon-purple truncate max-w-[150px]">{agent.model}</span>
+                        <span class="text-text-dim">Type</span>
+                        <span class="text-text-muted capitalize">{agent.type}</span>
+                      </div>
+                      <Show when={!isBuiltIn}>
+                        <div class="flex justify-between">
+                          <span class="text-text-dim">URL</span>
+                          <span class="text-text-muted truncate max-w-[150px]">{agent.url}</span>
+                        </div>
+                      </Show>
+                      <Show when={agent.metadata?.spec_decode}>
+                        <div class="flex justify-between">
+                          <span class="text-text-dim">Mode</span>
+                          <span class="text-neon-purple">Speculative Decode</span>
+                        </div>
+                      </Show>
+                      <Show when={agent.model}>
+                        <div class="flex justify-between">
+                          <span class="text-text-dim">Model</span>
+                          <span class="text-neon-purple truncate max-w-[150px]">{agent.model}</span>
+                        </div>
+                      </Show>
+                    </div>
+
+                    <Show when={agent.tags && agent.tags.length > 0}>
+                      <div class="mb-3 flex flex-wrap gap-1">
+                        <For each={agent.tags.filter(t => t !== 'built-in').slice(0, 3)}>
+                          {(tag) => (
+                            <span class="rounded-full bg-white/10 px-2 py-0.5 text-xs text-text-dim">
+                              {tag}
+                            </span>
+                          )}
+                        </For>
                       </div>
                     </Show>
-                  </div>
 
-                  <Show when={agent.tags && agent.tags.length > 0}>
-                    <div class="mb-3 flex flex-wrap gap-1">
-                      <For each={agent.tags.slice(0, 3)}>
-                        {(tag) => (
-                          <span class="rounded-full bg-white/10 px-2 py-0.5 text-xs text-text-dim">
-                            {tag}
-                          </span>
-                        )}
-                      </For>
+                    <div class="flex gap-2">
+                      <button
+                        onClick={() => openChat(agent)}
+                        class={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                          isBuiltIn 
+                            ? 'bg-neon-cyan/20 border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/30 hover:shadow-[0_0_15px_rgba(0,217,255,0.3)]' 
+                            : 'bg-neon-cyan/10 border border-neon-cyan/20 text-neon-cyan hover:bg-neon-cyan/20 hover:shadow-[0_0_10px_rgba(0,217,255,0.2)]'
+                        }`}
+                      >
+                        {isBuiltIn ? '⚡ Neural Link' : 'Neural Link'}
+                      </button>
+                      <Show when={!isBuiltIn}>
+                        <button
+                          onClick={() => handleCheckHealth(agent.id)}
+                          disabled={actionLoading() === agent.id}
+                          class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
+                        >
+                          Check
+                        </button>
+                        <button
+                          onClick={() => openEditForm(agent)}
+                          class="rounded-md bg-white/10 px-2 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => handleDelete(agent.id)}
+                          disabled={actionLoading() === agent.id}
+                          class="rounded-md bg-status-error/20 px-2 py-1.5 text-sm font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
+                        >
+                          ✕
+                        </button>
+                      </Show>
                     </div>
-                  </Show>
-
-                  <div class="flex gap-2">
-                    <button
-                      onClick={() => openChat(agent)}
-                      class="flex-1 rounded-md bg-neon-cyan/10 border border-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:shadow-[0_0_10px_rgba(0,217,255,0.2)]"
-                    >
-                      Neural Link
-                    </button>
-                    <button
-                      onClick={() => handleCheckHealth(agent.id)}
-                      disabled={actionLoading() === agent.id}
-                      class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
-                    >
-                      Check
-                    </button>
-                    <button
-                      onClick={() => openEditForm(agent)}
-                      class="rounded-md bg-white/10 px-2 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={() => handleDelete(agent.id)}
-                      disabled={actionLoading() === agent.id}
-                      class="rounded-md bg-status-error/20 px-2 py-1.5 text-sm font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
-                    >
-                      ✕
-                    </button>
                   </div>
-                </div>
-              )}
+                );
+              }}
             </For>
           </div>
         </Show>

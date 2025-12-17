@@ -116,6 +116,17 @@ type ModelsConfig struct {
 type AgentsConfig struct {
 	Disabled     bool
 	RegistryPath string // Path to agents registry JSON file
+
+	// Dify integration (visual workflow builder)
+	DifyURL    string // Dify API URL (e.g., http://dify-api.ai.svc.cluster.local:5001)
+	DifyAPIKey string // Dify API key for authentication
+
+	// LangGraph integration (stateful graph workflows)
+	LangGraphURL string // LangGraph API URL (e.g., http://langgraph.ai.svc.cluster.local:8000)
+
+	// AgentScope integration (multi-agent sandbox)
+	AgentScopeURL    string // AgentScope sandbox base URL
+	AgentScopeGUIURL string // AgentScope GUI sandbox URL
 }
 
 func Load() (*Config, error) {
@@ -188,8 +199,13 @@ func Load() (*Config, error) {
 		},
 
 		Agents: AgentsConfig{
-			Disabled:     parseBool(getEnv("AGENTS_DISABLED", "false")),
-			RegistryPath: getEnv("AGENTS_REGISTRY_PATH", "/data/agents.json"),
+			Disabled:         parseBool(getEnv("AGENTS_DISABLED", "false")),
+			RegistryPath:     getEnv("AGENTS_REGISTRY_PATH", "/data/agents.json"),
+			DifyURL:          getEnv("DIFY_URL", "http://dify-api.ai.svc.cluster.local:5001"),
+			DifyAPIKey:       getEnv("DIFY_API_KEY", ""),
+			LangGraphURL:     getEnv("LANGGRAPH_URL", "http://langgraph.ai.svc.cluster.local:8000"),
+			AgentScopeURL:    getEnv("AGENTSCOPE_URL", "http://agentscope-sandbox-base.ai.svc.cluster.local:8000"),
+			AgentScopeGUIURL: getEnv("AGENTSCOPE_GUI_URL", "http://agentscope-sandbox-gui.ai.svc.cluster.local:8000"),
 		},
 
 		GitLab: GitLabConfig{

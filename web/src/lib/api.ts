@@ -164,6 +164,45 @@ export const agentsApi = {
       body: JSON.stringify(request),
     }),
   usage: (id: string) => api<any>(`/agents/${encodeURIComponent(id)}/usage`),
+
+  // Built-in Agent Builder
+  builderInfo: () => api<any>("/agents/builder"),
+  builderChat: (query: string, context?: Record<string, any>) =>
+    api<any>("/agents/builder/chat", {
+      method: "POST",
+      body: JSON.stringify({ query, context }),
+    }),
+
+  // External Agent Frameworks
+  frameworks: () => api<any>("/agents/frameworks"),
+
+  // Dify integration
+  difyChat: (
+    query: string,
+    conversationId?: string,
+    inputs?: Record<string, string>
+  ) =>
+    api<any>("/agents/dify/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        query,
+        conversation_id: conversationId,
+        inputs,
+        response_mode: "blocking",
+      }),
+    }),
+
+  // LangGraph integration
+  langGraphAssistants: () => api<any>("/agents/langgraph/assistants"),
+  langGraphRun: (
+    graphId: string,
+    input: Record<string, any>,
+    threadId?: string
+  ) =>
+    api<any>("/agents/langgraph/run", {
+      method: "POST",
+      body: JSON.stringify({ graph_id: graphId, input, thread_id: threadId }),
+    }),
 };
 
 export const healthApi = {

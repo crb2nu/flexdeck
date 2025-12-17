@@ -143,14 +143,38 @@ const HoloDeck: Component<Props> = (props) => {
     scene.add(dataGroup);
 
     // --- LIGHTS ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.08);
     scene.add(ambientLight);
     
     // Main spotlight from top
-    const spotLight = new THREE.SpotLight(0x00f0ff, 0.5);
-    spotLight.position.set(0, 50, 0);
-    spotLight.angle = Math.PI / 4;
+    const spotLight = new THREE.SpotLight(0x00f0ff, 0.4);
+    spotLight.position.set(0, 60, 0);
+    spotLight.angle = Math.PI / 5;
+    spotLight.penumbra = 0.5;
     scene.add(spotLight);
+    
+    // Central Core Structure
+    const coreGroup = new THREE.Group();
+    
+    // Central pillar
+    const pillarGeom = new THREE.CylinderGeometry(0.3, 0.5, 8, 8);
+    const pillarMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.3 });
+    const pillar = new THREE.Mesh(pillarGeom, pillarMat);
+    pillar.position.y = 4;
+    coreGroup.add(pillar);
+    
+    // Orbiting rings
+    for (let i = 0; i < 3; i++) {
+        const ringGeom = new THREE.TorusGeometry(2 + i * 1.5, 0.02, 8, 64);
+        const ringMat = new THREE.MeshBasicMaterial({ color: i === 1 ? 0xa855f7 : 0x00f0ff, transparent: true, opacity: 0.6 });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = Math.PI / 2 + (i * 0.2);
+        ring.position.y = 3 + i * 2;
+        ring.name = `coreRing${i}`;
+        coreGroup.add(ring);
+    }
+    
+    scene.add(coreGroup);
 
     // --- CUSTOM GRID ---
     gridMaterial = new THREE.ShaderMaterial({
@@ -171,20 +195,33 @@ const HoloDeck: Component<Props> = (props) => {
     scene.add(gridPlane);
 
     // --- DUST PARTICLES ---
-    const dustCount = 800;
+    const dustCount = 1200;
     const dustGeom = new THREE.BufferGeometry();
     const dustPos = new Float32Array(dustCount * 3);
-    for(let i=0; i<dustCount*3; i++) {
-        dustPos[i] = (Math.random() - 0.5) * 100;
-        if (i%3===1) dustPos[i] = Math.random() * 40; // Y only positive
+    const dustColors = new Float32Array(dustCount * 3);
+    const cyanColor = new THREE.Color(0x00f0ff);
+    const purpleColor = new THREE.Color(0xa855f7);
+    
+    for(let i = 0; i < dustCount; i++) {
+        dustPos[i * 3] = (Math.random() - 0.5) * 120;
+        dustPos[i * 3 + 1] = Math.random() * 50;
+        dustPos[i * 3 + 2] = (Math.random() - 0.5) * 120;
+        
+        const color = Math.random() > 0.8 ? purpleColor : cyanColor;
+        dustColors[i * 3] = color.r;
+        dustColors[i * 3 + 1] = color.g;
+        dustColors[i * 3 + 2] = color.b;
     }
     dustGeom.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    dustGeom.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
+    
     const dustMat = new THREE.PointsMaterial({
-        color: 0x00f0ff,
-        size: 0.15,
+        size: 0.12,
         transparent: true,
-        opacity: 0.4,
-        blending: THREE.AdditiveBlending
+        opacity: 0.5,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
     });
     dustParticles = new THREE.Points(dustGeom, dustMat);
     scene.add(dustParticles);
@@ -311,7 +348,16 @@ const HoloDeck: Component<Props> = (props) => {
       });
       
       // Animate Dust
-      dustParticles.rotation.y = time * 0.05;
+      dustParticles.rotation.y = time * 0.03;
+      
+      // Animate Central Core Rings
+      for (let i = 0; i < 3; i++) {
+          const ring = scene.getObjectByName(`coreRing${i}`);
+          if (ring) {
+              ring.rotation.z = time * (0.2 + i * 0.1) * (i % 2 === 0 ? 1 : -1);
+              ring.position.y = 3 + i * 2 + Math.sin(time + i) * 0.3;
+          }
+      }
 
       composer.render();
     };
