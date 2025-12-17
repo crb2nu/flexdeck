@@ -534,3 +534,5 @@ const HoloDeck: Component<Props> = (props) => {
     </div>
   );
 };
+
+export default HoloDeck;
