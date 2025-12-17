@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, For, Show } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import { ciApi, RepoInfo } from '../../lib/api';
@@ -8,6 +8,12 @@ const Pipeline: Component = () => {
   const [selectedRepo, setSelectedRepo] = createSignal<RepoInfo | null>(null);
   const [pipelineData, setPipelineData] = createSignal<VizPipeline | undefined>(undefined);
   const [loading, setLoading] = createSignal(true);
+
+  const [selectedJob, setSelectedJob] = createSignal<any>(null);
+  const [jobTrace, setJobTrace] = createSignal<string>('');
+  const [traceLoading, setTraceLoading] = createSignal(false);
+  const [activeTab, setActiveTab] = createSignal<'config' | 'logs'>('logs');
+  const [repoFilter, setRepoFilter] = createSignal('');
 
   onMount(async () => {
     try {
@@ -24,17 +30,44 @@ const Pipeline: Component = () => {
   const fetchPipelineStatus = async (repoId: number) => {
       try {
           const liveData = await ciApi.getPipeline(repoId);
-          if (liveData) {
+          if (liveData && liveData.status !== 'none') {
               setPipelineData(liveData);
           }
       } catch (e) {
-          console.error("Failed to fetch live pipeline", e);
-          // Fallback handled by initial parsing if needed, or leave as undefined
+          // Silently handle - repo might not have any pipelines yet
+          console.debug("No pipeline data available", e);
       }
   };
 
+  const fetchJobTrace = async (projectId: number, jobId: string) => {
+    setTraceLoading(true);
+    setJobTrace('');
+    try {
+      const data = await ciApi.getJobTrace(projectId, jobId);
+      setJobTrace(data.trace || '');
+    } catch (e) {
+      console.error("Failed to fetch job trace", e);
+      setJobTrace('Failed to load job trace. The job may not have any output yet.');
+    } finally {
+      setTraceLoading(false);
+    }
+  };
+
+  // Auto-fetch logs when a job is selected
+  createEffect(() => {
+    const job = selectedJob();
+    const repo = selectedRepo();
+    if (job && repo?.id && job.id) {
+      // Extract numeric job ID from the format "job-123" or just "123"
+      const jobId = job.id.replace(/^job-/, '');
+      fetchJobTrace(repo.id, jobId);
+    }
+  });
+
   const selectRepo = async (repo: RepoInfo) => {
     setSelectedRepo(repo);
+    setSelectedJob(null);
+    setJobTrace('');
     // Optimistic / Static load from YAML first
     if (repo.hasConfig && repo.configContent) {
         setPipelineData(parseGitLabCi(repo.configContent, repo.name));
@@ -47,9 +80,6 @@ const Pipeline: Component = () => {
         await fetchPipelineStatus(repo.id);
     }
   };
-
-  const [selectedJob, setSelectedJob] = createSignal<any>(null);
-  const [repoFilter, setRepoFilter] = createSignal('');
 
   const filteredRepos = () => {
     return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
@@ -208,55 +238,114 @@ const Pipeline: Component = () => {
 
                     {/* Job Details Panel */}
                     <Show when={selectedJob()}>
-                        <div class="h-64 border-t border-white/10 bg-black/40 backdrop-blur-md p-4 animate-slide-up overflow-y-auto">
-                            <div class="flex items-center justify-between mb-4">
+                        <div class="h-80 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-col animate-slide-up">
+                            {/* Header */}
+                            <div class="flex items-center justify-between p-4 border-b border-white/5">
                                 <div class="flex items-center gap-3">
+                                    <div class={`w-2 h-2 rounded-full ${
+                                        selectedJob().status === 'success' ? 'bg-neon-green' :
+                                        selectedJob().status === 'failed' ? 'bg-red-500' :
+                                        selectedJob().status === 'running' ? 'bg-neon-cyan animate-pulse' :
+                                        selectedJob().status === 'pending' ? 'bg-yellow-500' :
+                                        'bg-gray-500'
+                                    }`} />
                                     <div class="text-lg font-mono font-bold text-white">{selectedJob().name}</div>
                                     <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{selectedJob().stage}</span>
+                                    <Show when={selectedJob().duration}>
+                                        <span class="text-xs text-text-dim">
+                                            {Math.round(selectedJob().duration)}s
+                                        </span>
+                                    </Show>
                                 </div>
-                                <button 
-                                    class="text-text-muted hover:text-white"
-                                    onClick={() => setSelectedJob(null)}
-                                >
-                                    ✕
-                                </button>
+                                <div class="flex items-center gap-2">
+                                    {/* Tabs */}
+                                    <div class="flex gap-1 bg-black/40 rounded p-0.5">
+                                        <button
+                                            class={`px-3 py-1 text-xs rounded transition-colors ${
+                                                activeTab() === 'logs' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-muted hover:text-white'
+                                            }`}
+                                            onClick={() => setActiveTab('logs')}
+                                        >
+                                            Logs
+                                        </button>
+                                        <button
+                                            class={`px-3 py-1 text-xs rounded transition-colors ${
+                                                activeTab() === 'config' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-muted hover:text-white'
+                                            }`}
+                                            onClick={() => setActiveTab('config')}
+                                        >
+                                            Config
+                                        </button>
+                                    </div>
+                                    <button 
+                                        class="text-text-muted hover:text-white ml-2"
+                                        onClick={() => setSelectedJob(null)}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
                             </div>
                             
-                            <div class="grid grid-cols-2 gap-8">
-                                <Show when={selectedJob().details?.script}>
-                                    <div class="flex flex-col gap-2">
-                                        <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>
-                                        <div class="bg-black/50 rounded p-3 font-mono text-xs text-text-dim border border-white/5">
-                                            <For each={selectedJob().details.script}>
-                                                {(line) => <div class="whitespace-pre-wrap">$ {line}</div>}
-                                            </For>
+                            {/* Content */}
+                            <div class="flex-1 overflow-y-auto p-4">
+                                <Show when={activeTab() === 'logs'}>
+                                    <Show when={traceLoading()}>
+                                        <div class="flex items-center gap-2 text-text-muted">
+                                            <div class="w-4 h-4 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
+                                            Loading job logs...
+                                        </div>
+                                    </Show>
+                                    <Show when={!traceLoading() && jobTrace()}>
+                                        <pre class="font-mono text-xs text-text-dim whitespace-pre-wrap break-all leading-relaxed">
+                                            {/* Strip ANSI codes for cleaner display */}
+                                            {jobTrace().replace(/\x1b\[[0-9;]*m/g, '')}
+                                        </pre>
+                                    </Show>
+                                    <Show when={!traceLoading() && !jobTrace()}>
+                                        <div class="text-text-muted text-sm">
+                                            No log output available for this job.
+                                        </div>
+                                    </Show>
+                                </Show>
+                                
+                                <Show when={activeTab() === 'config'}>
+                                    <div class="grid grid-cols-2 gap-8">
+                                        <Show when={selectedJob().details?.script}>
+                                            <div class="flex flex-col gap-2">
+                                                <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>
+                                                <div class="bg-black/50 rounded p-3 font-mono text-xs text-text-dim border border-white/5">
+                                                    <For each={selectedJob().details.script}>
+                                                        {(line: string) => <div class="whitespace-pre-wrap">$ {line}</div>}
+                                                    </For>
+                                                </div>
+                                            </div>
+                                        </Show>
+                                        
+                                        <div class="flex flex-col gap-4">
+                                            <Show when={selectedJob().details?.image}>
+                                                <div>
+                                                    <div class="text-xs font-bold uppercase text-neon-purple tracking-wider mb-1">Image</div>
+                                                    <div class="font-mono text-sm text-white">{selectedJob().details.image}</div>
+                                                </div>
+                                            </Show>
+                                            
+                                            {/* Other properties */}
+                                            <div class="flex flex-col gap-2">
+                                                <div class="text-xs font-bold uppercase text-text-muted tracking-wider">Configuration</div>
+                                                <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                                                    <For each={Object.entries(selectedJob().details || {}).filter(([k]) => !['script', 'before_script', 'after_script', 'image', 'name', 'stage'].includes(k))}>
+                                                        {([key, val]) => (
+                                                            <>
+                                                                <div class="text-text-dim">{key}:</div>
+                                                                <div class="text-white truncate" title={String(val)}>{String(val)}</div>
+                                                            </>
+                                                        )}
+                                                    </For>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </Show>
-                                
-                                <div class="flex flex-col gap-4">
-                                    <Show when={selectedJob().details?.image}>
-                                        <div>
-                                            <div class="text-xs font-bold uppercase text-neon-purple tracking-wider mb-1">Image</div>
-                                            <div class="font-mono text-sm text-white">{selectedJob().details.image}</div>
-                                        </div>
-                                    </Show>
-                                    
-                                    {/* Other properties */}
-                                    <div class="flex flex-col gap-2">
-                                        <div class="text-xs font-bold uppercase text-text-muted tracking-wider">Configuration</div>
-                                        <div class="grid grid-cols-2 gap-2 text-xs font-mono">
-                                            <For each={Object.entries(selectedJob().details || {}).filter(([k]) => !['script', 'before_script', 'after_script', 'image', 'name', 'stage'].includes(k))}>
-                                                {([key, val]) => (
-                                                    <>
-                                                        <div class="text-text-dim">{key}:</div>
-                                                        <div class="text-white truncate" title={String(val)}>{String(val)}</div>
-                                                    </>
-                                                )}
-                                            </For>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </Show>

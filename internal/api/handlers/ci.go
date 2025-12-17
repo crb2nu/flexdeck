@@ -137,8 +137,34 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
+	// Response types moved to top for reuse
+	type Job struct {
+		ID         string  `json:"id"`
+		Name       string  `json:"name"`
+		Stage      string  `json:"stage"`
+		Status     string  `json:"status"`
+		Duration   float64 `json:"duration"`
+		StartedAt  string  `json:"startedAt"`
+		FinishedAt string  `json:"finishedAt"`
+	}
+
+	type Stage struct {
+		Name string `json:"name"`
+		Jobs []Job  `json:"jobs"`
+	}
+
+	type PipelineResponse struct {
+		ID        string  `json:"id"`
+		Ref       string  `json:"ref"`
+		Status    string  `json:"status"`
+		CreatedAt string  `json:"createdAt"`
+		Stages    []Stage `json:"stages"`
+	}
+
 	if token == "" {
-		http.Error(w, "GitLab token not configured", http.StatusUnauthorized)
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
 		return
 	}
 
@@ -146,15 +172,33 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Get Latest Pipeline
 	pipelineURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=1", gitlabURL, idStr)
-	req, _ := http.NewRequest("GET", pipelineURL, nil)
+	req, err := http.NewRequest("GET", pipelineURL, nil)
+	if err != nil {
+		slog.Error("Failed to create request", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
 	req.Header.Set("PRIVATE-TOKEN", token)
 
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		http.Error(w, "Failed to fetch pipeline", http.StatusInternalServerError)
+	if err != nil {
+		slog.Error("Failed to fetch pipeline from GitLab", "error", err)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("GitLab API returned non-OK status", "status", resp.StatusCode, "project", idStr)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
 
 	var pipelines []struct {
 		ID        int       `json:"id"`
@@ -162,8 +206,23 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		Ref       string    `json:"ref"`
 		CreatedAt time.Time `json:"created_at"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil || len(pipelines) == 0 {
-		http.Error(w, "No pipeline found", http.StatusNotFound)
+	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
+		slog.Error("Failed to decode pipelines response", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to decode pipelines",
+		})
+		return
+	}
+
+	// No pipelines found - return empty pipeline structure instead of error
+	if len(pipelines) == 0 {
+		respondJSON(w, http.StatusOK, PipelineResponse{
+			ID:        "",
+			Ref:       "",
+			Status:    "none",
+			CreatedAt: "",
+			Stages:    []Stage{},
+		})
 		return
 	}
 	latest := pipelines[0]
@@ -190,30 +249,6 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		FinishedAt string  `json:"finished_at"`
 	}
 	json.NewDecoder(jResp.Body).Decode(&jobs)
-
-	// Map to frontend Pipeline structure
-	type Job struct {
-		ID         string  `json:"id"`
-		Name       string  `json:"name"`
-		Stage      string  `json:"stage"`
-		Status     string  `json:"status"`
-		Duration   float64 `json:"duration"`
-		StartedAt  string  `json:"startedAt"`
-		FinishedAt string  `json:"finishedAt"`
-	}
-
-	type Stage struct {
-		Name string `json:"name"`
-		Jobs []Job  `json:"jobs"`
-	}
-
-	type PipelineResponse struct {
-		ID        string  `json:"id"`
-		Ref       string  `json:"ref"`
-		Status    string  `json:"status"`
-		CreatedAt string  `json:"createdAt"`
-		Stages    []Stage `json:"stages"`
-	}
 
 	// Group jobs by stage
 	stageMap := make(map[string][]Job)
@@ -274,4 +309,158 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(respData)
+}
+
+// GetJobTrace fetches the trace/log output for a specific job
+func (h *Handler) GetJobTrace(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	jobID := chi.URLParam(r, "jobId")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	// Fetch job trace from GitLab
+	traceURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/trace", gitlabURL, projectID, jobID)
+	req, err := http.NewRequest("GET", traceURL, nil)
+	if err != nil {
+		slog.Error("Failed to create trace request", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to fetch job trace", "error", err)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("GitLab trace API returned non-OK", "status", resp.StatusCode, "job", jobID)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	// Read the trace content
+	trace, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("Failed to read trace", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to read trace",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"jobId": jobID,
+		"trace": string(trace),
+	})
+}
+
+// GetJobInfo fetches detailed information about a specific job
+func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	jobID := chi.URLParam(r, "jobId")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// Fetch job details from GitLab
+	jobURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s", gitlabURL, projectID, jobID)
+	req, err := http.NewRequest("GET", jobURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	var job struct {
+		ID         int      `json:"id"`
+		Name       string   `json:"name"`
+		Stage      string   `json:"stage"`
+		Status     string   `json:"status"`
+		Duration   float64  `json:"duration"`
+		StartedAt  string   `json:"started_at"`
+		FinishedAt string   `json:"finished_at"`
+		WebURL     string   `json:"web_url"`
+		Ref        string   `json:"ref"`
+		Tag        bool     `json:"tag"`
+		Coverage   *float64 `json:"coverage"`
+		Runner     *struct {
+			ID          int    `json:"id"`
+			Description string `json:"description"`
+			Active      bool   `json:"active"`
+		} `json:"runner"`
+		Artifacts []struct {
+			FileType   string `json:"file_type"`
+			Size       int64  `json:"size"`
+			Filename   string `json:"filename"`
+			FileFormat string `json:"file_format"`
+		} `json:"artifacts"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to decode job info",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"id":         fmt.Sprintf("%d", job.ID),
+		"name":       job.Name,
+		"stage":      job.Stage,
+		"status":     job.Status,
+		"duration":   job.Duration,
+		"startedAt":  job.StartedAt,
+		"finishedAt": job.FinishedAt,
+		"webUrl":     job.WebURL,
+		"ref":        job.Ref,
+		"tag":        job.Tag,
+		"coverage":   job.Coverage,
+		"runner":     job.Runner,
+		"artifacts":  job.Artifacts,
+	})
 }

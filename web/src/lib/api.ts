@@ -226,4 +226,10 @@ export interface RepoInfo {
 export const ciApi = {
   listRepos: () => api<RepoInfo[]>("/ci/repos"),
   getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
+  getJobTrace: (projectId: number, jobId: string) =>
+    api<{ jobId: string; trace: string }>(
+      `/ci/projects/${projectId}/jobs/${jobId}/trace`
+    ),
+  getJobInfo: (projectId: number, jobId: string) =>
+    api<any>(`/ci/projects/${projectId}/jobs/${jobId}`),
 };

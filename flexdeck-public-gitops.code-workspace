@@ -1,0 +1,14 @@
+{
+  "folders": [
+	{
+		"path": "."
+	},
+	{
+		"path": "../../platform/gitops"
+	},
+	{
+		"path": "../flexinfer-site"
+	}
+],
+  "settings": {}
+}

@@ -36,6 +36,15 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 	r.Get("/api/health", h.Health)
 
+	// Public API routes - no auth required, sanitized read-only data
+	// These are exposed for the public portfolio site (flexinfer.ai)
+	r.Route("/api/public", func(r chi.Router) {
+		r.Get("/topology", h.PublicTopology)
+		r.Get("/ci/status", h.PublicCIStatus)
+		r.Get("/metrics/summary", h.PublicMetricsSummary)
+		r.Get("/models/status", h.PublicModelsStatus)
+	})
+
 	r.Group(func(r chi.Router) {
 		if cfg.Token != "" {
 			r.Use(authMiddleware.Handler)
@@ -44,6 +53,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/ui/config", h.UIConfig)
 		r.Get("/api/ci/repos", h.ListRepositories)
 		r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
+		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
+		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
 
 		r.Route("/api/k8s", func(r chi.Router) {
 			r.Get("/services", h.K8sServices)
