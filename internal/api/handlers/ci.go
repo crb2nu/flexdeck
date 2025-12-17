@@ -59,6 +59,14 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read body first to debug if needed
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("Failed to read response body", "error", err)
+		http.Error(w, "Failed to read response", http.StatusInternalServerError)
+		return
+	}
+
 	var projects []struct {
 		ID                int    `json:"id"`
 		PathWithNamespace string `json:"path_with_namespace"`
@@ -67,9 +75,14 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 		WebURL            string `json:"web_url"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-		slog.Error("Failed to decode projects", "error", err)
-		http.Error(w, "Failed to decode projects", http.StatusInternalServerError)
+	if err := json.Unmarshal(bodyBytes, &projects); err != nil {
+		// Log the body snippet for debugging html responses
+		snippet := string(bodyBytes)
+		if len(snippet) > 500 {
+			snippet = snippet[:500]
+		}
+		slog.Error("Failed to decode projects", "error", err, "body_snippet", snippet)
+		http.Error(w, "Failed to decode projects response", http.StatusInternalServerError)
 		return
 	}
 
@@ -95,6 +108,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 			ref = "main" // fallback
 		}
 
+		// Use the configured internal URL, but we might want to ensure we don't break if it's external.
 		fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s", gitlabURL, p.ID, ciFileObj, ref)
 		fileReq, _ := http.NewRequest("GET", fileURL, nil)
 		fileReq.Header.Set("PRIVATE-TOKEN", token)
@@ -106,6 +120,8 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 			repo.ConfigContent = string(content)
 			fileResp.Body.Close()
 		} else if fileResp != nil {
+			// If file fetch fails (e.g. 404), just ignore config
+			// slog.Info("Failed to fetch CI file", "repo", p.PathWithNamespace, "status", fileResp.Status)
 			fileResp.Body.Close()
 		}
 
