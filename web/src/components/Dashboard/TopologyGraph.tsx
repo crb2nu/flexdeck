@@ -349,13 +349,17 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill();
     }
 
+    // Cache signal values once per frame instead of per-node
+    const selectedId = selectedNode()?.id;
+    const hoveredId = hoverNode()?.id;
+
     // Draw Nodes
     graphNodes.forEach(node => {
       if (node.x === undefined || node.y === undefined) return;
       const r = getNodeRadius(node);
       const color = getNodeColor(node);
-      const isSelected = selectedNode()?.id === node.id;
-      const isHovered = hoverNode()?.id === node.id;
+      const isSelected = selectedId === node.id;
+      const isHovered = hoveredId === node.id;
 
       // Glow 
       if (isSelected || isHovered) {
@@ -404,22 +408,22 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     });
 
-    // Draw Labels (Separate loop to be on top)
+    // Draw Labels (Separate loop to be on top) - reuse cached selectedId/hoveredId
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
+
     graphNodes.forEach(node => {
         if (node.x === undefined || node.y === undefined) return;
-        const shouldDrawLabel = node.type === 'node' || node.type === 'service' || 
-                                selectedNode()?.id === node.id || hoverNode()?.id === node.id;
-        
+        const shouldDrawLabel = node.type === 'node' || node.type === 'service' ||
+                                selectedId === node.id || hoveredId === node.id;
+
         if (shouldDrawLabel && transform.k > 0.4) {
             const r = getNodeRadius(node);
             ctx.font = node.type === 'node' ? '500 11px Inter, system-ui' : '400 9px Inter, system-ui';
             ctx.fillStyle = '#cccccc';
             ctx.fillText(
-                node.label.length > 14 && !hoverNode() ? node.label.slice(0, 12)+'...' : node.label, 
-                node.x, 
+                node.label.length > 14 && !hoveredId ? node.label.slice(0, 12)+'...' : node.label,
+                node.x,
                 node.y + r + 12
             );
         }
@@ -439,26 +443,28 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  // Click & Hover detection
+  // Click & Hover detection - optimized to avoid sqrt
   const getKeyUnderMouse = (event: MouseEvent): D3Node | null => {
       if (!canvasRef) return null;
       const rect = canvasRef.getBoundingClientRect();
       const x = (event.clientX - rect.left - transform.x) / transform.k;
       const y = (event.clientY - rect.top - transform.y) / transform.k;
-      
-      let minDist = Infinity;
+
+      let minDistSq = Infinity;
       let found: D3Node | null = null;
-      
+
+      // Iterate in reverse to prefer nodes drawn on top
       for (let i = graphNodes.length - 1; i >= 0; i--) {
           const n = graphNodes[i];
-          if (!n.x || !n.y) continue;
+          if (n.x === undefined || n.y === undefined) continue;
           const dx = x - n.x;
           const dy = y - n.y;
-          const dist = Math.sqrt(dx*dx + dy*dy);
-          const r = getNodeRadius(n);
-          // 4px padding for easier selection
-          if (dist < (r + 4) && dist < minDist) {
-              minDist = dist;
+          const distSq = dx * dx + dy * dy; // Avoid sqrt - compare squared distances
+          const r = getNodeRadius(n) + 4; // 4px padding for easier selection
+          const rSq = r * r;
+
+          if (distSq < rSq && distSq < minDistSq) {
+              minDistSq = distSq;
               found = n;
           }
       }
@@ -473,13 +479,28 @@ const TopologyGraph: Component<Props> = (props) => {
       } else {
           setSelectedNode(null);
       }
+      // Trigger redraw for selection visual feedback
+      if (!isAnimating) {
+        requestAnimationFrame(draw);
+      }
   };
 
+  // Throttle mouse move to max 60fps (every ~16ms)
+  let lastMouseMoveTime = 0;
   const handleMouseMove = (event: MouseEvent) => {
+      const now = performance.now();
+      if (now - lastMouseMoveTime < 16) return; // Skip if called too soon
+      lastMouseMoveTime = now;
+
       const node = getKeyUnderMouse(event);
-      if (node !== hoverNode()) {
+      const currentHover = hoverNode();
+      if (node !== currentHover) {
           setHoverNode(node);
           if (canvasRef) canvasRef.style.cursor = node ? 'pointer' : 'default';
+          // Trigger redraw for hover visual feedback (single frame, not continuous)
+          if (!isAnimating) {
+            requestAnimationFrame(draw);
+          }
       }
   };
 
@@ -509,7 +530,10 @@ const TopologyGraph: Component<Props> = (props) => {
     const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(nodeCount)));
 
     // Create simulation FIRST, then start animation loop
+    // Use higher alphaDecay for faster settling (default is ~0.0228)
     simulation = d3.forceSimulation<D3Node>(graphNodes)
+      .alphaDecay(0.05) // Faster decay = quicker settling, less CPU during startup
+      .velocityDecay(0.3) // Slightly higher damping for smoother animation
       .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
         .id(d => d.id)
         .distance(linkDistance)
