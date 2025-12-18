@@ -71,6 +71,12 @@ const LogStream: Component<Props> = (props) => {
   const [isPaused, setIsPaused] = createSignal(false);
   const [hoverPos, setHoverPos] = createSignal<{ x: number; y: number } | null>(null);
 
+  // Visual polish state
+  const [errorFlash, setErrorFlash] = createSignal(0); // 0-1 intensity for error flash overlay
+  const [modeTransition, setModeTransition] = createSignal(0); // 0-1 for fade transition
+  let previousMode = props.mode || 'warp';
+  let errorFlashTimeout: ReturnType<typeof setTimeout> | null = null;
+
   // Performance: Fixed-size particle pool
   const particlePool: LogParticle[] = Array.from({ length: MAX_PARTICLES }, createEmptyParticle);
   let activeParticleCount = 0;
@@ -151,6 +157,13 @@ const LogStream: Component<Props> = (props) => {
     p.isError = isError;
     p.color = isSearchMatch ? '#ffdd00' : getLogColor(log.line); // Yellow for search matches
     p.lifetime = 0;
+
+    // Error flash effect - quick red tint on error arrival
+    if (isError && force) { // Only flash for newly arriving errors, not recycled ones
+      setErrorFlash(0.3);
+      if (errorFlashTimeout) clearTimeout(errorFlashTimeout);
+      errorFlashTimeout = setTimeout(() => setErrorFlash(0), 150);
+    }
 
     if (props.mode === 'rain') {
       const depth = Math.random();
@@ -430,13 +443,30 @@ const LogStream: Component<Props> = (props) => {
 
   // Spawn particles for new log entries
   createEffect(() => {
-    const latest = props.logs[0]; 
+    const latest = props.logs[0];
     if (latest) {
-        spawnParticle(latest);
+        spawnParticle(latest, true); // force=true for new arrivals (triggers error flash)
         // Errors spawn extra for emphasis
         if (isErrorLog(latest.line)) {
-            setTimeout(() => spawnParticle(latest), 50);
+            setTimeout(() => spawnParticle(latest, true), 50);
         }
+    }
+  });
+
+  // Mode transition effect
+  createEffect(() => {
+    const currentMode = props.mode || 'warp';
+    if (currentMode !== previousMode) {
+      // Fade out
+      setModeTransition(1);
+      // Clear particles for clean transition
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        particlePool[i].active = false;
+      }
+      activeParticleCount = 0;
+      // Fade in after brief delay
+      setTimeout(() => setModeTransition(0), 200);
+      previousMode = currentMode;
     }
   });
 
@@ -475,6 +505,29 @@ const LogStream: Component<Props> = (props) => {
         class="h-full w-full bg-[#030510] cursor-crosshair"
         onClick={handleCanvasClick}
       />
+
+      {/* Error flash overlay */}
+      <Show when={errorFlash() > 0}>
+        <div
+          class="absolute inset-0 pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse at center, rgba(255, 0, 85, ${errorFlash()}) 0%, transparent 70%)`,
+            transition: 'opacity 0.1s ease-out'
+          }}
+        />
+      </Show>
+
+      {/* Mode transition overlay */}
+      <Show when={modeTransition() > 0}>
+        <div
+          class="absolute inset-0 pointer-events-none bg-[#030510]"
+          style={{
+            opacity: modeTransition(),
+            transition: 'opacity 0.2s ease-in-out'
+          }}
+        />
+      </Show>
+
       {/* Pause indicator */}
       <Show when={isPaused()}>
         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">

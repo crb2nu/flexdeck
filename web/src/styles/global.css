@@ -350,6 +350,235 @@ body::after {
   animation: gradient-shift 8s ease infinite;
 }
 
+/* --- Visualization Component Animations --- */
+
+/* Selection pulse - for selected items in HoloDeck, Pipeline, etc. */
+@keyframes selection-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.4;
+  }
+}
+
+.animate-selection-pulse {
+  animation: selection-pulse 1.5s ease-in-out infinite;
+}
+
+/* Status change - brief brightness flash on status updates */
+@keyframes status-change {
+  0% {
+    filter: brightness(1);
+  }
+  30% {
+    filter: brightness(1.5);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.animate-status-change {
+  animation: status-change 0.3s ease-out;
+}
+
+/* Error shake - for failed items */
+@keyframes error-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+.animate-error-shake {
+  animation: error-shake 0.4s ease-in-out;
+}
+
+/* Materialization - spawn effect for new items */
+@keyframes materialize {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+    filter: blur(8px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+.animate-materialize {
+  animation: materialize 0.4s ease-out forwards;
+}
+
+/* Dematerialize - removal effect */
+@keyframes dematerialize {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.8);
+    filter: blur(8px);
+  }
+}
+
+.animate-dematerialize {
+  animation: dematerialize 0.3s ease-in forwards;
+}
+
+/* Glow pulse - for active/running items */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 30px currentColor, 0 0 50px currentColor;
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}
+
+/* Slide up - for panels and modals */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+/* Slide down - for dismissing panels */
+@keyframes slide-down {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-in forwards;
+}
+
+/* Fade in/out */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fade-out 0.2s ease-in forwards;
+}
+
+/* Scale in - for tooltips and popovers */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out forwards;
+}
+
+/* Success burst - celebration effect */
+@keyframes success-burst {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(0, 240, 255, 0);
+  }
+  30% {
+    transform: scale(1.08);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+  }
+}
+
+.animate-success-burst {
+  animation: success-burst 0.5s ease-out;
+}
+
+/* Running indicator shimmer bar */
+@keyframes running-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.animate-running-shimmer {
+  animation: running-shimmer 1.5s linear infinite;
+}
+
+/* Beam effect - light beam from above */
+@keyframes beam-down {
+  0% {
+    opacity: 0;
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scaleY(1);
+  }
+}
+
+.animate-beam-down {
+  animation: beam-down 0.4s ease-out forwards;
+}
+
 /* --- Focus States --- */
 :focus-visible {
   outline: 2px solid var(--neon-cyan);

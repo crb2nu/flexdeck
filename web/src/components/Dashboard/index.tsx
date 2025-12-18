@@ -56,9 +56,14 @@ const Dashboard: Component = () => {
     k8sStore.nodes.map(n => n.metadata?.name).filter(Boolean).sort() as string[]
   );
 
-  const hasActiveFilter = createMemo(() =>
-    Boolean(filter().namespace || (filter().status && filter().status.length > 0) || filter().nodeName)
-  );
+  const hasActiveFilter = createMemo(() => {
+    const activeFilter = filter();
+    return Boolean(
+      activeFilter.namespace ||
+        (activeFilter.status?.length ?? 0) > 0 ||
+        activeFilter.nodeName
+    );
+  });
 
   const clearFilters = () => setFilter({});
 

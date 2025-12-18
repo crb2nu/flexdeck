@@ -125,6 +125,12 @@ const CIPipelineViz: Component<{
   const [hoveredJob, setHoveredJob] = createSignal<string | null>(null);
   const [time, setTime] = createSignal(0);
 
+  // Track status transitions for animations
+  const [statusTransitions, setStatusTransitions] = createSignal<Map<string, { from: string; to: string; startTime: number }>>(new Map());
+
+  // Track previous statuses to detect transitions
+  const prevStatusRef: Map<string, PipelineJob['status']> = new Map();
+
   // Performance: Fixed particle pool (no reactive updates during animation)
   const particlePool: Particle[] = Array.from({ length: MAX_PARTICLES }, createEmptyParticle);
   let activeParticleCount = 0;
@@ -134,6 +140,89 @@ const CIPipelineViz: Component<{
   // Node positions for particle animation (cached)
   const nodePositionsCache = new Map<string, { x: number; y: number }>();
   const [positionsReady, setPositionsReady] = createSignal(false);
+
+  // Compute stage progress
+  const getStageProgress = (stage: PipelineStage): { completed: number; total: number; percent: number } => {
+    const total = stage.jobs.length;
+    const completed = stage.jobs.filter(j =>
+      j.status === 'success' || j.status === 'skipped'
+    ).length;
+    return { completed, total, percent: total > 0 ? (completed / total) * 100 : 0 };
+  };
+
+  // Detect status transitions and trigger animations
+  const checkStatusTransitions = () => {
+    const now = performance.now();
+    const newTransitions = new Map(statusTransitions());
+
+    for (const stage of pipeline().stages) {
+      for (const job of stage.jobs) {
+        const prevStatus = prevStatusRef.get(job.id);
+        if (prevStatus && prevStatus !== job.status) {
+          // Status changed - record transition
+          newTransitions.set(job.id, {
+            from: prevStatus,
+            to: job.status,
+            startTime: now
+          });
+        }
+        prevStatusRef.set(job.id, job.status);
+      }
+    }
+
+    // Clean up old transitions (older than 500ms)
+    newTransitions.forEach((transition, id) => {
+      if (now - transition.startTime > 500) {
+        newTransitions.delete(id);
+      }
+    });
+
+    if (newTransitions.size !== statusTransitions().size) {
+      setStatusTransitions(newTransitions);
+    }
+  };
+
+  // Get transition animation class for a job
+  const getTransitionClass = (jobId: string): string => {
+    const transition = statusTransitions().get(jobId);
+    if (!transition) return '';
+
+    if (transition.to === 'success') return 'animate-success-burst';
+    if (transition.to === 'failed') return 'animate-error-shake';
+    if (transition.to === 'running') return 'animate-start-glow';
+    return '';
+  };
+
+  // Job action handlers
+  const handleRetryJob = (job: PipelineJob, e: MouseEvent) => {
+    e.stopPropagation();
+    setPipeline(prev => ({
+      ...prev,
+      stages: prev.stages.map(s => ({
+        ...s,
+        jobs: s.jobs.map(j =>
+          j.id === job.id
+            ? { ...j, status: 'running' as const, duration: 0 }
+            : j
+        )
+      }))
+    }));
+  };
+
+  const handleCancelJob = (job: PipelineJob, e: MouseEvent) => {
+    e.stopPropagation();
+    setPipeline(prev => ({
+      ...prev,
+      stages: prev.stages.map(s => ({
+        ...s,
+        jobs: s.jobs.map(j =>
+          j.id === job.id
+            ? { ...j, status: 'failed' as const }
+            : j
+        )
+      }))
+    }));
+  };
 
   // Memoized connection paths - only recompute when pipeline changes
   const connectionPaths = createMemo(() => {
@@ -297,6 +386,9 @@ const CIPipelineViz: Component<{
   // Animation loop
   const animate = () => {
     setTime(prev => prev + 1);
+
+    // Check for status transitions
+    checkStatusTransitions();
 
     // Spawn new particles occasionally
     if (Math.random() > 0.92) {
@@ -462,28 +554,55 @@ const CIPipelineViz: Component<{
 
       {/* Pipeline visualization area */}
       <div class="relative z-10 p-8 flex flex-col items-center">
-        {/* Stage headers */}
+        {/* Stage headers with progress */}
         <div class="w-full flex justify-around mb-8">
           <For each={pipeline().stages}>
-            {(stage, index) => (
-              <div class="flex flex-col items-center gap-2">
-                <div class="text-[10px] font-mono uppercase tracking-[0.3em] text-text-muted">
-                  Stage {index() + 1}
+            {(stage, index) => {
+              const progress = () => getStageProgress(stage);
+              const isRunning = () => stage.jobs.some(j => j.status === 'running');
+              const isComplete = () => stage.jobs.every(j => j.status === 'success' || j.status === 'skipped');
+
+              return (
+                <div class="flex flex-col items-center gap-2 min-w-[120px]">
+                  <div class="text-[10px] font-mono uppercase tracking-[0.3em] text-text-muted">
+                    Stage {index() + 1}
+                  </div>
+                  <div
+                    class="text-sm font-bold uppercase tracking-wider"
+                    style={{
+                      color: isRunning()
+                        ? getStatusColor('running')
+                        : isComplete()
+                          ? getStatusColor('success')
+                          : 'rgba(255,255,255,0.7)'
+                    }}
+                  >
+                    {stage.name}
+                  </div>
+
+                  {/* Progress indicator */}
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-mono text-text-dim">
+                      {progress().completed}/{progress().total}
+                    </span>
+                    {/* Progress bar */}
+                    <div class="w-16 h-1 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${progress().percent}%`,
+                          background: isComplete()
+                            ? getStatusColor('success')
+                            : isRunning()
+                              ? `linear-gradient(90deg, ${getStatusColor('success')}, ${getStatusColor('running')})`
+                              : getStatusColor('pending')
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div 
-                  class="text-sm font-bold uppercase tracking-wider"
-                  style={{
-                    color: stage.jobs.some(j => j.status === 'running') 
-                      ? getStatusColor('running')
-                      : stage.jobs.every(j => j.status === 'success' || j.status === 'skipped')
-                        ? getStatusColor('success')
-                        : 'rgba(255,255,255,0.7)'
-                  }}
-                >
-                  {stage.name}
-                </div>
-              </div>
-            )}
+              );
+            }}
           </For>
         </div>
 
@@ -541,17 +660,17 @@ const CIPipelineViz: Component<{
                       }}
                     >
                       {/* Job card */}
-                      <div 
-                        class="relative px-6 py-4 rounded-lg cursor-pointer transition-all duration-300 transform"
+                      <div
+                        class={`relative px-6 py-4 rounded-lg cursor-pointer transition-all duration-300 transform ${getTransitionClass(job.id)}`}
                         classList={{
                           'scale-105': hoveredJob() === job.id,
                         }}
                         style={{
-                          background: hoveredJob() === job.id 
-                            ? 'rgba(20, 30, 50, 0.9)' 
+                          background: hoveredJob() === job.id
+                            ? 'rgba(20, 30, 50, 0.9)'
                             : 'rgba(10, 16, 32, 0.8)',
                           border: `1px solid ${getStatusColor(job.status)}30`,
-                          'box-shadow': hoveredJob() === job.id 
+                          'box-shadow': hoveredJob() === job.id
                             ? getStatusGlow(job.status)
                             : 'none',
                         }}
@@ -612,7 +731,7 @@ const CIPipelineViz: Component<{
                         
                         {/* Manual trigger button */}
                         <Show when={job.status === 'manual'}>
-                          <button 
+                          <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105"
                             style={{
                               background: 'rgba(189, 0, 255, 0.2)',
@@ -623,8 +742,8 @@ const CIPipelineViz: Component<{
                               setPipeline(prev => {
                                 const updated = { ...prev, stages: prev.stages.map(s => ({
                                   ...s,
-                                  jobs: s.jobs.map(j => 
-                                    j.id === job.id 
+                                  jobs: s.jobs.map(j =>
+                                    j.id === job.id
                                       ? { ...j, status: 'running' as const }
                                       : j
                                   )
@@ -636,15 +755,93 @@ const CIPipelineViz: Component<{
                             ▶ Deploy
                           </button>
                         </Show>
+
+                        {/* Retry button for failed jobs */}
+                        <Show when={job.status === 'failed'}>
+                          <button
+                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105"
+                            style={{
+                              background: 'rgba(255, 0, 60, 0.2)',
+                              border: '1px solid rgba(255, 0, 60, 0.5)',
+                              color: '#ff003c'
+                            }}
+                            onClick={(e) => handleRetryJob(job, e)}
+                          >
+                            ↻ Retry
+                          </button>
+                        </Show>
+
+                        {/* Cancel button for running jobs */}
+                        <Show when={job.status === 'running'}>
+                          <button
+                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 hover:bg-red-500/30"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              color: 'rgba(255, 255, 255, 0.7)'
+                            }}
+                            onClick={(e) => handleCancelJob(job, e)}
+                          >
+                            ✕ Cancel
+                          </button>
+                        </Show>
                       </div>
                       
-                      {/* Hover tooltip */}
+                      {/* Enhanced Hover tooltip */}
                       <Show when={hoveredJob() === job.id}>
-                        <div 
-                          class="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-black/90 border border-white/10 text-xs font-mono whitespace-nowrap z-50"
-                          style={{ 'box-shadow': '0 4px 20px rgba(0,0,0,0.5)' }}
+                        <div
+                          class="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full px-3 py-2 rounded-lg bg-black/95 border text-xs font-mono z-50 min-w-[160px]"
+                          style={{
+                            'box-shadow': `0 4px 20px rgba(0,0,0,0.5), 0 0 20px ${getStatusColor(job.status)}20`,
+                            'border-color': `${getStatusColor(job.status)}40`
+                          }}
                         >
-                          Click to view logs
+                          {/* Arrow */}
+                          <div
+                            class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-black/95 border-b border-r"
+                            style={{ 'border-color': `${getStatusColor(job.status)}40` }}
+                          />
+
+                          {/* Status & Duration */}
+                          <div class="flex items-center justify-between gap-4 mb-1.5 pb-1.5 border-b border-white/10">
+                            <span style={{ color: getStatusColor(job.status) }} class="uppercase font-bold">
+                              {job.status}
+                            </span>
+                            <Show when={job.duration && job.duration > 0}>
+                              <span class="text-text-dim">
+                                {Math.floor(job.duration! / 60)}m {job.duration! % 60}s
+                              </span>
+                            </Show>
+                          </div>
+
+                          {/* Start time */}
+                          <Show when={job.startedAt}>
+                            <div class="text-[10px] text-text-dim mb-1">
+                              Started: {new Date(job.startedAt!).toLocaleTimeString()}
+                            </div>
+                          </Show>
+
+                          {/* Status-specific hints */}
+                          <div class="text-text-muted mt-1.5">
+                            <Show when={job.status === 'failed'}>
+                              <span class="text-red-400">Click to view error</span>
+                            </Show>
+                            <Show when={job.status === 'manual'}>
+                              <span class="text-neon-purple">Click to trigger</span>
+                            </Show>
+                            <Show when={job.status === 'running'}>
+                              <span class="text-neon-green">Click to view output</span>
+                            </Show>
+                            <Show when={job.status === 'success'}>
+                              <span class="text-neon-cyan">Click to view logs</span>
+                            </Show>
+                            <Show when={job.status === 'pending'}>
+                              <span class="text-yellow-400">Waiting...</span>
+                            </Show>
+                            <Show when={job.status === 'skipped'}>
+                              <span class="text-text-dim">Skipped</span>
+                            </Show>
+                          </div>
                         </div>
                       </Show>
                     </div>
@@ -718,14 +915,45 @@ const CIPipelineViz: Component<{
           0%, 100% { opacity: 0.3; }
           50% { opacity: 0.15; }
         }
-        
+
         @keyframes flow {
           from { stroke-dashoffset: 20; }
           to { stroke-dashoffset: 0; }
         }
-        
+
         .animate-flow {
           animation: flow 1s linear infinite;
+        }
+
+        /* Status transition animations */
+        @keyframes success-burst {
+          0% { transform: scale(1); box-shadow: 0 0 0 rgba(0, 240, 255, 0); }
+          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(0, 240, 255, 0.6); }
+          100% { transform: scale(1); box-shadow: 0 0 20px rgba(0, 240, 255, 0.2); }
+        }
+
+        @keyframes error-shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+          20%, 40%, 60%, 80% { transform: translateX(4px); }
+        }
+
+        @keyframes start-glow {
+          0% { box-shadow: 0 0 0 rgba(10, 255, 104, 0); }
+          50% { box-shadow: 0 0 40px rgba(10, 255, 104, 0.6), 0 0 60px rgba(10, 255, 104, 0.3); }
+          100% { box-shadow: 0 0 20px rgba(10, 255, 104, 0.3); }
+        }
+
+        .animate-success-burst {
+          animation: success-burst 0.5s ease-out forwards;
+        }
+
+        .animate-error-shake {
+          animation: error-shake 0.4s ease-in-out;
+        }
+
+        .animate-start-glow {
+          animation: start-glow 0.6s ease-out forwards;
         }
       `}</style>
     </div>
