@@ -1,8 +1,10 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, onMount, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import LogStream, { type LogEntry, type LogFilter } from './LogStream';
 import QueryBuilder from './QueryBuilder';
 import LogStats from './LogStats';
+import { getLogLevelClass, getLogLevelBadge } from '../../lib/logUtils';
+import { showToast, ToastContainer } from '../shared/Toast';
 
 interface LokiStream {
   stream: Record<string, string>;
@@ -30,6 +32,7 @@ const Logs: Component = () => {
   const [searchTerm, setSearchTerm] = createSignal('');
   const [searchRegex, setSearchRegex] = createSignal(false);
   const [showSidebar, setShowSidebar] = createSignal(false);
+  const [modalClosing, setModalClosing] = createSignal(false);
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -162,19 +165,25 @@ const Logs: Component = () => {
     });
   };
 
-  const getLogLevelClass = (line: string): string => {
-    const lower = line.toLowerCase();
-    if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) {
-      return 'text-status-error';
-    }
-    if (lower.includes('warn')) {
-      return 'text-status-warn';
-    }
-    if (lower.includes('debug') || lower.includes('trace')) {
-      return 'text-text-dim';
-    }
-    return 'text-text-muted';
+  // Close modal with animation
+  const closeModal = () => {
+    setModalClosing(true);
+    setTimeout(() => {
+      setSelectedLog(null);
+      setModalClosing(false);
+    }, 150);
   };
+
+  // Keyboard shortcuts
+  onMount(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedLog()) {
+        closeModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+    onCleanup(() => window.removeEventListener('keydown', handleKeydown));
+  });
 
   const logFilter = (): LogFilter => ({
     searchTerm: searchTerm() || undefined,
@@ -185,8 +194,13 @@ const Logs: Component = () => {
     setSelectedLog(log);
   };
 
-  const copyToClipboard = async (text: string) => {
-    await navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, label: string = 'Content') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`${label} copied to clipboard`, 'success');
+    } catch {
+      showToast('Failed to copy to clipboard', 'error');
+    }
   };
 
   const exportLogs = (format: 'json' | 'csv') => {
@@ -338,69 +352,9 @@ const Logs: Component = () => {
         </Show>
 
         {/* Main Log Panel */}
-        <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
-         {/* Controls */}
-         <div class="absolute right-4 top-2 z-10 flex gap-2">
-            {/* Search input for visualization modes */}
-            <Show when={viewMode() !== 'list'}>
-              <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 px-2 backdrop-blur">
-                <svg class="w-3 h-3 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  value={searchTerm()}
-                  onInput={(e) => setSearchTerm(e.currentTarget.value)}
-                  placeholder={searchRegex() ? 'Regex...' : 'Search...'}
-                  class={`w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
-                />
-                <Show when={searchTerm()}>
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    class="text-text-dim hover:text-text-main text-xs"
-                  >
-                    ×
-                  </button>
-                </Show>
-                {/* Regex toggle */}
-                <button
-                  onClick={() => setSearchRegex(!searchRegex())}
-                  title={searchRegex() ? 'Regex mode ON' : 'Enable regex search'}
-                  class={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
-                    searchRegex()
-                      ? 'bg-neon-purple/30 text-neon-purple border border-neon-purple/50'
-                      : 'text-text-dim hover:text-text-main'
-                  }`}
-                >
-                  .*
-                </button>
-              </div>
-            </Show>
-
-            <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1 backdrop-blur">
-               <button
-                onClick={() => setViewMode('list')}
-                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
-               >
-                   TERMINAL
-               </button>
-               <button
-                onClick={() => setViewMode('flow')}
-                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
-               >
-                   FLOW
-               </button>
-               <button
-                onClick={() => setViewMode('rain')}
-                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
-               >
-                   MATRIX
-               </button>
-           </div>
-        </div>
-
+        <div class="glass-panel flex-1 overflow-hidden flex flex-col">
         <div class="flex h-full flex-col">
-          {/* Header */}
+          {/* Header with Controls */}
           <div class="flex items-center justify-between border-b border-white/5 px-4 py-2">
             <div class="flex items-center gap-3">
               <span class="text-sm font-medium text-text-main">Logs</span>
@@ -412,12 +366,74 @@ const Logs: Component = () => {
                 </span>
               </Show>
             </div>
-            <button
-              onClick={() => setLogs([])}
-              class="text-xs text-text-dim hover:text-text-muted mr-48" // Margin for controls
-            >
-              Clear
-            </button>
+
+            {/* Right side controls */}
+            <div class="flex items-center gap-3">
+              {/* Search input for visualization modes */}
+              <Show when={viewMode() !== 'list'}>
+                <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 px-2">
+                  <svg class="w-3 h-3 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={searchTerm()}
+                    onInput={(e) => setSearchTerm(e.currentTarget.value)}
+                    placeholder={searchRegex() ? 'Regex...' : 'Search...'}
+                    class={`w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
+                  />
+                  <Show when={searchTerm()}>
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      class="text-text-dim hover:text-text-main text-xs"
+                    >
+                      ×
+                    </button>
+                  </Show>
+                  <button
+                    onClick={() => setSearchRegex(!searchRegex())}
+                    title={searchRegex() ? 'Regex mode ON' : 'Enable regex search'}
+                    class={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
+                      searchRegex()
+                        ? 'bg-neon-purple/30 text-neon-purple border border-neon-purple/50'
+                        : 'text-text-dim hover:text-text-main'
+                    }`}
+                  >
+                    .*
+                  </button>
+                </div>
+              </Show>
+
+              {/* View Mode Toggle */}
+              <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1">
+                <button
+                  onClick={() => setViewMode('list')}
+                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
+                >
+                  TERMINAL
+                </button>
+                <button
+                  onClick={() => setViewMode('flow')}
+                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
+                >
+                  FLOW
+                </button>
+                <button
+                  onClick={() => setViewMode('rain')}
+                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
+                >
+                  MATRIX
+                </button>
+              </div>
+
+              {/* Clear button */}
+              <button
+                onClick={() => setLogs([])}
+                class="text-xs text-text-dim hover:text-text-muted"
+              >
+                Clear
+              </button>
+            </div>
           </div>
 
           {/* Visualization Switcher */}
@@ -442,21 +458,44 @@ const Logs: Component = () => {
                 }
               >
                 <table class="w-full">
+                  <thead class="sticky top-0 bg-surface-dark/95 backdrop-blur border-b border-white/10 z-10">
+                    <tr class="text-text-dim text-[10px] uppercase tracking-wider">
+                      <th class="text-left px-3 py-2 font-medium w-24">Time</th>
+                      <th class="text-left px-3 py-2 font-medium w-32">Source</th>
+                      <th class="text-left px-3 py-2 font-medium w-16">Level</th>
+                      <th class="text-left px-3 py-2 font-medium">Message</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     <For each={logs}>
-                      {(entry) => (
-                        <tr class="border-b border-white/5 hover:bg-white/5 group">
-                          <td class="whitespace-nowrap px-3 py-1 text-text-dim w-24 align-top">
-                            {formatTimestamp(entry.timestamp)}
-                          </td>
-                          <td class="whitespace-nowrap px-3 py-1 text-neon-cyan w-32 align-top opacity-70 group-hover:opacity-100">
-                            {entry.labels.pod || entry.labels.container || '-'}
-                          </td>
-                          <td class={`px-3 py-1 ${getLogLevelClass(entry.line)} align-top`}>
-                            <pre class="whitespace-pre-wrap break-all">{entry.line}</pre>
-                          </td>
-                        </tr>
-                      )}
+                      {(entry) => {
+                        const badge = getLogLevelBadge(entry.line);
+                        return (
+                          <tr
+                            class="border-b border-white/5 hover:bg-white/5 group cursor-pointer transition-colors duration-150"
+                            onClick={() => handleLogClick(entry)}
+                          >
+                            <td class="whitespace-nowrap px-3 py-1.5 text-text-dim w-24 align-top">
+                              {formatTimestamp(entry.timestamp)}
+                            </td>
+                            <td class="whitespace-nowrap px-3 py-1.5 text-neon-cyan w-32 align-top opacity-70 group-hover:opacity-100 truncate max-w-[8rem]" title={entry.labels.pod || entry.labels.container || '-'}>
+                              {entry.labels.pod || entry.labels.container || '-'}
+                            </td>
+                            <td class="px-3 py-1.5 w-16 align-top">
+                              <Show when={badge}>
+                                {(b) => (
+                                  <span class={`px-1.5 py-0.5 text-[9px] font-mono rounded border ${b().class}`}>
+                                    {b().text}
+                                  </span>
+                                )}
+                              </Show>
+                            </td>
+                            <td class={`px-3 py-1.5 ${getLogLevelClass(entry.line)} align-top`}>
+                              <pre class="whitespace-pre-wrap break-all">{entry.line}</pre>
+                            </td>
+                          </tr>
+                        );
+                      }}
                     </For>
                   </tbody>
                 </table>
@@ -469,89 +508,113 @@ const Logs: Component = () => {
 
       {/* Log Detail Modal */}
       <Show when={selectedLog()}>
-        {log => (
-          <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setSelectedLog(null)}
-          >
+        {log => {
+          const badge = getLogLevelBadge(log().line);
+          return (
             <div
-              class="w-full max-w-2xl mx-4 bg-surface-dark border border-white/10 rounded-lg shadow-2xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+              class={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-150 ${
+                modalClosing() ? 'opacity-0' : 'animate-fade-in'
+              }`}
+              onClick={closeModal}
             >
-              {/* Header */}
-              <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
-                <div class="flex items-center gap-2">
-                  <div class={`w-2 h-2 rounded-full ${
-                    log().line.toLowerCase().includes('error') ? 'bg-red-500' :
-                    log().line.toLowerCase().includes('warn') ? 'bg-yellow-500' :
-                    'bg-neon-cyan'
-                  }`} />
-                  <span class="text-sm font-semibold text-text-main">Log Entry</span>
-                </div>
-                <button
-                  onClick={() => setSelectedLog(null)}
-                  class="text-text-dim hover:text-text-main transition-colors p-1"
-                >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div class="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
-                {/* Timestamp */}
-                <div>
-                  <label class="block text-[10px] text-text-dim uppercase mb-1">Timestamp</label>
-                  <div class="font-mono text-sm text-text-main">
-                    {new Date(log().timestamp).toLocaleString()}
+              <div
+                class={`w-full max-w-2xl mx-4 bg-surface-dark border border-white/10 rounded-lg shadow-2xl overflow-hidden transition-all duration-150 ${
+                  modalClosing() ? 'opacity-0 scale-95' : 'animate-scale-in'
+                }`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
+                  <div class="flex items-center gap-2">
+                    <div class={`w-2 h-2 rounded-full ${
+                      log().line.toLowerCase().includes('error') ? 'bg-red-500' :
+                      log().line.toLowerCase().includes('warn') ? 'bg-yellow-500' :
+                      'bg-neon-cyan'
+                    }`} />
+                    <span class="text-sm font-semibold text-text-main">Log Entry</span>
+                    <Show when={badge}>
+                      {(b) => (
+                        <span class={`px-1.5 py-0.5 text-[9px] font-mono rounded border ${b().class}`}>
+                          {b().text}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-text-dim">Press ESC to close</span>
+                    <button
+                      onClick={closeModal}
+                      class="text-text-dim hover:text-text-main transition-colors p-1"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
-                {/* Labels */}
-                <Show when={Object.keys(log().labels).length > 0}>
+                {/* Content */}
+                <div class="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                  {/* Timestamp */}
                   <div>
-                    <label class="block text-[10px] text-text-dim uppercase mb-2">Labels</label>
-                    <div class="flex flex-wrap gap-2">
-                      <For each={Object.entries(log().labels)}>
-                        {([key, value]) => (
-                          <span class="px-2 py-1 rounded bg-white/5 text-xs text-text-muted font-mono">
-                            <span class="text-neon-cyan">{key}</span>=<span class="text-text-main">{value}</span>
-                          </span>
-                        )}
-                      </For>
+                    <label class="block text-[10px] text-text-dim uppercase mb-1">Timestamp</label>
+                    <div class="font-mono text-sm text-text-main">
+                      {new Date(log().timestamp).toLocaleString()}
                     </div>
                   </div>
-                </Show>
 
-                {/* Log Line */}
-                <div>
-                  <label class="block text-[10px] text-text-dim uppercase mb-2">Message</label>
-                  <pre class={`p-3 rounded bg-black/40 font-mono text-sm whitespace-pre-wrap break-all ${getLogLevelClass(log().line)}`}>
-                    {log().line}
-                  </pre>
+                  {/* Labels */}
+                  <Show when={Object.keys(log().labels).length > 0}>
+                    <div>
+                      <label class="block text-[10px] text-text-dim uppercase mb-2">Labels</label>
+                      <div class="flex flex-wrap gap-2">
+                        <For each={Object.entries(log().labels)}>
+                          {([key, value]) => (
+                            <span
+                              class="px-2 py-1 rounded bg-white/5 text-xs text-text-muted font-mono cursor-pointer hover:bg-white/10 transition-colors"
+                              onClick={() => copyToClipboard(`${key}="${value}"`, 'Label')}
+                              title="Click to copy"
+                            >
+                              <span class="text-neon-cyan">{key}</span>=<span class="text-text-main">{value}</span>
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* Log Line */}
+                  <div>
+                    <label class="block text-[10px] text-text-dim uppercase mb-2">Message</label>
+                    <pre class={`p-3 rounded bg-black/40 font-mono text-sm whitespace-pre-wrap break-all ${getLogLevelClass(log().line)}`}>
+                      {log().line}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div class="px-4 py-3 border-t border-white/10 bg-black/20 flex gap-2">
+                  <button
+                    onClick={() => copyToClipboard(log().line, 'Message')}
+                    class="px-4 py-2 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
+                  >
+                    Copy Message
+                  </button>
+                  <button
+                    onClick={() => copyToClipboard(JSON.stringify(log(), null, 2), 'JSON')}
+                    class="px-4 py-2 text-xs font-mono rounded bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors"
+                  >
+                    Copy JSON
+                  </button>
                 </div>
               </div>
-
-              {/* Actions */}
-              <div class="px-4 py-3 border-t border-white/10 bg-black/20 flex gap-2">
-                <button
-                  onClick={() => copyToClipboard(log().line)}
-                  class="px-4 py-2 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
-                >
-                  Copy Message
-                </button>
-                <button
-                  onClick={() => copyToClipboard(JSON.stringify(log(), null, 2))}
-                  class="px-4 py-2 text-xs font-mono rounded bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors"
-                >
-                  Copy JSON
-                </button>
-              </div>
             </div>
-          </div>
-        )}
+          );
+        }}
       </Show>
+
+      {/* Toast Container */}
+      <ToastContainer />
     </div>
   );
 };

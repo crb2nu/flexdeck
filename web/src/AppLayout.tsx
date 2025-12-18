@@ -8,6 +8,12 @@ import SystemCore from './components/Navigation/SystemCore';
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [loading, setLoading] = createSignal(true);
+
+  // Check if we are in public read-only view
+  const isPublicView = () => {
+    if (typeof window === 'undefined') return false;
+    return window.location.hostname === 'www.flexinfer.ai';
+  };
   
   const [uiConfig, setUiConfig] = createSignal<any>(null);
 
@@ -42,7 +48,8 @@ const AppLayout: Component<ParentProps> = (props) => {
       </div>
       
       {/* Header */}
-      <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
+      <Show when={!isPublicView()}>
+        <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
         <div class="flex h-16 items-center justify-between px-6">
           {/* Logo */}
           <div class="flex items-center gap-3">
@@ -82,6 +89,7 @@ const AppLayout: Component<ParentProps> = (props) => {
           </div>
         </div>
       </header>
+      </Show>
 
       {/* Main Content */}
       <main class="flex-1 overflow-hidden p-4 relative z-0">
@@ -97,7 +105,9 @@ const AppLayout: Component<ParentProps> = (props) => {
         </Suspense>
       </main>
 
-      <CommandPalette />
+      <Show when={!isPublicView()}>
+        <CommandPalette />
+      </Show>
     </div>
   );
 };
