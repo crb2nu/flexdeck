@@ -1,5 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
+import { sortJobsByStatus } from './utils';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
 export interface PipelineJob {
@@ -723,7 +724,7 @@ const CIPipelineViz: Component<{
           <For each={pipeline().stages}>
             {(stage) => (
               <div class="flex flex-col gap-4 items-center min-w-[200px]">
-                <For each={stage.jobs}>
+                <For each={sortJobsByStatus(stage.jobs)}>
                   {(job) => (
                     <div
                       data-job-id={job.id}

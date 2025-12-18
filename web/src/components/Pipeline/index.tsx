@@ -1,7 +1,9 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
+import PipelineListView from './PipelineListView';
 import { ciApi, RepoInfo } from '../../lib/api';
+import type { PipelineSortConfig } from './utils';
 
 const POLL_INTERVAL = 10000; // 10 seconds
 
@@ -22,11 +24,23 @@ const Pipeline: Component = () => {
   const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
+  // View mode and sorting state for pipeline overview
+  const [viewMode, setViewMode] = createSignal<'overview' | 'detail'>('overview');
+  const [pipelineSort, setPipelineSort] = createSignal<PipelineSortConfig>({
+    field: 'activity',
+    direction: 'desc'
+  });
+  const [pipelinesCache, setPipelinesCache] = createSignal<Map<number, VizPipeline>>(new Map());
+  const [overviewLoading, setOverviewLoading] = createSignal(false);
+
   onMount(async () => {
     try {
       const data = await ciApi.listRepos();
       setRepos(data);
-      if (data.length > 0) selectRepo(data[0]);
+      // Load pipelines for overview mode
+      if (data.length > 0) {
+        fetchAllPipelines(data);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -39,12 +53,56 @@ const Pipeline: Component = () => {
           const liveData = await ciApi.getPipeline(repoId);
           if (liveData && liveData.status !== 'none') {
               setPipelineData(liveData);
+              // Also update the cache
+              setPipelinesCache(prev => {
+                  const next = new Map(prev);
+                  next.set(repoId, liveData);
+                  return next;
+              });
           }
           setLastUpdate(new Date());
       } catch (e) {
           // Silently handle - repo might not have any pipelines yet
           console.debug("No pipeline data available", e);
       }
+  };
+
+  // Fetch all pipelines for overview mode (batched)
+  const fetchAllPipelines = async (repoList: RepoInfo[]) => {
+      setOverviewLoading(true);
+      const BATCH_SIZE = 5;
+
+      for (let i = 0; i < repoList.length; i += BATCH_SIZE) {
+          const batch = repoList.slice(i, i + BATCH_SIZE);
+          const results = await Promise.allSettled(
+              batch.map(async (repo) => {
+                  if (!repo.id) return null;
+                  try {
+                      const data = await ciApi.getPipeline(repo.id);
+                      if (data && data.status !== 'none') {
+                          return { id: repo.id, pipeline: data as VizPipeline };
+                      }
+                  } catch {
+                      // Silently skip repos without pipelines
+                  }
+                  return null;
+              })
+          );
+
+          // Update cache with successful results
+          setPipelinesCache(prev => {
+              const next = new Map(prev);
+              results.forEach(result => {
+                  if (result.status === 'fulfilled' && result.value) {
+                      next.set(result.value.id, result.value.pipeline);
+                  }
+              });
+              return next;
+          });
+      }
+
+      setOverviewLoading(false);
+      setLastUpdate(new Date());
   };
 
   // Check if pipeline has running jobs
@@ -121,17 +179,21 @@ const Pipeline: Component = () => {
     }
   });
 
-  const selectRepo = async (repo: RepoInfo) => {
+  const selectRepo = async (repo: RepoInfo, switchToDetail = true) => {
     setSelectedRepo(repo);
     setSelectedJob(null);
     setJobTrace('');
+    // Switch to detail view when selecting a repo
+    if (switchToDetail) {
+      setViewMode('detail');
+    }
     // Optimistic / Static load from YAML first
     if (repo.hasConfig && repo.configContent) {
         setPipelineData(parseGitLabCi(repo.configContent, repo.name));
     } else {
         setPipelineData(undefined);
     }
-    
+
     // Then fetch live status
     if (repo.id) {
         await fetchPipelineStatus(repo.id);
@@ -231,10 +293,33 @@ const Pipeline: Component = () => {
         {/* Sidebar */}
         <div class="w-64 border-r border-white/10 bg-black/20 flex flex-col">
             <div class="p-4 border-b border-white/5 space-y-3">
+                {/* View toggle */}
+                <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
+                    <button
+                        onClick={() => setViewMode('overview')}
+                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
+                            viewMode() === 'overview'
+                                ? 'bg-neon-cyan/20 text-neon-cyan'
+                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        Overview
+                    </button>
+                    <button
+                        onClick={() => setViewMode('detail')}
+                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
+                            viewMode() === 'detail'
+                                ? 'bg-neon-cyan/20 text-neon-cyan'
+                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        Detail
+                    </button>
+                </div>
                 <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
-                <input 
-                    type="text" 
-                    placeholder="Filter..." 
+                <input
+                    type="text"
+                    placeholder="Filter..."
                     class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-neon-cyan focus:outline-none"
                     value={repoFilter()}
                     onInput={(e) => setRepoFilter(e.currentTarget.value)}
@@ -272,13 +357,27 @@ const Pipeline: Component = () => {
         
         {/* Main Content */}
         <div class="flex-1 overflow-hidden relative bg-[#050a14] flex flex-col">
-            <Show when={selectedRepo()} fallback={
-                <div class="flex h-full items-center justify-center text-text-muted flex-col gap-2">
-                    <div class="text-xl">Select a repository</div>
-                    <div class="text-sm opacity-50">View CI pipelines for your local workspaces</div>
-                </div>
-            }>
-                <Show when={pipelineData()} fallback={
+            {/* Overview Mode */}
+            <Show when={viewMode() === 'overview'}>
+                <PipelineListView
+                    repos={filteredRepos()}
+                    pipelinesCache={pipelinesCache()}
+                    sort={pipelineSort()}
+                    onSortChange={setPipelineSort}
+                    onSelectPipeline={(repo) => selectRepo(repo, true)}
+                    loading={overviewLoading()}
+                />
+            </Show>
+
+            {/* Detail Mode */}
+            <Show when={viewMode() === 'detail'}>
+                <Show when={selectedRepo()} fallback={
+                    <div class="flex h-full items-center justify-center text-text-muted flex-col gap-2">
+                        <div class="text-xl">Select a repository</div>
+                        <div class="text-sm opacity-50">View CI pipelines for your local workspaces</div>
+                    </div>
+                }>
+                    <Show when={pipelineData()} fallback={
                     <div class="flex h-full items-center justify-center text-text-muted flex-col gap-2">
                         <div class="text-xl">No CI Configuration</div>
                         <div class="text-sm opacity-50">
@@ -461,6 +560,7 @@ const Pipeline: Component = () => {
                         </div>
                     </Show>
                 </Show>
+            </Show>
             </Show>
         </div>
     </div>
