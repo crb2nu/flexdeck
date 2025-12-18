@@ -6,10 +6,16 @@ export interface LogEntry {
   labels: Record<string, string>;
 }
 
+export interface LogFilter {
+  levels?: string[]; // 'error' | 'warn' | 'info' | 'debug'
+  searchTerm?: string;
+}
+
 interface Props {
   logs: LogEntry[];
   speed?: number; // 1-10
   mode?: 'warp' | 'rain';
+  filter?: LogFilter;
   onLogClick?: (log: LogEntry) => void;
   paused?: boolean;
 }
@@ -33,6 +39,8 @@ interface LogParticle {
   lifetime: number;
   maxLifetime: number;
   logEntry: LogEntry | null; // Reference to original log for click handling
+  matchesFilter: boolean; // For filter visualization
+  isSearchMatch: boolean; // For search highlighting
 }
 
 const createEmptyParticle = (): LogParticle => ({
@@ -50,7 +58,9 @@ const createEmptyParticle = (): LogParticle => ({
   glowIntensity: 0.3,
   lifetime: 0,
   maxLifetime: 200,
-  logEntry: null
+  logEntry: null,
+  matchesFilter: true,
+  isSearchMatch: false
 });
 
 const LogStream: Component<Props> = (props) => {
@@ -83,6 +93,34 @@ const LogStream: Component<Props> = (props) => {
 
   const isErrorLog = (line: string) => /error|fatal|panic/i.test(line);
 
+  const getLogLevel = (line: string): string => {
+    const lower = line.toLowerCase();
+    if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) return 'error';
+    if (lower.includes('warn')) return 'warn';
+    if (lower.includes('debug') || lower.includes('trace')) return 'debug';
+    return 'info';
+  };
+
+  const logMatchesFilter = (log: LogEntry, filter?: LogFilter): { matches: boolean; isSearchMatch: boolean } => {
+    if (!filter) return { matches: true, isSearchMatch: false };
+
+    const level = getLogLevel(log.line);
+
+    // Level filter
+    if (filter.levels && filter.levels.length > 0 && !filter.levels.includes(level)) {
+      return { matches: false, isSearchMatch: false };
+    }
+
+    // Search term filter
+    if (filter.searchTerm && filter.searchTerm.trim()) {
+      const term = filter.searchTerm.toLowerCase();
+      const searchMatch = log.line.toLowerCase().includes(term);
+      return { matches: true, isSearchMatch: searchMatch };
+    }
+
+    return { matches: true, isSearchMatch: false };
+  };
+
   // Performance: Find inactive slot in pool (O(n) but pool is fixed size)
   const findInactiveSlot = (): number => {
     for (let i = 0; i < MAX_PARTICLES; i++) {
@@ -103,10 +141,15 @@ const LogStream: Component<Props> = (props) => {
     const p = particlePool[slotIndex];
     const isError = isErrorLog(log.line);
 
+    // Check filter match status
+    const { matches, isSearchMatch } = logMatchesFilter(log, props.filter);
+    p.matchesFilter = matches;
+    p.isSearchMatch = isSearchMatch;
+
     p.active = true;
     p.logEntry = log;
     p.isError = isError;
-    p.color = getLogColor(log.line);
+    p.color = isSearchMatch ? '#ffdd00' : getLogColor(log.line); // Yellow for search matches
     p.lifetime = 0;
 
     if (props.mode === 'rain') {
@@ -174,21 +217,29 @@ const LogStream: Component<Props> = (props) => {
       const screenX = centerX + rx * width * perspective;
       const screenY = centerY + ry * height * perspective;
 
-      const alpha = Math.min(1, (2500 - p.z) / 800) * 0.9;
-      const fontSize = Math.max(2, p.size * perspective * 1.5);
+      // Base alpha - dim non-matching particles
+      const filterOpacity = p.matchesFilter ? 1 : 0.2;
+      const searchBoost = p.isSearchMatch ? 1.2 : 1; // Search matches are brighter
+      const alpha = Math.min(1, (2500 - p.z) / 800) * 0.9 * filterOpacity * searchBoost;
+      const fontSize = Math.max(2, p.size * perspective * 1.5) * (p.isSearchMatch ? 1.3 : 1); // Search matches larger
 
       if (fontSize < 2) continue;
 
-      ctx.font = `${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+      ctx.font = `${p.isSearchMatch ? 'bold ' : ''}${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
       ctx.globalAlpha = alpha;
 
-      // Glow effect for errors
-      if (p.isError && p.glowIntensity) {
-        ctx.shadowBlur = 15 * p.glowIntensity;
+      // Glow effect for errors and search matches
+      if (p.isSearchMatch) {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ffdd00';
+      } else if (p.isError && p.glowIntensity) {
+        ctx.shadowBlur = 15 * p.glowIntensity * filterOpacity;
         ctx.shadowColor = p.color;
-      } else {
+      } else if (p.matchesFilter) {
         ctx.shadowBlur = 3;
         ctx.shadowColor = p.color;
+      } else {
+        ctx.shadowBlur = 0; // No glow for non-matching
       }
 
       ctx.fillStyle = p.color;
@@ -246,10 +297,11 @@ const LogStream: Component<Props> = (props) => {
 
       const x = p.x * width;
       const y = p.y * height;
-      const fontSize = p.size;
+      const fontSize = p.size * (p.isSearchMatch ? 1.2 : 1); // Search matches larger
       const depthFactor = 1 - (p.z * 0.5);
+      const filterOpacity = p.matchesFilter ? 1 : 0.2;
 
-      ctx.font = `${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+      ctx.font = `${p.isSearchMatch ? 'bold ' : ''}${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
 
       // Draw each character vertically
       const charCount = Math.min(p.text.length, 25);
@@ -264,17 +316,22 @@ const LogStream: Component<Props> = (props) => {
         const isGlitch = Math.random() > 0.97;
         const char = isGlitch ? getMatrixChar() : p.text[c];
 
-        // Calculate opacity
+        // Calculate opacity - dim non-matching particles
         const tailOpacity = 1 - (c / charCount);
         const fadeIn = Math.min(1, p.lifetime / 20);
-        const baseOpacity = depthFactor * tailOpacity * fadeIn;
+        const baseOpacity = depthFactor * tailOpacity * fadeIn * filterOpacity;
 
         if (c === 0) {
-          // Head character - bright white with glow
-          ctx.fillStyle = '#ffffff';
-          ctx.globalAlpha = depthFactor * fadeIn;
+          // Head character - bright white with glow (unless filtered)
+          ctx.fillStyle = p.isSearchMatch ? '#ffdd00' : '#ffffff';
+          ctx.globalAlpha = depthFactor * fadeIn * filterOpacity;
 
-          if (p.isError) {
+          if (p.isSearchMatch) {
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = '#ffdd00';
+          } else if (!p.matchesFilter) {
+            ctx.shadowBlur = 0;
+          } else if (p.isError) {
             ctx.shadowBlur = 20;
             ctx.shadowColor = '#ff0055';
           } else if (p.z < 0.3) {

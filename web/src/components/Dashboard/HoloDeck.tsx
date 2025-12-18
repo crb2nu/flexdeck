@@ -22,11 +22,18 @@ const QUALITY_PRESETS: Record<QualityLevel, QualitySettings> = {
   high: { dustParticleCount: 1200, maxTrafficPackets: 80, bloomEnabled: true, particleSize: 0.12 }
 };
 
+export interface HoloDeckFilter {
+  namespace?: string;
+  status?: string[];
+  nodeName?: string;
+}
+
 interface Props {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
   quality?: QualityLevel;
+  filter?: HoloDeckFilter;
   onSelect?: (item: { type: 'node' | 'pod'; data: K8sNode | K8sPod } | null) => void;
 }
 
@@ -112,6 +119,70 @@ const HoloDeck: Component<Props> = (props) => {
   // Scene Objects - stores both 3D object and source data
   const objectMap = new Map<string, THREE.Object3D>();
   const dataMap = new Map<string, K8sNode | K8sPod>(); // Maps object ID to K8s data
+  const matchesFilterMap = new Map<string, boolean>(); // Track which objects match filter
+
+  // Filter matching helpers
+  const podMatchesFilter = (pod: K8sPod, filter?: HoloDeckFilter): boolean => {
+    if (!filter) return true;
+    if (filter.namespace && pod.metadata.namespace !== filter.namespace) return false;
+    if (filter.status && filter.status.length > 0 && !filter.status.includes(pod.status.phase)) return false;
+    if (filter.nodeName && pod.spec.nodeName !== filter.nodeName) return false;
+    return true;
+  };
+
+  const nodeMatchesFilter = (node: K8sNode, filter?: HoloDeckFilter): boolean => {
+    if (!filter) return true;
+    if (filter.nodeName && node.metadata.name !== filter.nodeName) return false;
+    // If filtering by namespace, show nodes that have matching pods
+    if (filter.namespace) {
+      const hasMatchingPod = props.pods.some(p =>
+        p.spec.nodeName === node.metadata.name && p.metadata.namespace === filter.namespace
+      );
+      if (!hasMatchingPod) return false;
+    }
+    return true;
+  };
+
+  // Apply visual filtering to objects
+  const applyFilterVisuals = () => {
+    const filter = props.filter;
+    objectMap.forEach((obj, id) => {
+      const data = dataMap.get(id);
+      if (!data) return;
+
+      const isNode = id.startsWith('node-');
+      const matches = isNode
+        ? nodeMatchesFilter(data as K8sNode, filter)
+        : podMatchesFilter(data as K8sPod, filter);
+
+      matchesFilterMap.set(id, matches);
+
+      // Apply opacity based on match
+      obj.traverse(child => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(mat => {
+            if ('opacity' in mat) {
+              const baseMat = mat as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
+              baseMat.transparent = true;
+              baseMat.opacity = matches ? (baseMat.userData.originalOpacity ?? 1) : 0.15;
+              // Store original opacity on first pass
+              if (baseMat.userData.originalOpacity === undefined) {
+                baseMat.userData.originalOpacity = baseMat.opacity;
+              }
+            }
+          });
+        }
+        if (child instanceof THREE.Line && child.material) {
+          const lineMat = child.material as THREE.LineBasicMaterial;
+          lineMat.opacity = matches ? (lineMat.userData.originalOpacity ?? 0.15) : 0.03;
+          if (lineMat.userData.originalOpacity === undefined) {
+            lineMat.userData.originalOpacity = lineMat.opacity;
+          }
+        }
+      });
+    });
+  };
 
   // Traffic System with InstancedMesh for GPU efficiency
   const MAX_TRAFFIC = 100; // Fixed pool size
@@ -312,7 +383,15 @@ const HoloDeck: Component<Props> = (props) => {
         const intersects = raycaster.intersectObjects(scene.children, true);
         const hitObj = findHitObject(intersects);
 
-        if (hitObj && hitObj.userData.label) {
+        // Check if hit object passes filter
+        const objId = hitObj?.userData.type === 'node'
+            ? `node-${hitObj.userData.label}`
+            : hitObj?.userData.type === 'pod'
+            ? `pod-${hitObj.userData.label}`
+            : null;
+        const matchesFilter = objId ? (matchesFilterMap.get(objId) ?? true) : false;
+
+        if (hitObj && hitObj.userData.label && matchesFilter) {
             containerRef.style.cursor = 'pointer';
             const objId = hitObj.userData.type === 'node'
                 ? `node-${hitObj.userData.label}`
@@ -361,7 +440,15 @@ const HoloDeck: Component<Props> = (props) => {
         const intersects = raycaster.intersectObjects(scene.children, true);
         const hitObj = findHitObject(intersects);
 
-        if (hitObj && hitObj.userData.label) {
+        // Check if hit object passes filter
+        const clickObjId = hitObj?.userData.type === 'node'
+            ? `node-${hitObj.userData.label}`
+            : hitObj?.userData.type === 'pod'
+            ? `pod-${hitObj.userData.label}`
+            : null;
+        const clickMatchesFilter = clickObjId ? (matchesFilterMap.get(clickObjId) ?? true) : false;
+
+        if (hitObj && hitObj.userData.label && clickMatchesFilter) {
             const objId = hitObj.userData.type === 'node'
                 ? `node-${hitObj.userData.label}`
                 : `pod-${hitObj.userData.label}`;
@@ -663,6 +750,19 @@ const HoloDeck: Component<Props> = (props) => {
                 curves.push(curve);
             }
         });
+
+        // Apply initial filter state
+        applyFilterVisuals();
+    });
+
+    // Watch for filter changes and apply visual updates
+    createEffect(() => {
+        // Access filter prop to track it
+        const filter = props.filter;
+        // Only run if objectMap is populated (after scene build)
+        if (objectMap.size > 0) {
+            applyFilterVisuals();
+        }
     });
 
 
@@ -677,6 +777,7 @@ const HoloDeck: Component<Props> = (props) => {
         if (containerRef) containerRef.innerHTML = '';
         objectMap.clear();
         dataMap.clear();
+        matchesFilterMap.clear();
         coreRings = [];
     });
   });

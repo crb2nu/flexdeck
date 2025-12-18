@@ -1,12 +1,6 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import LogStream from './LogStream';
-
-interface LogEntry {
-  timestamp: string;
-  line: string;
-  labels: Record<string, string>;
-}
+import LogStream, { type LogEntry, type LogFilter } from './LogStream';
 
 interface LokiStream {
   stream: Record<string, string>;
@@ -30,6 +24,8 @@ const Logs: Component = () => {
   const [limit, setLimit] = createSignal(100);
   const [timeRange, setTimeRange] = createSignal('1h');
   const [viewMode, setViewMode] = createSignal<'list' | 'flow' | 'rain'>('list');
+  const [selectedLog, setSelectedLog] = createSignal<LogEntry | null>(null);
+  const [searchTerm, setSearchTerm] = createSignal('');
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -176,6 +172,18 @@ const Logs: Component = () => {
     return 'text-text-muted';
   };
 
+  const logFilter = (): LogFilter => ({
+    searchTerm: searchTerm() || undefined
+  });
+
+  const handleLogClick = (log: LogEntry) => {
+    setSelectedLog(log);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+  };
+
   return (
     <div class="flex h-full flex-col gap-4">
       {/* Query Bar */}
@@ -251,20 +259,44 @@ const Logs: Component = () => {
       <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
          {/* Controls */}
          <div class="absolute right-4 top-2 z-10 flex gap-2">
+            {/* Search input for visualization modes */}
+            <Show when={viewMode() !== 'list'}>
+              <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 px-2 backdrop-blur">
+                <svg class="w-3 h-3 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchTerm()}
+                  onInput={(e) => setSearchTerm(e.currentTarget.value)}
+                  placeholder="Search..."
+                  class="w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1"
+                />
+                <Show when={searchTerm()}>
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    class="text-text-dim hover:text-text-main text-xs"
+                  >
+                    ×
+                  </button>
+                </Show>
+              </div>
+            </Show>
+
             <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1 backdrop-blur">
-               <button 
+               <button
                 onClick={() => setViewMode('list')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
                >
                    TERMINAL
                </button>
-               <button 
+               <button
                 onClick={() => setViewMode('flow')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
                >
                    FLOW
                </button>
-               <button 
+               <button
                 onClick={() => setViewMode('rain')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
                >
@@ -296,7 +328,12 @@ const Logs: Component = () => {
 
           {/* Visualization Switcher */}
           <Show when={viewMode() === 'list'} fallback={
-              <LogStream logs={logs} mode={viewMode() === 'rain' ? 'rain' : 'warp'} />
+              <LogStream
+                logs={logs}
+                mode={viewMode() === 'rain' ? 'rain' : 'warp'}
+                filter={logFilter()}
+                onLogClick={handleLogClick}
+              />
           }>
             <div
               ref={logContainerRef}
@@ -334,6 +371,92 @@ const Logs: Component = () => {
           </Show>
         </div>
       </div>
+
+      {/* Log Detail Modal */}
+      <Show when={selectedLog()}>
+        {log => (
+          <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedLog(null)}
+          >
+            <div
+              class="w-full max-w-2xl mx-4 bg-surface-dark border border-white/10 rounded-lg shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
+                <div class="flex items-center gap-2">
+                  <div class={`w-2 h-2 rounded-full ${
+                    log().line.toLowerCase().includes('error') ? 'bg-red-500' :
+                    log().line.toLowerCase().includes('warn') ? 'bg-yellow-500' :
+                    'bg-neon-cyan'
+                  }`} />
+                  <span class="text-sm font-semibold text-text-main">Log Entry</span>
+                </div>
+                <button
+                  onClick={() => setSelectedLog(null)}
+                  class="text-text-dim hover:text-text-main transition-colors p-1"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div class="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                {/* Timestamp */}
+                <div>
+                  <label class="block text-[10px] text-text-dim uppercase mb-1">Timestamp</label>
+                  <div class="font-mono text-sm text-text-main">
+                    {new Date(log().timestamp).toLocaleString()}
+                  </div>
+                </div>
+
+                {/* Labels */}
+                <Show when={Object.keys(log().labels).length > 0}>
+                  <div>
+                    <label class="block text-[10px] text-text-dim uppercase mb-2">Labels</label>
+                    <div class="flex flex-wrap gap-2">
+                      <For each={Object.entries(log().labels)}>
+                        {([key, value]) => (
+                          <span class="px-2 py-1 rounded bg-white/5 text-xs text-text-muted font-mono">
+                            <span class="text-neon-cyan">{key}</span>=<span class="text-text-main">{value}</span>
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+
+                {/* Log Line */}
+                <div>
+                  <label class="block text-[10px] text-text-dim uppercase mb-2">Message</label>
+                  <pre class={`p-3 rounded bg-black/40 font-mono text-sm whitespace-pre-wrap break-all ${getLogLevelClass(log().line)}`}>
+                    {log().line}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div class="px-4 py-3 border-t border-white/10 bg-black/20 flex gap-2">
+                <button
+                  onClick={() => copyToClipboard(log().line)}
+                  class="px-4 py-2 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
+                >
+                  Copy Message
+                </button>
+                <button
+                  onClick={() => copyToClipboard(JSON.stringify(log(), null, 2))}
+                  class="px-4 py-2 text-xs font-mono rounded bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors"
+                >
+                  Copy JSON
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
     </div>
   );
 };
