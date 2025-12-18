@@ -26,6 +26,7 @@ const Logs: Component = () => {
   const [viewMode, setViewMode] = createSignal<'list' | 'flow' | 'rain'>('list');
   const [selectedLog, setSelectedLog] = createSignal<LogEntry | null>(null);
   const [searchTerm, setSearchTerm] = createSignal('');
+  const [searchRegex, setSearchRegex] = createSignal(false);
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -173,7 +174,8 @@ const Logs: Component = () => {
   };
 
   const logFilter = (): LogFilter => ({
-    searchTerm: searchTerm() || undefined
+    searchTerm: searchTerm() || undefined,
+    searchRegex: searchRegex()
   });
 
   const handleLogClick = (log: LogEntry) => {
@@ -299,8 +301,8 @@ const Logs: Component = () => {
                   type="text"
                   value={searchTerm()}
                   onInput={(e) => setSearchTerm(e.currentTarget.value)}
-                  placeholder="Search..."
-                  class="w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1"
+                  placeholder={searchRegex() ? 'Regex...' : 'Search...'}
+                  class={`w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
                 />
                 <Show when={searchTerm()}>
                   <button
@@ -310,6 +312,18 @@ const Logs: Component = () => {
                     ×
                   </button>
                 </Show>
+                {/* Regex toggle */}
+                <button
+                  onClick={() => setSearchRegex(!searchRegex())}
+                  title={searchRegex() ? 'Regex mode ON' : 'Enable regex search'}
+                  class={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
+                    searchRegex()
+                      ? 'bg-neon-purple/30 text-neon-purple border border-neon-purple/50'
+                      : 'text-text-dim hover:text-text-main'
+                  }`}
+                >
+                  .*
+                </button>
               </div>
             </Show>
 

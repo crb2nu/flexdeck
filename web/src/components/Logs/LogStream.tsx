@@ -9,6 +9,7 @@ export interface LogEntry {
 export interface LogFilter {
   levels?: string[]; // 'error' | 'warn' | 'info' | 'debug'
   searchTerm?: string;
+  searchRegex?: boolean; // Enable regex search
 }
 
 interface Props {
@@ -117,10 +118,24 @@ const LogStream: Component<Props> = (props) => {
       return { matches: false, isSearchMatch: false };
     }
 
-    // Search term filter
+    // Search term filter (supports regex)
     if (filter.searchTerm && filter.searchTerm.trim()) {
-      const term = filter.searchTerm.toLowerCase();
-      const searchMatch = log.line.toLowerCase().includes(term);
+      let searchMatch = false;
+
+      if (filter.searchRegex) {
+        // Try regex search, fall back to string search on invalid regex
+        try {
+          const regex = new RegExp(filter.searchTerm, 'i');
+          searchMatch = regex.test(log.line);
+        } catch {
+          // Invalid regex - fall back to string search
+          searchMatch = log.line.toLowerCase().includes(filter.searchTerm.toLowerCase());
+        }
+      } else {
+        // Plain string search
+        searchMatch = log.line.toLowerCase().includes(filter.searchTerm.toLowerCase());
+      }
+
       return { matches: true, isSearchMatch: searchMatch };
     }
 
