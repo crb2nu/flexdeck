@@ -62,6 +62,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/deployments", h.K8sDeployments)
 			r.Get("/pods", h.K8sPods)
 			r.Get("/ingresses", h.K8sIngresses)
+			r.Get("/watch-sse", h.K8sWatchSSE)
 
 			if !cfg.K8s.ReadOnly {
 				r.Post("/deployments/{ns}/{name}/scale", h.K8sScale)

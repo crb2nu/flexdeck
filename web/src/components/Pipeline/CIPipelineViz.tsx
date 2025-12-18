@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, onCleanup, For, Show, createEffect } from 'solid-js';
+import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
 export interface PipelineJob {
@@ -25,19 +25,40 @@ export interface Pipeline {
   createdAt: string;
 }
 
-// Particle system for data flow animation
+// Performance: Fixed-size particle pool
+const MAX_PARTICLES = 40;
+const MAX_TRAIL_LENGTH = 8;
+
 interface Particle {
-  id: number;
-  x: number;
-  y: number;
+  active: boolean;
+  startX: number;
+  startY: number;
   targetX: number;
   targetY: number;
   progress: number;
   speed: number;
   color: string;
   size: number;
-  trail: { x: number; y: number }[];
+  // Fixed-size trail array
+  trailX: Float32Array;
+  trailY: Float32Array;
+  trailLength: number;
 }
+
+const createEmptyParticle = (): Particle => ({
+  active: false,
+  startX: 0,
+  startY: 0,
+  targetX: 0,
+  targetY: 0,
+  progress: 0,
+  speed: 0,
+  color: '#0aff68',
+  size: 4,
+  trailX: new Float32Array(MAX_TRAIL_LENGTH),
+  trailY: new Float32Array(MAX_TRAIL_LENGTH),
+  trailLength: 0,
+});
 
 // Demo pipeline data matching your .gitlab-ci.yml
 const createDemoPipeline = (): Pipeline => ({
@@ -85,14 +106,14 @@ const getStatusGlow = (status: PipelineJob['status']): string => {
   return `0 0 20px ${color}40, 0 0 40px ${color}20`;
 };
 
-const CIPipelineViz: Component<{ 
+const CIPipelineViz: Component<{
   pipeline?: Pipeline;
   onJobClick?: (job: PipelineJob) => void;
 }> = (props) => {
   let containerRef: HTMLDivElement | undefined;
-  let canvasRef: HTMLCanvasElement | undefined;
+  let particleCanvasRef: HTMLCanvasElement | undefined;
   let animationId: number;
-  
+
   const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
 
   createEffect(() => {
@@ -102,127 +123,221 @@ const CIPipelineViz: Component<{
   });
 
   const [hoveredJob, setHoveredJob] = createSignal<string | null>(null);
-  const [particles, setParticles] = createSignal<Particle[]>([]);
   const [time, setTime] = createSignal(0);
-  
-  // Node positions for particle animation
-  const [nodePositions, setNodePositions] = createSignal<Map<string, { x: number; y: number }>>(new Map());
 
-  // Calculate stage positions
-  const stagePositions = () => {
-    const stages = pipeline().stages;
-    const positions: { name: string; x: number }[] = [];
-    const spacing = 100 / (stages.length + 1);
-    
-    stages.forEach((stage, i) => {
-      positions.push({ name: stage.name, x: spacing * (i + 1) });
-    });
-    
-    return positions;
+  // Performance: Fixed particle pool (no reactive updates during animation)
+  const particlePool: Particle[] = Array.from({ length: MAX_PARTICLES }, createEmptyParticle);
+  let activeParticleCount = 0;
+  let lastSpawnTime = 0;
+  const MIN_SPAWN_INTERVAL = 80; // ms
+
+  // Node positions for particle animation (cached)
+  const nodePositionsCache = new Map<string, { x: number; y: number }>();
+  const [positionsReady, setPositionsReady] = createSignal(false);
+
+  // Memoized connection paths - only recompute when pipeline changes
+  const connectionPaths = createMemo(() => {
+    const p = pipeline();
+    const paths: Array<{
+      d: string;
+      active: boolean;
+      sourceJobId: string;
+      targetJobId: string;
+    }> = [];
+
+    for (let stageIndex = 0; stageIndex < p.stages.length - 1; stageIndex++) {
+      const stage = p.stages[stageIndex];
+      const nextStage = p.stages[stageIndex + 1];
+      const x1 = ((stageIndex + 1) / (p.stages.length + 1)) * 100;
+      const x2 = ((stageIndex + 2) / (p.stages.length + 1)) * 100;
+
+      for (const job of stage.jobs) {
+        for (const nextJob of nextStage.jobs) {
+          const active = job.status === 'success' &&
+            (nextJob.status === 'running' || nextJob.status === 'success');
+
+          paths.push({
+            d: `M ${x1}% 50% Q ${(x1 + x2) / 2}% 30% ${x2}% 50%`,
+            active,
+            sourceJobId: job.id,
+            targetJobId: nextJob.id,
+          });
+        }
+      }
+    }
+
+    return paths;
+  });
+
+  // Performance: Find inactive slot in pool
+  const findInactiveSlot = (): number => {
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (!particlePool[i].active) return i;
+    }
+    return -1;
   };
 
-  // Particle animation system
+  // Particle spawn with pool allocation
   const spawnParticle = () => {
-    const positions = nodePositions();
+    const now = performance.now();
+    if (now - lastSpawnTime < MIN_SPAWN_INTERVAL) return;
+
     const stages = pipeline().stages;
-    
-    if (positions.size < 2 || stages.length < 2) return;
-    
+    if (nodePositionsCache.size < 2 || stages.length < 2) return;
+
+    const slotIndex = findInactiveSlot();
+    if (slotIndex === -1) return;
+
     // Find running jobs to spawn particles from
-    const runningStageIndex = stages.findIndex(s => 
+    const runningStageIndex = stages.findIndex(s =>
       s.jobs.some(j => j.status === 'running')
     );
-    
+
     if (runningStageIndex > 0) {
       const prevStage = stages[runningStageIndex - 1];
       const currentStage = stages[runningStageIndex];
-      
-      // Get positions
+
       const successJobs = prevStage.jobs.filter(j => j.status === 'success');
       const runningJobs = currentStage.jobs.filter(j => j.status === 'running');
-      
+
       if (successJobs.length > 0 && runningJobs.length > 0) {
         const sourceJob = successJobs[Math.floor(Math.random() * successJobs.length)];
         const targetJob = runningJobs[Math.floor(Math.random() * runningJobs.length)];
-        
-        const sourcePos = positions.get(sourceJob.id);
-        const targetPos = positions.get(targetJob.id);
-        
+
+        const sourcePos = nodePositionsCache.get(sourceJob.id);
+        const targetPos = nodePositionsCache.get(targetJob.id);
+
         if (sourcePos && targetPos) {
-          const newParticle: Particle = {
-            id: Date.now() + Math.random(),
-            x: sourcePos.x,
-            y: sourcePos.y,
-            targetX: targetPos.x,
-            targetY: targetPos.y,
-            progress: 0,
-            speed: 0.008 + Math.random() * 0.012,
-            color: getStatusColor('running'),
-            size: 3 + Math.random() * 3,
-            trail: []
-          };
-          
-          setParticles(prev => [...prev.slice(-30), newParticle]); // Limit to 30 particles
+          const p = particlePool[slotIndex];
+          p.active = true;
+          p.startX = sourcePos.x;
+          p.startY = sourcePos.y;
+          p.targetX = targetPos.x;
+          p.targetY = targetPos.y;
+          p.progress = 0;
+          p.speed = 0.008 + Math.random() * 0.012;
+          p.color = getStatusColor('running');
+          p.size = 3 + Math.random() * 3;
+          p.trailLength = 0;
+
+          activeParticleCount++;
+          lastSpawnTime = now;
         }
       }
     }
   };
 
-  // Animation loop for particles
+  // Canvas-based particle rendering
+  const renderParticles = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.clearRect(0, 0, width, height);
+
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const p = particlePool[i];
+      if (!p.active) continue;
+
+      // Update progress
+      p.progress += p.speed;
+
+      if (p.progress >= 1) {
+        p.active = false;
+        activeParticleCount--;
+        continue;
+      }
+
+      // Bezier curve interpolation
+      const t = p.progress;
+      const midX = (p.startX + p.targetX) / 2;
+      const midY = Math.min(p.startY, p.targetY) - 50;
+
+      const currentX = (1 - t) * (1 - t) * p.startX + 2 * (1 - t) * t * midX + t * t * p.targetX;
+      const currentY = (1 - t) * (1 - t) * p.startY + 2 * (1 - t) * t * midY + t * t * p.targetY;
+
+      // Update trail (shift and add new point)
+      if (p.trailLength < MAX_TRAIL_LENGTH) {
+        p.trailX[p.trailLength] = currentX;
+        p.trailY[p.trailLength] = currentY;
+        p.trailLength++;
+      } else {
+        // Shift trail
+        for (let j = 0; j < MAX_TRAIL_LENGTH - 1; j++) {
+          p.trailX[j] = p.trailX[j + 1];
+          p.trailY[j] = p.trailY[j + 1];
+        }
+        p.trailX[MAX_TRAIL_LENGTH - 1] = currentX;
+        p.trailY[MAX_TRAIL_LENGTH - 1] = currentY;
+      }
+
+      // Draw trail
+      ctx.beginPath();
+      for (let j = 0; j < p.trailLength; j++) {
+        const alpha = (j / p.trailLength) * 0.5;
+        const size = p.size * (j / p.trailLength);
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.trailX[j], p.trailY[j], size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw main particle with glow
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = p.size * 2;
+      ctx.shadowColor = p.color;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(currentX, currentY, p.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.globalAlpha = 1;
+  };
+
+  // Animation loop
   const animate = () => {
     setTime(prev => prev + 1);
-    
+
     // Spawn new particles occasionally
     if (Math.random() > 0.92) {
       spawnParticle();
     }
-    
-    // Update particles
-    setParticles(prev => {
-      return prev
-        .map(p => {
-          const newProgress = p.progress + p.speed;
-          
-          // Bezier curve interpolation for smooth arc
-          const t = newProgress;
-          const midX = (p.x + p.targetX) / 2;
-          const midY = Math.min(p.y, p.targetY) - 50; // Arc up
-          
-          const newX = (1 - t) * (1 - t) * p.x + 2 * (1 - t) * t * midX + t * t * p.targetX;
-          const newY = (1 - t) * (1 - t) * p.y + 2 * (1 - t) * t * midY + t * t * p.targetY;
-          
-          // Add to trail
-          const newTrail = [...p.trail, { x: newX, y: newY }].slice(-10);
-          
-          return {
-            ...p,
-            x: newX,
-            y: newY,
-            progress: newProgress,
-            trail: newTrail
-          };
-        })
-        .filter(p => p.progress < 1);
-    });
-    
+
+    // Render particles to canvas
+    if (particleCanvasRef) {
+      const ctx = particleCanvasRef.getContext('2d');
+      if (ctx) {
+        renderParticles(ctx, particleCanvasRef.width, particleCanvasRef.height);
+      }
+    }
+
     animationId = requestAnimationFrame(animate);
   };
 
-  // Register node position when rendered
+  // Register node position when rendered (direct cache update, no reactive)
   const registerNode = (id: string, el: HTMLDivElement | undefined) => {
     if (!el || !containerRef) return;
-    
+
     const containerRect = containerRef.getBoundingClientRect();
     const nodeRect = el.getBoundingClientRect();
-    
+
     const x = nodeRect.left - containerRect.left + nodeRect.width / 2;
     const y = nodeRect.top - containerRect.top + nodeRect.height / 2;
-    
-    setNodePositions(prev => {
-      const updated = new Map(prev);
-      updated.set(id, { x, y });
-      return updated;
-    });
+
+    nodePositionsCache.set(id, { x, y });
+  };
+
+  // Resize particle canvas to match container
+  const resizeCanvas = () => {
+    if (!particleCanvasRef || !containerRef) return;
+    const rect = containerRef.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    particleCanvasRef.width = rect.width * dpr;
+    particleCanvasRef.height = rect.height * dpr;
+    particleCanvasRef.style.width = `${rect.width}px`;
+    particleCanvasRef.style.height = `${rect.height}px`;
+    const ctx = particleCanvasRef.getContext('2d');
+    if (ctx) ctx.scale(dpr, dpr);
   };
 
   // Update demo pipeline status over time
@@ -269,18 +384,24 @@ const CIPipelineViz: Component<{
   });
 
   onMount(() => {
+    // Setup canvas
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
     animate();
-    
+
     // Delay node position registration to ensure layout is complete
     setTimeout(() => {
       document.querySelectorAll('[data-job-id]').forEach(el => {
         const id = el.getAttribute('data-job-id');
         if (id) registerNode(id, el as HTMLDivElement);
       });
+      setPositionsReady(true);
     }, 100);
   });
 
   onCleanup(() => {
+    window.removeEventListener('resize', resizeCanvas);
     if (animationId) cancelAnimationFrame(animationId);
   });
 
@@ -366,8 +487,8 @@ const CIPipelineViz: Component<{
           </For>
         </div>
 
-        {/* Connection lines (SVG) */}
-        <svg 
+        {/* Connection lines (SVG) - memoized paths */}
+        <svg
           class="absolute inset-0 w-full h-full pointer-events-none z-0"
           style={{ top: '100px' }}
         >
@@ -385,39 +506,19 @@ const CIPipelineViz: Component<{
               </feMerge>
             </filter>
           </defs>
-          
-          {/* Draw connection paths between stages */}
-          <For each={pipeline().stages}>
-            {(stage, stageIndex) => (
-              <Show when={stageIndex() < pipeline().stages.length - 1}>
-                <For each={stage.jobs}>
-                  {(job) => {
-                    const nextStage = pipeline().stages[stageIndex() + 1];
-                    return (
-                      <For each={nextStage.jobs}>
-                        {(nextJob) => {
-                          const x1 = ((stageIndex() + 1) / (pipeline().stages.length + 1)) * 100;
-                          const x2 = ((stageIndex() + 2) / (pipeline().stages.length + 1)) * 100;
-                          const showActive = job.status === 'success' && 
-                            (nextJob.status === 'running' || nextJob.status === 'success');
-                          
-                          return (
-                            <path
-                              d={`M ${x1}% 50% Q ${(x1 + x2) / 2}% 30% ${x2}% 50%`}
-                              fill="none"
-                              stroke={showActive ? 'url(#lineGradient)' : 'rgba(255,255,255,0.1)'}
-                              stroke-width={showActive ? '2' : '1'}
-                              stroke-dasharray={showActive ? '0' : '5,5'}
-                              filter={showActive ? 'url(#glow)' : ''}
-                              class={showActive ? 'animate-flow' : ''}
-                            />
-                          );
-                        }}
-                      </For>
-                    );
-                  }}
-                </For>
-              </Show>
+
+          {/* Draw memoized connection paths */}
+          <For each={connectionPaths()}>
+            {(path) => (
+              <path
+                d={path.d}
+                fill="none"
+                stroke={path.active ? 'url(#lineGradient)' : 'rgba(255,255,255,0.1)'}
+                stroke-width={path.active ? '2' : '1'}
+                stroke-dasharray={path.active ? '0' : '5,5'}
+                filter={path.active ? 'url(#glow)' : ''}
+                class={path.active ? 'animate-flow' : ''}
+              />
             )}
           </For>
         </svg>
@@ -554,45 +655,12 @@ const CIPipelineViz: Component<{
           </For>
         </div>
 
-        {/* Floating particles layer */}
-        <div class="absolute inset-0 pointer-events-none overflow-hidden">
-          <For each={particles()}>
-            {(particle) => (
-              <>
-                {/* Trail */}
-                <For each={particle.trail}>
-                  {(point, i) => (
-                    <div
-                      class="absolute rounded-full"
-                      style={{
-                        left: `${point.x}px`,
-                        top: `${point.y}px`,
-                        width: `${particle.size * (i() / particle.trail.length)}px`,
-                        height: `${particle.size * (i() / particle.trail.length)}px`,
-                        background: particle.color,
-                        opacity: (i() / particle.trail.length) * 0.5,
-                        transform: 'translate(-50%, -50%)'
-                      }}
-                    />
-                  )}
-                </For>
-                {/* Main particle */}
-                <div
-                  class="absolute rounded-full"
-                  style={{
-                    left: `${particle.x}px`,
-                    top: `${particle.y}px`,
-                    width: `${particle.size}px`,
-                    height: `${particle.size}px`,
-                    background: particle.color,
-                    'box-shadow': `0 0 ${particle.size * 2}px ${particle.color}`,
-                    transform: 'translate(-50%, -50%)'
-                  }}
-                />
-              </>
-            )}
-          </For>
-        </div>
+        {/* Canvas-based particle layer (performance optimized) */}
+        <canvas
+          ref={particleCanvasRef}
+          class="absolute inset-0 pointer-events-none z-20"
+          style={{ width: '100%', height: '100%' }}
+        />
       </div>
 
       {/* Footer stats */}

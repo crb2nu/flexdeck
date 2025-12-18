@@ -6,10 +6,28 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 
+// Quality presets for performance tuning
+export type QualityLevel = 'low' | 'medium' | 'high';
+
+interface QualitySettings {
+  dustParticleCount: number;
+  maxTrafficPackets: number;
+  bloomEnabled: boolean;
+  particleSize: number;
+}
+
+const QUALITY_PRESETS: Record<QualityLevel, QualitySettings> = {
+  low: { dustParticleCount: 200, maxTrafficPackets: 20, bloomEnabled: false, particleSize: 0.2 },
+  medium: { dustParticleCount: 600, maxTrafficPackets: 50, bloomEnabled: true, particleSize: 0.15 },
+  high: { dustParticleCount: 1200, maxTrafficPackets: 80, bloomEnabled: true, particleSize: 0.12 }
+};
+
 interface Props {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
+  quality?: QualityLevel;
+  onSelect?: (item: { type: 'node' | 'pod'; data: K8sNode | K8sPod } | null) => void;
 }
 
 // Shader for the "Holographic" floor
@@ -76,24 +94,51 @@ const HoloDeck: Component<Props> = (props) => {
   let raycaster: THREE.Raycaster;
   let mouse: THREE.Vector2;
 
-  // State for popups
-  const [hoverInfo, setHoverInfo] = createSignal<{ title: string; type: string; x: number; y: number } | null>(null);
+  // Quality settings
+  const getQuality = () => QUALITY_PRESETS[props.quality || 'high'];
 
-  // Scene Objects
+  // State for popups and selection
+  const [hoverInfo, setHoverInfo] = createSignal<{
+    title: string;
+    type: string;
+    x: number;
+    y: number;
+    namespace?: string;
+    status?: string;
+    podCount?: number;
+  } | null>(null);
+  const [selectedId, setSelectedId] = createSignal<string | null>(null);
+
+  // Scene Objects - stores both 3D object and source data
   const objectMap = new Map<string, THREE.Object3D>();
-  
-  // Traffic System
-  interface TrafficPacket {
-      mesh: THREE.Mesh;
-      curve: THREE.QuadraticBezierCurve3;
+  const dataMap = new Map<string, K8sNode | K8sPod>(); // Maps object ID to K8s data
+
+  // Traffic System with InstancedMesh for GPU efficiency
+  const MAX_TRAFFIC = 100; // Fixed pool size
+  interface TrafficSlot {
+      active: boolean;
+      curveIndex: number;
       progress: number;
       speed: number;
   }
-  let traffic: TrafficPacket[] = [];
+  const trafficPool: TrafficSlot[] = Array.from({ length: MAX_TRAFFIC }, () => ({
+      active: false,
+      curveIndex: 0,
+      progress: 0,
+      speed: 0
+  }));
+  let trafficInstancedMesh: THREE.InstancedMesh;
+  let trafficMatrix = new THREE.Matrix4();
+  let trafficDummy = new THREE.Object3D();
   let curves: THREE.QuadraticBezierCurve3[] = [];
-  
+  let activeTrafficCount = 0;
+
+  // Cached core ring references (avoid getObjectByName per frame)
+  let coreRings: THREE.Mesh[] = [];
+
   let gridMaterial: THREE.ShaderMaterial;
   let dustParticles: THREE.Points;
+  let bloomPass: UnrealBloomPass;
 
   onMount(() => {
     if (!containerRef) return;
@@ -114,11 +159,13 @@ const HoloDeck: Component<Props> = (props) => {
     containerRef.appendChild(renderer.domElement);
 
     // --- POST PROCESSING (BLOOM) ---
+    const quality = getQuality();
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(containerRef.clientWidth, containerRef.clientHeight), 1.5, 0.4, 0.85);
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(containerRef.clientWidth, containerRef.clientHeight), 1.5, 0.4, 0.85);
     bloomPass.threshold = 0.15;
-    bloomPass.strength = 1.2; 
+    bloomPass.strength = quality.bloomEnabled ? 1.2 : 0;
     bloomPass.radius = 0.4;
+    bloomPass.enabled = quality.bloomEnabled;
 
     composer = new EffectComposer(renderer);
     composer.addPass(renderScene);
@@ -155,25 +202,26 @@ const HoloDeck: Component<Props> = (props) => {
     
     // Central Core Structure
     const coreGroup = new THREE.Group();
-    
+
     // Central pillar
     const pillarGeom = new THREE.CylinderGeometry(0.3, 0.5, 8, 8);
     const pillarMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.3 });
     const pillar = new THREE.Mesh(pillarGeom, pillarMat);
     pillar.position.y = 4;
     coreGroup.add(pillar);
-    
-    // Orbiting rings
+
+    // Orbiting rings - cache references for animation loop
+    coreRings = [];
     for (let i = 0; i < 3; i++) {
         const ringGeom = new THREE.TorusGeometry(2 + i * 1.5, 0.02, 8, 64);
         const ringMat = new THREE.MeshBasicMaterial({ color: i === 1 ? 0xa855f7 : 0x00f0ff, transparent: true, opacity: 0.6 });
         const ring = new THREE.Mesh(ringGeom, ringMat);
         ring.rotation.x = Math.PI / 2 + (i * 0.2);
         ring.position.y = 3 + i * 2;
-        ring.name = `coreRing${i}`;
+        coreRings.push(ring); // Cache reference instead of using name lookup
         coreGroup.add(ring);
     }
-    
+
     scene.add(coreGroup);
 
     // --- CUSTOM GRID ---
@@ -194,19 +242,19 @@ const HoloDeck: Component<Props> = (props) => {
     gridPlane.rotation.x = -Math.PI / 2;
     scene.add(gridPlane);
 
-    // --- DUST PARTICLES ---
-    const dustCount = 1200;
+    // --- DUST PARTICLES (quality-adjusted) ---
+    const dustCount = quality.dustParticleCount;
     const dustGeom = new THREE.BufferGeometry();
     const dustPos = new Float32Array(dustCount * 3);
     const dustColors = new Float32Array(dustCount * 3);
     const cyanColor = new THREE.Color(0x00f0ff);
     const purpleColor = new THREE.Color(0xa855f7);
-    
-    for(let i = 0; i < dustCount; i++) {
+
+    for (let i = 0; i < dustCount; i++) {
         dustPos[i * 3] = (Math.random() - 0.5) * 120;
         dustPos[i * 3 + 1] = Math.random() * 50;
         dustPos[i * 3 + 2] = (Math.random() - 0.5) * 120;
-        
+
         const color = Math.random() > 0.8 ? purpleColor : cyanColor;
         dustColors[i * 3] = color.r;
         dustColors[i * 3 + 1] = color.g;
@@ -214,9 +262,9 @@ const HoloDeck: Component<Props> = (props) => {
     }
     dustGeom.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
     dustGeom.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
-    
+
     const dustMat = new THREE.PointsMaterial({
-        size: 0.12,
+        size: quality.particleSize,
         transparent: true,
         opacity: 0.5,
         vertexColors: true,
@@ -226,140 +274,223 @@ const HoloDeck: Component<Props> = (props) => {
     dustParticles = new THREE.Points(dustGeom, dustMat);
     scene.add(dustParticles);
 
+    // --- TRAFFIC INSTANCED MESH (GPU-efficient) ---
+    const packetGeom = new THREE.SphereGeometry(0.15, 8, 8);
+    const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    trafficInstancedMesh = new THREE.InstancedMesh(packetGeom, packetMat, MAX_TRAFFIC);
+    trafficInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Hide all instances initially by setting them far away
+    const hideMatrix = new THREE.Matrix4().makeTranslation(0, -1000, 0);
+    for (let i = 0; i < MAX_TRAFFIC; i++) {
+        trafficInstancedMesh.setMatrixAt(i, hideMatrix);
+    }
+    trafficInstancedMesh.instanceMatrix.needsUpdate = true;
+    scene.add(trafficInstancedMesh);
+
 
     // --- EVENTS ---
+    const findHitObject = (intersects: THREE.Intersection[]) => {
+        for (const i of intersects) {
+            let obj: THREE.Object3D | null = i.object;
+            while (obj) {
+                if (obj.userData && (obj.userData.type === 'node' || obj.userData.type === 'pod')) {
+                    return obj;
+                }
+                obj = obj.parent;
+            }
+        }
+        return null;
+    };
+
     const onMouseMove = (event: MouseEvent) => {
         if (!containerRef) return;
         const rect = containerRef.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        
+
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(scene.children, true);
-        
-        const hit = intersects.find(i => {
-           let obj: THREE.Object3D | null = i.object;
-           while(obj) {
-               if (obj.userData && (obj.userData.type === 'node' || obj.userData.type === 'pod')) return true;
-               obj = obj.parent;
-           }
-           return false;
-        });
-        
-        if (hit) {
+        const hitObj = findHitObject(intersects);
+
+        if (hitObj && hitObj.userData.label) {
             containerRef.style.cursor = 'pointer';
-            let obj = hit.object;
-            while(obj && !obj.userData.type) {
-                if (obj.parent) obj = obj.parent;
-                else break;
+            const objId = hitObj.userData.type === 'node'
+                ? `node-${hitObj.userData.label}`
+                : `pod-${hitObj.userData.label}`;
+            const data = dataMap.get(objId);
+
+            // Enhanced tooltip info
+            const info: typeof hoverInfo extends () => infer T ? NonNullable<T> : never = {
+                title: hitObj.userData.label,
+                type: hitObj.userData.type,
+                x: event.clientX - rect.left + 15,
+                y: event.clientY - rect.top
+            };
+
+            if (hitObj.userData.type === 'node' && data) {
+                const node = data as K8sNode;
+                const isReady = node.status?.conditions?.find(c => c.type === 'Ready')?.status === 'True';
+                info.status = isReady ? 'Ready' : 'NotReady';
+                // Count pods on this node
+                const podCount = props.pods.filter(p => p.spec.nodeName === node.metadata.name).length;
+                info.podCount = podCount;
+            } else if (hitObj.userData.type === 'pod' && data) {
+                const pod = data as K8sPod;
+                info.namespace = pod.metadata.namespace;
+                info.status = pod.status.phase;
             }
 
-            if (obj && obj.userData.label) {
-                 setHoverInfo({
-                    title: obj.userData.label,
-                    type: obj.userData.type,
-                    x: event.clientX - rect.left + 15,
-                    y: event.clientY - rect.top
-                });
-                controls.autoRotate = false;
-            }
+            setHoverInfo(info);
+            controls.autoRotate = false;
         } else {
             containerRef.style.cursor = 'default';
             setHoverInfo(null);
-            controls.autoRotate = true;
+            if (!selectedId()) {
+                controls.autoRotate = true;
+            }
         }
     };
+
+    const onClick = (event: MouseEvent) => {
+        if (!containerRef) return;
+        const rect = containerRef.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        const hitObj = findHitObject(intersects);
+
+        if (hitObj && hitObj.userData.label) {
+            const objId = hitObj.userData.type === 'node'
+                ? `node-${hitObj.userData.label}`
+                : `pod-${hitObj.userData.label}`;
+            const data = dataMap.get(objId);
+
+            setSelectedId(objId);
+            controls.autoRotate = false;
+
+            if (props.onSelect && data) {
+                props.onSelect({
+                    type: hitObj.userData.type as 'node' | 'pod',
+                    data
+                });
+            }
+        } else {
+            setSelectedId(null);
+            controls.autoRotate = true;
+            props.onSelect?.(null);
+        }
+    };
+
     containerRef.addEventListener('mousemove', onMouseMove);
+    containerRef.addEventListener('click', onClick);
 
     // --- ANIMATION LOOP ---
     const clock = new THREE.Clock();
-    
-    // Reusable packet geometry
-    const packetGeom = new THREE.SphereGeometry(0.15, 8, 8);
-    const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const maxTraffic = quality.maxTrafficPackets;
+    const hidePosition = new THREE.Vector3(0, -1000, 0);
 
+    // Object pool traffic spawning (no array mutations)
     const spawnTraffic = () => {
-         // High traffic rate
-         if (curves.length > 0 && traffic.length < 80 && Math.random() > 0.85) {
-             const curve = curves[Math.floor(Math.random() * curves.length)];
-             const mesh = new THREE.Mesh(packetGeom, packetMat);
-             scene.add(mesh);
-             traffic.push({
-                 mesh,
-                 curve,
-                 progress: 0,
-                 speed: 0.8 + Math.random() * 0.8
-             });
-         }
+        if (curves.length === 0 || activeTrafficCount >= maxTraffic) return;
+        if (Math.random() > 0.85) {
+            // Find an inactive slot
+            for (let i = 0; i < MAX_TRAFFIC; i++) {
+                if (!trafficPool[i].active) {
+                    trafficPool[i].active = true;
+                    trafficPool[i].curveIndex = Math.floor(Math.random() * curves.length);
+                    trafficPool[i].progress = 0;
+                    trafficPool[i].speed = 0.8 + Math.random() * 0.8;
+                    activeTrafficCount++;
+                    break;
+                }
+            }
+        }
+    };
+
+    // Update traffic using InstancedMesh (GPU-efficient)
+    const updateTraffic = (delta: number) => {
+        let needsUpdate = false;
+        for (let i = 0; i < MAX_TRAFFIC; i++) {
+            const slot = trafficPool[i];
+            if (slot.active) {
+                slot.progress += slot.speed * delta * 0.5;
+                if (slot.progress >= 1) {
+                    // Deactivate and hide
+                    slot.active = false;
+                    activeTrafficCount--;
+                    trafficDummy.position.copy(hidePosition);
+                    trafficDummy.updateMatrix();
+                    trafficInstancedMesh.setMatrixAt(i, trafficDummy.matrix);
+                    needsUpdate = true;
+                } else if (curves[slot.curveIndex]) {
+                    // Update position
+                    const pos = curves[slot.curveIndex].getPoint(slot.progress);
+                    trafficDummy.position.copy(pos);
+                    trafficDummy.updateMatrix();
+                    trafficInstancedMesh.setMatrixAt(i, trafficDummy.matrix);
+                    needsUpdate = true;
+                }
+            }
+        }
+        if (needsUpdate) {
+            trafficInstancedMesh.instanceMatrix.needsUpdate = true;
+        }
     };
 
     const animate = () => {
-      animationId = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-      const time = clock.getElapsedTime();
+        animationId = requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+        const time = clock.getElapsedTime();
 
-      // Update uniforms
-      gridMaterial.uniforms.uTime.value = time;
+        // Update uniforms
+        gridMaterial.uniforms.uTime.value = time;
 
-      controls.update();
+        controls.update();
 
-      // Spawn traffic
-      spawnTraffic();
+        // Spawn and update traffic using object pool
+        spawnTraffic();
+        updateTraffic(delta);
 
-      // Animate Traffic
-      for (let i = traffic.length - 1; i >= 0; i--) {
-          const t = traffic[i];
-          t.progress += t.speed * delta * 0.5;
-          if (t.progress >= 1) {
-              scene.remove(t.mesh);
-              traffic.splice(i, 1);
-          } else {
-              const pos = t.curve.getPoint(t.progress);
-              t.mesh.position.copy(pos);
-          }
-      }
-      
-      // Floating animation for nodes
-      objectMap.forEach(obj => {
-          if (obj.userData.type === 'node') {
-              // Pulse the scanner ring
-              const scanner = obj.getObjectByName('scanner') as THREE.Mesh;
-              if (scanner) {
-                  scanner.scale.setScalar(1 + Math.sin(time * 2) * 0.2);
-                  if (scanner.material) {
-                     (scanner.material as THREE.MeshBasicMaterial).opacity = 0.5 - Math.sin(time * 2) * 0.2;
-                  }
-              }
-              // Rotate Core
-              const core = obj.getObjectByName('core');
-              if (core) {
-                  core.rotation.y += delta;
-                  core.rotation.x += delta * 0.5;
-              }
-          }
-          if (obj.userData.type === 'pod') {
-              obj.rotation.x += delta * 0.5;
-              obj.rotation.y += delta * 0.3;
-              // Bobbing
-              if (obj.userData.initialY) {
-                  obj.position.y = obj.userData.initialY + Math.sin(time + (obj.id % 20)) * 0.3;
-              }
-          }
-      });
-      
-      // Animate Dust
-      dustParticles.rotation.y = time * 0.03;
-      
-      // Animate Central Core Rings
-      for (let i = 0; i < 3; i++) {
-          const ring = scene.getObjectByName(`coreRing${i}`);
-          if (ring) {
-              ring.rotation.z = time * (0.2 + i * 0.1) * (i % 2 === 0 ? 1 : -1);
-              ring.position.y = 3 + i * 2 + Math.sin(time + i) * 0.3;
-          }
-      }
+        // Animate objects (cached refs where possible)
+        objectMap.forEach(obj => {
+            if (obj.userData.type === 'node') {
+                // Use cached scanner/core refs stored in userData
+                const scanner = obj.userData.scannerRef as THREE.Mesh | undefined;
+                if (scanner) {
+                    scanner.scale.setScalar(1 + Math.sin(time * 2) * 0.2);
+                    if (scanner.material) {
+                        (scanner.material as THREE.MeshBasicMaterial).opacity = 0.5 - Math.sin(time * 2) * 0.2;
+                    }
+                }
+                const core = obj.userData.coreRef as THREE.Object3D | undefined;
+                if (core) {
+                    core.rotation.y += delta;
+                    core.rotation.x += delta * 0.5;
+                }
+            }
+            if (obj.userData.type === 'pod') {
+                obj.rotation.x += delta * 0.5;
+                obj.rotation.y += delta * 0.3;
+                // Bobbing
+                if (obj.userData.initialY) {
+                    obj.position.y = obj.userData.initialY + Math.sin(time + (obj.id % 20)) * 0.3;
+                }
+            }
+        });
 
-      composer.render();
+        // Animate Dust
+        dustParticles.rotation.y = time * 0.03;
+
+        // Animate Central Core Rings (using cached refs - no getObjectByName)
+        for (let i = 0; i < coreRings.length; i++) {
+            const ring = coreRings[i];
+            ring.rotation.z = time * (0.2 + i * 0.1) * (i % 2 === 0 ? 1 : -1);
+            ring.position.y = 3 + i * 2 + Math.sin(time + i) * 0.3;
+        }
+
+        composer.render();
     };
     animate();
 
@@ -373,167 +504,180 @@ const HoloDeck: Component<Props> = (props) => {
     window.addEventListener('resize', handleResize);
     
     // --- SCENE BUILDER (EFFECT) ---
-    // Note: We use a manual effect tracking external props to rebuild the scene
+    // Rebuild scene when props change, with data caching for enhanced tooltips
     createEffect(() => {
-        // Clear logic
-        while(dataGroup.children.length > 0){ 
-             const child = dataGroup.children[0];
-             dataGroup.remove(child);
-             if (child instanceof THREE.Mesh) {
-                 child.geometry.dispose();
-                 const mesh = child as THREE.Mesh;
-                 if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
-                 else mesh.material.dispose();
-             }
-         }
-         objectMap.clear();
-         curves = [];
-         traffic.forEach(t => scene.remove(t.mesh));
-         traffic = [];
+        // Clear existing objects
+        while (dataGroup.children.length > 0) {
+            const child = dataGroup.children[0];
+            dataGroup.remove(child);
+            if (child instanceof THREE.Mesh) {
+                child.geometry.dispose();
+                const mesh = child as THREE.Mesh;
+                if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+                else mesh.material.dispose();
+            }
+        }
+        objectMap.clear();
+        dataMap.clear();
+        curves = [];
 
-         const currentNodes = props.nodes;
-         const currentPods = props.pods;
+        // Reset traffic pool (no mesh cleanup needed - InstancedMesh handles it)
+        for (let i = 0; i < MAX_TRAFFIC; i++) {
+            trafficPool[i].active = false;
+        }
+        activeTrafficCount = 0;
 
-         if (currentNodes.length === 0) return;
+        const currentNodes = props.nodes;
+        const currentPods = props.pods;
 
-         const nodeRadius = Math.max(12, currentNodes.length * 5);
-         
-         // 1. Create Nodes (Servers)
-         currentNodes.forEach((node, i) => {
-             const angle = (i / currentNodes.length) * Math.PI * 2;
-             const x = Math.cos(angle) * nodeRadius;
-             const z = Math.sin(angle) * nodeRadius;
-             
-             const isReady = node.status?.conditions?.find(c => c.type === 'Ready')?.status === 'True';
-             const colorHex = isReady ? 0x00f0ff : 0xff0055;
-             const color = new THREE.Color(colorHex);
+        if (currentNodes.length === 0) return;
 
-             const group = new THREE.Group();
-             group.position.set(x, 0, z);
-             group.userData = { type: 'node', label: node.metadata.name };
+        const nodeRadius = Math.max(12, currentNodes.length * 5);
 
-             // Base Platform
-             const baseHelper = new THREE.Mesh(
-                 new THREE.CylinderGeometry(2.5, 3, 0.5, 8),
-                 new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 })
-             );
-             group.add(baseHelper);
+        // 1. Create Nodes (Servers)
+        currentNodes.forEach((node, i) => {
+            const angle = (i / currentNodes.length) * Math.PI * 2;
+            const x = Math.cos(angle) * nodeRadius;
+            const z = Math.sin(angle) * nodeRadius;
 
-             // Main Tower Structure
-             const towerH = 6;
-             const towerW = 2;
-             const tower = new THREE.Mesh(
-                 new THREE.BoxGeometry(towerW, towerH, towerW),
-                 new THREE.MeshStandardMaterial({ 
-                     color: 0x050a10, 
-                     transparent: true, 
-                     opacity: 0.6,
-                     roughness: 0.1
-                 })
-             );
-             tower.position.y = towerH/2 + 0.25;
-             
-             // Edges
-             const edges = new THREE.LineSegments(
-                 new THREE.EdgesGeometry(tower.geometry), 
-                 new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5 })
-             );
-             tower.add(edges);
-             
-             // Animated Core
-             const core = new THREE.Mesh(
-                 new THREE.OctahedronGeometry(0.8),
-                 new THREE.MeshBasicMaterial({ color: color, wireframe: true })
-             );
-             core.name = 'core';
-             tower.add(core);
+            const isReady = node.status?.conditions?.find(c => c.type === 'Ready')?.status === 'True';
+            const colorHex = isReady ? 0x00f0ff : 0xff0055;
+            const color = new THREE.Color(colorHex);
 
-             group.add(tower);
-             
-             // Scanner Ring
-             const scannerGeom = new THREE.RingGeometry(2.8, 3, 32);
-             scannerGeom.rotateX(-Math.PI/2);
-             const scanner = new THREE.Mesh(
-                 scannerGeom,
-                 new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.5 })
-             );
-             scanner.position.y = 0.3;
-             scanner.name = 'scanner';
-             group.add(scanner);
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            group.userData = { type: 'node', label: node.metadata.name };
 
-             dataGroup.add(group);
-             objectMap.set(`node-${node.metadata.name}`, group);
-         });
+            // Base Platform
+            const baseHelper = new THREE.Mesh(
+                new THREE.CylinderGeometry(2.5, 3, 0.5, 8),
+                new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 })
+            );
+            group.add(baseHelper);
 
-         // 2. Create Pods
-         currentPods.forEach((pod, i) => {
-             if (i > 150) return;
-             
-             const assignedNodeName = pod.spec.nodeName;
-             const assignedNodeObj = objectMap.get(`node-${assignedNodeName}`);
-             
-             const angle = (i * 137.5) * (Math.PI / 180);
-             let px = 0, pz = 0, py = 4 + Math.random() * 4;
-             
-             if (assignedNodeObj) {
+            // Main Tower Structure
+            const towerH = 6;
+            const towerW = 2;
+            const tower = new THREE.Mesh(
+                new THREE.BoxGeometry(towerW, towerH, towerW),
+                new THREE.MeshStandardMaterial({
+                    color: 0x050a10,
+                    transparent: true,
+                    opacity: 0.6,
+                    roughness: 0.1
+                })
+            );
+            tower.position.y = towerH / 2 + 0.25;
+
+            // Edges
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(tower.geometry),
+                new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5 })
+            );
+            tower.add(edges);
+
+            // Animated Core
+            const core = new THREE.Mesh(
+                new THREE.OctahedronGeometry(0.8),
+                new THREE.MeshBasicMaterial({ color: color, wireframe: true })
+            );
+            tower.add(core);
+            group.add(tower);
+
+            // Scanner Ring
+            const scannerGeom = new THREE.RingGeometry(2.8, 3, 32);
+            scannerGeom.rotateX(-Math.PI / 2);
+            const scanner = new THREE.Mesh(
+                scannerGeom,
+                new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.5 })
+            );
+            scanner.position.y = 0.3;
+            group.add(scanner);
+
+            // Cache refs in userData for animation loop (avoid getObjectByName)
+            group.userData.scannerRef = scanner;
+            group.userData.coreRef = core;
+
+            dataGroup.add(group);
+            const nodeId = `node-${node.metadata.name}`;
+            objectMap.set(nodeId, group);
+            dataMap.set(nodeId, node); // Store K8s data for tooltips
+        });
+
+        // 2. Create Pods
+        currentPods.forEach((pod, i) => {
+            if (i > 150) return;
+
+            const assignedNodeName = pod.spec.nodeName;
+            const assignedNodeObj = objectMap.get(`node-${assignedNodeName}`);
+
+            const angle = (i * 137.5) * (Math.PI / 180);
+            let px = 0, pz = 0, py = 4 + Math.random() * 4;
+
+            if (assignedNodeObj) {
                 const dist = 3 + (i % 6) * 1.5;
-                const offsetAngle = angle + (Math.random() * 0.5); 
+                const offsetAngle = angle + (Math.random() * 0.5);
                 px = assignedNodeObj.position.x + Math.cos(offsetAngle) * dist;
                 pz = assignedNodeObj.position.z + Math.sin(offsetAngle) * dist;
-             } else {
-                 px = Math.cos(angle) * (i * 0.5);
-                 pz = Math.sin(angle) * (i * 0.5);
-             }
-             
-             const status = pod.status.phase;
-             const pColor = status === 'Running' ? 0x22c55e : (status === 'Pending' ? 0xeab308 : 0xef4444);
+            } else {
+                px = Math.cos(angle) * (i * 0.5);
+                pz = Math.sin(angle) * (i * 0.5);
+            }
 
-             const geom = new THREE.DodecahedronGeometry(0.4);
-             const mat = new THREE.MeshStandardMaterial({ 
-                 color: pColor, 
-                 emissive: pColor,
-                 emissiveIntensity: 0.8,
-                 roughness: 0.1,
-                 metalness: 0.9
-             });
-             const mesh = new THREE.Mesh(geom, mat);
-             mesh.position.set(px, py, pz);
-             mesh.userData = { type: 'pod', label: pod.metadata.name, initialY: py };
-             
-             dataGroup.add(mesh);
-             objectMap.set(`pod-${pod.metadata.name}`, mesh);
-             
-             // Connections
-             if (assignedNodeObj) {
+            const status = pod.status.phase;
+            const pColor = status === 'Running' ? 0x22c55e : (status === 'Pending' ? 0xeab308 : 0xef4444);
+
+            const geom = new THREE.DodecahedronGeometry(0.4);
+            const mat = new THREE.MeshStandardMaterial({
+                color: pColor,
+                emissive: pColor,
+                emissiveIntensity: 0.8,
+                roughness: 0.1,
+                metalness: 0.9
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(px, py, pz);
+            mesh.userData = { type: 'pod', label: pod.metadata.name, initialY: py };
+
+            dataGroup.add(mesh);
+            const podId = `pod-${pod.metadata.name}`;
+            objectMap.set(podId, mesh);
+            dataMap.set(podId, pod); // Store K8s data for tooltips
+
+            // Connections
+            if (assignedNodeObj) {
                 const start = new THREE.Vector3(px, py, pz);
                 const end = assignedNodeObj.position.clone().add(new THREE.Vector3(0, 5, 0));
-                
+
                 const mid = start.clone().add(end).multiplyScalar(0.5);
                 mid.y += start.distanceTo(end) * 0.3;
-                
+
                 const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
                 const points = curve.getPoints(24);
                 const line = new THREE.Line(
                     new THREE.BufferGeometry().setFromPoints(points),
                     new THREE.LineBasicMaterial({ color: pColor, transparent: true, opacity: 0.15 })
                 );
-                
+
                 dataGroup.add(line);
                 curves.push(curve);
-             }
-         });
+            }
+        });
     });
 
 
     onCleanup(() => {
         window.removeEventListener('resize', handleResize);
         containerRef?.removeEventListener('mousemove', onMouseMove);
+        containerRef?.removeEventListener('click', onClick);
         cancelAnimationFrame(animationId);
         renderer.dispose();
         composer.dispose();
+        trafficInstancedMesh.dispose();
         if (containerRef) containerRef.innerHTML = '';
         objectMap.clear();
-        traffic = [];
+        dataMap.clear();
+        coreRings = [];
     });
   });
 
@@ -541,26 +685,58 @@ const HoloDeck: Component<Props> = (props) => {
     <div class="relative h-full w-full overflow-hidden">
         <div ref={containerRef} class="h-full w-full bg-[#030508]" />
         
-        {/* HUD Popup */}
+        {/* HUD Popup - Enhanced Tooltip */}
         <Show when={hoverInfo()}>
             {info => (
-                <div 
+                <div
                     class="absolute pointer-events-none z-20"
-                    style={{ 
-                        left: `${info().x}px`, 
+                    style={{
+                        left: `${info().x}px`,
                         top: `${info().y}px`,
                     }}
                 >
                     <div class="relative ml-4 mt-4">
                         {/* Connecting Line */}
                         <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-neon-cyan/50"></div>
-                        
-                        <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs backdrop-blur-md shadow-[0_0_15px_rgba(0,240,255,0.2)]">
+
+                        <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs backdrop-blur-md shadow-[0_0_15px_rgba(0,240,255,0.2)] min-w-[140px]">
                             <div class="flex items-center gap-2 mb-1 border-b border-white/10 pb-1">
                                 <div class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse"></div>
                                 <div class="font-bold text-neon-cyan uppercase tracking-wider">{info().type}</div>
                             </div>
-                            <div class="font-mono text-white/90">{info().title}</div>
+                            <div class="font-mono text-white/90 mb-1">{info().title}</div>
+
+                            {/* Enhanced info for nodes */}
+                            <Show when={info().type === 'node' && info().status}>
+                                <div class="flex items-center gap-2 text-[10px] mt-1 pt-1 border-t border-white/5">
+                                    <span class={`px-1 rounded ${info().status === 'Ready' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                        {info().status}
+                                    </span>
+                                    <Show when={info().podCount !== undefined}>
+                                        <span class="text-text-dim">{info().podCount} pods</span>
+                                    </Show>
+                                </div>
+                            </Show>
+
+                            {/* Enhanced info for pods */}
+                            <Show when={info().type === 'pod'}>
+                                <div class="text-[10px] mt-1 pt-1 border-t border-white/5 space-y-0.5">
+                                    <Show when={info().namespace}>
+                                        <div class="text-text-dim">ns: <span class="text-neon-purple">{info().namespace}</span></div>
+                                    </Show>
+                                    <Show when={info().status}>
+                                        <div class={`inline-block px-1 rounded ${
+                                            info().status === 'Running' ? 'bg-green-500/20 text-green-400' :
+                                            info().status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                                            'bg-red-500/20 text-red-400'
+                                        }`}>
+                                            {info().status}
+                                        </div>
+                                    </Show>
+                                </div>
+                            </Show>
+
+                            <div class="text-[9px] text-text-dim mt-1 opacity-60">Click to select</div>
                         </div>
                     </div>
                 </div>

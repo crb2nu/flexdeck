@@ -53,6 +53,8 @@ export const k8s = {
     }),
   restartDeployment: (ns: string, name: string) =>
     api<any>(`/k8s/deployments/${ns}/${name}/restart`, { method: "POST" }),
+  // SSE endpoint URL (use EventSource directly)
+  watchSSEUrl: (ns?: string) => `/api/k8s/watch-sse${ns ? `?ns=${ns}` : ""}`,
 };
 
 export const prom = {

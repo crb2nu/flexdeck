@@ -1,110 +1,58 @@
-import { Component, createSignal, onMount, onCleanup, Show } from 'solid-js';
+import { Component, createSignal, createMemo, onMount, onCleanup, Show } from 'solid-js';
 import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
+import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { api } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
-import type { K8sNode, K8sPod, K8sService, K8sList } from '../../lib/types';
+import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
 import HoloDeck from './HoloDeck';
 
-const REFRESH_INTERVAL = 15000; // 15 seconds
+const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
 const Dashboard: Component = () => {
   const [viewMode, setViewMode] = createSignal<'2d' | '3d'>('2d');
 
-  // Pod pulse state
-  const [podLoading, setPodLoading] = createSignal(true);
-  const [podError, setPodError] = createSignal('');
-  const [podReady, setPodReady] = createSignal(0);
-  const [podTotal, setPodTotal] = createSignal(0);
-  const [podNamespaces, setPodNamespaces] = createSignal(0);
-
-  // Node pulse state
-  const [nodeLoading, setNodeLoading] = createSignal(true);
-  const [nodeError, setNodeError] = createSignal('');
-  const [nodeReady, setNodeReady] = createSignal(0);
-  const [nodeTotal, setNodeTotal] = createSignal(0);
-
-  // Resource pulse state
+  // Resource pulse state (still polling Prometheus)
   const [resourceLoading, setResourceLoading] = createSignal(true);
   const [resourceError, setResourceError] = createSignal('');
   const [cpuPercent, setCpuPercent] = createSignal(0);
   const [memUsed, setMemUsed] = createSignal(0);
 
-  // K8s data for topology (future use)
-  const [pods, setPods] = createSignal<K8sPod[]>([]);
-  const [nodes, setNodes] = createSignal<K8sNode[]>([]);
-  const [services, setServices] = createSignal<K8sService[]>([]);
-  const [lastUpdated, setLastUpdated] = createSignal(0);
+  let metricsInterval: ReturnType<typeof setInterval>;
 
-  let refreshInterval: ReturnType<typeof setInterval>;
+  // Computed values from K8s store
+  const podReady = createMemo(() =>
+    k8sStore.pods.filter(p =>
+      p.status?.phase === 'Running' ||
+      (p.status as any)?.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True'
+    ).length
+  );
 
-  const isK8sEnabled = () => healthStore.features?.k8s?.enabled ?? false;
-  const isPromEnabled = () => healthStore.features?.prometheus?.enabled ?? false;
+  const podTotal = createMemo(() => k8sStore.pods.length);
 
-  async function fetchPods() {
-    // if (!isK8sEnabled()) return; // Allow running layout logic even if mock data needed? No, standard logic.
+  const podNamespaces = createMemo(() =>
+    new Set(k8sStore.pods.map(p => p.metadata?.namespace)).size
+  );
 
-    try {
-      const data = await api<K8sList<K8sPod>>('/k8s/pods');
-      const items = data.items || [];
-      setPods(items);
+  const nodeReady = createMemo(() =>
+    k8sStore.nodes.filter(n => isNodeReady(n as any)).length
+  );
 
-      const ready = items.filter(
-        (p) => p.status?.conditions?.find((c) => c.type === 'Ready')?.status === 'True'
-      ).length;
-      const namespaces = new Set(items.map((p) => p.metadata?.namespace)).size;
+  const nodeTotal = createMemo(() => k8sStore.nodes.length);
 
-      setPodReady(ready);
-      setPodTotal(items.length);
-      setPodNamespaces(namespaces);
-      setPodError('');
-    } catch (e) {
-      setPodError(e instanceof Error ? e.message : 'Failed to fetch pods');
-    } finally {
-      setPodLoading(false);
-    }
-  }
+  const isLoading = createMemo(() =>
+    k8sStore.lastUpdate === 0 && connectionStatus() !== 'error'
+  );
 
-  async function fetchNodes() {
-    try {
-      const data = await api<K8sList<K8sNode>>('/k8s/nodes');
-      const items = data.items || [];
-      setNodes(items);
+  const k8sError = createMemo(() => k8sStore.error);
 
-      const ready = items.filter(
-        (n) => n.status?.conditions?.find((c) => c.type === 'Ready')?.status === 'True'
-      ).length;
-
-      setNodeReady(ready);
-      setNodeTotal(items.length);
-      setNodeError('');
-    } catch (e) {
-      setNodeError(e instanceof Error ? e.message : 'Failed to fetch nodes');
-    } finally {
-      setNodeLoading(false);
-    }
-  }
-
-  async function fetchServices() {
-    try {
-      const data = await api<K8sList<K8sService>>('/k8s/services');
-      setServices(data.items || []);
-    } catch {
-      // Services are optional for display
-    }
-  }
+  // Adapt store data to component types
+  const nodes = createMemo(() => k8sStore.nodes as unknown as K8sNode[]);
+  const pods = createMemo(() => k8sStore.pods as unknown as K8sPod[]);
+  const services = createMemo(() => k8sStore.services as unknown as K8sService[]);
 
   async function fetchResources() {
-    /* 
-    if (!isPromEnabled()) {
-      setResourceLoading(false);
-      setResourceError('Prometheus disabled');
-      return;
-    } 
-    */ 
-    // Commented out disable check to allow UI to render mock 0s if failure, looks better than error text
-
     try {
       const now = Math.floor(Date.now() / 1000);
       const cpuQuery = 'sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / sum(rate(node_cpu_seconds_total[5m])) * 100';
@@ -128,18 +76,18 @@ const Dashboard: Component = () => {
     }
   }
 
-  async function refresh() {
-    setLastUpdated(Date.now());
-    await Promise.all([fetchPods(), fetchNodes(), fetchServices(), fetchResources()]);
-  }
-
   onMount(() => {
-    refresh();
-    refreshInterval = setInterval(refresh, REFRESH_INTERVAL);
+    // Connect to K8s SSE stream for real-time updates
+    connectK8sStream();
+
+    // Fetch Prometheus metrics (still polling, these aren't in SSE)
+    fetchResources();
+    metricsInterval = setInterval(fetchResources, METRICS_REFRESH_INTERVAL);
   });
 
   onCleanup(() => {
-    if (refreshInterval) clearInterval(refreshInterval);
+    disconnectK8sStream();
+    if (metricsInterval) clearInterval(metricsInterval);
   });
 
   return (
@@ -150,8 +98,8 @@ const Dashboard: Component = () => {
           title="Pods"
           value={`${podReady()}/${podTotal()}`}
           sub={`${podNamespaces()} namespaces`}
-          loading={podLoading()}
-          error={podError()}
+          loading={isLoading()}
+          error={k8sError() || ''}
           icon="⬡"
         />
 
@@ -159,8 +107,8 @@ const Dashboard: Component = () => {
           title="Nodes"
           value={`${nodeReady()}/${nodeTotal()}`}
           sub="cluster nodes"
-          loading={nodeLoading()}
-          error={nodeError()}
+          loading={isLoading()}
+          error={k8sError() || ''}
           icon="◈"
         />
 
@@ -187,14 +135,29 @@ const Dashboard: Component = () => {
       <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
         {/* Controls */}
         <div class="absolute right-4 top-4 z-10 flex gap-2">
+           {/* Connection status indicator */}
+           <div class="flex items-center gap-2 px-3 py-1 rounded-lg bg-black/40 border border-white/10 backdrop-blur">
+             <div class={`w-2 h-2 rounded-full ${
+               connectionStatus() === 'connected' ? 'bg-neon-green animate-pulse' :
+               connectionStatus() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+               connectionStatus() === 'error' ? 'bg-red-500' :
+               'bg-gray-500'
+             }`} />
+             <span class="text-[10px] font-mono uppercase text-text-dim">
+               {connectionStatus() === 'connected' ? 'LIVE' :
+                connectionStatus() === 'connecting' ? 'CONNECTING' :
+                connectionStatus() === 'error' ? 'OFFLINE' : 'DISCONNECTED'}
+             </span>
+           </div>
+
            <div class="p-1 rounded-lg bg-black/40 border border-white/10 backdrop-blur flex">
-               <button 
+               <button
                 onClick={() => setViewMode('2d')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '2d' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
                >
                    2D GRAPH
                </button>
-               <button 
+               <button
                 onClick={() => setViewMode('3d')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '3d' ? 'bg-neon-purple/20 text-neon-purple' : 'text-text-dim hover:text-text-main'}`}
                >
@@ -211,7 +174,7 @@ const Dashboard: Component = () => {
                 <div class="mb-4 text-6xl text-neon-cyan/30 animate-pulse">⬡</div>
                 <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
                 <p class="text-sm text-text-muted">
-                  {podLoading() || nodeLoading() ? 'Loading cluster data...' : 'No resources found'}
+                  {isLoading() ? 'Loading cluster data...' : 'No resources found'}
                 </p>
               </div>
             </div>
@@ -227,10 +190,10 @@ const Dashboard: Component = () => {
             />
           </Show>
         </Show>
-        
-        <Show when={lastUpdated() > 0}>
+
+        <Show when={k8sStore.lastUpdate > 0}>
           <div class="absolute bottom-2 right-2 text-xs text-text-dim z-10 pointer-events-none">
-            Updated: {new Date(lastUpdated()).toLocaleTimeString()}
+            Updated: {new Date(k8sStore.lastUpdate).toLocaleTimeString()}
           </div>
         </Show>
       </div>

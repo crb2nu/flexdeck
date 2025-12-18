@@ -1,6 +1,6 @@
-import { Component, onMount, onCleanup, createEffect } from 'solid-js';
+import { Component, onMount, onCleanup, createEffect, createSignal, Show } from 'solid-js';
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   line: string;
   labels: Record<string, string>;
@@ -10,30 +10,65 @@ interface Props {
   logs: LogEntry[];
   speed?: number; // 1-10
   mode?: 'warp' | 'rain';
+  onLogClick?: (log: LogEntry) => void;
+  paused?: boolean;
 }
+
+// Performance: Fixed-size particle pool to avoid array mutations
+const MAX_PARTICLES = 80;
+
+interface LogParticle {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  text: string;
+  color: string;
+  size: number;
+  speed: number;
+  angle: number;
+  column: number;
+  isError: boolean;
+  glowIntensity: number;
+  lifetime: number;
+  maxLifetime: number;
+  logEntry: LogEntry | null; // Reference to original log for click handling
+}
+
+const createEmptyParticle = (): LogParticle => ({
+  active: false,
+  x: 0,
+  y: 0,
+  z: 0,
+  text: '',
+  color: '#00d9ff',
+  size: 10,
+  speed: 0,
+  angle: 0,
+  column: 0,
+  isError: false,
+  glowIntensity: 0.3,
+  lifetime: 0,
+  maxLifetime: 200,
+  logEntry: null
+});
 
 const LogStream: Component<Props> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
   let animationId: number;
-  
-  interface LogParticle {
-    x: number; 
-    y: number; 
-    z: number; 
-    text: string;
-    color: string;
-    size: number;
-    speed: number;
-    angle?: number; // Warp mode
-    column?: number; // Rain mode
-    isError?: boolean;
-    glowIntensity?: number;
-    lifetime?: number;
-    maxLifetime?: number;
-  }
 
-  const particles: LogParticle[] = [];
-  
+  // Pause state for hover-to-pause feature
+  const [isPaused, setIsPaused] = createSignal(false);
+  const [hoverPos, setHoverPos] = createSignal<{ x: number; y: number } | null>(null);
+
+  // Performance: Fixed-size particle pool
+  const particlePool: LogParticle[] = Array.from({ length: MAX_PARTICLES }, createEmptyParticle);
+  let activeParticleCount = 0;
+
+  // Performance: Throttle spawning
+  let lastSpawnTime = 0;
+  const MIN_SPAWN_INTERVAL = 50; // ms
+
   // Katakana code range for Matrix feel
   const getMatrixChar = () => String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
   
@@ -48,70 +83,89 @@ const LogStream: Component<Props> = (props) => {
 
   const isErrorLog = (line: string) => /error|fatal|panic/i.test(line);
 
-  const spawnParticle = (log: LogEntry) => {
-    const isError = isErrorLog(log.line);
-    
-    if (props.mode === 'rain') {
-        const depth = Math.random(); // 0 (close) to 1 (far)
-        const x = Math.random();
-        
-        particles.push({
-            x: x,
-            y: -0.1 - Math.random() * 0.2,
-            z: depth, 
-            text: log.line.substring(0, 35),
-            color: getLogColor(log.line),
-            size: 16 * (1 - depth * 0.5),
-            speed: (0.004 + Math.random() * 0.006) * (1 - depth * 0.4),
-            column: Math.floor(x * 100),
-            isError: isError,
-            glowIntensity: isError ? 1 : 0.3,
-            lifetime: 0,
-            maxLifetime: 200 + Math.random() * 100
-        });
-    } else {
-        // Warp mode
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 0.1 + Math.random() * 0.8; 
-        particles.push({
-          x: Math.cos(angle) * radius, 
-          y: Math.sin(angle) * radius,
-          z: 2500,
-          text: log.line.substring(0, 60) + (log.line.length > 60 ? '…' : ''),
-          color: getLogColor(log.line),
-          size: 10 + Math.random() * 6,
-          speed: 15 + Math.random() * 15,
-          angle: angle,
-          isError: isError,
-          glowIntensity: isError ? 1 : 0.5
-        });
+  // Performance: Find inactive slot in pool (O(n) but pool is fixed size)
+  const findInactiveSlot = (): number => {
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (!particlePool[i].active) return i;
     }
+    return -1; // Pool full
   };
 
-  const drawWarp = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
+  // Performance: Throttled spawn with pool allocation
+  const spawnParticle = (log: LogEntry, force = false) => {
+    const now = performance.now();
+    if (!force && now - lastSpawnTime < MIN_SPAWN_INTERVAL) return;
+    lastSpawnTime = now;
+
+    const slotIndex = findInactiveSlot();
+    if (slotIndex === -1) return; // Pool exhausted
+
+    const p = particlePool[slotIndex];
+    const isError = isErrorLog(log.line);
+
+    p.active = true;
+    p.logEntry = log;
+    p.isError = isError;
+    p.color = getLogColor(log.line);
+    p.lifetime = 0;
+
+    if (props.mode === 'rain') {
+      const depth = Math.random();
+      const x = Math.random();
+      p.x = x;
+      p.y = -0.1 - Math.random() * 0.2;
+      p.z = depth;
+      p.text = log.line.substring(0, 35);
+      p.size = 16 * (1 - depth * 0.5);
+      p.speed = (0.004 + Math.random() * 0.006) * (1 - depth * 0.4);
+      p.column = Math.floor(x * 100);
+      p.glowIntensity = isError ? 1 : 0.3;
+      p.maxLifetime = 200 + Math.random() * 100;
+    } else {
+      // Warp mode
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 0.1 + Math.random() * 0.8;
+      p.x = Math.cos(angle) * radius;
+      p.y = Math.sin(angle) * radius;
+      p.z = 2500;
+      p.text = log.line.substring(0, 60) + (log.line.length > 60 ? '…' : '');
+      p.size = 10 + Math.random() * 6;
+      p.speed = 15 + Math.random() * 15;
+      p.angle = angle;
+      p.glowIntensity = isError ? 1 : 0.5;
+    }
+
+    activeParticleCount++;
+  };
+
+  const drawWarp = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number, paused: boolean) => {
     // Motion blur effect
     ctx.fillStyle = 'rgba(3, 5, 10, 0.15)';
     ctx.fillRect(0, 0, width, height);
 
     const centerX = width / 2;
     const centerY = height / 2;
-    const rotation = time * 0.00005; // Very slow scene rotation
-    
-    // Sort by z-depth for proper rendering (far to close)
-    particles.sort((a, b) => b.z - a.z);
-    
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.z -= p.speed * (props.speed || 3);
-      
+    const rotation = time * 0.00005;
+    const speedMultiplier = paused ? 0 : (props.speed || 3);
+
+    // Performance: No sorting needed - draw all active particles
+    // Far particles naturally occlude less due to smaller size
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const p = particlePool[i];
+      if (!p.active) continue;
+
+      // Update position (skip if paused)
+      if (!paused) {
+        p.z -= p.speed * speedMultiplier;
+      }
+
       if (p.z <= 10) {
-        particles.splice(i, 1);
+        p.active = false;
+        activeParticleCount--;
         continue;
       }
 
       const perspective = 400 / (20 + p.z);
-      
-      // Apply rotation
       const ca = Math.cos(rotation);
       const sa = Math.sin(rotation);
       const rx = p.x * ca - p.y * sa;
@@ -119,15 +173,15 @@ const LogStream: Component<Props> = (props) => {
 
       const screenX = centerX + rx * width * perspective;
       const screenY = centerY + ry * height * perspective;
-      
-      const alpha = Math.min(1, (2500 - p.z) / 800) * 0.9; 
+
+      const alpha = Math.min(1, (2500 - p.z) / 800) * 0.9;
       const fontSize = Math.max(2, p.size * perspective * 1.5);
-      
+
       if (fontSize < 2) continue;
-      
+
       ctx.font = `${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
       ctx.globalAlpha = alpha;
-      
+
       // Glow effect for errors
       if (p.isError && p.glowIntensity) {
         ctx.shadowBlur = 15 * p.glowIntensity;
@@ -136,116 +190,119 @@ const LogStream: Component<Props> = (props) => {
         ctx.shadowBlur = 3;
         ctx.shadowColor = p.color;
       }
-      
+
       ctx.fillStyle = p.color;
       ctx.fillText(p.text, screenX, screenY);
-      
-      // Draw motion trail (streaks)
-      if (p.z > 300) {
+
+      // Draw motion trail (streaks) - skip gradient creation when far away
+      if (p.z > 300 && p.z < 2000) {
         const trailLength = Math.min(150, p.speed * 2);
-        const gradient = ctx.createLinearGradient(
-          screenX, screenY,
-          centerX + rx * width * (400 / (20 + p.z + trailLength)),
-          centerY + ry * height * (400 / (20 + p.z + trailLength))
-        );
-        gradient.addColorStop(0, p.color);
-        gradient.addColorStop(1, 'transparent');
-        
-        ctx.strokeStyle = gradient;
+        const endPerspective = 400 / (20 + p.z + trailLength);
+        const originX = centerX + rx * width * endPerspective;
+        const originY = centerY + ry * height * endPerspective;
+
+        // Performance: Simple line instead of gradient for trails
+        ctx.strokeStyle = p.color;
         ctx.lineWidth = fontSize * 0.1;
         ctx.globalAlpha = alpha * 0.3;
         ctx.beginPath();
         ctx.moveTo(screenX, screenY);
-        const originX = centerX + rx * width * (400 / (20 + p.z + trailLength));
-        const originY = centerY + ry * height * (400 / (20 + p.z + trailLength));
         ctx.lineTo(originX, originY);
         ctx.stroke();
       }
     }
-    
+
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   };
 
-  const drawRain = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
-      // Clear with transparency for trails
-      ctx.fillStyle = 'rgba(3, 5, 10, 0.12)'; 
-      ctx.fillRect(0, 0, width, height);
-      
-      // Add scanline effect
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.02)';
-      const scanY = (time * 0.1) % height;
-      ctx.fillRect(0, scanY, width, 2);
-      
-      for (let i = particles.length - 1; i >= 0; i--) {
-          const p = particles[i];
-          p.y += p.speed * (props.speed || 2);
-          p.lifetime = (p.lifetime || 0) + 1;
+  const drawRain = (ctx: CanvasRenderingContext2D, width: number, height: number, time: number, paused: boolean) => {
+    // Clear with transparency for trails
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.12)';
+    ctx.fillRect(0, 0, width, height);
 
-          if (p.y > 1.3) {
-              particles.splice(i, 1);
-              continue;
-          }
+    // Add scanline effect
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.02)';
+    const scanY = (time * 0.1) % height;
+    ctx.fillRect(0, scanY, width, 2);
 
-          const x = p.x * width;
-          const y = p.y * height;
-          const fontSize = p.size;
-          const depthFactor = 1 - (p.z * 0.5);
-          
-          ctx.font = `${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+    const speedMultiplier = paused ? 0 : (props.speed || 2);
 
-          // Draw each character vertically
-          const charCount = Math.min(p.text.length, 25);
-          
-          for (let c = 0; c < charCount; c++) {
-              const charY = y - (c * (fontSize * 1.05));
-              
-              // Skip offscreen chars
-              if (charY < -fontSize || charY > height + fontSize) continue;
-              
-              // Determine character to draw
-              const isGlitch = Math.random() > 0.97;
-              const char = isGlitch ? getMatrixChar() : p.text[c];
-              
-              // Calculate opacity
-              const tailOpacity = 1 - (c / charCount);
-              const fadeIn = Math.min(1, (p.lifetime || 0) / 20);
-              const baseOpacity = depthFactor * tailOpacity * fadeIn;
-              
-              if (c === 0) {
-                  // Head character - bright white with glow
-                  ctx.fillStyle = '#ffffff';
-                  ctx.globalAlpha = depthFactor * fadeIn;
-                  
-                  if (p.isError) {
-                      ctx.shadowBlur = 20;
-                      ctx.shadowColor = '#ff0055';
-                  } else if (p.z < 0.3) {
-                      ctx.shadowBlur = 12;
-                      ctx.shadowColor = '#00ffff';
-                  } else {
-                      ctx.shadowBlur = 6;
-                      ctx.shadowColor = p.color;
-                  }
-              } else {
-                  ctx.fillStyle = p.color;
-                  ctx.globalAlpha = baseOpacity * 0.85;
-                  ctx.shadowBlur = p.isError ? 4 : 0;
-              }
-              
-              ctx.fillText(char || ' ', x, charY);
-          }
-          
-          // Draw reflection/echo for close particles
-          if (p.z < 0.2 && p.y > 0.3) {
-              ctx.globalAlpha = 0.05 * depthFactor;
-              ctx.fillStyle = p.color;
-              ctx.fillText(p.text[0] || '', x, y + fontSize * 2);
-          }
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const p = particlePool[i];
+      if (!p.active) continue;
+
+      // Update position
+      if (!paused) {
+        p.y += p.speed * speedMultiplier;
+        p.lifetime++;
       }
-      
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
+
+      if (p.y > 1.3) {
+        p.active = false;
+        activeParticleCount--;
+        continue;
+      }
+
+      const x = p.x * width;
+      const y = p.y * height;
+      const fontSize = p.size;
+      const depthFactor = 1 - (p.z * 0.5);
+
+      ctx.font = `${fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+
+      // Draw each character vertically
+      const charCount = Math.min(p.text.length, 25);
+
+      for (let c = 0; c < charCount; c++) {
+        const charY = y - (c * (fontSize * 1.05));
+
+        // Skip offscreen chars
+        if (charY < -fontSize || charY > height + fontSize) continue;
+
+        // Determine character to draw
+        const isGlitch = Math.random() > 0.97;
+        const char = isGlitch ? getMatrixChar() : p.text[c];
+
+        // Calculate opacity
+        const tailOpacity = 1 - (c / charCount);
+        const fadeIn = Math.min(1, p.lifetime / 20);
+        const baseOpacity = depthFactor * tailOpacity * fadeIn;
+
+        if (c === 0) {
+          // Head character - bright white with glow
+          ctx.fillStyle = '#ffffff';
+          ctx.globalAlpha = depthFactor * fadeIn;
+
+          if (p.isError) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ff0055';
+          } else if (p.z < 0.3) {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = '#00ffff';
+          } else {
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = p.color;
+          }
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = baseOpacity * 0.85;
+          ctx.shadowBlur = p.isError ? 4 : 0;
+        }
+
+        ctx.fillText(char || ' ', x, charY);
+      }
+
+      // Draw reflection/echo for close particles
+      if (p.z < 0.2 && p.y > 0.3) {
+        ctx.globalAlpha = 0.05 * depthFactor;
+        ctx.fillStyle = p.color;
+        ctx.fillText(p.text[0] || '', x, y + fontSize * 2);
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
   };
 
   onMount(() => {
@@ -264,30 +321,52 @@ const LogStream: Component<Props> = (props) => {
     resize();
     window.addEventListener('resize', resize);
 
+    // Mouse event handlers for pause-on-hover
+    const handleMouseEnter = () => setIsPaused(true);
+    const handleMouseLeave = () => {
+      setIsPaused(false);
+      setHoverPos(null);
+    };
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!canvasRef) return;
+      const rect = canvasRef.getBoundingClientRect();
+      setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    };
+
+    canvasRef.addEventListener('mouseenter', handleMouseEnter);
+    canvasRef.addEventListener('mouseleave', handleMouseLeave);
+    canvasRef.addEventListener('mousemove', handleMouseMove);
+
     const loop = () => {
       if (!canvasRef) return;
       animationId = requestAnimationFrame(loop);
       const width = canvasRef.clientWidth;
       const height = canvasRef.clientHeight;
       const time = performance.now();
-      
+      const paused = isPaused() || props.paused || false;
+
       if (props.mode === 'rain') {
-          drawRain(ctx, width, height, time);
+          drawRain(ctx, width, height, time, paused);
       } else {
-          drawWarp(ctx, width, height, time);
+          drawWarp(ctx, width, height, time, paused);
       }
-      
-      // Spawn from existing logs for visual density
-      const maxParticles = props.mode === 'rain' ? 40 : 60;
-      if (particles.length < maxParticles && props.logs.length > 0) {
-          const randomLog = props.logs[Math.floor(Math.random() * Math.min(props.logs.length, 50))];
-          if (randomLog) spawnParticle(randomLog);
+
+      // Spawn from existing logs for visual density (only when not paused)
+      if (!paused) {
+        const maxActive = props.mode === 'rain' ? 40 : 60;
+        if (activeParticleCount < maxActive && props.logs.length > 0) {
+            const randomLog = props.logs[Math.floor(Math.random() * Math.min(props.logs.length, 50))];
+            if (randomLog) spawnParticle(randomLog);
+        }
       }
     };
     loop();
 
     onCleanup(() => {
       window.removeEventListener('resize', resize);
+      canvasRef?.removeEventListener('mouseenter', handleMouseEnter);
+      canvasRef?.removeEventListener('mouseleave', handleMouseLeave);
+      canvasRef?.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(animationId);
     });
   });
@@ -304,7 +383,52 @@ const LogStream: Component<Props> = (props) => {
     }
   });
 
-  return <canvas ref={canvasRef} class="h-full w-full bg-[#030510] cursor-crosshair" />;
+  // Handle click to find nearest particle
+  const handleCanvasClick = (e: MouseEvent) => {
+    if (!canvasRef || !props.onLogClick) return;
+    const rect = canvasRef.getBoundingClientRect();
+    const clickX = (e.clientX - rect.left) / rect.width;
+    const clickY = (e.clientY - rect.top) / rect.height;
+
+    // Find nearest active particle
+    let nearest: LogParticle | null = null;
+    let nearestDist = Infinity;
+    const threshold = 0.05; // 5% of canvas size
+
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const p = particlePool[i];
+      if (!p.active || !p.logEntry) continue;
+
+      const dist = Math.sqrt(Math.pow(p.x - clickX, 2) + Math.pow(p.y - clickY, 2));
+      if (dist < nearestDist && dist < threshold) {
+        nearest = p;
+        nearestDist = dist;
+      }
+    }
+
+    if (nearest && nearest.logEntry) {
+      props.onLogClick(nearest.logEntry);
+    }
+  };
+
+  return (
+    <div class="relative h-full w-full">
+      <canvas
+        ref={canvasRef}
+        class="h-full w-full bg-[#030510] cursor-crosshair"
+        onClick={handleCanvasClick}
+      />
+      {/* Pause indicator */}
+      <Show when={isPaused()}>
+        <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div class="bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/20">
+            <div class="text-neon-cyan text-sm font-mono tracking-wider">PAUSED</div>
+            <div class="text-text-dim text-xs mt-1">{activeParticleCount} particles</div>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
 };
 
 export default LogStream;

@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -133,4 +134,126 @@ func (c *Client) Clientset() *kubernetes.Clientset {
 
 func (c *Client) Config() *rest.Config {
 	return c.restConfig
+}
+
+// WatchEvent represents a Kubernetes watch event
+type WatchEvent struct {
+	Type       string      `json:"type"`
+	ObjectType string      `json:"objectType"`
+	Object     interface{} `json:"object"`
+}
+
+// WatchNodes returns a channel of watch events for nodes
+func (c *Client) WatchNodes(ctx context.Context) (<-chan WatchEvent, error) {
+	watcher, err := c.clientset.CoreV1().Nodes().Watch(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch nodes: %w", err)
+	}
+
+	events := make(chan WatchEvent, 100)
+
+	go func() {
+		defer close(events)
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				events <- WatchEvent{
+					Type:       string(event.Type),
+					ObjectType: "node",
+					Object:     event.Object,
+				}
+			}
+		}
+	}()
+
+	return events, nil
+}
+
+// WatchPods returns a channel of watch events for pods
+func (c *Client) WatchPods(ctx context.Context, namespace string) (<-chan WatchEvent, error) {
+	opts := metav1.ListOptions{}
+	var watcher watch.Interface
+	var err error
+
+	if namespace == "" {
+		watcher, err = c.clientset.CoreV1().Pods("").Watch(ctx, opts)
+	} else {
+		watcher, err = c.clientset.CoreV1().Pods(namespace).Watch(ctx, opts)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch pods: %w", err)
+	}
+
+	events := make(chan WatchEvent, 100)
+
+	go func() {
+		defer close(events)
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				events <- WatchEvent{
+					Type:       string(event.Type),
+					ObjectType: "pod",
+					Object:     event.Object,
+				}
+			}
+		}
+	}()
+
+	return events, nil
+}
+
+// WatchServices returns a channel of watch events for services
+func (c *Client) WatchServices(ctx context.Context, namespace string) (<-chan WatchEvent, error) {
+	opts := metav1.ListOptions{}
+	var watcher watch.Interface
+	var err error
+
+	if namespace == "" {
+		watcher, err = c.clientset.CoreV1().Services("").Watch(ctx, opts)
+	} else {
+		watcher, err = c.clientset.CoreV1().Services(namespace).Watch(ctx, opts)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch services: %w", err)
+	}
+
+	events := make(chan WatchEvent, 100)
+
+	go func() {
+		defer close(events)
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				events <- WatchEvent{
+					Type:       string(event.Type),
+					ObjectType: "service",
+					Object:     event.Object,
+				}
+			}
+		}
+	}()
+
+	return events, nil
 }
