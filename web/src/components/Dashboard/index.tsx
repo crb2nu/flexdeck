@@ -13,8 +13,8 @@ import PodLogPanel from './PodLogPanel';
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
 interface SelectedItem {
-  type: 'node' | 'pod';
-  data: K8sNode | K8sPod;
+  type: 'node' | 'pod' | 'service';
+  data: K8sNode | K8sPod | K8sService;
 }
 
 const Dashboard: Component = () => {
@@ -79,7 +79,7 @@ const Dashboard: Component = () => {
   });
 
   // Handle selection from HoloDeck
-  const handleSelect = (item: { type: 'node' | 'pod'; data: K8sNode | K8sPod } | null) => {
+  const handleSelect = (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => {
     setSelectedItem(item);
   };
 
@@ -654,7 +654,7 @@ const Dashboard: Component = () => {
         {(pod) => (
           <PodLogPanel
             podName={pod().metadata.name}
-            namespace={pod().metadata.namespace}
+            namespace={pod().metadata.namespace || 'default'}
             onClose={() => setLogPanelPod(null)}
           />
         )}
