@@ -2,11 +2,13 @@ import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } fr
 import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
+import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { api } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
 import HoloDeck, { type HoloDeckFilter } from './HoloDeck';
+import PodLogPanel from './PodLogPanel';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
@@ -20,6 +22,7 @@ const Dashboard: Component = () => {
   const [filter, setFilter] = createSignal<HoloDeckFilter>({});
   const [showFilters, setShowFilters] = createSignal(false);
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
+  const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);
 
   // Resource pulse state (still polling Prometheus)
   const [resourceLoading, setResourceLoading] = createSignal(true);
@@ -125,6 +128,9 @@ const Dashboard: Component = () => {
     // Connect to K8s SSE stream for real-time updates
     connectK8sStream();
 
+    // Start metrics polling (for node/pod resource metrics)
+    startMetricsPolling();
+
     // Fetch Prometheus metrics (still polling, these aren't in SSE)
     fetchResources();
     metricsInterval = setInterval(fetchResources, METRICS_REFRESH_INTERVAL);
@@ -132,6 +138,7 @@ const Dashboard: Component = () => {
 
   onCleanup(() => {
     disconnectK8sStream();
+    stopMetricsPolling();
     if (metricsInterval) clearInterval(metricsInterval);
   });
 
@@ -377,28 +384,77 @@ const Dashboard: Component = () => {
                             </div>
                           </div>
 
-                          {/* Resources Section */}
+                          {/* Resources Section with Usage Meters */}
                           <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Resources</h4>
-                            <div class="space-y-1 text-xs">
-                              <Show when={n().status?.capacity?.cpu}>
-                                <div class="flex justify-between">
-                                  <span class="text-text-muted">CPU</span>
-                                  <span class="text-text-main font-mono">{n().status?.capacity?.cpu}</span>
-                                </div>
-                              </Show>
-                              <Show when={n().status?.capacity?.memory}>
-                                <div class="flex justify-between">
-                                  <span class="text-text-muted">Memory</span>
-                                  <span class="text-text-main font-mono">{n().status?.capacity?.memory}</span>
-                                </div>
-                              </Show>
-                              <Show when={n().status?.capacity?.pods}>
-                                <div class="flex justify-between">
-                                  <span class="text-text-muted">Max Pods</span>
-                                  <span class="text-text-main font-mono">{n().status?.capacity?.pods}</span>
-                                </div>
-                              </Show>
+                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Resource Usage</h4>
+                            <div class="space-y-3">
+                              {/* CPU Usage Bar */}
+                              {(() => {
+                                const metrics = getNodeMetrics(n().metadata.name);
+                                const cpuUsage = metrics?.cpuUsage || 0;
+                                return (
+                                  <div>
+                                    <div class="flex justify-between text-xs mb-1">
+                                      <span class="text-text-muted">CPU</span>
+                                      <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>
+                                        {cpuUsage.toFixed(1)}%
+                                      </span>
+                                    </div>
+                                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                      <div
+                                        class="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                          width: `${Math.min(cpuUsage, 100)}%`,
+                                          background: getUsageGradient(cpuUsage)
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Memory Usage Bar */}
+                              {(() => {
+                                const metrics = getNodeMetrics(n().metadata.name);
+                                const memPercent = metrics?.memoryPercent || 0;
+                                const memUsed = metrics?.memoryUsed || 0;
+                                const memLimit = metrics?.memoryLimit || 0;
+                                return (
+                                  <div>
+                                    <div class="flex justify-between text-xs mb-1">
+                                      <span class="text-text-muted">Memory</span>
+                                      <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>
+                                        {formatBytes(memUsed)} / {formatBytes(memLimit)}
+                                      </span>
+                                    </div>
+                                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                      <div
+                                        class="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                          width: `${Math.min(memPercent, 100)}%`,
+                                          background: getUsageGradient(memPercent)
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Capacity Info */}
+                              <div class="pt-2 border-t border-white/5 space-y-1 text-xs">
+                                <Show when={n().status?.capacity?.cpu}>
+                                  <div class="flex justify-between">
+                                    <span class="text-text-muted">CPU Capacity</span>
+                                    <span class="text-text-main font-mono">{n().status?.capacity?.cpu}</span>
+                                  </div>
+                                </Show>
+                                <Show when={n().status?.capacity?.pods}>
+                                  <div class="flex justify-between">
+                                    <span class="text-text-muted">Max Pods</span>
+                                    <span class="text-text-main font-mono">{n().status?.capacity?.pods}</span>
+                                  </div>
+                                </Show>
+                              </div>
                             </div>
                           </div>
 
@@ -454,6 +510,61 @@ const Dashboard: Component = () => {
                             </div>
                           </div>
 
+                          {/* Resource Usage Section */}
+                          <div>
+                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Resource Usage</h4>
+                            {(() => {
+                              const metrics = getPodMetrics(p().metadata.namespace || 'default', p().metadata.name);
+                              const cpuUsage = metrics?.cpuUsage || 0;
+                              const memPercent = metrics?.memoryPercent || 0;
+                              const memUsed = metrics?.memoryUsed || 0;
+                              const memLimit = metrics?.memoryLimit || 0;
+
+                              return (
+                                <div class="space-y-2">
+                                  {/* CPU */}
+                                  <div>
+                                    <div class="flex justify-between text-xs mb-1">
+                                      <span class="text-text-muted">CPU</span>
+                                      <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>
+                                        {cpuUsage.toFixed(1)}%
+                                      </span>
+                                    </div>
+                                    <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+                                      <div
+                                        class="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                          width: `${Math.min(cpuUsage, 100)}%`,
+                                          background: getUsageGradient(cpuUsage)
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* Memory */}
+                                  <div>
+                                    <div class="flex justify-between text-xs mb-1">
+                                      <span class="text-text-muted">Memory</span>
+                                      <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>
+                                        {memLimit > 0 ? `${formatBytes(memUsed)} / ${formatBytes(memLimit)}` : formatBytes(memUsed)}
+                                      </span>
+                                    </div>
+                                    <Show when={memLimit > 0}>
+                                      <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+                                        <div
+                                          class="h-full rounded-full transition-all duration-500"
+                                          style={{
+                                            width: `${Math.min(memPercent, 100)}%`,
+                                            background: getUsageGradient(memPercent)
+                                          }}
+                                        />
+                                      </div>
+                                    </Show>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
                           {/* Containers Section */}
                           <div>
                             <h4 class="text-[10px] text-text-dim uppercase mb-2">
@@ -504,7 +615,15 @@ const Dashboard: Component = () => {
                   {/* Actions */}
                   <div class="flex gap-2 mt-4 pt-3 border-t border-white/10">
                     <Show when={!isNode() && pod()}>
-                      <button class="px-3 py-1.5 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors">
+                      <button
+                        onClick={() => {
+                          const currentPod = pod();
+                          if (currentPod) {
+                            setLogPanelPod(currentPod);
+                          }
+                        }}
+                        class="px-3 py-1.5 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
+                      >
                         View Logs
                       </button>
                     </Show>
@@ -529,6 +648,17 @@ const Dashboard: Component = () => {
           }}
         </Show>
       </div>
+
+      {/* Pod Log Panel */}
+      <Show when={logPanelPod()}>
+        {(pod) => (
+          <PodLogPanel
+            podName={pod().metadata.name}
+            namespace={pod().metadata.namespace}
+            onClose={() => setLogPanelPod(null)}
+          />
+        )}
+      </Show>
     </div>
   );
 };

@@ -55,6 +55,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
+		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
+		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
+		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
 
 		r.Route("/api/k8s", func(r chi.Router) {
 			r.Get("/services", h.K8sServices)

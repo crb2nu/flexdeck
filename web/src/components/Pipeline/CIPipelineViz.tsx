@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
+import { ciApi } from '../../lib/api';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
 export interface PipelineJob {
@@ -108,8 +109,11 @@ const getStatusGlow = (status: PipelineJob['status']): string => {
 
 const CIPipelineViz: Component<{
   pipeline?: Pipeline;
+  projectId?: number;
   onJobClick?: (job: PipelineJob) => void;
+  onRefresh?: () => void;
 }> = (props) => {
+  const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   let containerRef: HTMLDivElement | undefined;
   let particleCanvasRef: HTMLCanvasElement | undefined;
   let animationId: number;
@@ -193,35 +197,107 @@ const CIPipelineViz: Component<{
     return '';
   };
 
-  // Job action handlers
-  const handleRetryJob = (job: PipelineJob, e: MouseEvent) => {
+  // Helper to extract numeric job ID
+  const getNumericJobId = (jobId: string): string => jobId.replace(/^job-/, '');
+
+  // Job action handlers with real API calls
+  const handleRetryJob = async (job: PipelineJob, e: MouseEvent) => {
     e.stopPropagation();
-    setPipeline(prev => ({
-      ...prev,
-      stages: prev.stages.map(s => ({
-        ...s,
-        jobs: s.jobs.map(j =>
-          j.id === job.id
-            ? { ...j, status: 'running' as const, duration: 0 }
-            : j
-        )
-      }))
-    }));
+    if (!props.projectId) {
+      console.warn('No projectId provided for job action');
+      return;
+    }
+
+    const jobId = getNumericJobId(job.id);
+    setActionLoading(job.id);
+
+    try {
+      await ciApi.retryJob(props.projectId, jobId);
+      // Optimistic update
+      setPipeline(prev => ({
+        ...prev,
+        stages: prev.stages.map(s => ({
+          ...s,
+          jobs: s.jobs.map(j =>
+            j.id === job.id
+              ? { ...j, status: 'running' as const, duration: 0 }
+              : j
+          )
+        }))
+      }));
+      // Trigger refresh to get updated pipeline state
+      props.onRefresh?.();
+    } catch (err) {
+      console.error('Failed to retry job:', err);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const handleCancelJob = (job: PipelineJob, e: MouseEvent) => {
+  const handleCancelJob = async (job: PipelineJob, e: MouseEvent) => {
     e.stopPropagation();
-    setPipeline(prev => ({
-      ...prev,
-      stages: prev.stages.map(s => ({
-        ...s,
-        jobs: s.jobs.map(j =>
-          j.id === job.id
-            ? { ...j, status: 'failed' as const }
-            : j
-        )
-      }))
-    }));
+    if (!props.projectId) {
+      console.warn('No projectId provided for job action');
+      return;
+    }
+
+    const jobId = getNumericJobId(job.id);
+    setActionLoading(job.id);
+
+    try {
+      await ciApi.cancelJob(props.projectId, jobId);
+      // Optimistic update
+      setPipeline(prev => ({
+        ...prev,
+        stages: prev.stages.map(s => ({
+          ...s,
+          jobs: s.jobs.map(j =>
+            j.id === job.id
+              ? { ...j, status: 'failed' as const }
+              : j
+          )
+        }))
+      }));
+      // Trigger refresh to get updated pipeline state
+      props.onRefresh?.();
+    } catch (err) {
+      console.error('Failed to cancel job:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePlayJob = async (job: PipelineJob, e: MouseEvent) => {
+    e.stopPropagation();
+    if (!props.projectId) {
+      console.warn('No projectId provided for job action');
+      return;
+    }
+
+    const jobId = getNumericJobId(job.id);
+    setActionLoading(job.id);
+
+    try {
+      await ciApi.playJob(props.projectId, jobId);
+      // Optimistic update
+      setPipeline(prev => ({
+        ...prev,
+        stages: prev.stages.map(s => ({
+          ...s,
+          jobs: s.jobs.map(j =>
+            j.id === job.id
+              ? { ...j, status: 'running' as const }
+              : j
+          )
+        }))
+      }));
+      // Trigger refresh to get updated pipeline state
+      props.onRefresh?.();
+    } catch (err) {
+      console.error('Failed to play job:', err);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   // Memoized connection paths - only recompute when pipeline changes
@@ -732,57 +808,48 @@ const CIPipelineViz: Component<{
                         {/* Manual trigger button */}
                         <Show when={job.status === 'manual'}>
                           <button
-                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105"
+                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
                               background: 'rgba(189, 0, 255, 0.2)',
                               border: '1px solid rgba(189, 0, 255, 0.5)',
                               color: '#bd00ff'
                             }}
-                            onClick={() => {
-                              setPipeline(prev => {
-                                const updated = { ...prev, stages: prev.stages.map(s => ({
-                                  ...s,
-                                  jobs: s.jobs.map(j =>
-                                    j.id === job.id
-                                      ? { ...j, status: 'running' as const }
-                                      : j
-                                  )
-                                }))};
-                                return updated;
-                              });
-                            }}
+                            disabled={actionLoading() === job.id}
+                            onClick={(e) => handlePlayJob(job, e)}
                           >
-                            ▶ Deploy
+                            {actionLoading() === job.id ? '...' : '▶ Deploy'}
                           </button>
                         </Show>
 
                         {/* Retry button for failed jobs */}
                         <Show when={job.status === 'failed'}>
                           <button
-                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105"
+                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
                               background: 'rgba(255, 0, 60, 0.2)',
                               border: '1px solid rgba(255, 0, 60, 0.5)',
                               color: '#ff003c'
                             }}
+                            disabled={actionLoading() === job.id}
                             onClick={(e) => handleRetryJob(job, e)}
                           >
-                            ↻ Retry
+                            {actionLoading() === job.id ? '...' : '↻ Retry'}
                           </button>
                         </Show>
 
                         {/* Cancel button for running jobs */}
                         <Show when={job.status === 'running'}>
                           <button
-                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 hover:bg-red-500/30"
+                            class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
                               background: 'rgba(255, 255, 255, 0.05)',
                               border: '1px solid rgba(255, 255, 255, 0.2)',
                               color: 'rgba(255, 255, 255, 0.7)'
                             }}
+                            disabled={actionLoading() === job.id}
                             onClick={(e) => handleCancelJob(job, e)}
                           >
-                            ✕ Cancel
+                            {actionLoading() === job.id ? '...' : '✕ Cancel'}
                           </button>
                         </Show>
                       </div>

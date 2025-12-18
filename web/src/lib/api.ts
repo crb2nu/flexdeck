@@ -234,4 +234,19 @@ export const ciApi = {
     ),
   getJobInfo: (projectId: number, jobId: string) =>
     api<any>(`/ci/projects/${projectId}/jobs/${jobId}`),
+  retryJob: (projectId: number, jobId: string) =>
+    api<{ success: boolean; jobId: string; status: string }>(
+      `/ci/projects/${projectId}/jobs/${jobId}/retry`,
+      { method: "POST" }
+    ),
+  cancelJob: (projectId: number, jobId: string) =>
+    api<{ success: boolean; jobId: string; status: string }>(
+      `/ci/projects/${projectId}/jobs/${jobId}/cancel`,
+      { method: "POST" }
+    ),
+  playJob: (projectId: number, jobId: string) =>
+    api<{ success: boolean; jobId: string; status: string }>(
+      `/ci/projects/${projectId}/jobs/${jobId}/play`,
+      { method: "POST" }
+    ),
 };

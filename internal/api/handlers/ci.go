@@ -373,6 +373,186 @@ func (h *Handler) GetJobTrace(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RetryJob retries a failed or canceled job
+func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	jobID := chi.URLParam(r, "jobId")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// POST to GitLab job retry endpoint
+	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/retry", gitlabURL, projectID, jobID)
+	req, err := http.NewRequest("POST", retryURL, nil)
+	if err != nil {
+		slog.Error("Failed to create retry request", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to retry job", "error", err)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab retry API returned non-OK", "status", resp.StatusCode, "job", jobID, "body", string(body))
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	var job struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&job)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"jobId":   fmt.Sprintf("%d", job.ID),
+		"status":  job.Status,
+	})
+}
+
+// CancelJob cancels a running job
+func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	jobID := chi.URLParam(r, "jobId")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// POST to GitLab job cancel endpoint
+	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/cancel", gitlabURL, projectID, jobID)
+	req, err := http.NewRequest("POST", cancelURL, nil)
+	if err != nil {
+		slog.Error("Failed to create cancel request", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to cancel job", "error", err)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab cancel API returned non-OK", "status", resp.StatusCode, "job", jobID, "body", string(body))
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	var job struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&job)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"jobId":   fmt.Sprintf("%d", job.ID),
+		"status":  job.Status,
+	})
+}
+
+// PlayJob plays (triggers) a manual job
+func (h *Handler) PlayJob(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	jobID := chi.URLParam(r, "jobId")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "GitLab token not configured",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// POST to GitLab job play endpoint
+	playURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/play", gitlabURL, projectID, jobID)
+	req, err := http.NewRequest("POST", playURL, nil)
+	if err != nil {
+		slog.Error("Failed to create play request", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "Failed to create request",
+		})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to play job", "error", err)
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": "Failed to connect to GitLab",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab play API returned non-OK", "status", resp.StatusCode, "job", jobID, "body", string(body))
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	var job struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&job)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"jobId":   fmt.Sprintf("%d", job.ID),
+		"status":  job.Status,
+	})
+}
+
 // GetJobInfo fetches detailed information about a specific job
 func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectId")

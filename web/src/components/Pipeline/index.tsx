@@ -230,9 +230,17 @@ const Pipeline: Component = () => {
                     </div>
                 }>
                     <div class="flex-1 relative p-4">
-                        <CIPipelineViz 
-                            pipeline={pipelineData()} 
+                        <CIPipelineViz
+                            pipeline={pipelineData()}
+                            projectId={selectedRepo()?.id}
                             onJobClick={(job) => setSelectedJob(job)}
+                            onRefresh={() => {
+                                const repo = selectedRepo();
+                                if (repo?.id) {
+                                    // Delay refresh to allow GitLab to process the action
+                                    setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+                                }
+                            }}
                         />
                     </div>
 

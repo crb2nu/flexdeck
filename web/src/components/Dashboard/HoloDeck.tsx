@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import { metricsStore, getNodeMetrics, getUsageColor } from '../../stores/metrics';
 
 // Quality presets for performance tuning
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -34,7 +35,7 @@ interface Props {
   services: K8sService[];
   quality?: QualityLevel;
   filter?: HoloDeckFilter;
-  onSelect?: (item: { type: 'node' | 'pod'; data: K8sNode | K8sPod } | null) => void;
+  onSelect?: (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => void;
 }
 
 // Shader for the "Holographic" floor
@@ -118,8 +119,9 @@ const HoloDeck: Component<Props> = (props) => {
 
   // Scene Objects - stores both 3D object and source data
   const objectMap = new Map<string, THREE.Object3D>();
-  const dataMap = new Map<string, K8sNode | K8sPod>(); // Maps object ID to K8s data
+  const dataMap = new Map<string, K8sNode | K8sPod | K8sService>(); // Maps object ID to K8s data
   const matchesFilterMap = new Map<string, boolean>(); // Track which objects match filter
+  const serviceToPodsMap = new Map<string, string[]>(); // Maps service ID to matching pod IDs
 
   // Filter matching helpers
   const podMatchesFilter = (pod: K8sPod, filter?: HoloDeckFilter): boolean => {
@@ -203,6 +205,24 @@ const HoloDeck: Component<Props> = (props) => {
   let trafficDummy = new THREE.Object3D();
   let curves: THREE.QuadraticBezierCurve3[] = [];
   let activeTrafficCount = 0;
+
+  // Service Traffic System (purple particles for service connections)
+  const MAX_SERVICE_TRAFFIC = 60;
+  interface ServiceTrafficSlot {
+    active: boolean;
+    curveIndex: number;
+    progress: number;
+    speed: number;
+  }
+  const serviceTrafficPool: ServiceTrafficSlot[] = Array.from({ length: MAX_SERVICE_TRAFFIC }, () => ({
+    active: false,
+    curveIndex: 0,
+    progress: 0,
+    speed: 0
+  }));
+  let serviceTrafficMesh: THREE.InstancedMesh;
+  let serviceCurves: THREE.QuadraticBezierCurve3[] = [];
+  let activeServiceTrafficCount = 0;
 
   // Cached core ring references (avoid getObjectByName per frame)
   let coreRings: THREE.Mesh[] = [];
@@ -358,13 +378,24 @@ const HoloDeck: Component<Props> = (props) => {
     trafficInstancedMesh.instanceMatrix.needsUpdate = true;
     scene.add(trafficInstancedMesh);
 
+    // --- SERVICE TRAFFIC INSTANCED MESH (purple particles) ---
+    const servicePacketGeom = new THREE.SphereGeometry(0.12, 6, 6);
+    const servicePacketMat = new THREE.MeshBasicMaterial({ color: 0xa855f7 }); // Purple
+    serviceTrafficMesh = new THREE.InstancedMesh(servicePacketGeom, servicePacketMat, MAX_SERVICE_TRAFFIC);
+    serviceTrafficMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
+        serviceTrafficMesh.setMatrixAt(i, hideMatrix);
+    }
+    serviceTrafficMesh.instanceMatrix.needsUpdate = true;
+    scene.add(serviceTrafficMesh);
+
 
     // --- EVENTS ---
     const findHitObject = (intersects: THREE.Intersection[]) => {
         for (const i of intersects) {
             let obj: THREE.Object3D | null = i.object;
             while (obj) {
-                if (obj.userData && (obj.userData.type === 'node' || obj.userData.type === 'pod')) {
+                if (obj.userData && (obj.userData.type === 'node' || obj.userData.type === 'pod' || obj.userData.type === 'service')) {
                     return obj;
                 }
                 obj = obj.parent;
@@ -388,6 +419,8 @@ const HoloDeck: Component<Props> = (props) => {
             ? `node-${hitObj.userData.label}`
             : hitObj?.userData.type === 'pod'
             ? `pod-${hitObj.userData.label}`
+            : hitObj?.userData.type === 'service'
+            ? `service-${hitObj.userData.label}`
             : null;
         const matchesFilter = objId ? (matchesFilterMap.get(objId) ?? true) : false;
 
@@ -395,7 +428,9 @@ const HoloDeck: Component<Props> = (props) => {
             containerRef.style.cursor = 'pointer';
             const objId = hitObj.userData.type === 'node'
                 ? `node-${hitObj.userData.label}`
-                : `pod-${hitObj.userData.label}`;
+                : hitObj.userData.type === 'pod'
+                ? `pod-${hitObj.userData.label}`
+                : `service-${hitObj.userData.label}`;
             const data = dataMap.get(objId);
 
             // Enhanced tooltip info
@@ -417,6 +452,13 @@ const HoloDeck: Component<Props> = (props) => {
                 const pod = data as K8sPod;
                 info.namespace = pod.metadata.namespace;
                 info.status = pod.status.phase;
+            } else if (hitObj.userData.type === 'service' && data) {
+                const svc = data as K8sService;
+                info.namespace = svc.metadata.namespace;
+                info.status = svc.spec.type;
+                // Count matching pods
+                const matchingPods = serviceToPodsMap.get(objId) || [];
+                info.podCount = matchingPods.length;
             }
 
             setHoverInfo(info);
@@ -445,13 +487,17 @@ const HoloDeck: Component<Props> = (props) => {
             ? `node-${hitObj.userData.label}`
             : hitObj?.userData.type === 'pod'
             ? `pod-${hitObj.userData.label}`
+            : hitObj?.userData.type === 'service'
+            ? `service-${hitObj.userData.label}`
             : null;
         const clickMatchesFilter = clickObjId ? (matchesFilterMap.get(clickObjId) ?? true) : false;
 
         if (hitObj && hitObj.userData.label && clickMatchesFilter) {
             const objId = hitObj.userData.type === 'node'
                 ? `node-${hitObj.userData.label}`
-                : `pod-${hitObj.userData.label}`;
+                : hitObj.userData.type === 'pod'
+                ? `pod-${hitObj.userData.label}`
+                : `service-${hitObj.userData.label}`;
             const data = dataMap.get(objId);
 
             setSelectedId(objId);
@@ -459,7 +505,7 @@ const HoloDeck: Component<Props> = (props) => {
 
             if (props.onSelect && data) {
                 props.onSelect({
-                    type: hitObj.userData.type as 'node' | 'pod',
+                    type: hitObj.userData.type as 'node' | 'pod' | 'service',
                     data
                 });
             }
@@ -526,6 +572,51 @@ const HoloDeck: Component<Props> = (props) => {
         }
     };
 
+    // Spawn service traffic (purple particles)
+    const spawnServiceTraffic = () => {
+        if (serviceCurves.length === 0 || activeServiceTrafficCount >= MAX_SERVICE_TRAFFIC * 0.6) return;
+        if (Math.random() > 0.9) {
+            for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
+                if (!serviceTrafficPool[i].active) {
+                    serviceTrafficPool[i].active = true;
+                    serviceTrafficPool[i].curveIndex = Math.floor(Math.random() * serviceCurves.length);
+                    serviceTrafficPool[i].progress = 0;
+                    serviceTrafficPool[i].speed = 0.5 + Math.random() * 0.5;
+                    activeServiceTrafficCount++;
+                    break;
+                }
+            }
+        }
+    };
+
+    // Update service traffic
+    const updateServiceTraffic = (delta: number) => {
+        let needsUpdate = false;
+        for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
+            const slot = serviceTrafficPool[i];
+            if (slot.active) {
+                slot.progress += slot.speed * delta * 0.4;
+                if (slot.progress >= 1) {
+                    slot.active = false;
+                    activeServiceTrafficCount--;
+                    trafficDummy.position.copy(hidePosition);
+                    trafficDummy.updateMatrix();
+                    serviceTrafficMesh.setMatrixAt(i, trafficDummy.matrix);
+                    needsUpdate = true;
+                } else if (serviceCurves[slot.curveIndex]) {
+                    const pos = serviceCurves[slot.curveIndex].getPoint(slot.progress);
+                    trafficDummy.position.copy(pos);
+                    trafficDummy.updateMatrix();
+                    serviceTrafficMesh.setMatrixAt(i, trafficDummy.matrix);
+                    needsUpdate = true;
+                }
+            }
+        }
+        if (needsUpdate) {
+            serviceTrafficMesh.instanceMatrix.needsUpdate = true;
+        }
+    };
+
     const animate = () => {
         animationId = requestAnimationFrame(animate);
         const delta = clock.getDelta();
@@ -539,6 +630,10 @@ const HoloDeck: Component<Props> = (props) => {
         // Spawn and update traffic using object pool
         spawnTraffic();
         updateTraffic(delta);
+
+        // Spawn and update service traffic (purple)
+        spawnServiceTraffic();
+        updateServiceTraffic(delta);
 
         // Animate objects (cached refs where possible)
         objectMap.forEach(obj => {
@@ -556,6 +651,37 @@ const HoloDeck: Component<Props> = (props) => {
                     core.rotation.y += delta;
                     core.rotation.x += delta * 0.5;
                 }
+
+                // Update resource meter rings based on metrics
+                const nodeName = obj.userData.nodeName as string | undefined;
+                const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
+                const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
+
+                if (nodeName && (cpuRing || memRing)) {
+                    const metrics = getNodeMetrics(nodeName);
+                    if (metrics) {
+                        // Update CPU ring
+                        if (cpuRing) {
+                            const cpuAngle = (metrics.cpuUsage / 100) * Math.PI * 2;
+                            cpuRing.geometry.dispose();
+                            cpuRing.geometry = new THREE.RingGeometry(3.3, 3.5, 32, 1, 0, cpuAngle);
+                            cpuRing.geometry.rotateX(-Math.PI / 2);
+                            // Color based on usage
+                            const cpuColor = metrics.cpuUsage < 50 ? 0x0aff68 : metrics.cpuUsage < 80 ? 0xfcee0a : 0xff003c;
+                            (cpuRing.material as THREE.MeshBasicMaterial).color.setHex(cpuColor);
+                        }
+                        // Update Memory ring
+                        if (memRing) {
+                            const memAngle = (metrics.memoryPercent / 100) * Math.PI * 2;
+                            memRing.geometry.dispose();
+                            memRing.geometry = new THREE.RingGeometry(3.0, 3.2, 32, 1, 0, memAngle);
+                            memRing.geometry.rotateX(-Math.PI / 2);
+                            // Color based on usage
+                            const memColor = metrics.memoryPercent < 50 ? 0x00f0ff : metrics.memoryPercent < 80 ? 0xfcee0a : 0xff003c;
+                            (memRing.material as THREE.MeshBasicMaterial).color.setHex(memColor);
+                        }
+                    }
+                }
             }
             if (obj.userData.type === 'pod') {
                 obj.rotation.x += delta * 0.5;
@@ -563,6 +689,14 @@ const HoloDeck: Component<Props> = (props) => {
                 // Bobbing
                 if (obj.userData.initialY) {
                     obj.position.y = obj.userData.initialY + Math.sin(time + (obj.id % 20)) * 0.3;
+                }
+            }
+            if (obj.userData.type === 'service') {
+                // Slow rotation for service hexagons
+                obj.rotation.y += delta * 0.2;
+                // Gentle floating
+                if (obj.userData.initialY) {
+                    obj.position.y = obj.userData.initialY + Math.sin(time * 0.8 + (obj.id % 10)) * 0.4;
                 }
             }
         });
@@ -606,13 +740,21 @@ const HoloDeck: Component<Props> = (props) => {
         }
         objectMap.clear();
         dataMap.clear();
+        serviceToPodsMap.clear();
         curves = [];
+        serviceCurves = [];
 
         // Reset traffic pool (no mesh cleanup needed - InstancedMesh handles it)
         for (let i = 0; i < MAX_TRAFFIC; i++) {
             trafficPool[i].active = false;
         }
         activeTrafficCount = 0;
+
+        // Reset service traffic pool
+        for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
+            serviceTrafficPool[i].active = false;
+        }
+        activeServiceTrafficCount = 0;
 
         const currentNodes = props.nodes;
         const currentPods = props.pods;
@@ -681,9 +823,48 @@ const HoloDeck: Component<Props> = (props) => {
             scanner.position.y = 0.3;
             group.add(scanner);
 
+            // Resource Meter Rings (CPU outer, Memory inner)
+            const createResourceRing = (innerRadius: number, outerRadius: number, height: number, colorHex: number) => {
+              const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 32, 1, 0, Math.PI * 2);
+              geometry.rotateX(-Math.PI / 2);
+              const material = new THREE.MeshBasicMaterial({
+                color: colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.6
+              });
+              const ring = new THREE.Mesh(geometry, material);
+              ring.position.y = height;
+              return ring;
+            };
+
+            // CPU ring (outer, at top of tower)
+            const cpuRingBg = createResourceRing(3.3, 3.5, towerH + 0.5, 0x222222);
+            group.add(cpuRingBg);
+
+            // Memory ring (inner, at top of tower)
+            const memRingBg = createResourceRing(3.0, 3.2, towerH + 0.5, 0x222222);
+            group.add(memRingBg);
+
+            // Create progress rings (will be updated in animation loop)
+            const cpuRingProgress = createResourceRing(3.3, 3.5, towerH + 0.52, 0x0aff68);
+            cpuRingProgress.geometry.dispose();
+            cpuRingProgress.geometry = new THREE.RingGeometry(3.3, 3.5, 32, 1, 0, 0); // Start at 0
+            cpuRingProgress.geometry.rotateX(-Math.PI / 2);
+            group.add(cpuRingProgress);
+
+            const memRingProgress = createResourceRing(3.0, 3.2, towerH + 0.52, 0x00f0ff);
+            memRingProgress.geometry.dispose();
+            memRingProgress.geometry = new THREE.RingGeometry(3.0, 3.2, 32, 1, 0, 0); // Start at 0
+            memRingProgress.geometry.rotateX(-Math.PI / 2);
+            group.add(memRingProgress);
+
             // Cache refs in userData for animation loop (avoid getObjectByName)
             group.userData.scannerRef = scanner;
             group.userData.coreRef = core;
+            group.userData.cpuRingRef = cpuRingProgress;
+            group.userData.memRingRef = memRingProgress;
+            group.userData.nodeName = node.metadata.name;
 
             dataGroup.add(group);
             const nodeId = `node-${node.metadata.name}`;
@@ -751,6 +932,123 @@ const HoloDeck: Component<Props> = (props) => {
             }
         });
 
+        // 3. Create Services (Hexagonal Prisms)
+        const currentServices = props.services;
+        const serviceRadius = nodeRadius + 8; // Place services outside the node ring
+
+        // Helper: Check if pod matches service selector
+        const podMatchesSelector = (pod: K8sPod, selector: Record<string, string> | undefined): boolean => {
+            if (!selector) return false;
+            const podLabels = pod.metadata.labels || {};
+            return Object.entries(selector).every(([key, value]) => podLabels[key] === value);
+        };
+
+        currentServices.forEach((svc, i) => {
+            // Skip kubernetes system service
+            if (svc.metadata.name === 'kubernetes' && svc.metadata.namespace === 'default') return;
+
+            // Position services in an outer ring
+            const angle = (i / Math.max(currentServices.length, 1)) * Math.PI * 2 + Math.PI / 4;
+            const x = Math.cos(angle) * serviceRadius;
+            const z = Math.sin(angle) * serviceRadius;
+            const sy = 8 + (i % 3) * 2; // Stagger heights
+
+            // Create hexagonal prism geometry
+            const hexRadius = 1.2;
+            const hexHeight = 1.5;
+            const hexShape = new THREE.Shape();
+            for (let j = 0; j < 6; j++) {
+                const hexAngle = (j / 6) * Math.PI * 2 - Math.PI / 6;
+                const hx = Math.cos(hexAngle) * hexRadius;
+                const hz = Math.sin(hexAngle) * hexRadius;
+                if (j === 0) hexShape.moveTo(hx, hz);
+                else hexShape.lineTo(hx, hz);
+            }
+            hexShape.closePath();
+
+            const extrudeSettings = { depth: hexHeight, bevelEnabled: false };
+            const hexGeom = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
+            hexGeom.rotateX(-Math.PI / 2);
+            hexGeom.translate(0, hexHeight / 2, 0);
+
+            const svcColor = 0xa855f7; // Purple for services
+            const hexMat = new THREE.MeshStandardMaterial({
+                color: svcColor,
+                transparent: true,
+                opacity: 0.7,
+                emissive: svcColor,
+                emissiveIntensity: 0.3,
+                roughness: 0.2,
+                metalness: 0.8
+            });
+            const hexMesh = new THREE.Mesh(hexGeom, hexMat);
+
+            // Add wireframe edges
+            const hexEdges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(hexGeom),
+                new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 })
+            );
+            hexMesh.add(hexEdges);
+
+            // Add inner glow ring
+            const glowRingGeom = new THREE.RingGeometry(hexRadius * 0.6, hexRadius * 0.8, 6);
+            glowRingGeom.rotateX(-Math.PI / 2);
+            const glowRing = new THREE.Mesh(
+                glowRingGeom,
+                new THREE.MeshBasicMaterial({ color: svcColor, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+            );
+            glowRing.position.y = hexHeight + 0.1;
+            hexMesh.add(glowRing);
+
+            hexMesh.position.set(x, sy, z);
+            hexMesh.userData = { type: 'service', label: svc.metadata.name, initialY: sy };
+
+            dataGroup.add(hexMesh);
+            const svcId = `service-${svc.metadata.name}`;
+            objectMap.set(svcId, hexMesh);
+            dataMap.set(svcId, svc);
+            matchesFilterMap.set(svcId, true); // Services always visible for now
+
+            // Find matching pods and create connections
+            const matchingPodIds: string[] = [];
+            currentPods.forEach((pod) => {
+                if (pod.metadata.namespace === svc.metadata.namespace && podMatchesSelector(pod, svc.spec.selector)) {
+                    const podId = `pod-${pod.metadata.name}`;
+                    matchingPodIds.push(podId);
+
+                    // Get pod position
+                    const podObj = objectMap.get(podId);
+                    if (podObj) {
+                        const svcPos = new THREE.Vector3(x, sy, z);
+                        const podPos = podObj.position.clone();
+
+                        // Create bezier curve from service to pod
+                        const mid = svcPos.clone().add(podPos).multiplyScalar(0.5);
+                        mid.y += 3; // Arc upward
+
+                        const svcCurve = new THREE.QuadraticBezierCurve3(svcPos, mid, podPos);
+                        serviceCurves.push(svcCurve);
+
+                        // Draw dashed connection line
+                        const linePoints = svcCurve.getPoints(20);
+                        const lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                        const lineMat = new THREE.LineDashedMaterial({
+                            color: 0xa855f7,
+                            transparent: true,
+                            opacity: 0.25,
+                            dashSize: 0.3,
+                            gapSize: 0.2
+                        });
+                        const svcLine = new THREE.Line(lineGeom, lineMat);
+                        svcLine.computeLineDistances();
+                        dataGroup.add(svcLine);
+                    }
+                }
+            });
+
+            serviceToPodsMap.set(svcId, matchingPodIds);
+        });
+
         // Apply initial filter state
         applyFilterVisuals();
     });
@@ -774,10 +1072,12 @@ const HoloDeck: Component<Props> = (props) => {
         renderer.dispose();
         composer.dispose();
         trafficInstancedMesh.dispose();
+        serviceTrafficMesh.dispose();
         if (containerRef) containerRef.innerHTML = '';
         objectMap.clear();
         dataMap.clear();
         matchesFilterMap.clear();
+        serviceToPodsMap.clear();
         coreRings = [];
     });
   });
@@ -833,6 +1133,23 @@ const HoloDeck: Component<Props> = (props) => {
                                         }`}>
                                             {info().status}
                                         </div>
+                                    </Show>
+                                </div>
+                            </Show>
+
+                            {/* Enhanced info for services */}
+                            <Show when={info().type === 'service'}>
+                                <div class="text-[10px] mt-1 pt-1 border-t border-white/5 space-y-0.5">
+                                    <Show when={info().namespace}>
+                                        <div class="text-text-dim">ns: <span class="text-neon-purple">{info().namespace}</span></div>
+                                    </Show>
+                                    <Show when={info().status}>
+                                        <div class="inline-block px-1 rounded bg-purple-500/20 text-purple-400">
+                                            {info().status}
+                                        </div>
+                                    </Show>
+                                    <Show when={info().podCount !== undefined}>
+                                        <div class="text-text-dim">{info().podCount} matching pods</div>
                                     </Show>
                                 </div>
                             </Show>
