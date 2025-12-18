@@ -1,13 +1,18 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/flexinfer/flexdeck/internal/k8s"
@@ -183,6 +188,121 @@ func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(events)
 }
 
+// K8sPodLogs returns logs for a specific pod
+func (h *Handler) K8sPodLogs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	opts := k8s.PodLogOptions{
+		Container:  r.URL.Query().Get("container"),
+		Previous:   r.URL.Query().Get("previous") == "true",
+		Timestamps: r.URL.Query().Get("timestamps") == "true",
+	}
+
+	if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
+		tail, err := strconv.ParseInt(tailStr, 10, 64)
+		if err == nil {
+			opts.TailLines = &tail
+		}
+	}
+
+	stream, err := h.k8s.GetPodLogs(r.Context(), ns, name, opts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer stream.Close()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	io.Copy(w, stream)
+}
+
+// K8sPodLogsSSE streams pod logs via Server-Sent Events
+func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	opts := k8s.PodLogOptions{
+		Container:  r.URL.Query().Get("container"),
+		Previous:   r.URL.Query().Get("previous") == "true",
+		Timestamps: r.URL.Query().Get("timestamps") == "true",
+		Follow:     true,
+	}
+
+	if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
+		tail, err := strconv.ParseInt(tailStr, 10, 64)
+		if err == nil {
+			opts.TailLines = &tail
+		}
+	}
+
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	stream, err := h.k8s.GetPodLogs(ctx, ns, name, opts)
+	if err != nil {
+		log.Printf("Failed to get pod logs: %v", err)
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	defer stream.Close()
+
+	// Send ready event
+	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	flusher.Flush()
+
+	// Handle client disconnect
+	done := make(chan struct{})
+	go func() {
+		<-r.Context().Done()
+		close(done)
+		cancel()
+	}()
+
+	// Stream logs line by line
+	scanner := bufio.NewScanner(stream)
+	for scanner.Scan() {
+		select {
+		case <-done:
+			return
+		default:
+			line := scanner.Text()
+			// Escape any special characters for SSE
+			escapedLine := strings.ReplaceAll(line, "\n", "\\n")
+			fmt.Fprintf(w, "event: log\ndata: %s\n\n", escapedLine)
+			flusher.Flush()
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading pod logs: %v", err)
+	}
+}
+
 func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
@@ -231,6 +351,218 @@ func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
 		"ok":   true,
 		"name": name,
 	})
+}
+
+// K8sNodeMetrics returns CPU and memory metrics for all nodes
+func (h *Handler) K8sNodeMetrics(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
+		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	// Query CPU usage per node
+	cpuQuery := `100 - (avg by (node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
+	cpuURL := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(cpuQuery))
+
+	// Query memory usage per node
+	memQuery := `(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100`
+	memURL := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(memQuery))
+
+	// Fetch both in parallel
+	type promResult struct {
+		Data json.RawMessage `json:"data"`
+		Err  error
+	}
+
+	cpuChan := make(chan promResult, 1)
+	memChan := make(chan promResult, 1)
+
+	go func() {
+		resp, err := client.Get(cpuURL)
+		if err != nil {
+			cpuChan <- promResult{Err: err}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		cpuChan <- promResult{Data: body}
+	}()
+
+	go func() {
+		resp, err := client.Get(memURL)
+		if err != nil {
+			memChan <- promResult{Err: err}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		memChan <- promResult{Data: body}
+	}()
+
+	cpuResult := <-cpuChan
+	memResult := <-memChan
+
+	if cpuResult.Err != nil {
+		http.Error(w, cpuResult.Err.Error(), http.StatusBadGateway)
+		return
+	}
+	if memResult.Err != nil {
+		http.Error(w, memResult.Err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"cpu":    json.RawMessage(cpuResult.Data),
+		"memory": json.RawMessage(memResult.Data),
+	})
+}
+
+// K8sPodMetrics returns CPU and memory metrics for pods
+func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
+		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	ns := r.URL.Query().Get("ns")
+
+	// Build namespace filter if provided
+	nsFilter := ""
+	if ns != "" {
+		nsFilter = fmt.Sprintf(`,namespace="%s"`, ns)
+	}
+
+	// Query CPU usage per pod
+	cpuQuery := fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{container!=""%s}[5m])) by (pod, namespace) * 100`, nsFilter)
+	cpuURL := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(cpuQuery))
+
+	// Query memory usage per pod
+	memQuery := fmt.Sprintf(`sum(container_memory_working_set_bytes{container!=""%s}) by (pod, namespace)`, nsFilter)
+	memURL := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(memQuery))
+
+	// Fetch both in parallel
+	type promResult struct {
+		Data json.RawMessage `json:"data"`
+		Err  error
+	}
+
+	cpuChan := make(chan promResult, 1)
+	memChan := make(chan promResult, 1)
+
+	go func() {
+		resp, err := client.Get(cpuURL)
+		if err != nil {
+			cpuChan <- promResult{Err: err}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		cpuChan <- promResult{Data: body}
+	}()
+
+	go func() {
+		resp, err := client.Get(memURL)
+		if err != nil {
+			memChan <- promResult{Err: err}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		memChan <- promResult{Data: body}
+	}()
+
+	cpuResult := <-cpuChan
+	memResult := <-memChan
+
+	if cpuResult.Err != nil {
+		http.Error(w, cpuResult.Err.Error(), http.StatusBadGateway)
+		return
+	}
+	if memResult.Err != nil {
+		http.Error(w, memResult.Err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"cpu":    json.RawMessage(cpuResult.Data),
+		"memory": json.RawMessage(memResult.Data),
+	})
+}
+
+// K8sEventsSSE implements Server-Sent Events for real-time K8s events streaming.
+// It watches Kubernetes events (warnings, normal events, etc.) and streams them to the client.
+func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get optional filters
+	ns := r.URL.Query().Get("ns")
+	fieldSelector := r.URL.Query().Get("fieldSelector")
+
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// Start events watcher
+	eventsChan, err := h.k8s.WatchEvents(ctx, ns, fieldSelector)
+	if err != nil {
+		log.Printf("Failed to watch events: %v", err)
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch events\"}\n\n")
+		flusher.Flush()
+		return
+	}
+
+	// Send ready event
+	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	flusher.Flush()
+
+	// Handle client disconnect
+	done := make(chan struct{})
+	go func() {
+		<-r.Context().Done()
+		close(done)
+		cancel()
+	}()
+
+	// Stream events to client
+	for {
+		select {
+		case <-done:
+			return
+		case event, ok := <-eventsChan:
+			if !ok {
+				return
+			}
+
+			data, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("Failed to marshal event: %v", err)
+				continue
+			}
+
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ObjectType, data)
+			flusher.Flush()
+		}
+	}
 }
 
 // K8sWatchSSE implements Server-Sent Events for real-time K8s resource streaming.

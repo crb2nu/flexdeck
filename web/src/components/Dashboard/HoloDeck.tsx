@@ -27,6 +27,7 @@ export interface HoloDeckFilter {
   namespace?: string;
   status?: string[];
   nodeName?: string;
+  searchTerm?: string;
 }
 
 interface Props {
@@ -129,6 +130,12 @@ const HoloDeck: Component<Props> = (props) => {
     if (filter.namespace && pod.metadata.namespace !== filter.namespace) return false;
     if (filter.status && filter.status.length > 0 && !filter.status.includes(pod.status.phase)) return false;
     if (filter.nodeName && pod.spec.nodeName !== filter.nodeName) return false;
+    if (filter.searchTerm) {
+      const term = filter.searchTerm.toLowerCase();
+      const nameMatch = pod.metadata.name.toLowerCase().includes(term);
+      const nsMatch = pod.metadata.namespace?.toLowerCase().includes(term);
+      if (!nameMatch && !nsMatch) return false;
+    }
     return true;
   };
 
@@ -141,6 +148,16 @@ const HoloDeck: Component<Props> = (props) => {
         p.spec.nodeName === node.metadata.name && p.metadata.namespace === filter.namespace
       );
       if (!hasMatchingPod) return false;
+    }
+    if (filter.searchTerm) {
+      const term = filter.searchTerm.toLowerCase();
+      const nameMatch = node.metadata.name.toLowerCase().includes(term);
+      // Also match if any pods on this node match
+      const hasPodMatch = props.pods.some(p =>
+        p.spec.nodeName === node.metadata.name &&
+        (p.metadata.name.toLowerCase().includes(term) || p.metadata.namespace?.toLowerCase().includes(term))
+      );
+      if (!nameMatch && !hasPodMatch) return false;
     }
     return true;
   };

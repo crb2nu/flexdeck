@@ -1,6 +1,8 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import LogStream, { type LogEntry, type LogFilter } from './LogStream';
+import QueryBuilder from './QueryBuilder';
+import LogStats from './LogStats';
 
 interface LokiStream {
   stream: Record<string, string>;
@@ -27,6 +29,7 @@ const Logs: Component = () => {
   const [selectedLog, setSelectedLog] = createSignal<LogEntry | null>(null);
   const [searchTerm, setSearchTerm] = createSignal('');
   const [searchRegex, setSearchRegex] = createSignal(false);
+  const [showSidebar, setShowSidebar] = createSignal(false);
 
   let logContainerRef: HTMLDivElement | undefined;
   let eventSource: EventSource | null = null;
@@ -279,6 +282,22 @@ const Logs: Component = () => {
                 CSV
               </button>
             </div>
+
+            {/* Query Builder Toggle */}
+            <button
+              onClick={() => setShowSidebar(!showSidebar())}
+              class={`rounded-md px-3 py-2 text-sm font-medium transition-colors border-l border-white/10 ml-1 pl-3 ${
+                showSidebar()
+                  ? 'bg-neon-purple/20 text-neon-purple'
+                  : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-text-main'
+              }`}
+              title="Query Builder & Stats"
+            >
+              <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Tools
+            </button>
           </div>
         </div>
 
@@ -287,8 +306,39 @@ const Logs: Component = () => {
         </Show>
       </div>
 
-      {/* Log Display */}
-      <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
+      {/* Log Display with Optional Sidebar */}
+      <div class="flex flex-1 gap-4 overflow-hidden">
+        {/* Sidebar - Query Builder & Stats */}
+        <Show when={showSidebar()}>
+          <div class="glass-panel w-72 flex-shrink-0 overflow-y-auto p-4">
+            <div class="space-y-6">
+              {/* Query Builder Section */}
+              <div>
+                <h3 class="text-xs font-mono text-text-main uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Query Builder
+                </h3>
+                <QueryBuilder onQueryChange={setQuery} initialQuery={query()} />
+              </div>
+
+              {/* Stats Section */}
+              <div class="border-t border-white/10 pt-4">
+                <h3 class="text-xs font-mono text-text-main uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Log Statistics
+                </h3>
+                <LogStats logs={logs} />
+              </div>
+            </div>
+          </div>
+        </Show>
+
+        {/* Main Log Panel */}
+        <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
          {/* Controls */}
          <div class="absolute right-4 top-2 z-10 flex gap-2">
             {/* Search input for visualization modes */}
@@ -415,6 +465,7 @@ const Logs: Component = () => {
           </Show>
         </div>
       </div>
+    </div>
 
       {/* Log Detail Modal */}
       <Show when={selectedLog()}>

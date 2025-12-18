@@ -23,6 +23,31 @@ const Dashboard: Component = () => {
   const [showFilters, setShowFilters] = createSignal(false);
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
   const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);
+  const [searchInput, setSearchInput] = createSignal('');
+
+  let searchDebounceTimer: ReturnType<typeof setTimeout>;
+
+  // Debounced search update
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      setFilter({ ...filter(), searchTerm: value || undefined });
+    }, 300);
+  };
+
+  // Quick filter helpers
+  const toggleStatusFilter = (status: string) => {
+    const current = filter().status || [];
+    if (current.includes(status)) {
+      const newStatus = current.filter(s => s !== status);
+      setFilter({ ...filter(), status: newStatus.length > 0 ? newStatus : undefined });
+    } else {
+      setFilter({ ...filter(), status: [...current, status] });
+    }
+  };
+
+  const isStatusActive = (status: string) => filter().status?.includes(status) || false;
 
   // Resource pulse state (still polling Prometheus)
   const [resourceLoading, setResourceLoading] = createSignal(true);
@@ -51,10 +76,6 @@ const Dashboard: Component = () => {
     [...new Set(k8sStore.pods.map(p => p.metadata?.namespace).filter(Boolean))].sort() as string[]
   );
 
-  const statusList = createMemo(() =>
-    [...new Set(k8sStore.pods.map(p => p.status?.phase).filter(Boolean))].sort() as string[]
-  );
-
   const nodeNameList = createMemo(() =>
     k8sStore.nodes.map(n => n.metadata?.name).filter(Boolean).sort() as string[]
   );
@@ -64,11 +85,15 @@ const Dashboard: Component = () => {
     return Boolean(
       activeFilter.namespace ||
         (activeFilter.status?.length ?? 0) > 0 ||
-        activeFilter.nodeName
+        activeFilter.nodeName ||
+        activeFilter.searchTerm
     );
   });
 
-  const clearFilters = () => setFilter({});
+  const clearFilters = () => {
+    setFilter({});
+    setSearchInput('');
+  };
 
   // Get pods on a specific node
   const getPodsOnNode = createMemo(() => {
@@ -236,7 +261,7 @@ const Dashboard: Component = () => {
 
         {/* Filter Panel */}
         <Show when={viewMode() === '3d' && showFilters()}>
-          <div class="absolute left-4 top-4 z-10 p-3 rounded-lg bg-black/60 border border-white/10 backdrop-blur min-w-[200px]">
+          <div class="absolute left-4 top-4 z-10 p-3 rounded-lg bg-black/60 border border-white/10 backdrop-blur min-w-[240px]">
             <div class="flex items-center justify-between mb-3">
               <span class="text-xs font-mono text-text-main uppercase tracking-wider">Filters</span>
               <Show when={hasActiveFilter()}>
@@ -247,6 +272,67 @@ const Dashboard: Component = () => {
                   Clear All
                 </button>
               </Show>
+            </div>
+
+            {/* Search Input */}
+            <div class="mb-3">
+              <label class="block text-[10px] text-text-dim mb-1 uppercase">Search</label>
+              <div class="relative">
+                <input
+                  type="text"
+                  placeholder="Pod or namespace name..."
+                  value={searchInput()}
+                  onInput={(e) => handleSearchChange(e.currentTarget.value)}
+                  class="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main placeholder:text-text-dim/50 focus:border-neon-cyan/50 focus:outline-none pr-6"
+                />
+                <Show when={searchInput()}>
+                  <button
+                    onClick={() => { setSearchInput(''); handleSearchChange(''); }}
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-main"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </Show>
+              </div>
+            </div>
+
+            {/* Quick Status Chips */}
+            <div class="mb-3">
+              <label class="block text-[10px] text-text-dim mb-1.5 uppercase">Quick Filters</label>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => toggleStatusFilter('Running')}
+                  class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                    isStatusActive('Running')
+                      ? 'bg-neon-green/20 border-neon-green/50 text-neon-green'
+                      : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
+                  }`}
+                >
+                  Running
+                </button>
+                <button
+                  onClick={() => toggleStatusFilter('Pending')}
+                  class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                    isStatusActive('Pending')
+                      ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500'
+                      : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
+                  }`}
+                >
+                  Pending
+                </button>
+                <button
+                  onClick={() => toggleStatusFilter('Failed')}
+                  class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                    isStatusActive('Failed')
+                      ? 'bg-red-500/20 border-red-500/50 text-red-500'
+                      : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
+                  }`}
+                >
+                  Failed
+                </button>
+              </div>
             </div>
 
             {/* Namespace Filter */}
@@ -260,21 +346,6 @@ const Dashboard: Component = () => {
                 <option value="">All Namespaces</option>
                 <For each={namespaceList()}>
                   {ns => <option value={ns}>{ns}</option>}
-                </For>
-              </select>
-            </div>
-
-            {/* Status Filter */}
-            <div class="mb-3">
-              <label class="block text-[10px] text-text-dim mb-1 uppercase">Pod Status</label>
-              <select
-                value={filter().status?.[0] || ''}
-                onChange={(e) => setFilter({ ...filter(), status: e.currentTarget.value ? [e.currentTarget.value] : undefined })}
-                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
-              >
-                <option value="">All Statuses</option>
-                <For each={statusList()}>
-                  {status => <option value={status}>{status}</option>}
                 </For>
               </select>
             </div>

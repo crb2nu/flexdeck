@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"io"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -289,6 +290,81 @@ func (c *Client) WatchServices(ctx context.Context, namespace string) (<-chan Wa
 				events <- WatchEvent{
 					Type:       string(event.Type),
 					ObjectType: "service",
+					Object:     event.Object,
+				}
+			}
+		}
+	}()
+
+	return events, nil
+}
+
+// PodLogOptions contains options for retrieving pod logs
+type PodLogOptions struct {
+	Container  string
+	TailLines  *int64
+	Previous   bool
+	Timestamps bool
+	Follow     bool
+}
+
+// GetPodLogs returns a stream of pod logs
+func (c *Client) GetPodLogs(ctx context.Context, namespace, podName string, opts PodLogOptions) (io.ReadCloser, error) {
+	podLogOpts := &corev1.PodLogOptions{
+		Container:  opts.Container,
+		Previous:   opts.Previous,
+		Timestamps: opts.Timestamps,
+		Follow:     opts.Follow,
+	}
+	if opts.TailLines != nil {
+		podLogOpts.TailLines = opts.TailLines
+	}
+
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, podLogOpts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod logs: %w", err)
+	}
+
+	return stream, nil
+}
+
+// WatchEvents returns a channel of watch events for Kubernetes events
+func (c *Client) WatchEvents(ctx context.Context, namespace string, fieldSelector string) (<-chan WatchEvent, error) {
+	opts := metav1.ListOptions{}
+	if fieldSelector != "" {
+		opts.FieldSelector = fieldSelector
+	}
+
+	var watcher watch.Interface
+	var err error
+
+	if namespace == "" {
+		watcher, err = c.clientset.CoreV1().Events("").Watch(ctx, opts)
+	} else {
+		watcher, err = c.clientset.CoreV1().Events(namespace).Watch(ctx, opts)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch events: %w", err)
+	}
+
+	events := make(chan WatchEvent, 100)
+
+	go func() {
+		defer close(events)
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				events <- WatchEvent{
+					Type:       string(event.Type),
+					ObjectType: "event",
 					Object:     event.Object,
 				}
 			}
