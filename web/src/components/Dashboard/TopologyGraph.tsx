@@ -87,12 +87,19 @@ const TopologyGraph: Component<Props> = (props) => {
   let frameCount = 0;
   let isAnimating = false;
 
+  // Compute a lightweight hash for data change detection (exclude dimensions to avoid resize re-init)
   const getDataKey = (): string => {
-    const nodeIds = props.nodes.map(n => n.metadata.name).sort().join(',');
-    const podIds = props.pods.map(p => `${p.metadata.namespace}/${p.metadata.name}:${p.status.phase}`).sort().join(',');
-    const svcIds = props.services.map(s => `${s.metadata.namespace}/${s.metadata.name}`).sort().join(',');
-    const dims = dimensions();
-    return `${nodeIds}|${podIds}|${svcIds}|${dims.width}x${dims.height}`;
+    // Use counts + sample IDs for O(1) approximate change detection instead of O(n log n) full sort
+    const nodeCount = props.nodes.length;
+    const podCount = props.pods.length;
+    const svcCount = props.services.length;
+
+    // Sample first/last items for change detection without sorting entire arrays
+    const nodeSample = nodeCount > 0 ? `${props.nodes[0]?.metadata.name}:${props.nodes[nodeCount-1]?.metadata.name}` : '';
+    const podSample = podCount > 0 ? `${props.pods[0]?.metadata.name}:${props.pods[podCount-1]?.status.phase}` : '';
+    const svcSample = svcCount > 0 ? `${props.services[0]?.metadata.name}` : '';
+
+    return `${nodeCount}|${podCount}|${svcCount}|${nodeSample}|${podSample}|${svcSample}`;
   };
 
   const buildGraph = () => {
@@ -100,6 +107,16 @@ const TopologyGraph: Component<Props> = (props) => {
     const links: D3Link[] = [];
     const nodeMap = new Map<string, D3Node>();
     const nsMap = new Map<string, number>();
+
+    // Pre-index pods by namespace for O(1) lookup instead of O(pods) per service
+    const podsByNamespace = new Map<string, K8sPod[]>();
+    for (const pod of props.pods) {
+      const ns = pod.metadata.namespace || 'default';
+      if (!podsByNamespace.has(ns)) {
+        podsByNamespace.set(ns, []);
+      }
+      podsByNamespace.get(ns)!.push(pod);
+    }
 
     // Add K8s nodes
     for (const node of props.nodes) {
@@ -147,7 +164,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     }
 
-    // Add services
+    // Add services - use pre-indexed pods for O(pods_in_namespace) instead of O(all_pods)
     for (const svc of props.services) {
       const ns = svc.metadata.namespace || 'default';
       getNamespaceColor(ns, nsMap);
@@ -164,18 +181,20 @@ const TopologyGraph: Component<Props> = (props) => {
       nodeMap.set(d3Node.id, d3Node);
 
       if (svc.spec.selector) {
-        for (const pod of props.pods) {
-          if (pod.metadata.namespace === svc.metadata.namespace) {
-            const matches = Object.entries(svc.spec.selector).every(
-              ([k, v]) => pod.metadata.labels?.[k] === v
-            );
-            if (matches) {
-              links.push({
-                source: d3Node.id,
-                target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
-                type: 'selects',
-              });
-            }
+        // Only iterate pods in the same namespace (pre-indexed)
+        const namespacePods = podsByNamespace.get(ns) || [];
+        const selectorEntries = Object.entries(svc.spec.selector);
+
+        for (const pod of namespacePods) {
+          const matches = selectorEntries.every(
+            ([k, v]) => pod.metadata.labels?.[k] === v
+          );
+          if (matches) {
+            links.push({
+              source: d3Node.id,
+              target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
+              type: 'selects',
+            });
           }
         }
       }
@@ -466,9 +485,21 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const initializeSimulation = () => {
     if (!canvasRef) return;
+
+    // Stop any existing simulation before rebuilding
+    if (simulation) {
+      simulation.stop();
+      simulation = null;
+    }
+
     buildGraph();
 
-    if (simulation) simulation.stop();
+    // Early exit if no data - just render empty background
+    if (graphNodes.length === 0) {
+      isSimulationActive = false;
+      draw();
+      return;
+    }
 
     const { width, height } = dimensions();
 
@@ -477,10 +508,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(nodeCount)));
     const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(nodeCount)));
 
-    // Mark simulation as active
-    isSimulationActive = true;
-    startAnimationLoop();
-
+    // Create simulation FIRST, then start animation loop
     simulation = d3.forceSimulation<D3Node>(graphNodes)
       .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
         .id(d => d.id)
@@ -495,7 +523,11 @@ const TopologyGraph: Component<Props> = (props) => {
         // Simulation has settled - stop continuous rendering
         isSimulationActive = false;
       });
-    
+
+    // NOW start animation loop after simulation is created
+    isSimulationActive = true;
+    startAnimationLoop();
+
     // Zoom behavior
     const zoom = d3.zoom<HTMLCanvasElement, unknown>()
       .scaleExtent([0.1, 8])
@@ -581,22 +613,44 @@ const TopologyGraph: Component<Props> = (props) => {
     simulation?.stop();
   });
 
+  // Debounce simulation initialization to prevent rapid re-init during initial data load
+  let initTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   createEffect(() => {
+    // Track props for reactivity
     props.nodes; props.pods; props.services;
     const key = getDataKey();
+
     if (key !== lastDataKey) {
-        lastDataKey = key;
+      lastDataKey = key;
+
+      // Clear any pending init
+      if (initTimeoutId) {
+        clearTimeout(initTimeoutId);
+      }
+
+      // Debounce initialization by 50ms to batch rapid updates
+      initTimeoutId = setTimeout(() => {
+        initTimeoutId = null;
         initializeSimulation();
+      }, 50);
     }
+  });
+
+  // Clean up init timeout on unmount
+  onCleanup(() => {
+    if (initTimeoutId) clearTimeout(initTimeoutId);
   });
 
   return (
     <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
-        <canvas 
+        <canvas
             ref={canvasRef}
             width={dimensions().width}
             height={dimensions().height}
             class="block touch-none"
+            onClick={handleCanvasClick}
+            onMouseMove={handleMouseMove}
         />
         
         {/* Stats Overlay */}
