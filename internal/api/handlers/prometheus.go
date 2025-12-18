@@ -90,6 +90,34 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 	proxyRequest(w, promURL)
 }
 
+// PromAlerts returns active alerts from Prometheus Alertmanager
+func (h *Handler) PromAlerts(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
+		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	promURL := fmt.Sprintf("%s/api/v1/alerts", h.cfg.Prom.URL)
+	proxyRequest(w, promURL)
+}
+
+// PromRules returns alert rules from Prometheus
+func (h *Handler) PromRules(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
+		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	promURL := fmt.Sprintf("%s/api/v1/rules", h.cfg.Prom.URL)
+
+	// Optional type filter (alert or record)
+	if t := r.URL.Query().Get("type"); t != "" {
+		promURL += "?type=" + url.QueryEscape(t)
+	}
+
+	proxyRequest(w, promURL)
+}
+
 func proxyRequest(w http.ResponseWriter, targetURL string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 

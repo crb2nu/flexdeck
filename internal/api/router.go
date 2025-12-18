@@ -85,6 +85,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/health", h.PromHealth)
 			r.Get("/query", h.PromQuery)
 			r.Get("/query_range", h.PromQueryRange)
+			r.Get("/alerts", h.PromAlerts)
+			r.Get("/rules", h.PromRules)
 		})
 
 		r.Route("/api/loki", func(r chi.Router) {
