@@ -64,21 +64,28 @@ const TopologyGraph: Component<Props> = (props) => {
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
   let rafId: number | null = null;
   let lastDataKey = '';
-  
+
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
   const [hoverNode, setHoverNode] = createSignal<D3Node | null>(null);
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
-  
+
   // View transform state
   let transform = d3.zoomIdentity;
-  
+
   // Data state
   let graphNodes: D3Node[] = [];
   let graphLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
   let particles: Particle[] = [];
+
+  // Performance optimization state
+  let cachedGradient: CanvasGradient | null = null;
+  let cachedGradientDims = { width: 0, height: 0 };
+  let isSimulationActive = false;
+  let frameCount = 0;
+  let isAnimating = false;
 
   const getDataKey = (): string => {
     const nodeIds = props.nodes.map(n => n.metadata.name).sort().join(',');
@@ -209,106 +216,118 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  const spawnParticles = () => {
-    // Randomly spawn particles on links
-    if (graphLinks.length > 0 && particles.length < 50 && Math.random() > 0.8) {
-        const link = graphLinks[Math.floor(Math.random() * graphLinks.length)];
-        // Only spawn if nodes have positions
-        if ((link.source as D3Node).x && (link.target as D3Node).x) {
-            particles.push({
-                source: link.source as D3Node,
-                target: link.target as D3Node,
-                progress: 0,
-                speed: 0.01 + Math.random() * 0.02,
-                color: link.type === 'hosts' ? '#00d9ff' : '#a855f7'
-            });
-        }
+  // Throttled particle spawning - only runs every 10 frames
+  const maybeSpawnParticle = () => {
+    // Only spawn every 10 frames and with 50% chance
+    if (frameCount % 10 !== 0) return;
+    if (graphLinks.length === 0 || particles.length >= 30 || Math.random() > 0.5) return;
+
+    const link = graphLinks[Math.floor(Math.random() * graphLinks.length)];
+    // Only spawn if nodes have positions
+    if ((link.source as D3Node).x && (link.target as D3Node).x) {
+      particles.push({
+        source: link.source as D3Node,
+        target: link.target as D3Node,
+        progress: 0,
+        speed: 0.015 + Math.random() * 0.015,
+        color: link.type === 'hosts' ? '#00d9ff' : '#a855f7'
+      });
     }
   };
 
+  // Start animation loop if not already running
+  const startAnimationLoop = () => {
+    if (isAnimating) return;
+    isAnimating = true;
+    rafId = requestAnimationFrame(draw);
+  };
+
   /**
-   * Main Draw Cycle
+   * Main Draw Cycle - optimized for performance
    */
   const draw = () => {
     if (!canvasRef) return;
     const ctx = canvasRef.getContext('2d');
     if (!ctx) return;
 
+    frameCount++;
     const { width, height } = dimensions();
-    
-    // Clear & Background
+
+    // Clear & Background - use cached gradient
     ctx.clearRect(0, 0, width, height);
-    
-    // Custom Background Gradient (simulating CSS: bg-gradient-to-br from-[#050a14] via-[#0a1020] to-[#0d1528])
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#050a14');
-    gradient.addColorStop(0.5, '#0a1020');
-    gradient.addColorStop(1, '#0d1528');
-    ctx.fillStyle = gradient;
+
+    // Cache gradient - only recreate when dimensions change
+    if (!cachedGradient || cachedGradientDims.width !== width || cachedGradientDims.height !== height) {
+      cachedGradient = ctx.createLinearGradient(0, 0, width, height);
+      cachedGradient.addColorStop(0, '#050a14');
+      cachedGradient.addColorStop(0.5, '#0a1020');
+      cachedGradient.addColorStop(1, '#0d1528');
+      cachedGradientDims = { width, height };
+    }
+    ctx.fillStyle = cachedGradient;
     ctx.fillRect(0, 0, width, height);
-    
+
     ctx.save();
     // Apply Zoom/Pan
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
-    // Grid (Simulated with simple dots or lines for performance)
-    // Actually, drawing a grid on every frame for a large area is expensive. 
-    // Let's rely on the background gradient for now, or add a subtle static pattern.
-
     // Draw Links
     ctx.lineCap = 'round';
-    graphLinks.forEach(link => {
+    for (const link of graphLinks) {
       const source = link.source as D3Node;
       const target = link.target as D3Node;
-      if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) return;
+      if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
 
       const isSelects = link.type === 'selects';
       ctx.beginPath();
       ctx.moveTo(source.x, source.y);
       ctx.lineTo(target.x, target.y);
-      
+
       // Style
       if (isSelects) {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.2)'; 
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.2)';
         ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1 / transform.k; // Constant width regardless of zoom? No, stick to physical
+        ctx.lineWidth = 1;
       } else {
         ctx.strokeStyle = 'rgba(0, 217, 255, 0.2)';
         ctx.setLineDash([]);
         ctx.lineWidth = 1.5;
       }
       ctx.stroke();
-    });
+    }
     ctx.setLineDash([]); // Reset
 
-    // Draw Particles
-    spawnParticles();
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.progress += p.speed;
-        if (p.progress >= 1) {
-            particles.splice(i, 1);
-            continue;
-        }
-        
-        const sx = p.source.x ?? 0;
-        const sy = p.source.y ?? 0;
-        const tx = p.target.x ?? 0;
-        const ty = p.target.y ?? 0;
+    // Maybe spawn a particle (throttled)
+    maybeSpawnParticle();
 
-        const x = sx * (1 - p.progress) + tx * p.progress;
-        const y = sy * (1 - p.progress) + ty * p.progress;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
-        ctx.fillStyle = p.color;
-        
-        // Glow trail
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 4;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+    // Draw Particles - no shadow blur for performance
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.progress += p.speed;
+      if (p.progress >= 1) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      const sx = p.source.x ?? 0;
+      const sy = p.source.y ?? 0;
+      const tx = p.target.x ?? 0;
+      const ty = p.target.y ?? 0;
+
+      const x = sx * (1 - p.progress) + tx * p.progress;
+      const y = sy * (1 - p.progress) + ty * p.progress;
+
+      // Draw particle with simple glow (two circles instead of shadowBlur)
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = p.color + '40'; // 25% opacity outer glow
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, 2 * Math.PI);
+      ctx.fillStyle = p.color;
+      ctx.fill();
     }
 
     // Draw Nodes
@@ -388,8 +407,17 @@ const TopologyGraph: Component<Props> = (props) => {
     });
 
     ctx.restore();
-    
-    rafId = requestAnimationFrame(draw);
+
+    // Continue animation only if simulation is active or particles exist
+    // This prevents infinite 60fps loop when nothing is changing
+    const shouldContinue = isSimulationActive || particles.length > 0;
+    if (shouldContinue) {
+      rafId = requestAnimationFrame(draw);
+    } else {
+      isAnimating = false;
+      // Do one final render after stopping
+      rafId = null;
+    }
   };
 
   // Click & Hover detection
@@ -439,33 +467,43 @@ const TopologyGraph: Component<Props> = (props) => {
   const initializeSimulation = () => {
     if (!canvasRef) return;
     buildGraph();
-    
+
     if (simulation) simulation.stop();
 
     const { width, height } = dimensions();
-    
-    // Adaptive forces
-    const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(graphNodes.length || 1)));
-    const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(graphNodes.length || 1)));
+
+    // Adaptive forces based on node count
+    const nodeCount = graphNodes.length || 1;
+    const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(nodeCount)));
+    const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(nodeCount)));
+
+    // Mark simulation as active
+    isSimulationActive = true;
+    startAnimationLoop();
 
     simulation = d3.forceSimulation<D3Node>(graphNodes)
-        .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
-            .id(d => d.id)
-            .distance(linkDistance)
-            .strength(0.3))
-        .force('charge', d3.forceManyBody().strength(chargeStrength))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 15))
-        .force('x', d3.forceX(width / 2).strength(0.04))
-        .force('y', d3.forceY(height / 2).strength(0.04));
+      .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
+        .id(d => d.id)
+        .distance(linkDistance)
+        .strength(0.3))
+      .force('charge', d3.forceManyBody().strength(chargeStrength))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 15))
+      .force('x', d3.forceX(width / 2).strength(0.04))
+      .force('y', d3.forceY(height / 2).strength(0.04))
+      .on('end', () => {
+        // Simulation has settled - stop continuous rendering
+        isSimulationActive = false;
+      });
     
     // Zoom behavior
     const zoom = d3.zoom<HTMLCanvasElement, unknown>()
-        .scaleExtent([0.1, 8])
-        .on('zoom', (e) => {
-            transform = e.transform;
-            // Loop handles redraw
-        });
+      .scaleExtent([0.1, 8])
+      .on('zoom', (e) => {
+        transform = e.transform;
+        // Restart animation if not running (for pan/zoom after settling)
+        startAnimationLoop();
+      });
         
     d3.select(canvasRef)
         .call(zoom)
@@ -481,27 +519,31 @@ const TopologyGraph: Component<Props> = (props) => {
     
     // Drag behavior
     const drag = d3.drag<HTMLCanvasElement, unknown>()
-        .subject((e) => {
-            const node = getKeyUnderMouse(e.sourceEvent);
-            return node ? node : null;
-        })
-        .on('start', (e) => {
-            if (!e.active) simulation?.alphaTarget(0.3).restart();
-            const n = e.subject as D3Node;
-            n.fx = n.x;
-            n.fy = n.y;
-        })
-        .on('drag', (e) => {
-             const n = e.subject as D3Node;
-            n.fx = e.x;
-            n.fy = e.y;
-        })
-        .on('end', (e) => {
-            if (!e.active) simulation?.alphaTarget(0);
-             const n = e.subject as D3Node;
-            n.fx = null;
-            n.fy = null;
-        });
+      .subject((e) => {
+        const node = getKeyUnderMouse(e.sourceEvent);
+        return node ? node : null;
+      })
+      .on('start', (e) => {
+        if (!e.active) {
+          simulation?.alphaTarget(0.3).restart();
+          isSimulationActive = true;
+          startAnimationLoop();
+        }
+        const n = e.subject as D3Node;
+        n.fx = n.x;
+        n.fy = n.y;
+      })
+      .on('drag', (e) => {
+        const n = e.subject as D3Node;
+        n.fx = e.x;
+        n.fy = e.y;
+      })
+      .on('end', (e) => {
+        if (!e.active) simulation?.alphaTarget(0);
+        const n = e.subject as D3Node;
+        n.fx = null;
+        n.fy = null;
+      });
 
     d3.select(canvasRef).call(drag);
   };
@@ -510,21 +552,27 @@ const TopologyGraph: Component<Props> = (props) => {
     if (containerRef) {
       const rect = containerRef.getBoundingClientRect();
       setDimensions({ width: rect.width, height: rect.height });
+      // Invalidate gradient cache on resize
+      cachedGradient = null;
       if (simulation && rect.width > 0) {
-        simulation.force('center', d3.forceCenter(rect.width/2, rect.height/2));
-        simulation.force('x', d3.forceX(rect.width/2).strength(0.04));
-        simulation.force('y', d3.forceY(rect.height/2).strength(0.04));
+        simulation.force('center', d3.forceCenter(rect.width / 2, rect.height / 2));
+        simulation.force('x', d3.forceX(rect.width / 2).strength(0.04));
+        simulation.force('y', d3.forceY(rect.height / 2).strength(0.04));
         simulation.alpha(0.3).restart();
+        isSimulationActive = true;
+        startAnimationLoop();
       }
     }
   };
-  
+
   const debouncedResize = debounce(handleResize, 150);
 
   onMount(() => {
     handleResize();
     window.addEventListener('resize', debouncedResize);
-    rafId = requestAnimationFrame(draw);
+    // Don't start animation loop here - it will start when data arrives via initializeSimulation
+    // Do an initial draw to show the background
+    draw();
   });
 
   onCleanup(() => {
