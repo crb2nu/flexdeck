@@ -1,7 +1,9 @@
-import { Component, createSignal, createEffect, onMount, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import { ciApi, RepoInfo } from '../../lib/api';
+
+const POLL_INTERVAL = 10000; // 10 seconds
 
 const Pipeline: Component = () => {
   const [repos, setRepos] = createSignal<RepoInfo[]>([]);
@@ -14,6 +16,11 @@ const Pipeline: Component = () => {
   const [traceLoading, setTraceLoading] = createSignal(false);
   const [activeTab, setActiveTab] = createSignal<'config' | 'logs'>('logs');
   const [repoFilter, setRepoFilter] = createSignal('');
+
+  // Auto-refresh state
+  const [autoRefresh, setAutoRefresh] = createSignal(true);
+  const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
     try {
@@ -33,10 +40,60 @@ const Pipeline: Component = () => {
           if (liveData && liveData.status !== 'none') {
               setPipelineData(liveData);
           }
+          setLastUpdate(new Date());
       } catch (e) {
           // Silently handle - repo might not have any pipelines yet
           console.debug("No pipeline data available", e);
       }
+  };
+
+  // Check if pipeline has running jobs
+  const isPipelineActive = () => {
+    const pipeline = pipelineData();
+    if (!pipeline) return false;
+    return pipeline.stages.some(stage =>
+      stage.jobs.some(job => job.status === 'running' || job.status === 'pending')
+    );
+  };
+
+  // Auto-refresh polling effect
+  createEffect(() => {
+    // Clear existing interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+
+    const repo = selectedRepo();
+    const isActive = isPipelineActive();
+    const isAutoRefresh = autoRefresh();
+    const hasJobSelected = selectedJob() !== null;
+
+    // Only poll when: repo selected, pipeline active, auto-refresh on, no job panel open
+    if (repo?.id && isActive && isAutoRefresh && !hasJobSelected) {
+      pollInterval = setInterval(() => {
+        fetchPipelineStatus(repo.id);
+      }, POLL_INTERVAL);
+    }
+  });
+
+  // Cleanup on unmount
+  onCleanup(() => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  });
+
+  // Format time ago
+  const formatTimeAgo = (date: Date | null) => {
+    if (!date) return 'Never';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 5) return 'Just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
   };
 
   const fetchJobTrace = async (projectId: number, jobId: string) => {
@@ -229,6 +286,52 @@ const Pipeline: Component = () => {
                         </div>
                     </div>
                 }>
+                    {/* Auto-refresh header bar */}
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-black/30">
+                        <div class="flex items-center gap-4">
+                            <div class="text-xs font-mono text-text-muted">
+                                {selectedRepo()?.name}
+                            </div>
+                            <Show when={isPipelineActive()}>
+                                <div class="flex items-center gap-1.5">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse" />
+                                    <span class="text-[10px] text-neon-cyan uppercase tracking-wider">Active</span>
+                                </div>
+                            </Show>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            {/* Last update time */}
+                            <Show when={lastUpdate()}>
+                                <div class="text-[10px] text-text-dim font-mono">
+                                    Updated: {formatTimeAgo(lastUpdate())}
+                                </div>
+                            </Show>
+                            {/* Auto-refresh toggle */}
+                            <button
+                                class={`flex items-center gap-2 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider transition-all ${
+                                    autoRefresh()
+                                        ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                                        : 'bg-white/5 text-text-muted border border-white/10 hover:bg-white/10'
+                                }`}
+                                onClick={() => setAutoRefresh(!autoRefresh())}
+                            >
+                                <div class={`w-1.5 h-1.5 rounded-full transition-colors ${
+                                    autoRefresh() ? 'bg-neon-cyan' : 'bg-text-dim'
+                                }`} />
+                                Auto-refresh: {autoRefresh() ? 'ON' : 'OFF'}
+                            </button>
+                            {/* Manual refresh button */}
+                            <button
+                                class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all"
+                                onClick={() => {
+                                    const repo = selectedRepo();
+                                    if (repo?.id) fetchPipelineStatus(repo.id);
+                                }}
+                            >
+                                ↻ Refresh
+                            </button>
+                        </div>
+                    </div>
                     <div class="flex-1 relative p-4">
                         <CIPipelineViz
                             pipeline={pipelineData()}
