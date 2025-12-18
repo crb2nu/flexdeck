@@ -30,6 +30,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
 
+	// CORS Middleware
+	r.Use(corsMiddleware(cfg.AllowedOrigins))
+
 	authMiddleware := auth.NewMiddleware(cfg)
 
 	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)

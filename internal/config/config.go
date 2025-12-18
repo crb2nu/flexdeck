@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -207,6 +208,8 @@ func Load() (*Config, error) {
 			AgentScopeURL:    getEnv("AGENTSCOPE_URL", "http://agentscope-sandbox-base.ai.svc.cluster.local:8000"),
 			AgentScopeGUIURL: getEnv("AGENTSCOPE_GUI_URL", "http://agentscope-sandbox-gui.ai.svc.cluster.local:8000"),
 		},
+
+		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
 
 		GitLab: GitLabConfig{
 			URL:   getEnv("GITLAB_URL", "https://gitlab.com"),
