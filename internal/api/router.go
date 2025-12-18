@@ -68,6 +68,11 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/deployments", h.K8sDeployments)
 			r.Get("/pods", h.K8sPods)
 			r.Get("/ingresses", h.K8sIngresses)
+			r.Get("/statefulsets", h.K8sStatefulSets)
+			r.Get("/daemonsets", h.K8sDaemonSets)
+			r.Get("/jobs", h.K8sJobs)
+			r.Get("/cronjobs", h.K8sCronJobs)
+			r.Get("/events", h.K8sEvents)
 			r.Get("/watch-sse", h.K8sWatchSSE)
 
 			if !cfg.K8s.ReadOnly {

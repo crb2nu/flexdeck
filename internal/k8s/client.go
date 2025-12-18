@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,6 +92,45 @@ func (c *Client) GetIngresses(ctx context.Context, namespace string) (*networkin
 		return c.clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
 	}
 	return c.clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetStatefulSets(ctx context.Context, namespace string) (*appsv1.StatefulSetList, error) {
+	if namespace == "" {
+		return c.clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetDaemonSets(ctx context.Context, namespace string) (*appsv1.DaemonSetList, error) {
+	if namespace == "" {
+		return c.clientset.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetJobs(ctx context.Context, namespace string) (*batchv1.JobList, error) {
+	if namespace == "" {
+		return c.clientset.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetCronJobs(ctx context.Context, namespace string) (*batchv1.CronJobList, error) {
+	if namespace == "" {
+		return c.clientset.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetEvents(ctx context.Context, namespace string, fieldSelector string) (*corev1.EventList, error) {
+	opts := metav1.ListOptions{}
+	if fieldSelector != "" {
+		opts.FieldSelector = fieldSelector
+	}
+	if namespace == "" {
+		return c.clientset.CoreV1().Events("").List(ctx, opts)
+	}
+	return c.clientset.CoreV1().Events(namespace).List(ctx, opts)
 }
 
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {

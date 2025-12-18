@@ -97,6 +97,92 @@ func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ingresses)
 }
 
+func (h *Handler) K8sStatefulSets(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	statefulsets, err := h.k8s.GetStatefulSets(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(statefulsets)
+}
+
+func (h *Handler) K8sDaemonSets(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	daemonsets, err := h.k8s.GetDaemonSets(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(daemonsets)
+}
+
+func (h *Handler) K8sJobs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	jobs, err := h.k8s.GetJobs(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func (h *Handler) K8sCronJobs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	cronjobs, err := h.k8s.GetCronJobs(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cronjobs)
+}
+
+func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	fieldSelector := r.URL.Query().Get("fieldSelector")
+	events, err := h.k8s.GetEvents(r.Context(), ns, fieldSelector)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
 func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
