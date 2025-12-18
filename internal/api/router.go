@@ -85,6 +85,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/query", h.LokiQuery)
 			r.Get("/query_range", h.LokiQueryRange)
 			r.Get("/tail-sse", h.LokiTailSSE)
+			r.Get("/export", h.LokiExport)
 		})
 
 		r.Route("/api/vllm", func(r chi.Router) {

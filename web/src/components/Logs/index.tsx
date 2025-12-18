@@ -184,6 +184,18 @@ const Logs: Component = () => {
     await navigator.clipboard.writeText(text);
   };
 
+  const exportLogs = (format: 'json' | 'csv') => {
+    const now = Date.now();
+    const start = now - parseTimeRange(timeRange());
+    const params = new URLSearchParams({
+      query: query(),
+      start: (BigInt(start) * 1000000n).toString(),
+      end: (BigInt(now) * 1000000n).toString(),
+      format,
+    });
+    window.open(`/api/loki/export?${params}`, '_blank');
+  };
+
   return (
     <div class="flex h-full flex-col gap-4">
       {/* Query Bar */}
@@ -247,6 +259,24 @@ const Logs: Component = () => {
                 Stream
               </button>
             </Show>
+
+            {/* Export buttons */}
+            <div class="flex items-center gap-1 border-l border-white/10 pl-2 ml-1">
+              <button
+                onClick={() => exportLogs('json')}
+                class="rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-white/10 hover:text-text-main"
+                title="Export as JSON"
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => exportLogs('csv')}
+                class="rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-white/10 hover:text-text-main"
+                title="Export as CSV"
+              >
+                CSV
+              </button>
+            </div>
           </div>
         </div>
 
