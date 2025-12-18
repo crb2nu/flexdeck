@@ -1,12 +1,7 @@
 import { Component, For, Show } from 'solid-js';
+import type { RepoInfo } from '../../lib/api';
 import type { Pipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
 import { getJobCountsByStatus, formatRelativeTime, hasActiveJobs } from './utils';
-
-interface RepoInfo {
-  id: number;
-  name: string;
-  webUrl?: string;
-}
 
 const getStatusColor = (status: PipelineJob['status'] | Pipeline['status']): string => {
   switch (status) {

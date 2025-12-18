@@ -1,13 +1,8 @@
 import { Component, For, Show, createMemo } from 'solid-js';
+import type { RepoInfo } from '../../lib/api';
 import type { Pipeline } from './CIPipelineViz';
 import PipelineCard from './PipelineCard';
 import { sortPipelines, type PipelineSortConfig, type PipelineSortField, type RepoWithPipeline } from './utils';
-
-interface RepoInfo {
-  id: number;
-  name: string;
-  webUrl?: string;
-}
 
 const SORT_OPTIONS: { value: PipelineSortField; label: string }[] = [
   { value: 'activity', label: 'Activity' },

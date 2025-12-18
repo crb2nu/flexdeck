@@ -1,3 +1,4 @@
+import type { RepoInfo } from '../../lib/api';
 import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
 // Status priority for sorting (lower = higher priority, shown first)
@@ -38,7 +39,7 @@ export interface PipelineSortConfig {
 }
 
 export interface RepoWithPipeline {
-  repo: { id: number; name: string; webUrl?: string };
+  repo: RepoInfo;
   pipeline: Pipeline | null;
 }
 
