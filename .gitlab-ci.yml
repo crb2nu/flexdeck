@@ -145,6 +145,10 @@ deploy:
     - echo "Triggering Flux reconciliation..."
     - echo "Image $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA is ready for deployment"
     - flux reconcile kustomization flexdeck --with-source
+    - echo "Restarting deployment to pull latest image..."
+    - apk add --no-cache kubectl
+    - kubectl -n flexdeck rollout restart deployment/flexdeck
+    - kubectl -n flexdeck rollout status deployment/flexdeck --timeout=5m
   only:
     - main
   when: manual
