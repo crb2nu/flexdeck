@@ -1,6 +1,7 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import { isNodeReady } from '../../stores/k8s';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -117,33 +118,53 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const buildGraph = () => {
-    const nodes: D3Node[] = [];
+    // Build map of previous nodes to preserve physics state (x, y, vx, vy)
+    const prevNodeMap = new Map(graphNodes.map(n => [n.id, n]));
+    
     const links: D3Link[] = [];
+    const nodes: D3Node[] = [];
     const nodeMap = new Map<string, D3Node>();
     const nsMap = new Map<string, number>();
+    
+    // Helper to merge state
+    const createOrUpdateNode = (id: string, type: 'node' | 'pod' | 'service', label: string, data: any, status: 'ok' | 'warn' | 'error', namespace?: string) => {
+        let node: D3Node = {
+            id, type, label, data, status, namespace
+        };
+        
+        // Preserve physics state if node existed
+        const prev = prevNodeMap.get(id);
+        if (prev) {
+            node.x = prev.x;
+            node.y = prev.y;
+            node.vx = prev.vx;
+            node.vy = prev.vy;
+            node.fx = prev.fx;
+            node.fy = prev.fy;
+        }
+        return node;
+    };
 
-    // Pre-index pods by namespace for O(1) lookup instead of O(pods) per service
+    // Add nodes
+    for (const k8sNode of props.nodes) {
+      const isReady = isNodeReady(k8sNode as any);
+      const d3Node = createOrUpdateNode(
+          `node-${k8sNode.metadata.name}`,
+          'node',
+          k8sNode.metadata.name,
+          k8sNode,
+          isReady ? 'ok' : 'error'
+      );
+      nodes.push(d3Node);
+      nodeMap.set(d3Node.id, d3Node);
+    }
+
+    // Index pods by namespace for faster service linking
     const podsByNamespace = new Map<string, K8sPod[]>();
     for (const pod of props.pods) {
       const ns = pod.metadata.namespace || 'default';
-      if (!podsByNamespace.has(ns)) {
-        podsByNamespace.set(ns, []);
-      }
+      if (!podsByNamespace.has(ns)) podsByNamespace.set(ns, []);
       podsByNamespace.get(ns)!.push(pod);
-    }
-
-    // Add K8s nodes
-    for (const node of props.nodes) {
-      const isReady = node.status.conditions.some(c => c.type === 'Ready' && c.status === 'True');
-      const d3Node: D3Node = {
-        id: `node-${node.metadata.name}`,
-        type: 'node',
-        label: node.metadata.name,
-        status: isReady ? 'ok' : 'error',
-        data: node,
-      };
-      nodes.push(d3Node);
-      nodeMap.set(d3Node.id, d3Node);
     }
 
     // Add pods
@@ -155,14 +176,14 @@ const TopologyGraph: Component<Props> = (props) => {
       const ns = pod.metadata.namespace || 'default';
       getNamespaceColor(ns, nsMap);
 
-      const d3Node: D3Node = {
-        id: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
-        type: 'pod',
-        label: pod.metadata.name,
-        namespace: ns,
-        status,
-        data: pod,
-      };
+      const d3Node = createOrUpdateNode(
+          `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
+          'pod',
+          pod.metadata.name,
+          pod,
+          status,
+          ns
+      );
       nodes.push(d3Node);
       nodeMap.set(d3Node.id, d3Node);
 
@@ -178,24 +199,23 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     }
 
-    // Add services - use pre-indexed pods for O(pods_in_namespace) instead of O(all_pods)
+    // Add services
     for (const svc of props.services) {
       const ns = svc.metadata.namespace || 'default';
       getNamespaceColor(ns, nsMap);
 
-      const d3Node: D3Node = {
-        id: `svc-${svc.metadata.namespace}-${svc.metadata.name}`,
-        type: 'service',
-        label: svc.metadata.name,
-        namespace: ns,
-        status: 'ok',
-        data: svc,
-      };
+      const d3Node = createOrUpdateNode(
+          `svc-${svc.metadata.namespace}-${svc.metadata.name}`,
+          'service',
+          svc.metadata.name,
+          svc,
+          'ok',
+          ns
+      );
       nodes.push(d3Node);
       nodeMap.set(d3Node.id, d3Node);
 
       if (svc.spec.selector) {
-        // Only iterate pods in the same namespace (pre-indexed)
         const namespacePods = podsByNamespace.get(ns) || [];
         const selectorEntries = Object.entries(svc.spec.selector);
 

@@ -75,11 +75,11 @@ const AgentChat: Component<AgentChatProps> = (props) => {
     setInput('');
     
     // Add user message
-    setMessages([...messages, {
+    setMessages(messages.length, {
       role: 'user',
       content: userMsg,
       timestamp: Date.now()
-    }]);
+    });
 
     setIsTyping(true);
 
@@ -145,21 +145,21 @@ const AgentChat: Component<AgentChatProps> = (props) => {
         widgets = parseWidgetsFromResponse(responseContent, userMsg);
       }
 
-      setMessages([...messages, {
+      setMessages(messages.length, {
         role: 'assistant',
         content: responseContent,
         timestamp: Date.now(),
         widgets: widgets,
         metadata: metadata
-      }]);
+      });
 
     } catch (err) {
       setConnectionStatus('error');
-      setMessages([...messages, {
+      setMessages(messages.length, {
         role: 'system',
         content: `**Error:** ${err instanceof Error ? err.message : 'Connection interrupted'}\n\nCheck that LiteLLM is configured and running.`,
         timestamp: Date.now()
-      }]);
+      });
     } finally {
       setIsTyping(false);
     }
