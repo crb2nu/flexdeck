@@ -49,11 +49,11 @@ const Dashboard: Component = () => {
 
   const isStatusActive = (status: string) => filter().status?.includes(status) || false;
 
-  // Resource pulse state (still polling Prometheus)
-  const [resourceLoading, setResourceLoading] = createSignal(true);
-  const [resourceError, setResourceError] = createSignal('');
-  const [cpuPercent, setCpuPercent] = createSignal(0);
-  const [memUsed, setMemUsed] = createSignal(0);
+  // Resource pulse state
+  const cpuPercent = () => metricsStore().clusterCpu;
+  const memUsed = () => metricsStore().clusterMemory;
+  const resourceLoading = () => metricsStore().loading;
+  const resourceError = () => metricsStore().error || '';
 
   let metricsInterval: ReturnType<typeof setInterval>;
 
@@ -125,29 +125,7 @@ const Dashboard: Component = () => {
   const pods = createMemo(() => k8sStore.pods as unknown as K8sPod[]);
   const services = createMemo(() => k8sStore.services as unknown as K8sService[]);
 
-  async function fetchResources() {
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const cpuQuery = 'sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / sum(rate(node_cpu_seconds_total[5m])) * 100';
-      const memQuery = 'sum(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)';
 
-      const [cpuData, memData] = await Promise.all([
-        api<any>(`/prom/query?query=${encodeURIComponent(cpuQuery)}&time=${now}`),
-        api<any>(`/prom/query?query=${encodeURIComponent(memQuery)}&time=${now}`),
-      ]);
-
-      const cpuVal = Number(cpuData?.data?.result?.[0]?.value?.[1] || 0);
-      const memVal = Number(memData?.data?.result?.[0]?.value?.[1] || 0);
-
-      setCpuPercent(cpuVal);
-      setMemUsed(memVal);
-      setResourceError('');
-    } catch (e) {
-      setResourceError(e instanceof Error ? e.message : 'Failed to fetch metrics');
-    } finally {
-      setResourceLoading(false);
-    }
-  }
 
   onMount(() => {
     // Connect to K8s SSE stream for real-time updates
@@ -155,16 +133,11 @@ const Dashboard: Component = () => {
 
     // Start metrics polling (for node/pod resource metrics)
     startMetricsPolling();
-
-    // Fetch Prometheus metrics (still polling, these aren't in SSE)
-    fetchResources();
-    metricsInterval = setInterval(fetchResources, METRICS_REFRESH_INTERVAL);
   });
 
   onCleanup(() => {
     disconnectK8sStream();
     stopMetricsPolling();
-    if (metricsInterval) clearInterval(metricsInterval);
   });
 
   return (

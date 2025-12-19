@@ -16,7 +16,13 @@ export async function api<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await authenticatedFetch(`/api${endpoint}`, {
+  // Use /flexdeck/api when hosted at the subpath on www.flexinfer.ai
+  const isPublicView =
+    typeof window !== "undefined" &&
+    window.location.hostname === "www.flexinfer.ai";
+  const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+
+  const response = await authenticatedFetch(`${apiBase}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -54,7 +60,13 @@ export const k8s = {
   restartDeployment: (ns: string, name: string) =>
     api<any>(`/k8s/deployments/${ns}/${name}/restart`, { method: "POST" }),
   // SSE endpoint URL (use EventSource directly)
-  watchSSEUrl: (ns?: string) => `/api/k8s/watch-sse${ns ? `?ns=${ns}` : ""}`,
+  watchSSEUrl: (ns?: string) => {
+    const isPublicView =
+      typeof window !== "undefined" &&
+      window.location.hostname === "www.flexinfer.ai";
+    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    return `${apiBase}/k8s/watch-sse${ns ? `?ns=${ns}` : ""}`;
+  },
 };
 
 export const prom = {

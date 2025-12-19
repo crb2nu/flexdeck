@@ -1,4 +1,4 @@
-import { createStore } from 'solid-js/store';
+import { createStore } from "solid-js/store";
 
 interface Feature {
   enabled: boolean;
@@ -17,19 +17,23 @@ interface HealthState {
 
 const [healthStore, setHealthStore] = createStore<HealthState>({
   ok: false,
-  service: '',
-  time: '',
+  service: "",
+  time: "",
   features: {},
   loading: true,
   error: null,
 });
 
 async function fetchHealth(): Promise<void> {
-  setHealthStore('loading', true);
-  setHealthStore('error', null);
+  setHealthStore("loading", true);
+  setHealthStore("error", null);
 
   try {
-    const response = await fetch('/api/health');
+    const isPublicView =
+      typeof window !== "undefined" &&
+      window.location.hostname === "www.flexinfer.ai";
+    const healthUrl = isPublicView ? "/flexdeck/api/health" : "/api/health";
+    const response = await fetch(healthUrl);
     if (!response.ok) {
       throw new Error(`Health check failed: ${response.status}`);
     }
@@ -47,7 +51,7 @@ async function fetchHealth(): Promise<void> {
     setHealthStore({
       ok: false,
       loading: false,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: err instanceof Error ? err.message : "Unknown error",
     });
   }
 }
