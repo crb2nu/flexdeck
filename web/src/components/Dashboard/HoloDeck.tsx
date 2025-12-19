@@ -39,6 +39,41 @@ interface Props {
   onSelect?: (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => void;
 }
 
+// Shader for animated arc rings (GPU-efficient - no geometry recreation)
+const arcRingVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const arcRingFragmentShader = `
+uniform float uProgress;
+uniform vec3 uColor;
+uniform float uOpacity;
+varying vec2 vUv;
+
+void main() {
+    // Convert UV to polar coordinates centered
+    vec2 centered = vUv - 0.5;
+    float angle = atan(centered.y, centered.x) + 3.14159;
+    float normalizedAngle = angle / (2.0 * 3.14159);
+
+    // Show arc based on progress (0-1)
+    float arcVisible = step(normalizedAngle, uProgress);
+
+    // Anti-aliased edge with glow
+    float edgeDist = abs(normalizedAngle - uProgress);
+    float edgeGlow = smoothstep(0.05, 0.0, edgeDist) * arcVisible;
+    float alpha = arcVisible * 0.8 + edgeGlow * 0.4;
+
+    if (alpha < 0.01) discard;
+
+    gl_FragColor = vec4(uColor, alpha * uOpacity);
+}
+`;
+
 // Shader for the "Holographic" floor
 const gridVertexShader = `
 varying vec3 vWorldPosition;
@@ -56,39 +91,58 @@ uniform vec3 uColor;
 
 void main() {
     float dist = length(vWorldPosition.xz);
-    float alpha = 1.0 - smoothstep(20.0, 80.0, dist);
-    
-    // Grid pattern
+    float alpha = 1.0 - smoothstep(20.0, 90.0, dist);
+
+    // Grid pattern with enhanced visuals
     float gridSize = 4.0;
     float subGridSize = 1.0;
-    float lineThickness = 0.02;
-    
-    // Main Grid
+    float lineThickness = 0.015;
+
+    // Main Grid with anti-aliasing
     float x = abs(fract(vWorldPosition.x / gridSize - 0.5) - 0.5);
     float z = abs(fract(vWorldPosition.z / gridSize - 0.5) - 0.5);
-    float grid = step(0.5 - lineThickness, x) + step(0.5 - lineThickness, z);
-    
-    // Sub Grid
+    float grid = smoothstep(0.5 - lineThickness - 0.01, 0.5 - lineThickness, x) +
+                 smoothstep(0.5 - lineThickness - 0.01, 0.5 - lineThickness, z);
+
+    // Sub Grid (finer detail)
     float sx = abs(fract(vWorldPosition.x / subGridSize - 0.5) - 0.5);
     float sz = abs(fract(vWorldPosition.z / subGridSize - 0.5) - 0.5);
-    float subGrid = step(0.5 - lineThickness, sx) + step(0.5 - lineThickness, sz);
-    
-    // Radial Scan
-    float scanDist = mod(uTime * 10.0, 100.0);
-    float scanWidth = 2.0;
-    float scan = smoothstep(scanDist - scanWidth, scanDist, dist) * (1.0 - smoothstep(scanDist, scanDist + 0.1, dist));
-    
+    float subGrid = smoothstep(0.5 - lineThickness - 0.005, 0.5 - lineThickness, sx) +
+                    smoothstep(0.5 - lineThickness - 0.005, 0.5 - lineThickness, sz);
+
+    // Radial pulse rings (multiple concentric)
+    float pulse1 = mod(uTime * 8.0, 100.0);
+    float pulse2 = mod(uTime * 8.0 + 33.0, 100.0);
+    float pulse3 = mod(uTime * 8.0 + 66.0, 100.0);
+    float pulseWidth = 1.5;
+
+    float ring1 = smoothstep(pulse1 - pulseWidth, pulse1, dist) * (1.0 - smoothstep(pulse1, pulse1 + 0.3, dist));
+    float ring2 = smoothstep(pulse2 - pulseWidth, pulse2, dist) * (1.0 - smoothstep(pulse2, pulse2 + 0.3, dist));
+    float ring3 = smoothstep(pulse3 - pulseWidth, pulse3, dist) * (1.0 - smoothstep(pulse3, pulse3 + 0.3, dist));
+    float rings = (ring1 + ring2 + ring3) * 0.7;
+
+    // Central glow that pulses
+    float centerGlow = exp(-dist * 0.08) * (0.3 + 0.15 * sin(uTime * 2.0));
+
+    // Combine effects
     vec3 color = uColor;
-    
-    // Mix grids
-    float combinedGrid = max(grid, subGrid * 0.3);
-    
-    // Add scan highlights
-    combinedGrid += scan * 2.0;
-    
+    vec3 accentColor = vec3(0.66, 0.33, 0.97); // Purple accent
+
+    // Mix grids with enhanced blending
+    float combinedGrid = max(grid * 0.9, subGrid * 0.2);
+
+    // Add pulse rings with color variation
+    combinedGrid += rings;
+
+    // Add center glow
+    combinedGrid += centerGlow;
+
     if (combinedGrid <= 0.01) discard;
 
-    gl_FragColor = vec4(color, alpha * combinedGrid * 0.8);
+    // Color blend - add purple tint to rings
+    vec3 finalColor = mix(color, accentColor, rings * 0.5 + centerGlow * 0.3);
+
+    gl_FragColor = vec4(finalColor, alpha * min(combinedGrid, 1.0) * 0.85);
 }
 `;
 
@@ -421,13 +475,24 @@ const HoloDeck: Component<Props> = (props) => {
         return null;
     };
 
+    // Throttle raycasting to reduce CPU usage (expensive operation)
+    let lastRaycastTime = 0;
+    const RAYCAST_THROTTLE_MS = 32; // ~30fps for hover detection
+
     const onMouseMove = (event: MouseEvent) => {
         if (!containerRef) return;
+
+        // Throttle raycasting - it's expensive
+        const now = performance.now();
+        if (now - lastRaycastTime < RAYCAST_THROTTLE_MS) return;
+        lastRaycastTime = now;
+
         const rect = containerRef.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
         raycaster.setFromCamera(mouse, camera);
+        // Only raycast against the data group for efficiency (skip grid, particles, etc.)
         const intersects = raycaster.intersectObjects(scene.children, true);
         const hitObj = findHitObject(intersects);
 
@@ -669,7 +734,7 @@ const HoloDeck: Component<Props> = (props) => {
                     core.rotation.x += delta * 0.5;
                 }
 
-                // Update resource meter rings based on metrics
+                // Update resource meter rings via shader uniforms (GPU-efficient, no geometry recreation!)
                 const nodeName = obj.userData.nodeName as string | undefined;
                 const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
                 const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
@@ -677,25 +742,21 @@ const HoloDeck: Component<Props> = (props) => {
                 if (nodeName && (cpuRing || memRing)) {
                     const metrics = getNodeMetrics(nodeName);
                     if (metrics) {
-                        // Update CPU ring
-                        if (cpuRing) {
-                            const cpuAngle = (metrics.cpuUsage / 100) * Math.PI * 2;
-                            cpuRing.geometry.dispose();
-                            cpuRing.geometry = new THREE.RingGeometry(3.3, 3.5, 32, 1, 0, cpuAngle);
-                            cpuRing.geometry.rotateX(-Math.PI / 2);
-                            // Color based on usage
+                        // Update CPU ring via shader uniform
+                        if (cpuRing && cpuRing.material instanceof THREE.ShaderMaterial) {
+                            const cpuProgress = metrics.cpuUsage / 100;
+                            cpuRing.material.uniforms.uProgress.value = cpuProgress;
+                            // Color based on usage - update uniform
                             const cpuColor = metrics.cpuUsage < 50 ? 0x0aff68 : metrics.cpuUsage < 80 ? 0xfcee0a : 0xff003c;
-                            (cpuRing.material as THREE.MeshBasicMaterial).color.setHex(cpuColor);
+                            (cpuRing.material.uniforms.uColor.value as THREE.Color).setHex(cpuColor);
                         }
-                        // Update Memory ring
-                        if (memRing) {
-                            const memAngle = (metrics.memoryPercent / 100) * Math.PI * 2;
-                            memRing.geometry.dispose();
-                            memRing.geometry = new THREE.RingGeometry(3.0, 3.2, 32, 1, 0, memAngle);
-                            memRing.geometry.rotateX(-Math.PI / 2);
-                            // Color based on usage
+                        // Update Memory ring via shader uniform
+                        if (memRing && memRing.material instanceof THREE.ShaderMaterial) {
+                            const memProgress = metrics.memoryPercent / 100;
+                            memRing.material.uniforms.uProgress.value = memProgress;
+                            // Color based on usage - update uniform
                             const memColor = metrics.memoryPercent < 50 ? 0x00f0ff : metrics.memoryPercent < 80 ? 0xfcee0a : 0xff003c;
-                            (memRing.material as THREE.MeshBasicMaterial).color.setHex(memColor);
+                            (memRing.material.uniforms.uColor.value as THREE.Color).setHex(memColor);
                         }
                     }
                 }
@@ -840,40 +901,52 @@ const HoloDeck: Component<Props> = (props) => {
             scanner.position.y = 0.3;
             group.add(scanner);
 
-            // Resource Meter Rings (CPU outer, Memory inner)
-            const createResourceRing = (innerRadius: number, outerRadius: number, height: number, colorHex: number) => {
-              const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 32, 1, 0, Math.PI * 2);
+            // Resource Meter Rings using shader (GPU-efficient - no geometry recreation)
+            const createShaderRing = (radius: number, height: number, colorHex: number) => {
+              // Use a plane with shader that clips to ring shape
+              const geometry = new THREE.RingGeometry(radius - 0.2, radius, 64);
               geometry.rotateX(-Math.PI / 2);
-              const material = new THREE.MeshBasicMaterial({
-                color: colorHex,
-                side: THREE.DoubleSide,
+              const color = new THREE.Color(colorHex);
+              const material = new THREE.ShaderMaterial({
+                uniforms: {
+                  uProgress: { value: 0.0 },
+                  uColor: { value: color },
+                  uOpacity: { value: 0.85 }
+                },
+                vertexShader: arcRingVertexShader,
+                fragmentShader: arcRingFragmentShader,
                 transparent: true,
-                opacity: 0.6
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
               });
               const ring = new THREE.Mesh(geometry, material);
               ring.position.y = height;
               return ring;
             };
 
-            // CPU ring (outer, at top of tower)
-            const cpuRingBg = createResourceRing(3.3, 3.5, towerH + 0.5, 0x222222);
+            // Background rings (static, full circle)
+            const cpuRingBg = new THREE.Mesh(
+              new THREE.RingGeometry(3.3, 3.5, 32),
+              new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })
+            );
+            cpuRingBg.geometry.rotateX(-Math.PI / 2);
+            cpuRingBg.position.y = towerH + 0.5;
             group.add(cpuRingBg);
 
-            // Memory ring (inner, at top of tower)
-            const memRingBg = createResourceRing(3.0, 3.2, towerH + 0.5, 0x222222);
+            const memRingBg = new THREE.Mesh(
+              new THREE.RingGeometry(3.0, 3.2, 32),
+              new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })
+            );
+            memRingBg.geometry.rotateX(-Math.PI / 2);
+            memRingBg.position.y = towerH + 0.5;
             group.add(memRingBg);
 
-            // Create progress rings (will be updated in animation loop)
-            const cpuRingProgress = createResourceRing(3.3, 3.5, towerH + 0.52, 0x0aff68);
-            cpuRingProgress.geometry.dispose();
-            cpuRingProgress.geometry = new THREE.RingGeometry(3.3, 3.5, 32, 1, 0, 0); // Start at 0
-            cpuRingProgress.geometry.rotateX(-Math.PI / 2);
+            // Progress rings using shader (uniforms updated in animation loop - no geometry recreation!)
+            const cpuRingProgress = createShaderRing(3.5, towerH + 0.52, 0x0aff68);
             group.add(cpuRingProgress);
 
-            const memRingProgress = createResourceRing(3.0, 3.2, towerH + 0.52, 0x00f0ff);
-            memRingProgress.geometry.dispose();
-            memRingProgress.geometry = new THREE.RingGeometry(3.0, 3.2, 32, 1, 0, 0); // Start at 0
-            memRingProgress.geometry.rotateX(-Math.PI / 2);
+            const memRingProgress = createShaderRing(3.2, towerH + 0.52, 0x00f0ff);
             group.add(memRingProgress);
 
             // Cache refs in userData for animation loop (avoid getObjectByName)

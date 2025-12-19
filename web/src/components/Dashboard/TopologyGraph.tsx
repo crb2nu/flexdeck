@@ -37,12 +37,15 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
   type: 'hosts' | 'selects';
 }
 
-interface Particle {
-  source: D3Node;
-  target: D3Node;
+// Particle pool for zero-allocation animation
+const MAX_PARTICLES = 40;
+interface ParticleSlot {
+  active: boolean;
+  sourceIdx: number;
+  targetIdx: number;
   progress: number;
   speed: number;
-  color: string;
+  colorIdx: 0 | 1; // 0 = cyan, 1 = purple
 }
 
 // Namespace color palette
@@ -78,7 +81,18 @@ const TopologyGraph: Component<Props> = (props) => {
   let graphNodes: D3Node[] = [];
   let graphLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
-  let particles: Particle[] = [];
+
+  // Object pool for particles - zero allocations during animation
+  const particlePool: ParticleSlot[] = Array.from({ length: MAX_PARTICLES }, () => ({
+    active: false,
+    sourceIdx: 0,
+    targetIdx: 0,
+    progress: 0,
+    speed: 0,
+    colorIdx: 0
+  }));
+  let activeParticleCount = 0;
+  const PARTICLE_COLORS = ['#00d9ff', '#a855f7'] as const;
 
   // Performance optimization state
   let cachedGradient: CanvasGradient | null = null;
@@ -235,22 +249,33 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  // Throttled particle spawning - only runs every 10 frames
+  // Throttled particle spawning using object pool - zero allocations
   const maybeSpawnParticle = () => {
-    // Only spawn every 10 frames and with 50% chance
-    if (frameCount % 10 !== 0) return;
-    if (graphLinks.length === 0 || particles.length >= 30 || Math.random() > 0.5) return;
+    // Only spawn every 8 frames and with 60% chance
+    if (frameCount % 8 !== 0) return;
+    if (graphLinks.length === 0 || activeParticleCount >= MAX_PARTICLES * 0.75 || Math.random() > 0.6) return;
 
-    const link = graphLinks[Math.floor(Math.random() * graphLinks.length)];
+    const linkIdx = Math.floor(Math.random() * graphLinks.length);
+    const link = graphLinks[linkIdx];
+    const source = link.source as D3Node;
+    const target = link.target as D3Node;
+
     // Only spawn if nodes have positions
-    if ((link.source as D3Node).x && (link.target as D3Node).x) {
-      particles.push({
-        source: link.source as D3Node,
-        target: link.target as D3Node,
-        progress: 0,
-        speed: 0.015 + Math.random() * 0.015,
-        color: link.type === 'hosts' ? '#00d9ff' : '#a855f7'
-      });
+    if (source.x !== undefined && target.x !== undefined) {
+      // Find an inactive slot in the pool
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        if (!particlePool[i].active) {
+          const slot = particlePool[i];
+          slot.active = true;
+          slot.sourceIdx = graphNodes.indexOf(source);
+          slot.targetIdx = graphNodes.indexOf(target);
+          slot.progress = 0;
+          slot.speed = 0.012 + Math.random() * 0.018;
+          slot.colorIdx = link.type === 'hosts' ? 0 : 1;
+          activeParticleCount++;
+          break;
+        }
+      }
     }
   };
 
@@ -277,39 +302,62 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Cache gradient - only recreate when dimensions change
     if (!cachedGradient || cachedGradientDims.width !== width || cachedGradientDims.height !== height) {
-      cachedGradient = ctx.createLinearGradient(0, 0, width, height);
-      cachedGradient.addColorStop(0, '#050a14');
-      cachedGradient.addColorStop(0.5, '#0a1020');
-      cachedGradient.addColorStop(1, '#0d1528');
+      // Use radial gradient for vignette effect
+      const cx = width / 2;
+      const cy = height / 2;
+      const maxRadius = Math.sqrt(cx * cx + cy * cy);
+      cachedGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius);
+      cachedGradient.addColorStop(0, '#0a1525');
+      cachedGradient.addColorStop(0.5, '#080f1c');
+      cachedGradient.addColorStop(0.8, '#060c18');
+      cachedGradient.addColorStop(1, '#030810');
       cachedGradientDims = { width, height };
     }
     ctx.fillStyle = cachedGradient;
     ctx.fillRect(0, 0, width, height);
+
+    // Subtle animated scanline effect (every 60 frames)
+    if (frameCount % 2 === 0) {
+      const scanY = (frameCount * 2) % height;
+      ctx.fillStyle = 'rgba(0, 217, 255, 0.015)';
+      ctx.fillRect(0, scanY, width, 2);
+    }
 
     ctx.save();
     // Apply Zoom/Pan
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
-    // Draw Links
+    // Draw Links with enhanced styling
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     for (const link of graphLinks) {
       const source = link.source as D3Node;
       const target = link.target as D3Node;
       if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
 
       const isSelects = link.type === 'selects';
+
+      // Draw subtle outer glow first
+      ctx.beginPath();
+      ctx.moveTo(source.x, source.y);
+      ctx.lineTo(target.x, target.y);
+      ctx.strokeStyle = isSelects ? 'rgba(168, 85, 247, 0.06)' : 'rgba(0, 217, 255, 0.06)';
+      ctx.setLineDash([]);
+      ctx.lineWidth = isSelects ? 4 : 5;
+      ctx.stroke();
+
+      // Draw main link
       ctx.beginPath();
       ctx.moveTo(source.x, source.y);
       ctx.lineTo(target.x, target.y);
 
-      // Style
       if (isSelects) {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.2)';
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
         ctx.setLineDash([4, 4]);
         ctx.lineWidth = 1;
       } else {
-        ctx.strokeStyle = 'rgba(0, 217, 255, 0.2)';
+        ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
         ctx.setLineDash([]);
         ctx.lineWidth = 1.5;
       }
@@ -320,32 +368,66 @@ const TopologyGraph: Component<Props> = (props) => {
     // Maybe spawn a particle (throttled)
     maybeSpawnParticle();
 
-    // Draw Particles - no shadow blur for performance
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.progress += p.speed;
-      if (p.progress >= 1) {
-        particles.splice(i, 1);
+    // Draw Particles using object pool - no array mutations, no allocations
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const slot = particlePool[i];
+      if (!slot.active) continue;
+
+      slot.progress += slot.speed;
+      if (slot.progress >= 1) {
+        slot.active = false;
+        activeParticleCount--;
         continue;
       }
 
-      const sx = p.source.x ?? 0;
-      const sy = p.source.y ?? 0;
-      const tx = p.target.x ?? 0;
-      const ty = p.target.y ?? 0;
+      const source = graphNodes[slot.sourceIdx];
+      const target = graphNodes[slot.targetIdx];
+      if (!source || !target) {
+        slot.active = false;
+        activeParticleCount--;
+        continue;
+      }
 
-      const x = sx * (1 - p.progress) + tx * p.progress;
-      const y = sy * (1 - p.progress) + ty * p.progress;
+      const sx = source.x ?? 0;
+      const sy = source.y ?? 0;
+      const tx = target.x ?? 0;
+      const ty = target.y ?? 0;
 
-      // Draw particle with simple glow (two circles instead of shadowBlur)
+      const x = sx + (tx - sx) * slot.progress;
+      const y = sy + (ty - sy) * slot.progress;
+      const color = PARTICLE_COLORS[slot.colorIdx];
+
+      // Draw particle trail (3 trailing dots with decreasing opacity)
+      const trailLength = 0.08;
+      for (let t = 2; t >= 0; t--) {
+        const trailProgress = Math.max(0, slot.progress - t * trailLength * 0.5);
+        const trailX = sx + (tx - sx) * trailProgress;
+        const trailY = sy + (ty - sy) * trailProgress;
+        const trailOpacity = (3 - t) * 0.08;
+        const trailSize = 1.5 - t * 0.3;
+
+        ctx.beginPath();
+        ctx.arc(trailX, trailY, trailSize, 0, 2 * Math.PI);
+        ctx.fillStyle = slot.colorIdx === 0
+          ? `rgba(0,217,255,${trailOpacity})`
+          : `rgba(168,85,247,${trailOpacity})`;
+        ctx.fill();
+      }
+
+      // Draw particle with multi-layer glow (no shadowBlur for performance)
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = p.color + '40'; // 25% opacity outer glow
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.15)' : 'rgba(168,85,247,0.15)';
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(x, y, 2, 0, 2 * Math.PI);
-      ctx.fillStyle = p.color;
+      ctx.arc(x, y, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.35)' : 'rgba(168,85,247,0.35)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
       ctx.fill();
     }
 
@@ -353,7 +435,8 @@ const TopologyGraph: Component<Props> = (props) => {
     const selectedId = selectedNode()?.id;
     const hoveredId = hoverNode()?.id;
 
-    // Draw Nodes
+    // Draw Nodes with enhanced glow effects
+    const time = frameCount * 0.05; // For subtle animation
     graphNodes.forEach(node => {
       if (node.x === undefined || node.y === undefined) return;
       const r = getNodeRadius(node);
@@ -361,50 +444,92 @@ const TopologyGraph: Component<Props> = (props) => {
       const isSelected = selectedId === node.id;
       const isHovered = hoveredId === node.id;
 
-      // Glow 
+      // Multi-layer glow for selected/hovered nodes
       if (isSelected || isHovered) {
+        // Outer pulse glow (animates for selected)
+        const pulseScale = isSelected ? 1 + Math.sin(time * 2) * 0.15 : 1;
+        const glowRadius = (isSelected ? 12 : 6) * pulseScale;
+
+        // Outer soft glow
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + (isSelected ? 8 : 4), 0, 2 * Math.PI);
+        ctx.arc(node.x, node.y, r + glowRadius, 0, 2 * Math.PI);
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.2;
+        ctx.globalAlpha = 0.08;
+        ctx.fill();
+
+        // Middle glow
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r + glowRadius * 0.6, 0, 2 * Math.PI);
+        ctx.globalAlpha = 0.12;
+        ctx.fill();
+
+        // Inner glow
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r + glowRadius * 0.3, 0, 2 * Math.PI);
+        ctx.globalAlpha = 0.18;
         ctx.fill();
         ctx.globalAlpha = 1.0;
       }
 
-      // Main Circle Background
+      // Main Circle Background with subtle gradient effect
       ctx.beginPath();
       ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
-      ctx.fillStyle = '#0a1020'; 
+      ctx.fillStyle = '#0a1020';
       ctx.fill();
-      
-      // Filled tint
+
+      // Filled tint with enhanced opacity for visual depth
       ctx.fillStyle = color;
-      ctx.globalAlpha = node.type === 'node' ? 0.2 : 0.4;
+      ctx.globalAlpha = node.type === 'node' ? 0.25 : 0.45;
       ctx.fill();
       ctx.globalAlpha = 1.0;
 
-      // Stroke
+      // Stroke with enhanced styling
       ctx.beginPath();
       ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
       ctx.strokeStyle = color;
       ctx.lineWidth = isSelected ? 3 : (node.type === 'node' ? 2 : 1.5);
       ctx.stroke();
 
-      // Inner Highlight Ring
+      // Inner Highlight Ring for nodes (enhanced)
       if (node.type === 'node') {
         ctx.beginPath();
         ctx.arc(node.x, node.y, r - 4, 0, 2 * Math.PI);
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.lineWidth = 1;
         ctx.stroke();
+
+        // Secondary inner ring for depth
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r - 8, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.stroke();
       }
-      
-      // Icon or Center Dot
+
+      // Enhanced center dot for pods with glow
       if (node.type === 'pod') {
-         ctx.beginPath();
-         ctx.arc(node.x, node.y, 2, 0, 2 * Math.PI);
-         ctx.fillStyle = color;
-         ctx.fill();
+        // Outer glow dot
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.4;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+
+      // Service diamond indicator
+      if (node.type === 'service') {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.3;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
       }
     });
 
@@ -433,12 +558,11 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Continue animation only if simulation is active or particles exist
     // This prevents infinite 60fps loop when nothing is changing
-    const shouldContinue = isSimulationActive || particles.length > 0;
+    const shouldContinue = isSimulationActive || activeParticleCount > 0;
     if (shouldContinue) {
       rafId = requestAnimationFrame(draw);
     } else {
       isAnimating = false;
-      // Do one final render after stopping
       rafId = null;
     }
   };
