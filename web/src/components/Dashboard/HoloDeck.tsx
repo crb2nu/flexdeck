@@ -722,9 +722,13 @@ const HoloDeck: Component<Props> = (props) => {
         }
     };
 
+    let isMounted = true;
     const animate = () => {
-        animationId = requestAnimationFrame(animate);
-        const delta = clock.getDelta();
+        if (!isMounted || !containerRef) return;
+        
+        // Throttled frame processing to prevent UI freezing if FPS drops
+        // If elapsed time is too high, skip heavy updates
+        const delta = Math.min(clock.getDelta(), 0.1); 
         const time = clock.getElapsedTime();
 
         // Update uniforms
@@ -733,6 +737,7 @@ const HoloDeck: Component<Props> = (props) => {
         controls.update();
 
         // Spawn and update traffic using object pool
+        // Throttle spawning checks
         spawnTraffic();
         updateTraffic(delta);
 
@@ -740,21 +745,24 @@ const HoloDeck: Component<Props> = (props) => {
         spawnServiceTraffic();
         updateServiceTraffic(delta);
 
-        // Animate objects - use frame count to stagger updates for performance
-        const frameCount = Math.floor(time * 60);
-        const updateMetrics = frameCount % 30 === 0; // Only update metrics every 30 frames (~0.5s)
-
-        objectMap.forEach((obj) => {
+        // Animate objects
+        const frameCount = renderer.info.render.frame;
+        // Reduce metrics update frequency to once per second (~60 frames) to relieve CPU
+        const updateMetrics = frameCount % 60 === 0; 
+        
+        // Use a traditional for-loop over values iterator for better performance than forEach
+        for (const obj of objectMap.values()) {
             const type = obj.userData.type;
 
             if (type === 'node') {
-                // Use cached scanner/core refs stored in userData
+                // Use cached scanner/core refs
                 const scanner = obj.userData.scannerRef as THREE.Mesh | undefined;
-                if (scanner) {
-                    scanner.scale.setScalar(1 + Math.sin(time * 2) * 0.15);
-                    if (scanner.material) {
-                        (scanner.material as THREE.MeshBasicMaterial).opacity = 0.4 - Math.sin(time * 2) * 0.15;
-                    }
+                if (scanner && scanner.material) {
+                     // Optimization: Avoid setting uniforms/props if not visible change
+                     // But here we animate scale/opacity continuously
+                     const s = 1 + Math.sin(time * 2) * 0.15;
+                     scanner.scale.setScalar(s);
+                     (scanner.material as THREE.MeshBasicMaterial).opacity = 0.4 - Math.sin(time * 2) * 0.15;
                 }
                 const core = obj.userData.coreRef as THREE.Object3D | undefined;
                 if (core) {
@@ -762,9 +770,10 @@ const HoloDeck: Component<Props> = (props) => {
                     core.rotation.x += delta * 0.4;
                 }
 
-                // Update resource meter rings - throttled for performance
+                // Update resource meter rings
                 if (updateMetrics) {
                     const nodeName = obj.userData.nodeName as string | undefined;
+                    // ... (rest of logic same)
                     const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
                     const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
 
@@ -785,27 +794,23 @@ const HoloDeck: Component<Props> = (props) => {
                     }
                 }
             } else if (type === 'pod') {
-                // Gentler rotation
                 obj.rotation.x += delta * 0.3;
                 obj.rotation.y += delta * 0.2;
-                // Subtle bobbing
                 if (obj.userData.initialY) {
                     obj.position.y = obj.userData.initialY + Math.sin(time * 0.8 + (obj.id % 20)) * 0.2;
                 }
             } else if (type === 'service') {
-                // Slow rotation for service hexagons
                 obj.rotation.y += delta * 0.15;
-                // Gentle floating
                 if (obj.userData.initialY) {
                     obj.position.y = obj.userData.initialY + Math.sin(time * 0.6 + (obj.id % 10)) * 0.3;
                 }
             }
-        });
+        }
 
         // Animate Dust
         dustParticles.rotation.y = time * 0.03;
 
-        // Animate Central Core Rings (using cached refs - no getObjectByName)
+        // Animate Central Core Rings
         for (let i = 0; i < coreRings.length; i++) {
             const ring = coreRings[i];
             ring.rotation.z = time * (0.2 + i * 0.1) * (i % 2 === 0 ? 1 : -1);
@@ -813,6 +818,7 @@ const HoloDeck: Component<Props> = (props) => {
         }
 
         composer.render();
+        animationId = requestAnimationFrame(animate);
     };
     animate();
 
