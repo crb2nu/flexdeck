@@ -648,31 +648,50 @@ const TopologyGraph: Component<Props> = (props) => {
 
     const { width, height } = dimensions();
 
-    // Adaptive forces based on node count
+    // Adaptive forces based on node count - gentler for smoother animation
     const nodeCount = graphNodes.length || 1;
-    const linkDistance = Math.max(60, Math.min(120, 2000 / Math.sqrt(nodeCount)));
-    const chargeStrength = Math.max(-500, Math.min(-150, -3000 / Math.sqrt(nodeCount)));
+    const linkDistance = Math.max(80, Math.min(140, 2500 / Math.sqrt(nodeCount)));
+    const chargeStrength = Math.max(-400, Math.min(-120, -2500 / Math.sqrt(nodeCount)));
 
-    // Create simulation FIRST, then start animation loop
-    // Use higher alphaDecay for faster settling (default is ~0.0228)
+    // Pre-position nodes in a circle to avoid initial explosion
+    const cx = width / 2;
+    const cy = height / 2;
+    const initialRadius = Math.min(width, height) * 0.3;
+    graphNodes.forEach((node, i) => {
+      const angle = (i / graphNodes.length) * Math.PI * 2;
+      node.x = cx + Math.cos(angle) * initialRadius * (0.5 + Math.random() * 0.5);
+      node.y = cy + Math.sin(angle) * initialRadius * (0.5 + Math.random() * 0.5);
+    });
+
+    // Create simulation with gentle initial alpha
     simulation = d3.forceSimulation<D3Node>(graphNodes)
-      .alphaDecay(0.05) // Faster decay = quicker settling, less CPU during startup
-      .velocityDecay(0.3) // Slightly higher damping for smoother animation
+      .alpha(0.4) // Start with lower alpha for gentler initial movement
+      .alphaDecay(0.02) // Slower decay for smoother settling
+      .alphaMin(0.001) // Stop earlier
+      .velocityDecay(0.4) // Higher damping for smoother animation
       .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
         .id(d => d.id)
         .distance(linkDistance)
-        .strength(0.3))
-      .force('charge', d3.forceManyBody().strength(chargeStrength))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 15))
-      .force('x', d3.forceX(width / 2).strength(0.04))
-      .force('y', d3.forceY(height / 2).strength(0.04))
+        .strength(0.2)) // Gentler link force
+      .force('charge', d3.forceManyBody().strength(chargeStrength).distanceMax(300))
+      .force('center', d3.forceCenter(cx, cy).strength(0.05))
+      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 12).strength(0.7))
+      .force('x', d3.forceX(cx).strength(0.03))
+      .force('y', d3.forceY(cy).strength(0.03))
       .on('end', () => {
-        // Simulation has settled - stop continuous rendering
         isSimulationActive = false;
       });
 
-    // NOW start animation loop after simulation is created
+    // Run warmup ticks synchronously to pre-calculate stable positions
+    // This prevents the violent initial animation
+    const warmupTicks = Math.min(100, Math.max(30, nodeCount));
+    simulation.stop(); // Pause auto-ticking
+    for (let i = 0; i < warmupTicks; i++) {
+      simulation.tick();
+    }
+    simulation.alpha(0.15); // Lower alpha after warmup for final settling
+
+    // NOW start animation loop after warmup
     isSimulationActive = true;
     startAnimationLoop();
 

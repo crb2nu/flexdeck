@@ -606,20 +606,31 @@ const HoloDeck: Component<Props> = (props) => {
     const maxTraffic = quality.maxTrafficPackets;
     const hidePosition = new THREE.Vector3(0, -1000, 0);
 
-    // Object pool traffic spawning (no array mutations)
+    // Object pool traffic spawning - time-based for consistent performance
+    let lastTrafficSpawnTime = 0;
+    const TRAFFIC_SPAWN_INTERVAL = 120; // ms between spawn attempts
+
     const spawnTraffic = () => {
-        if (curves.length === 0 || activeTrafficCount >= maxTraffic) return;
-        if (Math.random() > 0.85) {
-            // Find an inactive slot
-            for (let i = 0; i < MAX_TRAFFIC; i++) {
-                if (!trafficPool[i].active) {
-                    trafficPool[i].active = true;
-                    trafficPool[i].curveIndex = Math.floor(Math.random() * curves.length);
-                    trafficPool[i].progress = 0;
-                    trafficPool[i].speed = 0.8 + Math.random() * 0.8;
-                    activeTrafficCount++;
-                    break;
-                }
+        if (curves.length === 0) return;
+
+        // Limit based on curve count
+        const maxActive = Math.min(maxTraffic, Math.max(10, curves.length * 0.3));
+        if (activeTrafficCount >= maxActive) return;
+
+        // Time-based throttling
+        const now = performance.now();
+        if (now - lastTrafficSpawnTime < TRAFFIC_SPAWN_INTERVAL) return;
+        lastTrafficSpawnTime = now;
+
+        // Find an inactive slot
+        for (let i = 0; i < MAX_TRAFFIC; i++) {
+            if (!trafficPool[i].active) {
+                trafficPool[i].active = true;
+                trafficPool[i].curveIndex = Math.floor(Math.random() * curves.length);
+                trafficPool[i].progress = 0;
+                trafficPool[i].speed = 0.5 + Math.random() * 0.5; // Slower, smoother
+                activeTrafficCount++;
+                break;
             }
         }
     };
@@ -654,19 +665,31 @@ const HoloDeck: Component<Props> = (props) => {
         }
     };
 
-    // Spawn service traffic (purple particles)
+    // Spawn service traffic (purple particles) - reduced rate for performance
+    let lastServiceSpawnTime = 0;
+    const SERVICE_SPAWN_INTERVAL = 200; // ms between spawn attempts
+
     const spawnServiceTraffic = () => {
-        if (serviceCurves.length === 0 || activeServiceTrafficCount >= MAX_SERVICE_TRAFFIC * 0.6) return;
-        if (Math.random() > 0.9) {
-            for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
-                if (!serviceTrafficPool[i].active) {
-                    serviceTrafficPool[i].active = true;
-                    serviceTrafficPool[i].curveIndex = Math.floor(Math.random() * serviceCurves.length);
-                    serviceTrafficPool[i].progress = 0;
-                    serviceTrafficPool[i].speed = 0.5 + Math.random() * 0.5;
-                    activeServiceTrafficCount++;
-                    break;
-                }
+        if (serviceCurves.length === 0) return;
+
+        // Limit active particles based on curve count
+        const maxActive = Math.min(MAX_SERVICE_TRAFFIC * 0.4, serviceCurves.length * 2);
+        if (activeServiceTrafficCount >= maxActive) return;
+
+        // Time-based throttling instead of random chance
+        const now = performance.now();
+        if (now - lastServiceSpawnTime < SERVICE_SPAWN_INTERVAL) return;
+        lastServiceSpawnTime = now;
+
+        // Spawn one particle
+        for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {
+            if (!serviceTrafficPool[i].active) {
+                serviceTrafficPool[i].active = true;
+                serviceTrafficPool[i].curveIndex = Math.floor(Math.random() * serviceCurves.length);
+                serviceTrafficPool[i].progress = 0;
+                serviceTrafficPool[i].speed = 0.3 + Math.random() * 0.3; // Slower, more elegant
+                activeServiceTrafficCount++;
+                break;
             }
         }
     };
@@ -717,64 +740,64 @@ const HoloDeck: Component<Props> = (props) => {
         spawnServiceTraffic();
         updateServiceTraffic(delta);
 
-        // Animate objects (cached refs where possible)
-        objectMap.forEach(obj => {
-            if (obj.userData.type === 'node') {
+        // Animate objects - use frame count to stagger updates for performance
+        const frameCount = Math.floor(time * 60);
+        const updateMetrics = frameCount % 30 === 0; // Only update metrics every 30 frames (~0.5s)
+
+        objectMap.forEach((obj) => {
+            const type = obj.userData.type;
+
+            if (type === 'node') {
                 // Use cached scanner/core refs stored in userData
                 const scanner = obj.userData.scannerRef as THREE.Mesh | undefined;
                 if (scanner) {
-                    scanner.scale.setScalar(1 + Math.sin(time * 2) * 0.2);
+                    scanner.scale.setScalar(1 + Math.sin(time * 2) * 0.15);
                     if (scanner.material) {
-                        (scanner.material as THREE.MeshBasicMaterial).opacity = 0.5 - Math.sin(time * 2) * 0.2;
+                        (scanner.material as THREE.MeshBasicMaterial).opacity = 0.4 - Math.sin(time * 2) * 0.15;
                     }
                 }
                 const core = obj.userData.coreRef as THREE.Object3D | undefined;
                 if (core) {
-                    core.rotation.y += delta;
-                    core.rotation.x += delta * 0.5;
+                    core.rotation.y += delta * 0.8;
+                    core.rotation.x += delta * 0.4;
                 }
 
-                // Update resource meter rings via shader uniforms (GPU-efficient, no geometry recreation!)
-                const nodeName = obj.userData.nodeName as string | undefined;
-                const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
-                const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
+                // Update resource meter rings - throttled for performance
+                if (updateMetrics) {
+                    const nodeName = obj.userData.nodeName as string | undefined;
+                    const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
+                    const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
 
-                if (nodeName && (cpuRing || memRing)) {
-                    const metrics = getNodeMetrics(nodeName);
-                    if (metrics) {
-                        // Update CPU ring via shader uniform
-                        if (cpuRing && cpuRing.material instanceof THREE.ShaderMaterial) {
-                            const cpuProgress = metrics.cpuUsage / 100;
-                            cpuRing.material.uniforms.uProgress.value = cpuProgress;
-                            // Color based on usage - update uniform
-                            const cpuColor = metrics.cpuUsage < 50 ? 0x0aff68 : metrics.cpuUsage < 80 ? 0xfcee0a : 0xff003c;
-                            (cpuRing.material.uniforms.uColor.value as THREE.Color).setHex(cpuColor);
-                        }
-                        // Update Memory ring via shader uniform
-                        if (memRing && memRing.material instanceof THREE.ShaderMaterial) {
-                            const memProgress = metrics.memoryPercent / 100;
-                            memRing.material.uniforms.uProgress.value = memProgress;
-                            // Color based on usage - update uniform
-                            const memColor = metrics.memoryPercent < 50 ? 0x00f0ff : metrics.memoryPercent < 80 ? 0xfcee0a : 0xff003c;
-                            (memRing.material.uniforms.uColor.value as THREE.Color).setHex(memColor);
+                    if (nodeName && (cpuRing || memRing)) {
+                        const metrics = getNodeMetrics(nodeName);
+                        if (metrics) {
+                            if (cpuRing && cpuRing.material instanceof THREE.ShaderMaterial) {
+                                cpuRing.material.uniforms.uProgress.value = metrics.cpuUsage / 100;
+                                const cpuColor = metrics.cpuUsage < 50 ? 0x0aff68 : metrics.cpuUsage < 80 ? 0xfcee0a : 0xff003c;
+                                (cpuRing.material.uniforms.uColor.value as THREE.Color).setHex(cpuColor);
+                            }
+                            if (memRing && memRing.material instanceof THREE.ShaderMaterial) {
+                                memRing.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
+                                const memColor = metrics.memoryPercent < 50 ? 0x00f0ff : metrics.memoryPercent < 80 ? 0xfcee0a : 0xff003c;
+                                (memRing.material.uniforms.uColor.value as THREE.Color).setHex(memColor);
+                            }
                         }
                     }
                 }
-            }
-            if (obj.userData.type === 'pod') {
-                obj.rotation.x += delta * 0.5;
-                obj.rotation.y += delta * 0.3;
-                // Bobbing
-                if (obj.userData.initialY) {
-                    obj.position.y = obj.userData.initialY + Math.sin(time + (obj.id % 20)) * 0.3;
-                }
-            }
-            if (obj.userData.type === 'service') {
-                // Slow rotation for service hexagons
+            } else if (type === 'pod') {
+                // Gentler rotation
+                obj.rotation.x += delta * 0.3;
                 obj.rotation.y += delta * 0.2;
+                // Subtle bobbing
+                if (obj.userData.initialY) {
+                    obj.position.y = obj.userData.initialY + Math.sin(time * 0.8 + (obj.id % 20)) * 0.2;
+                }
+            } else if (type === 'service') {
+                // Slow rotation for service hexagons
+                obj.rotation.y += delta * 0.15;
                 // Gentle floating
                 if (obj.userData.initialY) {
-                    obj.position.y = obj.userData.initialY + Math.sin(time * 0.8 + (obj.id % 10)) * 0.4;
+                    obj.position.y = obj.userData.initialY + Math.sin(time * 0.6 + (obj.id % 10)) * 0.3;
                 }
             }
         });
@@ -1099,45 +1122,70 @@ const HoloDeck: Component<Props> = (props) => {
             dataMap.set(svcId, svc);
             matchesFilterMap.set(svcId, true); // Services always visible for now
 
-            // Find matching pods and create connections
+            // Find matching pods - limit connections to nearest 5 for performance
             const matchingPodIds: string[] = [];
+            const svcPos = new THREE.Vector3(x, sy, z);
+
+            // Collect matching pods with their distances
+            const podCandidates: { pod: K8sPod; podId: string; obj: THREE.Object3D; dist: number }[] = [];
             currentPods.forEach((pod) => {
                 if (pod.metadata.namespace === svc.metadata.namespace && podMatchesSelector(pod, svc.spec.selector)) {
                     const podId = `pod-${pod.metadata.name}`;
-                    matchingPodIds.push(podId);
-
-                    // Get pod position
                     const podObj = objectMap.get(podId);
                     if (podObj) {
-                        const svcPos = new THREE.Vector3(x, sy, z);
-                        const podPos = podObj.position.clone();
-
-                        // Create bezier curve from service to pod
-                        const mid = svcPos.clone().add(podPos).multiplyScalar(0.5);
-                        mid.y += 3; // Arc upward
-
-                        const svcCurve = new THREE.QuadraticBezierCurve3(svcPos, mid, podPos);
-                        serviceCurves.push(svcCurve);
-
-                        // Draw dashed connection line
-                        const linePoints = svcCurve.getPoints(20);
-                        const lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-                        const lineMat = new THREE.LineDashedMaterial({
-                            color: 0xa855f7,
-                            transparent: true,
-                            opacity: 0.25,
-                            dashSize: 0.3,
-                            gapSize: 0.2
-                        });
-                        const svcLine = new THREE.Line(lineGeom, lineMat);
-                        svcLine.computeLineDistances();
-                        dataGroup.add(svcLine);
+                        const dist = svcPos.distanceTo(podObj.position);
+                        podCandidates.push({ pod, podId, obj: podObj, dist });
                     }
                 }
             });
 
+            // Sort by distance and take only the closest 5 pods
+            podCandidates.sort((a, b) => a.dist - b.dist);
+            const closestPods = podCandidates.slice(0, 5);
+
+            closestPods.forEach(({ podId, obj: podObj }) => {
+                matchingPodIds.push(podId);
+
+                const podPos = podObj.position.clone();
+
+                // Create elegant bezier curve with dynamic arc height based on distance
+                const dist = svcPos.distanceTo(podPos);
+                const mid = svcPos.clone().add(podPos).multiplyScalar(0.5);
+                mid.y += Math.min(5, dist * 0.15); // Proportional arc height
+
+                const svcCurve = new THREE.QuadraticBezierCurve3(svcPos, mid, podPos);
+                serviceCurves.push(svcCurve);
+            });
+
             serviceToPodsMap.set(svcId, matchingPodIds);
         });
+
+        // Batch all service connection lines into a single geometry for fewer draw calls
+        if (serviceCurves.length > 0) {
+            const allLinePoints: THREE.Vector3[] = [];
+            const POINTS_PER_CURVE = 16;
+
+            serviceCurves.forEach(curve => {
+                const points = curve.getPoints(POINTS_PER_CURVE);
+                // Add points with a gap between curves (NaN creates line break)
+                allLinePoints.push(...points);
+                // Add invisible segment to break the line
+                allLinePoints.push(new THREE.Vector3(NaN, NaN, NaN));
+            });
+
+            // Remove last NaN
+            allLinePoints.pop();
+
+            const mergedLineGeom = new THREE.BufferGeometry().setFromPoints(allLinePoints);
+            const mergedLineMat = new THREE.LineBasicMaterial({
+                color: 0xa855f7,
+                transparent: true,
+                opacity: 0.2,
+                linewidth: 1
+            });
+            const mergedServiceLines = new THREE.LineSegments(mergedLineGeom, mergedLineMat);
+            dataGroup.add(mergedServiceLines);
+        }
 
         // Apply initial filter state
         applyFilterVisuals();
