@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/flexinfer/flexdeck/internal/api/handlers"
+	apimiddleware "github.com/flexinfer/flexdeck/internal/api/middleware"
 	"github.com/flexinfer/flexdeck/internal/auth"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
@@ -58,9 +59,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
-		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
-		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
-		r.Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
+		r.With(apimiddleware.LogFunc("ci.retry")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
+		r.With(apimiddleware.LogFunc("ci.cancel")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
+		r.With(apimiddleware.LogFunc("ci.play")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
 
 		r.Route("/api/k8s", func(r chi.Router) {
 			r.Get("/services", h.K8sServices)
@@ -81,8 +82,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/watch-sse", h.K8sWatchSSE)
 
 			if !cfg.K8s.ReadOnly {
-				r.Post("/deployments/{ns}/{name}/scale", h.K8sScale)
-				r.Post("/deployments/{ns}/{name}/restart", h.K8sRestart)
+				r.With(apimiddleware.LogFunc("k8s.scale")).Post("/deployments/{ns}/{name}/scale", h.K8sScale)
+				r.With(apimiddleware.LogFunc("k8s.restart")).Post("/deployments/{ns}/{name}/restart", h.K8sRestart)
 			}
 		})
 
@@ -114,7 +115,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Route("/api/flux", func(r chi.Router) {
 			r.Get("/kustomizations", h.FluxListKustomizations)
 			r.Get("/helmreleases", h.FluxListHelmReleases)
-			r.Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
+			r.With(apimiddleware.LogFunc("flux.reconcile")).Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
 		})
 
 		r.Route("/api/litellm", func(r chi.Router) {

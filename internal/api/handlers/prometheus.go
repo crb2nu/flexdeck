@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"time"
+
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 )
 
 func (h *Handler) PromHealth(w http.ResponseWriter, r *http.Request) {
@@ -18,8 +16,7 @@ func (h *Handler) PromHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(h.cfg.Prom.URL + "/-/healthy")
+	resp, err := apiutil.ShortClient.Get(h.cfg.Prom.URL + "/-/healthy")
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"ok":    false,
@@ -37,31 +34,28 @@ func (h *Handler) PromHealth(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) PromQuery(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
-		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "PROM_DISABLED", "prometheus is disabled")
 		return
 	}
 
 	query := r.URL.Query().Get("query")
 	if query == "" {
-		http.Error(w, "missing query parameter", http.StatusBadRequest)
+		apiutil.RespondError(w, http.StatusBadRequest, "MISSING_PARAM", "missing query parameter")
 		return
 	}
 
-	promURL := fmt.Sprintf("%s/api/v1/query?query=%s",
-		h.cfg.Prom.URL,
-		url.QueryEscape(query),
-	)
+	promURL := apiutil.NewURLBuilder(h.cfg.Prom.URL).
+		RawPath("/api/v1/query").
+		Param("query", query).
+		Param("time", r.URL.Query().Get("time")).
+		String()
 
-	if t := r.URL.Query().Get("time"); t != "" {
-		promURL += "&time=" + url.QueryEscape(t)
-	}
-
-	proxyRequest(w, promURL)
+	apiutil.ProxyRequest(w, promURL)
 }
 
 func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
-		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "PROM_DISABLED", "prometheus is disabled")
 		return
 	}
 
@@ -71,7 +65,7 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 	step := r.URL.Query().Get("step")
 
 	if query == "" || start == "" || end == "" {
-		http.Error(w, "missing required parameters (query, start, end)", http.StatusBadRequest)
+		apiutil.RespondError(w, http.StatusBadRequest, "MISSING_PARAM", "missing required parameters (query, start, end)")
 		return
 	}
 
@@ -79,62 +73,57 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 		step = "60" // Default 1 minute
 	}
 
-	promURL := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%s&end=%s&step=%s",
-		h.cfg.Prom.URL,
-		url.QueryEscape(query),
-		url.QueryEscape(start),
-		url.QueryEscape(end),
-		url.QueryEscape(step),
-	)
+	promURL := apiutil.NewURLBuilder(h.cfg.Prom.URL).
+		RawPath("/api/v1/query_range").
+		Param("query", query).
+		Param("start", start).
+		Param("end", end).
+		Param("step", step).
+		String()
 
-	proxyRequest(w, promURL)
+	apiutil.ProxyRequest(w, promURL)
 }
 
 // PromAlerts returns active alerts from Prometheus Alertmanager
 func (h *Handler) PromAlerts(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
-		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "PROM_DISABLED", "prometheus is disabled")
 		return
 	}
 
-	promURL := fmt.Sprintf("%s/api/v1/alerts", h.cfg.Prom.URL)
-	proxyRequest(w, promURL)
+	promURL := apiutil.NewURLBuilder(h.cfg.Prom.URL).
+		RawPath("/api/v1/alerts").
+		String()
+
+	apiutil.ProxyRequest(w, promURL)
 }
 
 // PromRules returns alert rules from Prometheus
 func (h *Handler) PromRules(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
-		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "PROM_DISABLED", "prometheus is disabled")
 		return
 	}
 
-	promURL := fmt.Sprintf("%s/api/v1/rules", h.cfg.Prom.URL)
+	promURL := apiutil.NewURLBuilder(h.cfg.Prom.URL).
+		RawPath("/api/v1/rules").
+		Param("type", r.URL.Query().Get("type")).
+		String()
 
-	// Optional type filter (alert or record)
-	if t := r.URL.Query().Get("type"); t != "" {
-		promURL += "?type=" + url.QueryEscape(t)
-	}
-
-	proxyRequest(w, promURL)
+	apiutil.ProxyRequest(w, promURL)
 }
 
-func proxyRequest(w http.ResponseWriter, targetURL string) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	resp, err := client.Get(targetURL)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
-}
-
+// respondJSON is a package-level helper that wraps apiutil.RespondRaw for backward compatibility.
+// Other handlers in this package can use this directly. New code should use apiutil.RespondJSON
+// or apiutil.RespondData for the standard response envelope.
 func respondJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	apiutil.RespondRaw(w, status, data)
 }
+
+// proxyRequest is a package-level helper that wraps apiutil.ProxyRequest.
+func proxyRequest(w http.ResponseWriter, targetURL string) {
+	apiutil.ProxyRequest(w, targetURL)
+}
+
+// Ensure url import is used (for URL building in other handlers that might import this)
+var _ = url.QueryEscape

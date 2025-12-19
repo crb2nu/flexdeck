@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 )
 
@@ -430,10 +431,10 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	ns := r.URL.Query().Get("ns")
 
-	// Build namespace filter if provided
+	// Build namespace filter if provided (escape to prevent PromQL injection)
 	nsFilter := ""
 	if ns != "" {
-		nsFilter = fmt.Sprintf(`,namespace="%s"`, ns)
+		nsFilter = fmt.Sprintf(`,namespace="%s"`, apiutil.EscapeLabelValue(ns))
 	}
 
 	// Query CPU usage per pod

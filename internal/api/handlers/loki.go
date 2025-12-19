@@ -11,32 +11,38 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
+
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 )
 
 func (h *Handler) LokiLabels(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Loki.Disabled || h.cfg.Loki.URL == "" {
-		http.Error(w, "loki disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "LOKI_DISABLED", "loki is disabled")
 		return
 	}
 
-	lokiURL := fmt.Sprintf("%s/loki/api/v1/labels", h.cfg.Loki.URL)
-	proxyRequest(w, lokiURL)
+	lokiURL := apiutil.NewURLBuilder(h.cfg.Loki.URL).RawPath("/loki/api/v1/labels").String()
+	apiutil.ProxyRequest(w, lokiURL)
 }
 
 func (h *Handler) LokiLabelValues(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Loki.Disabled || h.cfg.Loki.URL == "" {
-		http.Error(w, "loki disabled", http.StatusServiceUnavailable)
+		apiutil.RespondError(w, http.StatusServiceUnavailable, "LOKI_DISABLED", "loki is disabled")
 		return
 	}
 
 	name := chi.URLParam(r, "name")
 	if name == "" {
-		http.Error(w, "missing label name", http.StatusBadRequest)
+		apiutil.RespondError(w, http.StatusBadRequest, "MISSING_PARAM", "missing label name")
 		return
 	}
 
-	lokiURL := fmt.Sprintf("%s/loki/api/v1/label/%s/values", h.cfg.Loki.URL, url.PathEscape(name))
-	proxyRequest(w, lokiURL)
+	lokiURL := apiutil.NewURLBuilder(h.cfg.Loki.URL).
+		RawPath("/loki/api/v1/label").
+		Path(name).
+		RawPath("/values").
+		String()
+	apiutil.ProxyRequest(w, lokiURL)
 }
 
 func (h *Handler) LokiQuery(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +214,11 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 
 			// Send each stream as a log event
 			if len(lokiResp.Streams) > 0 {
-				data, _ := json.Marshal(lokiResp)
+				data, err := json.Marshal(lokiResp)
+				if err != nil {
+					log.Printf("Failed to marshal Loki response: %v", err)
+					continue
+				}
 				fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
 			}

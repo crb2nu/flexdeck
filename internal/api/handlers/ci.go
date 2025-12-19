@@ -110,18 +110,25 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 
 		// Use the configured internal URL, but we might want to ensure we don't break if it's external.
 		fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s", gitlabURL, p.ID, ciFileObj, ref)
-		fileReq, _ := http.NewRequest("GET", fileURL, nil)
+		fileReq, err := http.NewRequest("GET", fileURL, nil)
+		if err != nil {
+			slog.Warn("Failed to create CI file request", "repo", p.PathWithNamespace, "error", err)
+			repos = append(repos, repo)
+			continue
+		}
 		fileReq.Header.Set("PRIVATE-TOKEN", token)
 
 		fileResp, err := client.Do(fileReq)
 		if err == nil && fileResp.StatusCode == http.StatusOK {
-			content, _ := io.ReadAll(fileResp.Body)
-			repo.HasConfig = true
-			repo.ConfigContent = string(content)
+			content, readErr := io.ReadAll(fileResp.Body)
+			if readErr != nil {
+				slog.Warn("Failed to read CI file content", "repo", p.PathWithNamespace, "error", readErr)
+			} else {
+				repo.HasConfig = true
+				repo.ConfigContent = string(content)
+			}
 			fileResp.Body.Close()
 		} else if fileResp != nil {
-			// If file fetch fails (e.g. 404), just ignore config
-			// slog.Info("Failed to fetch CI file", "repo", p.PathWithNamespace, "status", fileResp.Status)
 			fileResp.Body.Close()
 		}
 
@@ -248,7 +255,9 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		StartedAt  string  `json:"started_at"`
 		FinishedAt string  `json:"finished_at"`
 	}
-	json.NewDecoder(jResp.Body).Decode(&jobs)
+	if err := json.NewDecoder(jResp.Body).Decode(&jobs); err != nil {
+		slog.Warn("Failed to decode jobs response", "error", err)
+	}
 
 	// Group jobs by stage
 	stageMap := make(map[string][]Job)
@@ -424,7 +433,9 @@ func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
 		ID     int    `json:"id"`
 		Status string `json:"status"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		slog.Warn("Failed to decode retry response", "error", err)
+	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success": true,
@@ -484,7 +495,9 @@ func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
 		ID     int    `json:"id"`
 		Status string `json:"status"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		slog.Warn("Failed to decode cancel response", "error", err)
+	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success": true,
@@ -544,7 +557,9 @@ func (h *Handler) PlayJob(w http.ResponseWriter, r *http.Request) {
 		ID     int    `json:"id"`
 		Status string `json:"status"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		slog.Warn("Failed to decode play response", "error", err)
+	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success": true,

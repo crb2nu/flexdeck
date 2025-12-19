@@ -95,14 +95,19 @@ func (h *Handler) VLLMChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Check for streaming
 	var bodyBytes []byte
 	if r.Body != nil {
-		bodyBytes, _ = io.ReadAll(r.Body)
+		var err error
+		bodyBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+			return
+		}
 		proxyReq.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	}
 
 	isStreaming := false
 	var reqBody map[string]interface{}
 	if len(bodyBytes) > 0 {
-		json.Unmarshal(bodyBytes, &reqBody)
+		_ = json.Unmarshal(bodyBytes, &reqBody) // Best effort parse for stream detection
 		if stream, ok := reqBody["stream"].(bool); ok && stream {
 			isStreaming = true
 		}

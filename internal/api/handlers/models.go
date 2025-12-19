@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -450,7 +451,11 @@ func (h *Handler) ModelsScale(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
-	jsonData, _ := json.Marshal(data)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		slog.Warn("sendSSE: failed to marshal data", "error", err)
+		return
+	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
 	flusher.Flush()
 }
