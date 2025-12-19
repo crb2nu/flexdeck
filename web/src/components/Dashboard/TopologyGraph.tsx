@@ -328,39 +328,72 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
-    // Draw Links with enhanced styling
+    // Draw Links with enhanced styling - Batched
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    const hostsLinks: D3Link[] = [];
+    const selectsLinks: D3Link[] = [];
+
     for (const link of graphLinks) {
-      const source = link.source as D3Node;
-      const target = link.target as D3Node;
-      if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
+      if (link.type === 'selects') selectsLinks.push(link);
+      else hostsLinks.push(link);
+    }
 
-      const isSelects = link.type === 'selects';
-
-      // Draw subtle outer glow first
+    // Batch Draw 'hosts' links (solid, cyan)
+    if (hostsLinks.length > 0) {
+      // Glow
       ctx.beginPath();
-      ctx.moveTo(source.x, source.y);
-      ctx.lineTo(target.x, target.y);
-      ctx.strokeStyle = isSelects ? 'rgba(168, 85, 247, 0.06)' : 'rgba(0, 217, 255, 0.06)';
+      for (const link of hostsLinks) {
+        const s = link.source as D3Node; const t = link.target as D3Node;
+        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+          ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
+        }
+      }
+      ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
+      ctx.lineWidth = 5;
       ctx.setLineDash([]);
-      ctx.lineWidth = isSelects ? 4 : 5;
       ctx.stroke();
 
-      // Draw main link
+      // Main
       ctx.beginPath();
-      ctx.moveTo(source.x, source.y);
-      ctx.lineTo(target.x, target.y);
-
-      if (isSelects) {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
-        ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1;
-      } else {
-        ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
-        ctx.setLineDash([]);
-        ctx.lineWidth = 1.5;
+      for (const link of hostsLinks) {
+        const s = link.source as D3Node; const t = link.target as D3Node;
+        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+          ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
+        }
       }
+      ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Batch Draw 'selects' links (dashed, purple)
+    if (selectsLinks.length > 0) {
+      // Glow
+      ctx.beginPath();
+      for (const link of selectsLinks) {
+        const s = link.source as D3Node; const t = link.target as D3Node;
+        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+            ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
+        }
+      }
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      // Main
+      ctx.beginPath();
+      for (const link of selectsLinks) {
+        const s = link.source as D3Node; const t = link.target as D3Node;
+        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+            ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
+        }
+      }
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
       ctx.stroke();
     }
     ctx.setLineDash([]); // Reset
@@ -437,8 +470,20 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Draw Nodes with enhanced glow effects
     const time = frameCount * 0.05; // For subtle animation
+    
+    // Frustum culling bounds
+    const margin = 50 / transform.k; // Adjust margin based on zoom
+    const visibleMinX = -transform.x / transform.k - margin;
+    const visibleMaxX = (width - transform.x) / transform.k + margin;
+    const visibleMinY = -transform.y / transform.k - margin;
+    const visibleMaxY = (height - transform.y) / transform.k + margin;
+
     graphNodes.forEach(node => {
       if (node.x === undefined || node.y === undefined) return;
+      
+      // Frustum culling
+      if (node.x < visibleMinX || node.x > visibleMaxX || node.y < visibleMinY || node.y > visibleMaxY) return;
+
       const r = getNodeRadius(node);
       const color = getNodeColor(node);
       const isSelected = selectedId === node.id;

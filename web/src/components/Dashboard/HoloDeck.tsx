@@ -865,6 +865,72 @@ const HoloDeck: Component<Props> = (props) => {
         const nodeRadius = Math.max(12, currentNodes.length * 5);
 
         // 1. Create Nodes (Servers)
+        // Shared Geometries & Materials for Nodes
+        const nodeBaseGeom = new THREE.CylinderGeometry(2.5, 3, 0.5, 8);
+        const nodeBaseMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 });
+        
+        const nodeTowerGeom = new THREE.BoxGeometry(2, 6, 2);
+        const nodeTowerMat = new THREE.MeshStandardMaterial({ 
+            color: 0x050a10, 
+            transparent: true, 
+            opacity: 0.6, 
+            roughness: 0.1 
+        });
+        
+        const nodeEdgesGeom = new THREE.EdgesGeometry(nodeTowerGeom);
+        
+        const nodeCoreGeom = new THREE.OctahedronGeometry(0.8);
+        const coreMatCache = new Map<number, THREE.MeshBasicMaterial>();
+        const getCoreMat = (colorHex: number) => {
+            if (!coreMatCache.has(colorHex)) {
+                coreMatCache.set(colorHex, new THREE.MeshBasicMaterial({ color: colorHex, wireframe: true }));
+            }
+            return coreMatCache.get(colorHex)!;
+        };
+        
+        const nodeScannerGeom = new THREE.RingGeometry(2.8, 3, 32);
+        nodeScannerGeom.rotateX(-Math.PI / 2);
+        const scannerMatCache = new Map<number, THREE.MeshBasicMaterial>();
+        const getScannerMat = (colorHex: number) => {
+            if (!scannerMatCache.has(colorHex)) {
+                scannerMatCache.set(colorHex, new THREE.MeshBasicMaterial({ 
+                    color: colorHex, 
+                    side: THREE.DoubleSide, 
+                    transparent: true, 
+                    opacity: 0.5 
+                }));
+            }
+            return scannerMatCache.get(colorHex)!;
+        };
+
+        const edgeMatCache = new Map<number, THREE.LineBasicMaterial>();
+        const getEdgeMat = (colorHex: number) => {
+            if (!edgeMatCache.has(colorHex)) {
+                edgeMatCache.set(colorHex, new THREE.LineBasicMaterial({ 
+                    color: colorHex, 
+                    transparent: true, 
+                    opacity: 0.5 
+                }));
+            }
+            return edgeMatCache.get(colorHex)!;
+        };
+
+        const cpuRingBgGeom = new THREE.RingGeometry(3.3, 3.5, 32);
+        cpuRingBgGeom.rotateX(-Math.PI / 2);
+        const memRingBgGeom = new THREE.RingGeometry(3.0, 3.2, 32);
+        memRingBgGeom.rotateX(-Math.PI / 2);
+        const ringBgMat = new THREE.MeshBasicMaterial({ 
+            color: 0x222222, 
+            side: THREE.DoubleSide, 
+            transparent: true, 
+            opacity: 0.4 
+        });
+
+        const cpuProgressGeom = new THREE.RingGeometry(3.5 - 0.2, 3.5, 64);
+        cpuProgressGeom.rotateX(-Math.PI / 2);
+        const memProgressGeom = new THREE.RingGeometry(3.2 - 0.2, 3.2, 64);
+        memProgressGeom.rotateX(-Math.PI / 2);
+
         currentNodes.forEach((node, i) => {
             const angle = (i / currentNodes.length) * Math.PI * 2;
             const x = Math.cos(angle) * nodeRadius;
@@ -872,63 +938,37 @@ const HoloDeck: Component<Props> = (props) => {
 
             const isReady = node.status?.conditions?.find(c => c.type === 'Ready')?.status === 'True';
             const colorHex = isReady ? 0x00f0ff : 0xff0055;
-            const color = new THREE.Color(colorHex);
-
+            
             const group = new THREE.Group();
             group.position.set(x, 0, z);
             group.userData = { type: 'node', label: node.metadata.name };
 
             // Base Platform
-            const baseHelper = new THREE.Mesh(
-                new THREE.CylinderGeometry(2.5, 3, 0.5, 8),
-                new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 })
-            );
+            const baseHelper = new THREE.Mesh(nodeBaseGeom, nodeBaseMat);
             group.add(baseHelper);
 
             // Main Tower Structure
             const towerH = 6;
-            const towerW = 2;
-            const tower = new THREE.Mesh(
-                new THREE.BoxGeometry(towerW, towerH, towerW),
-                new THREE.MeshStandardMaterial({
-                    color: 0x050a10,
-                    transparent: true,
-                    opacity: 0.6,
-                    roughness: 0.1
-                })
-            );
+            const tower = new THREE.Mesh(nodeTowerGeom, nodeTowerMat);
             tower.position.y = towerH / 2 + 0.25;
 
             // Edges
-            const edges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(tower.geometry),
-                new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5 })
-            );
+            const edges = new THREE.LineSegments(nodeEdgesGeom, getEdgeMat(colorHex));
             tower.add(edges);
 
             // Animated Core
-            const core = new THREE.Mesh(
-                new THREE.OctahedronGeometry(0.8),
-                new THREE.MeshBasicMaterial({ color: color, wireframe: true })
-            );
-            tower.add(core);
+            const core = new THREE.Mesh(nodeCoreGeom, getCoreMat(colorHex));
+            tower.add(core); // Ensure tower is added to group later
             group.add(tower);
 
             // Scanner Ring
-            const scannerGeom = new THREE.RingGeometry(2.8, 3, 32);
-            scannerGeom.rotateX(-Math.PI / 2);
-            const scanner = new THREE.Mesh(
-                scannerGeom,
-                new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.5 })
-            );
+            const scanner = new THREE.Mesh(nodeScannerGeom, getScannerMat(colorHex));
             scanner.position.y = 0.3;
             group.add(scanner);
 
             // Resource Meter Rings using shader (GPU-efficient - no geometry recreation)
-            const createShaderRing = (radius: number, height: number, colorHex: number) => {
+            const createShaderRing = (geometry: THREE.BufferGeometry, height: number, colorHex: number) => {
               // Use a plane with shader that clips to ring shape
-              const geometry = new THREE.RingGeometry(radius - 0.2, radius, 64);
-              geometry.rotateX(-Math.PI / 2);
               const color = new THREE.Color(colorHex);
               const material = new THREE.ShaderMaterial({
                 uniforms: {
@@ -949,27 +989,19 @@ const HoloDeck: Component<Props> = (props) => {
             };
 
             // Background rings (static, full circle)
-            const cpuRingBg = new THREE.Mesh(
-              new THREE.RingGeometry(3.3, 3.5, 32),
-              new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })
-            );
-            cpuRingBg.geometry.rotateX(-Math.PI / 2);
+            const cpuRingBg = new THREE.Mesh(cpuRingBgGeom, ringBgMat);
             cpuRingBg.position.y = towerH + 0.5;
             group.add(cpuRingBg);
 
-            const memRingBg = new THREE.Mesh(
-              new THREE.RingGeometry(3.0, 3.2, 32),
-              new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })
-            );
-            memRingBg.geometry.rotateX(-Math.PI / 2);
+            const memRingBg = new THREE.Mesh(memRingBgGeom, ringBgMat);
             memRingBg.position.y = towerH + 0.5;
             group.add(memRingBg);
 
             // Progress rings using shader (uniforms updated in animation loop - no geometry recreation!)
-            const cpuRingProgress = createShaderRing(3.5, towerH + 0.52, 0x0aff68);
+            const cpuRingProgress = createShaderRing(cpuProgressGeom, towerH + 0.52, 0x0aff68);
             group.add(cpuRingProgress);
 
-            const memRingProgress = createShaderRing(3.2, towerH + 0.52, 0x00f0ff);
+            const memRingProgress = createShaderRing(memProgressGeom, towerH + 0.52, 0x00f0ff);
             group.add(memRingProgress);
 
             // Cache refs in userData for animation loop (avoid getObjectByName)
@@ -986,6 +1018,34 @@ const HoloDeck: Component<Props> = (props) => {
         });
 
         // 2. Create Pods
+        const podGeom = new THREE.DodecahedronGeometry(0.4);
+        const podMatCache = new Map<string, THREE.MeshStandardMaterial>();
+        const getPodMat = (colorHex: number) => {
+            const key = colorHex.toString(16);
+            if (!podMatCache.has(key)) {
+                podMatCache.set(key, new THREE.MeshStandardMaterial({
+                    color: colorHex,
+                    emissive: colorHex,
+                    emissiveIntensity: 0.8,
+                    roughness: 0.1,
+                    metalness: 0.9
+                }));
+            }
+            return podMatCache.get(key)!;
+        };
+        
+        const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
+        const getPodLineMat = (colorHex: number) => {
+            if (!podLineMatCache.has(colorHex)) {
+                podLineMatCache.set(colorHex, new THREE.LineBasicMaterial({ 
+                    color: colorHex, 
+                    transparent: true, 
+                    opacity: 0.15 
+                }));
+            }
+            return podLineMatCache.get(colorHex)!;
+        };
+
         currentPods.forEach((pod, i) => {
             if (i > 150) return;
 
@@ -1008,15 +1068,7 @@ const HoloDeck: Component<Props> = (props) => {
             const status = pod.status.phase;
             const pColor = status === 'Running' ? 0x22c55e : (status === 'Pending' ? 0xeab308 : 0xef4444);
 
-            const geom = new THREE.DodecahedronGeometry(0.4);
-            const mat = new THREE.MeshStandardMaterial({
-                color: pColor,
-                emissive: pColor,
-                emissiveIntensity: 0.8,
-                roughness: 0.1,
-                metalness: 0.9
-            });
-            const mesh = new THREE.Mesh(geom, mat);
+            const mesh = new THREE.Mesh(podGeom, getPodMat(pColor));
             mesh.position.set(px, py, pz);
             mesh.userData = { type: 'pod', label: pod.metadata.name, initialY: py };
 
@@ -1037,7 +1089,7 @@ const HoloDeck: Component<Props> = (props) => {
                 const points = curve.getPoints(24);
                 const line = new THREE.Line(
                     new THREE.BufferGeometry().setFromPoints(points),
-                    new THREE.LineBasicMaterial({ color: pColor, transparent: true, opacity: 0.15 })
+                    getPodLineMat(pColor)
                 );
 
                 dataGroup.add(line);
@@ -1056,6 +1108,41 @@ const HoloDeck: Component<Props> = (props) => {
             return Object.entries(selector).every(([key, value]) => podLabels[key] === value);
         };
 
+        const hexRadius = 1.2;
+        const hexHeight = 1.5;
+        const hexShape = new THREE.Shape();
+        for (let j = 0; j < 6; j++) {
+            const hexAngle = (j / 6) * Math.PI * 2 - Math.PI / 6;
+            const hx = Math.cos(hexAngle) * hexRadius;
+            const hz = Math.sin(hexAngle) * hexRadius;
+            if (j === 0) hexShape.moveTo(hx, hz);
+            else hexShape.lineTo(hx, hz);
+        }
+        hexShape.closePath();
+
+        const extrudeSettings = { depth: hexHeight, bevelEnabled: false };
+        const hexGeom = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
+        hexGeom.rotateX(-Math.PI / 2);
+        hexGeom.translate(0, hexHeight / 2, 0);
+
+        const svcColor = 0xa855f7; // Purple for services
+        const hexMat = new THREE.MeshStandardMaterial({
+            color: svcColor,
+            transparent: true,
+            opacity: 0.7,
+            emissive: svcColor,
+            emissiveIntensity: 0.3,
+            roughness: 0.2,
+            metalness: 0.8
+        });
+        
+        const hexEdgesGeom = new THREE.EdgesGeometry(hexGeom);
+        const hexEdgesMat = new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 });
+        
+        const glowRingGeom = new THREE.RingGeometry(hexRadius * 0.6, hexRadius * 0.8, 6);
+        glowRingGeom.rotateX(-Math.PI / 2);
+        const glowRingMat = new THREE.MeshBasicMaterial({ color: svcColor, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+
         currentServices.forEach((svc, i) => {
             // Skip kubernetes system service
             if (svc.metadata.name === 'kubernetes' && svc.metadata.namespace === 'default') return;
@@ -1066,50 +1153,14 @@ const HoloDeck: Component<Props> = (props) => {
             const z = Math.sin(angle) * serviceRadius;
             const sy = 8 + (i % 3) * 2; // Stagger heights
 
-            // Create hexagonal prism geometry
-            const hexRadius = 1.2;
-            const hexHeight = 1.5;
-            const hexShape = new THREE.Shape();
-            for (let j = 0; j < 6; j++) {
-                const hexAngle = (j / 6) * Math.PI * 2 - Math.PI / 6;
-                const hx = Math.cos(hexAngle) * hexRadius;
-                const hz = Math.sin(hexAngle) * hexRadius;
-                if (j === 0) hexShape.moveTo(hx, hz);
-                else hexShape.lineTo(hx, hz);
-            }
-            hexShape.closePath();
-
-            const extrudeSettings = { depth: hexHeight, bevelEnabled: false };
-            const hexGeom = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
-            hexGeom.rotateX(-Math.PI / 2);
-            hexGeom.translate(0, hexHeight / 2, 0);
-
-            const svcColor = 0xa855f7; // Purple for services
-            const hexMat = new THREE.MeshStandardMaterial({
-                color: svcColor,
-                transparent: true,
-                opacity: 0.7,
-                emissive: svcColor,
-                emissiveIntensity: 0.3,
-                roughness: 0.2,
-                metalness: 0.8
-            });
-            const hexMesh = new THREE.Mesh(hexGeom, hexMat);
+            const hexMesh = new THREE.Mesh(hexGeom, hexMat.clone());
 
             // Add wireframe edges
-            const hexEdges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(hexGeom),
-                new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 })
-            );
+            const hexEdges = new THREE.LineSegments(hexEdgesGeom, hexEdgesMat.clone());
             hexMesh.add(hexEdges);
 
             // Add inner glow ring
-            const glowRingGeom = new THREE.RingGeometry(hexRadius * 0.6, hexRadius * 0.8, 6);
-            glowRingGeom.rotateX(-Math.PI / 2);
-            const glowRing = new THREE.Mesh(
-                glowRingGeom,
-                new THREE.MeshBasicMaterial({ color: svcColor, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
-            );
+            const glowRing = new THREE.Mesh(glowRingGeom, glowRingMat.clone());
             glowRing.position.y = hexHeight + 0.1;
             hexMesh.add(glowRing);
 
