@@ -748,13 +748,13 @@ const TopologyGraph: Component<Props> = (props) => {
       });
 
     // Run minimal warmup ticks synchronously to prevent initial explosion
-    // Excessive synchronous ticks freeze the UI on load with large datasets
-    const warmupTicks = Math.min(20, Math.max(5, Math.floor(nodeCount * 0.5))); // much fewer ticks
+    // Using more ticks for better stability on load
+    const warmupTicks = Math.min(100, Math.max(40, nodeCount * 2)); 
     simulation.stop();
     for (let i = 0; i < warmupTicks; i++) {
         simulation.tick();
     }
-    simulation.alpha(0.3).restart(); // Restart with significant alpha to settle visibly but smoothly
+    simulation.alpha(0.5).restart(); // Start with moderate energy
 
     // NOW start animation loop after warmup
     isSimulationActive = true;

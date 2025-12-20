@@ -493,7 +493,7 @@ const HoloDeck: Component<Props> = (props) => {
 
         raycaster.setFromCamera(mouse, camera);
         // Only raycast against the data group for efficiency (skip grid, particles, etc.)
-        const intersects = raycaster.intersectObjects(scene.children, true);
+        const intersects = raycaster.intersectObject(dataGroup, true);
         const hitObj = findHitObject(intersects);
 
         // Check if hit object passes filter
@@ -561,7 +561,7 @@ const HoloDeck: Component<Props> = (props) => {
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(scene.children, true);
+        const intersects = raycaster.intersectObject(dataGroup, true);
         const hitObj = findHitObject(intersects);
 
         // Check if hit object passes filter
@@ -832,18 +832,45 @@ const HoloDeck: Component<Props> = (props) => {
     window.addEventListener('resize', handleResize);
     
     // --- SCENE BUILDER (EFFECT) ---
+    // Recursive dispose helper to prevent VRAM leaks
+    const disposeObject = (obj: THREE.Object3D) => {
+        if (!obj) return;
+        
+        if (obj.children) {
+            for (const child of obj.children) {
+                disposeObject(child);
+            }
+        }
+
+        if ((obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.Points) as boolean) {
+            // @ts-ignore - THREE types sometimes strict about geometry existence
+            if (obj.geometry) obj.geometry.dispose();
+            
+            // @ts-ignore
+            if (obj.material) {
+                // @ts-ignore
+                if (Array.isArray(obj.material)) {
+                    // @ts-ignore
+                    obj.material.forEach(m => m.dispose());
+                } else {
+                    // @ts-ignore
+                    obj.material.dispose();
+                }
+            }
+        }
+    };
+
+    // Watch for filter changes and apply visual updates
+    // (Moving this effect up to ensure it exists before scene builder, though order fine in Solid)
+    
+    // --- SCENE BUILDER (EFFECT) ---
     // Rebuild scene when props change, with data caching for enhanced tooltips
     createEffect(() => {
-        // Clear existing objects
+        // Clear existing objects RECURSIVELY
         while (dataGroup.children.length > 0) {
             const child = dataGroup.children[0];
             dataGroup.remove(child);
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                const mesh = child as THREE.Mesh;
-                if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
-                else mesh.material.dispose();
-            }
+            disposeObject(child);
         }
         objectMap.clear();
         dataMap.clear();
