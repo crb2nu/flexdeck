@@ -1,3 +1,9 @@
+include:
+  - project: root/gitops
+    ref: main
+    file:
+      - /k3s/ci/caches/gitlab-ci-cache.yml
+
 stages:
   - test
   - build
