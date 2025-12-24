@@ -843,22 +843,129 @@ const HoloDeck: Component<Props> = (props) => {
         }
 
         if ((obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.Points) as boolean) {
-            // @ts-ignore - THREE types sometimes strict about geometry existence
-            if (obj.geometry) obj.geometry.dispose();
+            // Only dispose if NOT shared
+            // @ts-ignore
+            if (obj.geometry && !obj.geometry.userData?.isShared) {
+                obj.geometry.dispose();
+            }
             
             // @ts-ignore
             if (obj.material) {
                 // @ts-ignore
                 if (Array.isArray(obj.material)) {
                     // @ts-ignore
-                    obj.material.forEach(m => m.dispose());
+                    obj.material.forEach(m => !m.userData?.isShared && m.dispose());
                 } else {
                     // @ts-ignore
-                    obj.material.dispose();
+                    if (!obj.material.userData?.isShared) {
+                        // @ts-ignore
+                        obj.material.dispose();
+                    }
                 }
             }
         }
     };
+
+    // Shared Resources (initialized once)
+    const sharedGeoms: Record<string, THREE.BufferGeometry> = {};
+    const sharedMats: Record<string, THREE.Material> = {};
+    
+    // Material Caches (persist across updates)
+    const coreMatCache = new Map<number, THREE.MeshBasicMaterial>();
+    const scannerMatCache = new Map<number, THREE.MeshBasicMaterial>();
+    const edgeMatCache = new Map<number, THREE.LineBasicMaterial>();
+    const podMatCache = new Map<string, THREE.MeshStandardMaterial>();
+    const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
+
+    // Helper to mark resource as shared
+    const markShared = <T extends THREE.BufferGeometry | THREE.Material>(resource: T): T => {
+        resource.userData = { ...resource.userData, isShared: true };
+        return resource;
+    };
+
+    // Initialize Shared Resources
+    // Nodes
+    sharedGeoms.nodeBase = markShared(new THREE.CylinderGeometry(2.5, 3, 0.5, 8));
+    sharedMats.nodeBase = markShared(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 }));
+    
+    sharedGeoms.nodeTower = markShared(new THREE.BoxGeometry(2, 6, 2));
+    sharedMats.nodeTower = markShared(new THREE.MeshStandardMaterial({ 
+        color: 0x050a10, 
+        transparent: true, 
+        opacity: 0.6, 
+        roughness: 0.1 
+    }));
+    
+    sharedGeoms.nodeEdges = markShared(new THREE.EdgesGeometry(sharedGeoms.nodeTower));
+    sharedGeoms.nodeCore = markShared(new THREE.OctahedronGeometry(0.8));
+    
+    const nodeScannerGeom = new THREE.RingGeometry(2.8, 3, 32);
+    nodeScannerGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.nodeScanner = markShared(nodeScannerGeom);
+
+    const cpuRingBgGeom = new THREE.RingGeometry(3.3, 3.5, 32);
+    cpuRingBgGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.cpuRingBg = markShared(cpuRingBgGeom);
+
+    const memRingBgGeom = new THREE.RingGeometry(3.0, 3.2, 32);
+    memRingBgGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.memRingBg = markShared(memRingBgGeom);
+    
+    sharedMats.ringBg = markShared(new THREE.MeshBasicMaterial({ 
+        color: 0x222222, 
+        side: THREE.DoubleSide, 
+        transparent: true, 
+        opacity: 0.4 
+    }));
+
+    const cpuProgressGeom = new THREE.RingGeometry(3.5 - 0.2, 3.5, 64);
+    cpuProgressGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.cpuProgress = markShared(cpuProgressGeom);
+
+    const memProgressGeom = new THREE.RingGeometry(3.2 - 0.2, 3.2, 64);
+    memProgressGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.memProgress = markShared(memProgressGeom);
+
+    // Pods
+    sharedGeoms.pod = markShared(new THREE.DodecahedronGeometry(0.4));
+
+    // Services
+    const hexRadius = 1.2;
+    const hexHeight = 1.5;
+    const hexShape = new THREE.Shape();
+    for (let j = 0; j < 6; j++) {
+        const hexAngle = (j / 6) * Math.PI * 2 - Math.PI / 6;
+        const hx = Math.cos(hexAngle) * hexRadius;
+        const hz = Math.sin(hexAngle) * hexRadius;
+        if (j === 0) hexShape.moveTo(hx, hz);
+        else hexShape.lineTo(hx, hz);
+    }
+    hexShape.closePath();
+    const extrudeSettings = { depth: hexHeight, bevelEnabled: false };
+    const hexGeom = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
+    hexGeom.rotateX(-Math.PI / 2);
+    hexGeom.translate(0, hexHeight / 2, 0);
+    sharedGeoms.hex = markShared(hexGeom);
+
+    const svcColor = 0xa855f7;
+    sharedMats.hex = markShared(new THREE.MeshStandardMaterial({
+        color: svcColor,
+        transparent: true,
+        opacity: 0.7,
+        emissive: svcColor,
+        emissiveIntensity: 0.3,
+        roughness: 0.2,
+        metalness: 0.8
+    }));
+
+    sharedGeoms.hexEdges = markShared(new THREE.EdgesGeometry(hexGeom));
+    sharedMats.hexEdges = markShared(new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 }));
+
+    const glowRingGeom = new THREE.RingGeometry(hexRadius * 0.6, hexRadius * 0.8, 6);
+    glowRingGeom.rotateX(-Math.PI / 2);
+    sharedGeoms.glowRing = markShared(glowRingGeom);
+    sharedMats.glowRing = markShared(new THREE.MeshBasicMaterial({ color: svcColor, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+
 
     // Watch for filter changes and apply visual updates
     // (Moving this effect up to ensure it exists before scene builder, though order fine in Solid)
@@ -898,71 +1005,36 @@ const HoloDeck: Component<Props> = (props) => {
         const nodeRadius = Math.max(12, currentNodes.length * 5);
 
         // 1. Create Nodes (Servers)
-        // Shared Geometries & Materials for Nodes
-        const nodeBaseGeom = new THREE.CylinderGeometry(2.5, 3, 0.5, 8);
-        const nodeBaseMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.8 });
-        
-        const nodeTowerGeom = new THREE.BoxGeometry(2, 6, 2);
-        const nodeTowerMat = new THREE.MeshStandardMaterial({ 
-            color: 0x050a10, 
-            transparent: true, 
-            opacity: 0.6, 
-            roughness: 0.1 
-        });
-        
-        const nodeEdgesGeom = new THREE.EdgesGeometry(nodeTowerGeom);
-        
-        const nodeCoreGeom = new THREE.OctahedronGeometry(0.8);
-        const coreMatCache = new Map<number, THREE.MeshBasicMaterial>();
+        // Material Getters (using cached maps)
         const getCoreMat = (colorHex: number) => {
             if (!coreMatCache.has(colorHex)) {
-                coreMatCache.set(colorHex, new THREE.MeshBasicMaterial({ color: colorHex, wireframe: true }));
+                coreMatCache.set(colorHex, markShared(new THREE.MeshBasicMaterial({ color: colorHex, wireframe: true })));
             }
             return coreMatCache.get(colorHex)!;
         };
         
-        const nodeScannerGeom = new THREE.RingGeometry(2.8, 3, 32);
-        nodeScannerGeom.rotateX(-Math.PI / 2);
-        const scannerMatCache = new Map<number, THREE.MeshBasicMaterial>();
         const getScannerMat = (colorHex: number) => {
             if (!scannerMatCache.has(colorHex)) {
-                scannerMatCache.set(colorHex, new THREE.MeshBasicMaterial({ 
+                scannerMatCache.set(colorHex, markShared(new THREE.MeshBasicMaterial({ 
                     color: colorHex, 
                     side: THREE.DoubleSide, 
                     transparent: true, 
                     opacity: 0.5 
-                }));
+                })));
             }
             return scannerMatCache.get(colorHex)!;
         };
 
-        const edgeMatCache = new Map<number, THREE.LineBasicMaterial>();
         const getEdgeMat = (colorHex: number) => {
             if (!edgeMatCache.has(colorHex)) {
-                edgeMatCache.set(colorHex, new THREE.LineBasicMaterial({ 
+                edgeMatCache.set(colorHex, markShared(new THREE.LineBasicMaterial({ 
                     color: colorHex, 
                     transparent: true, 
                     opacity: 0.5 
-                }));
+                })));
             }
             return edgeMatCache.get(colorHex)!;
         };
-
-        const cpuRingBgGeom = new THREE.RingGeometry(3.3, 3.5, 32);
-        cpuRingBgGeom.rotateX(-Math.PI / 2);
-        const memRingBgGeom = new THREE.RingGeometry(3.0, 3.2, 32);
-        memRingBgGeom.rotateX(-Math.PI / 2);
-        const ringBgMat = new THREE.MeshBasicMaterial({ 
-            color: 0x222222, 
-            side: THREE.DoubleSide, 
-            transparent: true, 
-            opacity: 0.4 
-        });
-
-        const cpuProgressGeom = new THREE.RingGeometry(3.5 - 0.2, 3.5, 64);
-        cpuProgressGeom.rotateX(-Math.PI / 2);
-        const memProgressGeom = new THREE.RingGeometry(3.2 - 0.2, 3.2, 64);
-        memProgressGeom.rotateX(-Math.PI / 2);
 
         currentNodes.forEach((node, i) => {
             const angle = (i / currentNodes.length) * Math.PI * 2;
@@ -977,25 +1049,25 @@ const HoloDeck: Component<Props> = (props) => {
             group.userData = { type: 'node', label: node.metadata.name };
 
             // Base Platform
-            const baseHelper = new THREE.Mesh(nodeBaseGeom, nodeBaseMat);
+            const baseHelper = new THREE.Mesh(sharedGeoms.nodeBase, sharedMats.nodeBase);
             group.add(baseHelper);
 
             // Main Tower Structure
             const towerH = 6;
-            const tower = new THREE.Mesh(nodeTowerGeom, nodeTowerMat);
+            const tower = new THREE.Mesh(sharedGeoms.nodeTower, sharedMats.nodeTower);
             tower.position.y = towerH / 2 + 0.25;
 
             // Edges
-            const edges = new THREE.LineSegments(nodeEdgesGeom, getEdgeMat(colorHex));
+            const edges = new THREE.LineSegments(sharedGeoms.nodeEdges, getEdgeMat(colorHex));
             tower.add(edges);
 
             // Animated Core
-            const core = new THREE.Mesh(nodeCoreGeom, getCoreMat(colorHex));
+            const core = new THREE.Mesh(sharedGeoms.nodeCore, getCoreMat(colorHex));
             tower.add(core); // Ensure tower is added to group later
             group.add(tower);
 
             // Scanner Ring
-            const scanner = new THREE.Mesh(nodeScannerGeom, getScannerMat(colorHex));
+            const scanner = new THREE.Mesh(sharedGeoms.nodeScanner, getScannerMat(colorHex));
             scanner.position.y = 0.3;
             group.add(scanner);
 
@@ -1016,25 +1088,27 @@ const HoloDeck: Component<Props> = (props) => {
                 depthWrite: false,
                 blending: THREE.AdditiveBlending
               });
+              // Shader materials are unique per ring instance due to uniforms, so we don't share/cache them
+              // but geometry IS shared
               const ring = new THREE.Mesh(geometry, material);
               ring.position.y = height;
               return ring;
             };
 
             // Background rings (static, full circle)
-            const cpuRingBg = new THREE.Mesh(cpuRingBgGeom, ringBgMat);
+            const cpuRingBg = new THREE.Mesh(sharedGeoms.cpuRingBg, sharedMats.ringBg);
             cpuRingBg.position.y = towerH + 0.5;
             group.add(cpuRingBg);
 
-            const memRingBg = new THREE.Mesh(memRingBgGeom, ringBgMat);
+            const memRingBg = new THREE.Mesh(sharedGeoms.memRingBg, sharedMats.ringBg);
             memRingBg.position.y = towerH + 0.5;
             group.add(memRingBg);
 
             // Progress rings using shader (uniforms updated in animation loop - no geometry recreation!)
-            const cpuRingProgress = createShaderRing(cpuProgressGeom, towerH + 0.52, 0x0aff68);
+            const cpuRingProgress = createShaderRing(sharedGeoms.cpuProgress, towerH + 0.52, 0x0aff68);
             group.add(cpuRingProgress);
 
-            const memRingProgress = createShaderRing(memProgressGeom, towerH + 0.52, 0x00f0ff);
+            const memRingProgress = createShaderRing(sharedGeoms.memProgress, towerH + 0.52, 0x00f0ff);
             group.add(memRingProgress);
 
             // Cache refs in userData for animation loop (avoid getObjectByName)
@@ -1051,35 +1125,41 @@ const HoloDeck: Component<Props> = (props) => {
         });
 
         // 2. Create Pods
-        const podGeom = new THREE.DodecahedronGeometry(0.4);
-        const podMatCache = new Map<string, THREE.MeshStandardMaterial>();
         const getPodMat = (colorHex: number) => {
             const key = colorHex.toString(16);
             if (!podMatCache.has(key)) {
-                podMatCache.set(key, new THREE.MeshStandardMaterial({
+                podMatCache.set(key, markShared(new THREE.MeshStandardMaterial({
                     color: colorHex,
                     emissive: colorHex,
                     emissiveIntensity: 0.8,
                     roughness: 0.1,
                     metalness: 0.9
-                }));
+                })));
             }
             return podMatCache.get(key)!;
         };
         
-        const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
         const getPodLineMat = (colorHex: number) => {
             if (!podLineMatCache.has(colorHex)) {
-                podLineMatCache.set(colorHex, new THREE.LineBasicMaterial({ 
+                podLineMatCache.set(colorHex, markShared(new THREE.LineBasicMaterial({ 
                     color: colorHex, 
                     transparent: true, 
                     opacity: 0.15 
-                }));
+                })));
             }
             return podLineMatCache.get(colorHex)!;
         };
 
+        // Index pods for faster service lookups
+        const podsByNamespace = new Map<string, K8sPod[]>();
+        const podObjectsByName = new Map<string, THREE.Object3D>();
+
         currentPods.forEach((pod, i) => {
+            // Indexing
+            const ns = pod.metadata.namespace || 'default';
+            if (!podsByNamespace.has(ns)) podsByNamespace.set(ns, []);
+            podsByNamespace.get(ns)!.push(pod);
+
             if (i > 150) return;
 
             const assignedNodeName = pod.spec.nodeName;
@@ -1101,13 +1181,14 @@ const HoloDeck: Component<Props> = (props) => {
             const status = pod.status.phase;
             const pColor = status === 'Running' ? 0x22c55e : (status === 'Pending' ? 0xeab308 : 0xef4444);
 
-            const mesh = new THREE.Mesh(podGeom, getPodMat(pColor));
+            const mesh = new THREE.Mesh(sharedGeoms.pod, getPodMat(pColor));
             mesh.position.set(px, py, pz);
             mesh.userData = { type: 'pod', label: pod.metadata.name, initialY: py };
 
             dataGroup.add(mesh);
             const podId = `pod-${pod.metadata.name}`;
             objectMap.set(podId, mesh);
+            podObjectsByName.set(pod.metadata.name, mesh);
             dataMap.set(podId, pod); // Store K8s data for tooltips
 
             // Connections
@@ -1141,41 +1222,6 @@ const HoloDeck: Component<Props> = (props) => {
             return Object.entries(selector).every(([key, value]) => podLabels[key] === value);
         };
 
-        const hexRadius = 1.2;
-        const hexHeight = 1.5;
-        const hexShape = new THREE.Shape();
-        for (let j = 0; j < 6; j++) {
-            const hexAngle = (j / 6) * Math.PI * 2 - Math.PI / 6;
-            const hx = Math.cos(hexAngle) * hexRadius;
-            const hz = Math.sin(hexAngle) * hexRadius;
-            if (j === 0) hexShape.moveTo(hx, hz);
-            else hexShape.lineTo(hx, hz);
-        }
-        hexShape.closePath();
-
-        const extrudeSettings = { depth: hexHeight, bevelEnabled: false };
-        const hexGeom = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
-        hexGeom.rotateX(-Math.PI / 2);
-        hexGeom.translate(0, hexHeight / 2, 0);
-
-        const svcColor = 0xa855f7; // Purple for services
-        const hexMat = new THREE.MeshStandardMaterial({
-            color: svcColor,
-            transparent: true,
-            opacity: 0.7,
-            emissive: svcColor,
-            emissiveIntensity: 0.3,
-            roughness: 0.2,
-            metalness: 0.8
-        });
-        
-        const hexEdgesGeom = new THREE.EdgesGeometry(hexGeom);
-        const hexEdgesMat = new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 });
-        
-        const glowRingGeom = new THREE.RingGeometry(hexRadius * 0.6, hexRadius * 0.8, 6);
-        glowRingGeom.rotateX(-Math.PI / 2);
-        const glowRingMat = new THREE.MeshBasicMaterial({ color: svcColor, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-
         currentServices.forEach((svc, i) => {
             // Skip kubernetes system service
             if (svc.metadata.name === 'kubernetes' && svc.metadata.namespace === 'default') return;
@@ -1186,14 +1232,14 @@ const HoloDeck: Component<Props> = (props) => {
             const z = Math.sin(angle) * serviceRadius;
             const sy = 8 + (i % 3) * 2; // Stagger heights
 
-            const hexMesh = new THREE.Mesh(hexGeom, hexMat.clone());
+            const hexMesh = new THREE.Mesh(sharedGeoms.hex, sharedMats.hex);
 
             // Add wireframe edges
-            const hexEdges = new THREE.LineSegments(hexEdgesGeom, hexEdgesMat.clone());
+            const hexEdges = new THREE.LineSegments(sharedGeoms.hexEdges, sharedMats.hexEdges);
             hexMesh.add(hexEdges);
 
             // Add inner glow ring
-            const glowRing = new THREE.Mesh(glowRingGeom, glowRingMat.clone());
+            const glowRing = new THREE.Mesh(sharedGeoms.glowRing, sharedMats.glowRing);
             glowRing.position.y = hexHeight + 0.1;
             hexMesh.add(glowRing);
 
@@ -1210,15 +1256,22 @@ const HoloDeck: Component<Props> = (props) => {
             const matchingPodIds: string[] = [];
             const svcPos = new THREE.Vector3(x, sy, z);
 
-            // Collect matching pods with their distances
+            // OPTIMIZED: Use namespace index + direct name lookup
+            const namespacePods = podsByNamespace.get(svc.metadata.namespace || 'default') || [];
             const podCandidates: { pod: K8sPod; podId: string; obj: THREE.Object3D; dist: number }[] = [];
-            currentPods.forEach((pod) => {
-                if (pod.metadata.namespace === svc.metadata.namespace && podMatchesSelector(pod, svc.spec.selector)) {
-                    const podId = `pod-${pod.metadata.name}`;
-                    const podObj = objectMap.get(podId);
+            
+            // Loop only over pods in same namespace (O(P_ns) << O(P))
+            namespacePods.forEach(pod => {
+                if (podMatchesSelector(pod, svc.spec.selector)) {
+                    const podObj = podObjectsByName.get(pod.metadata.name);
                     if (podObj) {
                         const dist = svcPos.distanceTo(podObj.position);
-                        podCandidates.push({ pod, podId, obj: podObj, dist });
+                        podCandidates.push({ 
+                            pod, 
+                            podId: `pod-${pod.metadata.name}`, 
+                            obj: podObj, 
+                            dist 
+                        });
                     }
                 }
             });
