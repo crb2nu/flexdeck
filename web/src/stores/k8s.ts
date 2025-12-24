@@ -151,9 +151,10 @@ function applyWatchEvent(event: WatchEvent) {
 
 // Fetch initial data via REST
 async function fetchInitialData() {
+  const publicDomains = ['www.flexinfer.ai', 'codyblevins.com', 'www.codyblevins.com'];
   const isPublicView =
     typeof window !== "undefined" &&
-    window.location.hostname === "www.flexinfer.ai";
+    publicDomains.includes(window.location.hostname);
 
   if (isPublicView) {
     try {
@@ -244,9 +245,10 @@ async function fetchInitialData() {
 
 // Connect to SSE endpoint
 function connectSSE(namespace?: string) {
+  const publicDomains = ['www.flexinfer.ai', 'codyblevins.com', 'www.codyblevins.com'];
   const isPublicView =
     typeof window !== "undefined" &&
-    window.location.hostname === "www.flexinfer.ai";
+    publicDomains.includes(window.location.hostname);
   if (isPublicView) {
     // No SSE for public view, just fall back to polling
     setConnectionStatus("connected"); // Lie and say we are connected so UI doesn't show "disconnected"

@@ -94,9 +94,10 @@ function parseSingleValue(result: any): number {
 
 // Fetch all metrics
 async function fetchMetrics() {
+  const publicDomains = ['www.flexinfer.ai', 'codyblevins.com', 'www.codyblevins.com'];
   const isPublicView =
     typeof window !== "undefined" &&
-    window.location.hostname === "www.flexinfer.ai";
+    publicDomains.includes(window.location.hostname);
 
   if (isPublicView) {
     try {

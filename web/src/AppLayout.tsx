@@ -12,7 +12,8 @@ const AppLayout: Component<ParentProps> = (props) => {
   // Check if we are in public read-only view
   const isPublicView = () => {
     if (typeof window === 'undefined') return false;
-    return window.location.hostname === 'www.flexinfer.ai';
+    const publicDomains = ['www.flexinfer.ai', 'codyblevins.com', 'www.codyblevins.com'];
+    return publicDomains.includes(window.location.hostname);
   };
   
   const [uiConfig, setUiConfig] = createSignal<any>(null);
