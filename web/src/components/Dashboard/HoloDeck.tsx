@@ -1348,6 +1348,16 @@ const HoloDeck: Component<Props> = (props) => {
         composer.dispose();
         trafficInstancedMesh.dispose();
         serviceTrafficMesh.dispose();
+        
+        // Dispose Shared Resources
+        Object.values(sharedGeoms).forEach(g => g.dispose());
+        Object.values(sharedMats).forEach(m => m.dispose());
+        coreMatCache.forEach(m => m.dispose());
+        scannerMatCache.forEach(m => m.dispose());
+        edgeMatCache.forEach(m => m.dispose());
+        podMatCache.forEach(m => m.dispose());
+        podLineMatCache.forEach(m => m.dispose());
+
         if (containerRef) containerRef.innerHTML = '';
         objectMap.clear();
         dataMap.clear();
