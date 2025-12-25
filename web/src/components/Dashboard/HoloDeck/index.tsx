@@ -119,6 +119,7 @@ const HoloDeck: Component<Props> = (props) => {
   };
 
   // Apply visual filtering to objects
+  // Optimized: Uses cached material refs instead of expensive traverse()
   const applyFilterVisuals = () => {
     const filter = props.filter;
     objectMap.forEach((obj, id) => {
@@ -132,30 +133,18 @@ const HoloDeck: Component<Props> = (props) => {
 
       matchesFilterMap.set(id, matches);
 
-      // Apply opacity based on match
-      obj.traverse(child => {
-        if (child instanceof THREE.Mesh && child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          mats.forEach(mat => {
-            if ('opacity' in mat) {
-              const baseMat = mat as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
-              baseMat.transparent = true;
-              baseMat.opacity = matches ? (baseMat.userData.originalOpacity ?? 1) : 0.15;
-              // Store original opacity on first pass
-              if (baseMat.userData.originalOpacity === undefined) {
-                baseMat.userData.originalOpacity = baseMat.opacity;
-              }
-            }
-          });
-        }
-        if (child instanceof THREE.Line && child.material) {
-          const lineMat = child.material as THREE.LineBasicMaterial;
-          lineMat.opacity = matches ? (lineMat.userData.originalOpacity ?? 0.15) : 0.03;
-          if (lineMat.userData.originalOpacity === undefined) {
-            lineMat.userData.originalOpacity = lineMat.opacity;
+      // Use cached material refs instead of traverse() for O(1) access
+      const filterableMats = obj.userData.filterableMaterials as THREE.Material[] | undefined;
+      if (filterableMats) {
+        const targetOpacity = matches ? 1 : 0.15;
+        for (const mat of filterableMats) {
+          if ('opacity' in mat) {
+            const baseMat = mat as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
+            baseMat.transparent = true;
+            baseMat.opacity = matches ? (baseMat.userData.originalOpacity ?? 1) : targetOpacity;
           }
         }
-      });
+      }
     });
   };
 
@@ -462,7 +451,7 @@ const HoloDeck: Component<Props> = (props) => {
 
     // Throttle raycasting to reduce CPU usage (expensive operation)
     let lastRaycastTime = 0;
-    const RAYCAST_THROTTLE_MS = 32; // ~30fps for hover detection
+    const RAYCAST_THROTTLE_MS = 64; // ~15fps for hover detection (imperceptible, better perf)
 
     const onMouseMove = (event: MouseEvent) => {
         if (!containerRef) return;
@@ -732,21 +721,23 @@ const HoloDeck: Component<Props> = (props) => {
         // Animate objects
         const frameCount = renderer.info.render.frame;
         // Reduce metrics update frequency to once per second (~60 frames) to relieve CPU
-        const updateMetrics = frameCount % 60 === 0; 
-        
+        const updateMetrics = frameCount % 60 === 0;
+        // Reduce scanner animation frequency (every 2 frames is imperceptible)
+        const updateScanners = frameCount % 2 === 0;
+
         // Use a traditional for-loop over values iterator for better performance than forEach
         for (const obj of objectMap.values()) {
             const type = obj.userData.type;
 
             if (type === 'node') {
-                // Use cached scanner/core refs
-                const scanner = obj.userData.scannerRef as THREE.Mesh | undefined;
-                if (scanner && scanner.material) {
-                     // Optimization: Avoid setting uniforms/props if not visible change
-                     // But here we animate scale/opacity continuously
-                     const s = 1 + Math.sin(time * 2) * 0.15;
-                     scanner.scale.setScalar(s);
-                     (scanner.material as THREE.MeshBasicMaterial).opacity = 0.4 - Math.sin(time * 2) * 0.15;
+                // Use cached scanner/core refs - update every 2 frames for perf
+                if (updateScanners) {
+                    const scanner = obj.userData.scannerRef as THREE.Mesh | undefined;
+                    if (scanner && scanner.material) {
+                        const s = 1 + Math.sin(time * 2) * 0.15;
+                        scanner.scale.setScalar(s);
+                        (scanner.material as THREE.MeshBasicMaterial).opacity = 0.4 - Math.sin(time * 2) * 0.15;
+                    }
                 }
                 const core = obj.userData.coreRef as THREE.Object3D | undefined;
                 if (core) {
@@ -754,25 +745,35 @@ const HoloDeck: Component<Props> = (props) => {
                     core.rotation.x += delta * 0.4;
                 }
 
-                // Update resource meter rings
+                // Update resource meter rings with dirty flag pattern
                 if (updateMetrics) {
                     const nodeName = obj.userData.nodeName as string | undefined;
-                    // ... (rest of logic same)
                     const cpuRing = obj.userData.cpuRingRef as THREE.Mesh | undefined;
                     const memRing = obj.userData.memRingRef as THREE.Mesh | undefined;
 
                     if (nodeName && (cpuRing || memRing)) {
                         const metrics = getNodeMetrics(nodeName);
                         if (metrics) {
+                            // Only update if value changed (dirty flag pattern)
                             if (cpuRing && cpuRing.material instanceof THREE.ShaderMaterial) {
-                                cpuRing.material.uniforms.uProgress.value = metrics.cpuUsage / 100;
-                                const cpuColor = metrics.cpuUsage < 50 ? HOLO_THEME.colors.rings.cpu : metrics.cpuUsage < 80 ? HOLO_THEME.colors.rings.warning : HOLO_THEME.colors.rings.critical;
-                                (cpuRing.material.uniforms.uColor.value as THREE.Color).setHex(cpuColor);
+                                const newProgress = metrics.cpuUsage / 100;
+                                const lastProgress = obj.userData.lastCpuProgress ?? -1;
+                                if (Math.abs(newProgress - lastProgress) > 0.01) {
+                                    cpuRing.material.uniforms.uProgress.value = newProgress;
+                                    obj.userData.lastCpuProgress = newProgress;
+                                    const cpuColor = metrics.cpuUsage < 50 ? HOLO_THEME.colors.rings.cpu : metrics.cpuUsage < 80 ? HOLO_THEME.colors.rings.warning : HOLO_THEME.colors.rings.critical;
+                                    (cpuRing.material.uniforms.uColor.value as THREE.Color).setHex(cpuColor);
+                                }
                             }
                             if (memRing && memRing.material instanceof THREE.ShaderMaterial) {
-                                memRing.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
-                                const memColor = metrics.memoryPercent < 50 ? HOLO_THEME.colors.rings.mem : metrics.memoryPercent < 80 ? HOLO_THEME.colors.rings.warning : HOLO_THEME.colors.rings.critical;
-                                (memRing.material.uniforms.uColor.value as THREE.Color).setHex(memColor);
+                                const newProgress = metrics.memoryPercent / 100;
+                                const lastProgress = obj.userData.lastMemProgress ?? -1;
+                                if (Math.abs(newProgress - lastProgress) > 0.01) {
+                                    memRing.material.uniforms.uProgress.value = newProgress;
+                                    obj.userData.lastMemProgress = newProgress;
+                                    const memColor = metrics.memoryPercent < 50 ? HOLO_THEME.colors.rings.mem : metrics.memoryPercent < 80 ? HOLO_THEME.colors.rings.warning : HOLO_THEME.colors.rings.critical;
+                                    (memRing.material.uniforms.uColor.value as THREE.Color).setHex(memColor);
+                                }
                             }
                         }
                     }
@@ -967,6 +968,14 @@ const HoloDeck: Component<Props> = (props) => {
             group.userData.memRingRef = memRingProgress;
             group.userData.nodeName = node.metadata.name;
 
+            // Cache filterable materials for applyFilterVisuals (avoid traverse())
+            // Store original opacity at creation time
+            const scannerMat = scanner.material as THREE.MeshBasicMaterial;
+            const towerMat = tower.material as THREE.MeshStandardMaterial;
+            scannerMat.userData.originalOpacity = scannerMat.opacity;
+            towerMat.userData.originalOpacity = towerMat.opacity;
+            group.userData.filterableMaterials = [scannerMat, towerMat];
+
             dataGroup.add(group);
             const nodeId = `node-${node.metadata.name}`;
             objectMap.set(nodeId, group);
@@ -1003,6 +1012,10 @@ const HoloDeck: Component<Props> = (props) => {
         const podsByNamespace = new Map<string, K8sPod[]>();
         const podObjectsByName = new Map<string, THREE.Object3D>();
 
+        // Batch pod connection lines by color for GPU efficiency (reduces 150+ draw calls to 3)
+        const podLinePointsByColor = new Map<number, THREE.Vector3[]>();
+        const POINTS_PER_POD_CURVE = 16; // Reduced from 24 for better perf
+
         currentPods.forEach((pod, i) => {
             // Indexing
             const ns = pod.metadata.namespace || 'default';
@@ -1030,9 +1043,18 @@ const HoloDeck: Component<Props> = (props) => {
             const status = pod.status.phase;
             const pColor = status === 'Running' ? HOLO_THEME.colors.pod.running : (status === 'Pending' ? HOLO_THEME.colors.pod.pending : HOLO_THEME.colors.pod.error);
 
-            const mesh = new THREE.Mesh(sharedGeoms.pod, getPodMat(pColor));
+            const podMat = getPodMat(pColor);
+            const mesh = new THREE.Mesh(sharedGeoms.pod, podMat);
             mesh.position.set(px, py, pz);
-            mesh.userData = { type: 'pod', label: pod.metadata.name, initialY: py };
+
+            // Cache filterable materials for applyFilterVisuals (avoid traverse())
+            podMat.userData.originalOpacity = podMat.opacity ?? 1;
+            mesh.userData = {
+                type: 'pod',
+                label: pod.metadata.name,
+                initialY: py,
+                filterableMaterials: [podMat]
+            };
 
             dataGroup.add(mesh);
             const podId = `pod-${pod.metadata.name}`;
@@ -1040,7 +1062,7 @@ const HoloDeck: Component<Props> = (props) => {
             podObjectsByName.set(pod.metadata.name, mesh);
             dataMap.set(podId, pod); // Store K8s data for tooltips
 
-            // Connections
+            // Collect connection curve points for batching (instead of creating individual lines)
             if (assignedNodeObj) {
                 const start = new THREE.Vector3(px, py, pz);
                 const end = assignedNodeObj.position.clone().add(new THREE.Vector3(0, 5, 0));
@@ -1049,14 +1071,27 @@ const HoloDeck: Component<Props> = (props) => {
                 mid.y += start.distanceTo(end) * 0.3;
 
                 const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-                const points = curve.getPoints(24);
-                const line = new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints(points),
-                    getPodLineMat(pColor)
-                );
+                const points = curve.getPoints(POINTS_PER_POD_CURVE);
 
-                dataGroup.add(line);
+                // Collect points by color for batching
+                if (!podLinePointsByColor.has(pColor)) {
+                    podLinePointsByColor.set(pColor, []);
+                }
+                const colorPoints = podLinePointsByColor.get(pColor)!;
+                colorPoints.push(...points);
+                colorPoints.push(new THREE.Vector3(NaN, NaN, NaN)); // Line break
+
                 curves.push(curve);
+            }
+        });
+
+        // Create batched pod connection geometries (1 draw call per color instead of 150+ total)
+        podLinePointsByColor.forEach((points, colorHex) => {
+            if (points.length > 1) {
+                points.pop(); // Remove trailing NaN
+                const batchedGeom = new THREE.BufferGeometry().setFromPoints(points);
+                const batchedLine = new THREE.LineSegments(batchedGeom, getPodLineMat(colorHex));
+                dataGroup.add(batchedLine);
             }
         });
 
@@ -1197,7 +1232,12 @@ const HoloDeck: Component<Props> = (props) => {
         composer.dispose();
         trafficInstancedMesh.dispose();
         serviceTrafficMesh.dispose();
-        
+
+        // Dispose grid and dust resources (previously missing)
+        gridMaterial.dispose();
+        dustParticles.geometry.dispose();
+        (dustParticles.material as THREE.Material).dispose();
+
         // Dispose Shared Resources
         Object.values(sharedGeoms).forEach(g => g.dispose());
         Object.values(sharedMats).forEach(m => m.dispose());

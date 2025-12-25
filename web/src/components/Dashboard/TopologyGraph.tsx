@@ -62,6 +62,10 @@ const getNamespaceColor = (namespace: string, namespaceMap: Map<string, number>)
   return namespaceColors[namespaceMap.get(namespace)! % namespaceColors.length];
 };
 
+// Cached font strings to avoid per-frame string allocation
+const FONT_NODE = '500 11px Inter, system-ui';
+const FONT_OTHER = '400 9px Inter, system-ui';
+
 const TopologyGraph: Component<Props> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
@@ -82,6 +86,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let graphNodes: D3Node[] = [];
   let graphLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
+  let nodeIndexMap = new Map<string, number>(); // O(1) lookup for particle spawning
 
   // Object pool for particles - zero allocations during animation
   const particlePool: ParticleSlot[] = Array.from({ length: MAX_PARTICLES }, () => ({
@@ -101,6 +106,15 @@ const TopologyGraph: Component<Props> = (props) => {
   let isSimulationActive = false;
   let frameCount = 0;
   let isAnimating = false;
+
+  // Node style cache - recomputed only when nodes change, not every frame
+  let nodeStylesCache = new Map<string, { r: number; color: string }>();
+  let nodeStylesCacheValid = false;
+
+  // Frustum bounds cache - recomputed only when transform/dimensions change
+  let cachedFrustum = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  let lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
+  let lastFrustumDims = { width: -1, height: -1 };
 
   // Compute a lightweight hash for data change detection (exclude dimensions to avoid resize re-init)
   const getDataKey = (): string => {
@@ -237,6 +251,14 @@ const TopologyGraph: Component<Props> = (props) => {
     graphNodes = nodes;
     graphLinks = links;
     namespaceMap = nsMap;
+
+    // Build O(1) index map for particle spawning
+    nodeIndexMap.clear();
+    nodes.forEach((node, idx) => nodeIndexMap.set(node.id, idx));
+
+    // Invalidate style cache - will be rebuilt on next draw
+    nodeStylesCacheValid = false;
+
     setNodeCount(nodes.length);
   };
 
@@ -282,13 +304,18 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Only spawn if nodes have positions
     if (source.x !== undefined && target.x !== undefined) {
+      // Use O(1) index lookup instead of O(N) indexOf
+      const sourceIdx = nodeIndexMap.get(source.id);
+      const targetIdx = nodeIndexMap.get(target.id);
+      if (sourceIdx === undefined || targetIdx === undefined) return;
+
       // Find an inactive slot in the pool
       for (let i = 0; i < MAX_PARTICLES; i++) {
         if (!particlePool[i].active) {
           const slot = particlePool[i];
           slot.active = true;
-          slot.sourceIdx = graphNodes.indexOf(source);
-          slot.targetIdx = graphNodes.indexOf(target);
+          slot.sourceIdx = sourceIdx;
+          slot.targetIdx = targetIdx;
           slot.progress = 0;
           slot.speed = 0.012 + Math.random() * 0.018;
           slot.colorIdx = link.type === 'hosts' ? 0 : 1;
@@ -450,14 +477,14 @@ const TopologyGraph: Component<Props> = (props) => {
       const y = sy + (ty - sy) * slot.progress;
       const color = PARTICLE_COLORS[slot.colorIdx];
 
-      // Draw particle trail (3 trailing dots with decreasing opacity)
-      const trailLength = 0.08;
-      for (let t = 2; t >= 0; t--) {
-        const trailProgress = Math.max(0, slot.progress - t * trailLength * 0.5);
+      // Draw particle trail (2 trailing dots - reduced from 3 for performance)
+      const trailLength = 0.06;
+      for (let t = 1; t >= 0; t--) {
+        const trailProgress = Math.max(0, slot.progress - t * trailLength);
         const trailX = sx + (tx - sx) * trailProgress;
         const trailY = sy + (ty - sy) * trailProgress;
-        const trailOpacity = (3 - t) * 0.08;
-        const trailSize = 1.5 - t * 0.3;
+        const trailOpacity = (2 - t) * 0.12; // Slightly higher opacity to compensate
+        const trailSize = 1.8 - t * 0.4;
 
         ctx.beginPath();
         ctx.arc(trailX, trailY, trailSize, 0, 2 * Math.PI);
@@ -467,15 +494,10 @@ const TopologyGraph: Component<Props> = (props) => {
         ctx.fill();
       }
 
-      // Draw particle with multi-layer glow (no shadowBlur for performance)
+      // Draw particle with 2-layer glow (reduced from 3 for performance)
       ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.15)' : 'rgba(168,85,247,0.15)';
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.35)' : 'rgba(168,85,247,0.35)';
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.25)' : 'rgba(168,85,247,0.25)';
       ctx.fill();
 
       ctx.beginPath();
@@ -488,24 +510,47 @@ const TopologyGraph: Component<Props> = (props) => {
     const selectedId = selectedNode()?.id;
     const hoveredId = hoverNode()?.id;
 
+    // Rebuild node style cache if invalidated (only when nodes change, not every frame)
+    if (!nodeStylesCacheValid) {
+      nodeStylesCache.clear();
+      for (const node of graphNodes) {
+        nodeStylesCache.set(node.id, {
+          r: getNodeRadius(node),
+          color: getNodeColor(node)
+        });
+      }
+      nodeStylesCacheValid = true;
+    }
+
     // Draw Nodes with enhanced glow effects
     const time = frameCount * 0.05; // For subtle animation
-    
-    // Frustum culling bounds
-    const margin = 50 / transform.k; // Adjust margin based on zoom
-    const visibleMinX = -transform.x / transform.k - margin;
-    const visibleMaxX = (width - transform.x) / transform.k + margin;
-    const visibleMinY = -transform.y / transform.k - margin;
-    const visibleMaxY = (height - transform.y) / transform.k + margin;
+
+    // Frustum culling bounds - cache and only recalculate when transform changes
+    if (transform.x !== lastFrustumTransform.x ||
+        transform.y !== lastFrustumTransform.y ||
+        transform.k !== lastFrustumTransform.k ||
+        width !== lastFrustumDims.width ||
+        height !== lastFrustumDims.height) {
+      const margin = 50 / transform.k;
+      cachedFrustum.minX = -transform.x / transform.k - margin;
+      cachedFrustum.maxX = (width - transform.x) / transform.k + margin;
+      cachedFrustum.minY = -transform.y / transform.k - margin;
+      cachedFrustum.maxY = (height - transform.y) / transform.k + margin;
+      lastFrustumTransform = { x: transform.x, y: transform.y, k: transform.k };
+      lastFrustumDims = { width, height };
+    }
 
     graphNodes.forEach(node => {
       if (node.x === undefined || node.y === undefined) return;
-      
-      // Frustum culling
-      if (node.x < visibleMinX || node.x > visibleMaxX || node.y < visibleMinY || node.y > visibleMaxY) return;
 
-      const r = getNodeRadius(node);
-      const color = getNodeColor(node);
+      // Frustum culling using cached bounds
+      if (node.x < cachedFrustum.minX || node.x > cachedFrustum.maxX ||
+          node.y < cachedFrustum.minY || node.y > cachedFrustum.maxY) return;
+
+      // Use cached styles instead of recalculating
+      const cached = nodeStylesCache.get(node.id)!;
+      const r = cached.r;
+      const color = cached.color;
       const isSelected = selectedId === node.id;
       const isHovered = hoveredId === node.id;
 
@@ -601,6 +646,10 @@ const TopologyGraph: Component<Props> = (props) => {
     // Draw Labels (Separate loop to be on top) - reuse cached selectedId/hoveredId
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#cccccc';
+
+    // Track last font to minimize ctx.font changes
+    let lastFont = '';
 
     graphNodes.forEach(node => {
         if (node.x === undefined || node.y === undefined) return;
@@ -608,13 +657,16 @@ const TopologyGraph: Component<Props> = (props) => {
                                 selectedId === node.id || hoveredId === node.id;
 
         if (shouldDrawLabel && transform.k > 0.4) {
-            const r = getNodeRadius(node);
-            ctx.font = node.type === 'node' ? '500 11px Inter, system-ui' : '400 9px Inter, system-ui';
-            ctx.fillStyle = '#cccccc';
+            const cached = nodeStylesCache.get(node.id)!;
+            const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
+            if (font !== lastFont) {
+                ctx.font = font;
+                lastFont = font;
+            }
             ctx.fillText(
                 node.label.length > 14 && !hoveredId ? node.label.slice(0, 12)+'...' : node.label,
                 node.x,
-                node.y + r + 12
+                node.y + cached.r + 12
             );
         }
     });
