@@ -57,4 +57,49 @@ export const TRAFFIC_CONFIG = {
     MAX_SERVICE_TRAFFIC: 60,
     TRAFFIC_SPAWN_INTERVAL: 120,
     SERVICE_SPAWN_INTERVAL: 200,
+    colors: {
+        healthy: 0x00f0ff,   // Cyan - normal traffic flow
+        warning: 0xfcee0a,   // Yellow - elevated latency
+        error: 0xff003c,     // Red - failed requests
+        ingress: 0xa855f7,   // Purple - external traffic
+        internal: 0x0aff68,  // Green - pod-to-pod
+    },
+    typeWeights: {
+        healthy: 0.70,
+        warning: 0.18,
+        error: 0.05,
+        internal: 0.07,
+    }
+};
+
+export type TrafficType = 'healthy' | 'warning' | 'error' | 'ingress' | 'internal';
+
+export interface ClusterHealthData {
+    apiServerHealthy: boolean;
+    controlPlaneHealthy: boolean;
+    healthPercent: number;
+    nodesReady: number;
+    nodesTotal: number;
+    podsRunning: number;
+    podsTotal: number;
+}
+
+export const HEALTH_HUB_CONFIG = {
+    orbRadius: 1.2,
+    ringRadii: [2.0, 3.0, 4.0],
+    ringWidth: 0.15,
+    colors: {
+        healthy: 0x0aff68,
+        warning: 0xfcee0a,
+        critical: 0xff003c,
+    },
+    thresholds: {
+        warning: 0.9,  // Below 90% = warning
+        critical: 0.7, // Below 70% = critical
+    },
+    pulseSpeed: {
+        healthy: 0.5,
+        warning: 1.5,
+        critical: 3.0,
+    }
 };

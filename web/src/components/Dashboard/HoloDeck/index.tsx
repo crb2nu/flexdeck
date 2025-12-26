@@ -6,18 +6,24 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
 import { getNodeMetrics } from '../../../stores/metrics';
-import { 
-    QUALITY_PRESETS, 
-    HOLO_THEME, 
-    TRAFFIC_CONFIG, 
-    type QualityLevel, 
-    type QualitySettings 
+import {
+    QUALITY_PRESETS,
+    HOLO_THEME,
+    TRAFFIC_CONFIG,
+    HEALTH_HUB_CONFIG,
+    type QualityLevel,
+    type TrafficType,
+    type ClusterHealthData
 } from './config';
-import { 
-    arcRingVertexShader, 
-    arcRingFragmentShader, 
-    gridVertexShader, 
-    gridFragmentShader 
+import {
+    arcRingVertexShader,
+    arcRingFragmentShader,
+    gridVertexShader,
+    gridFragmentShader,
+    healthRingVertexShader,
+    healthRingFragmentShader,
+    trafficVertexShader,
+    trafficFragmentShader
 } from './shaders';
 import { disposeObject, markShared } from './utils';
 
@@ -142,6 +148,71 @@ const HoloDeck: Component<Props> = (props) => {
     return true;
   };
 
+  // Compute cluster health from current nodes and pods
+  const computeClusterHealth = (): ClusterHealthData => {
+    const nodesTotal = props.nodes.length;
+    const nodesReady = props.nodes.filter(n =>
+      n.status?.conditions?.some(c => c.type === 'Ready' && c.status === 'True')
+    ).length;
+
+    const podsTotal = props.pods.length;
+    const podsRunning = props.pods.filter(p => p.status?.phase === 'Running').length;
+
+    // Calculate overall health percentage
+    const nodeHealth = nodesTotal > 0 ? nodesReady / nodesTotal : 1;
+    const podHealth = podsTotal > 0 ? podsRunning / podsTotal : 1;
+    const healthPercent = (nodeHealth * 0.4 + podHealth * 0.6); // Weight pods more
+
+    return {
+      apiServerHealthy: nodesTotal > 0, // If we have nodes, API server is reachable
+      controlPlaneHealthy: nodesReady > 0,
+      healthPercent,
+      nodesReady,
+      nodesTotal,
+      podsRunning,
+      podsTotal
+    };
+  };
+
+  // Update health hub visuals based on cluster health
+  const updateHealthHub = (health: ClusterHealthData) => {
+    // Determine health state
+    let newState: 'healthy' | 'warning' | 'critical' = 'healthy';
+    if (health.healthPercent < HEALTH_HUB_CONFIG.thresholds.critical) {
+      newState = 'critical';
+    } else if (health.healthPercent < HEALTH_HUB_CONFIG.thresholds.warning) {
+      newState = 'warning';
+    }
+
+    currentHealthState = newState;
+    const color = HEALTH_HUB_CONFIG.colors[newState];
+
+    // Update orb color
+    if (healthOrb && healthOrb.material instanceof THREE.MeshBasicMaterial) {
+      healthOrb.material.color.setHex(color);
+    }
+
+    // Update health rings
+    if (healthRingMaterials.length === 3) {
+      // Ring 0: API Server (full if healthy)
+      healthRingMaterials[0].uniforms.uProgress.value = health.apiServerHealthy ? 1.0 : 0.0;
+      healthRingMaterials[0].uniforms.uColor.value.setHex(
+        health.apiServerHealthy ? HEALTH_HUB_CONFIG.colors.healthy : HEALTH_HUB_CONFIG.colors.critical
+      );
+
+      // Ring 1: Control Plane (full if healthy)
+      healthRingMaterials[1].uniforms.uProgress.value = health.controlPlaneHealthy ? 1.0 : 0.0;
+      healthRingMaterials[1].uniforms.uColor.value.setHex(
+        health.controlPlaneHealthy ? HEALTH_HUB_CONFIG.colors.healthy : HEALTH_HUB_CONFIG.colors.critical
+      );
+
+      // Ring 2: Overall health percentage
+      healthRingMaterials[2].uniforms.uProgress.value = health.healthPercent;
+      healthRingMaterials[2].uniforms.uColor.value.setHex(color);
+      healthRingMaterials[2].uniforms.uPulseSpeed.value = HEALTH_HUB_CONFIG.pulseSpeed[newState];
+    }
+  };
+
   // Apply visual filtering to objects
   // Optimized: Uses cached material refs instead of expensive traverse()
   const applyFilterVisuals = () => {
@@ -180,18 +251,43 @@ const HoloDeck: Component<Props> = (props) => {
       curveIndex: number;
       progress: number;
       speed: number;
+      trafficType: TrafficType;
   }
   const trafficPool: TrafficSlot[] = Array.from({ length: MAX_TRAFFIC }, () => ({
       active: false,
       curveIndex: 0,
       progress: 0,
-      speed: 0
+      speed: 0,
+      trafficType: 'healthy' as TrafficType
   }));
   let trafficInstancedMesh: THREE.InstancedMesh;
-  let trafficMatrix = new THREE.Matrix4();
+  let trafficColors: THREE.InstancedBufferAttribute;
   let trafficDummy = new THREE.Object3D();
   let curves: THREE.QuadraticBezierCurve3[] = [];
   let activeTrafficCount = 0;
+
+  // Pick traffic type based on configured weights
+  const pickTrafficType = (): TrafficType => {
+    const rand = Math.random();
+    const weights = TRAFFIC_CONFIG.typeWeights;
+    let cumulative = 0;
+
+    cumulative += weights.healthy;
+    if (rand < cumulative) return 'healthy';
+
+    cumulative += weights.warning;
+    if (rand < cumulative) return 'warning';
+
+    cumulative += weights.error;
+    if (rand < cumulative) return 'error';
+
+    return 'internal';
+  };
+
+  // Get color for traffic type
+  const getTrafficColor = (type: TrafficType): THREE.Color => {
+    return new THREE.Color(TRAFFIC_CONFIG.colors[type]);
+  };
 
   // Service Traffic System (purple particles for service connections)
   interface ServiceTrafficSlot {
@@ -212,6 +308,12 @@ const HoloDeck: Component<Props> = (props) => {
 
   // Cached core ring references (avoid getObjectByName per frame)
   let coreRings: THREE.Mesh[] = [];
+
+  // Cluster Health Hub references
+  let healthOrb: THREE.Mesh;
+  let healthRings: THREE.Mesh[] = [];
+  let healthRingMaterials: THREE.ShaderMaterial[] = [];
+  let currentHealthState: 'healthy' | 'warning' | 'critical' = 'healthy';
 
   let gridMaterial: THREE.ShaderMaterial;
   let dustParticles: THREE.Points;
@@ -277,27 +379,83 @@ const HoloDeck: Component<Props> = (props) => {
     spotLight.penumbra = 0.5;
     scene.add(spotLight);
     
-    // Central Core Structure
+    // Cluster Health Hub - replaces busy orbital rings with informative health display
     const coreGroup = new THREE.Group();
 
-    // Central pillar
-    const pillarGeom = new THREE.CylinderGeometry(0.3, 0.5, 8, 8);
-    const pillarMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.3 });
-    const pillar = new THREE.Mesh(pillarGeom, pillarMat);
-    pillar.position.y = 4;
-    coreGroup.add(pillar);
+    // Central Health Orb - icosahedron that glows based on cluster health
+    const orbGeom = new THREE.IcosahedronGeometry(HEALTH_HUB_CONFIG.orbRadius, 1);
+    const orbMat = new THREE.MeshBasicMaterial({
+        color: HEALTH_HUB_CONFIG.colors.healthy,
+        transparent: true,
+        opacity: 0.4,
+        wireframe: true
+    });
+    healthOrb = new THREE.Mesh(orbGeom, orbMat);
+    healthOrb.position.y = 4;
+    coreGroup.add(healthOrb);
 
-    // Orbiting rings - cache references for animation loop
-    coreRings = [];
+    // Inner solid core for glow effect
+    const innerOrbGeom = new THREE.IcosahedronGeometry(HEALTH_HUB_CONFIG.orbRadius * 0.6, 1);
+    const innerOrbMat = new THREE.MeshBasicMaterial({
+        color: HEALTH_HUB_CONFIG.colors.healthy,
+        transparent: true,
+        opacity: 0.2
+    });
+    const innerOrb = new THREE.Mesh(innerOrbGeom, innerOrbMat);
+    innerOrb.position.y = 4;
+    coreGroup.add(innerOrb);
+
+    // Health Status Rings (static, not rotating) - show API, Control Plane, Overall Health
+    healthRings = [];
+    healthRingMaterials = [];
+    const ringLabels = ['API Server', 'Control Plane', 'Cluster Health'];
+
     for (let i = 0; i < 3; i++) {
-        const ringGeom = new THREE.TorusGeometry(2 + i * 1.5, 0.02, 8, 64);
-        const ringMat = new THREE.MeshBasicMaterial({ color: i === 1 ? 0xa855f7 : 0x00f0ff, transparent: true, opacity: 0.6 });
+        const radius = HEALTH_HUB_CONFIG.ringRadii[i];
+        const ringGeom = new THREE.RingGeometry(
+            radius - HEALTH_HUB_CONFIG.ringWidth,
+            radius,
+            64
+        );
+        ringGeom.rotateX(-Math.PI / 2);
+
+        const ringMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 1.0 },
+                uColor: { value: new THREE.Color(HEALTH_HUB_CONFIG.colors.healthy) },
+                uTime: { value: 0 },
+                uPulseSpeed: { value: HEALTH_HUB_CONFIG.pulseSpeed.healthy }
+            },
+            vertexShader: healthRingVertexShader,
+            fragmentShader: healthRingFragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
         const ring = new THREE.Mesh(ringGeom, ringMat);
-        ring.rotation.x = Math.PI / 2 + (i * 0.2);
-        ring.position.y = 3 + i * 2;
-        coreRings.push(ring); // Cache reference instead of using name lookup
+        ring.position.y = 0.5;
+        ring.userData.label = ringLabels[i];
+
+        healthRings.push(ring);
+        healthRingMaterials.push(ringMat);
         coreGroup.add(ring);
     }
+
+    // Keep coreRings for backward compatibility but make them minimal decorative rings
+    coreRings = [];
+    const decorativeRingGeom = new THREE.TorusGeometry(1.5, 0.01, 8, 64);
+    const decorativeRingMat = new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        transparent: true,
+        opacity: 0.15
+    });
+    const decorativeRing = new THREE.Mesh(decorativeRingGeom, decorativeRingMat);
+    decorativeRing.rotation.x = Math.PI / 2;
+    decorativeRing.position.y = 4;
+    coreRings.push(decorativeRing);
+    coreGroup.add(decorativeRing);
 
     scene.add(coreGroup);
 
@@ -351,11 +509,32 @@ const HoloDeck: Component<Props> = (props) => {
     dustParticles = new THREE.Points(dustGeom, dustMat);
     scene.add(dustParticles);
 
-    // --- TRAFFIC INSTANCED MESH (GPU-efficient) ---
+    // --- TRAFFIC INSTANCED MESH (GPU-efficient with per-instance colors) ---
     const packetGeom = new THREE.SphereGeometry(0.15, 8, 8);
-    const packetMat = new THREE.MeshBasicMaterial({ color: HOLO_THEME.colors.traffic.default });
+
+    // Add instance color attribute for per-particle coloring
+    const colorArray = new Float32Array(MAX_TRAFFIC * 3);
+    const defaultColor = new THREE.Color(TRAFFIC_CONFIG.colors.healthy);
+    for (let i = 0; i < MAX_TRAFFIC; i++) {
+        colorArray[i * 3] = defaultColor.r;
+        colorArray[i * 3 + 1] = defaultColor.g;
+        colorArray[i * 3 + 2] = defaultColor.b;
+    }
+    trafficColors = new THREE.InstancedBufferAttribute(colorArray, 3);
+    packetGeom.setAttribute('instanceColor', trafficColors);
+
+    // Shader material supporting instance colors
+    const packetMat = new THREE.ShaderMaterial({
+        vertexShader: trafficVertexShader,
+        fragmentShader: trafficFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
     trafficInstancedMesh = new THREE.InstancedMesh(packetGeom, packetMat, MAX_TRAFFIC);
     trafficInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
     // Hide all instances initially by setting them far away
     const hideMatrix = new THREE.Matrix4().makeTranslation(0, -1000, 0);
     for (let i = 0; i < MAX_TRAFFIC; i++) {
@@ -621,10 +800,19 @@ const HoloDeck: Component<Props> = (props) => {
         // Find an inactive slot
         for (let i = 0; i < MAX_TRAFFIC; i++) {
             if (!trafficPool[i].active) {
+                const trafficType = pickTrafficType();
+                const color = getTrafficColor(trafficType);
+
                 trafficPool[i].active = true;
                 trafficPool[i].curveIndex = Math.floor(Math.random() * curves.length);
                 trafficPool[i].progress = 0;
                 trafficPool[i].speed = 0.5 + Math.random() * 0.5; // Slower, smoother
+                trafficPool[i].trafficType = trafficType;
+
+                // Set instance color
+                trafficColors.setXYZ(i, color.r, color.g, color.b);
+                trafficColors.needsUpdate = true;
+
                 activeTrafficCount++;
                 break;
             }
@@ -819,11 +1007,26 @@ const HoloDeck: Component<Props> = (props) => {
         // Animate Dust
         dustParticles.rotation.y = time * 0.03;
 
-        // Animate Central Core Rings
-        for (let i = 0; i < coreRings.length; i++) {
-            const ring = coreRings[i];
-            ring.rotation.z = time * (0.2 + i * 0.1) * (i % 2 === 0 ? 1 : -1);
-            ring.position.y = 3 + i * 2 + Math.sin(time + i) * 0.3;
+        // Animate Cluster Health Hub
+        if (healthOrb) {
+            // Subtle rotation for the health orb
+            healthOrb.rotation.y = time * 0.1;
+            healthOrb.rotation.x = Math.sin(time * 0.3) * 0.1;
+
+            // Breathing pulse effect based on health state
+            const pulseSpeed = HEALTH_HUB_CONFIG.pulseSpeed[currentHealthState];
+            const pulse = 1 + Math.sin(time * pulseSpeed) * 0.08;
+            healthOrb.scale.setScalar(pulse);
+        }
+
+        // Update health ring shader uniforms
+        for (const mat of healthRingMaterials) {
+            mat.uniforms.uTime.value = time;
+        }
+
+        // Subtle animation for decorative ring
+        for (const ring of coreRings) {
+            ring.rotation.z = time * 0.05;
         }
 
         composer.render();
@@ -1275,14 +1478,18 @@ const HoloDeck: Component<Props> = (props) => {
             dataGroup.add(mergedServiceLines);
         }
 
+        // Update cluster health hub based on current data
+        const health = computeClusterHealth();
+        updateHealthHub(health);
+
         // Apply initial filter state
         applyFilterVisuals();
     });
 
     // Watch for filter changes and apply visual updates
     createEffect(() => {
-        // Access filter prop to track it
-        const filter = props.filter;
+        // Access filter prop to track it (void to satisfy linter)
+        void props.filter;
         // Only run if objectMap is populated (after scene build)
         if (objectMap.size > 0) {
             applyFilterVisuals();
@@ -1410,6 +1617,52 @@ const HoloDeck: Component<Props> = (props) => {
                 <div class="h-1 w-8 bg-neon-cyan/50"></div>
                 <div class="h-1 w-2 bg-neon-purple/50"></div>
                 <div class="h-1 w-2 bg-neon-cyan/50"></div>
+            </div>
+        </div>
+
+        {/* Resource & Traffic Legend */}
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-6 pointer-events-none select-none">
+            {/* Resource Indicators */}
+            <div class="flex items-center gap-3 text-[9px] font-mono text-text-dim border border-white/10 rounded px-3 py-1.5 bg-black/40 backdrop-blur-sm">
+                <span class="text-white/50 uppercase tracking-wider">Resources</span>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#0aff68]"></div>
+                    <span>CPU</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]"></div>
+                    <span>Mem</span>
+                </div>
+                <div class="w-px h-3 bg-white/20"></div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]"></div>
+                    <span>&gt;50%</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#ff003c]"></div>
+                    <span>&gt;80%</span>
+                </div>
+            </div>
+
+            {/* Traffic Legend */}
+            <div class="flex items-center gap-3 text-[9px] font-mono text-text-dim border border-white/10 rounded px-3 py-1.5 bg-black/40 backdrop-blur-sm">
+                <span class="text-white/50 uppercase tracking-wider">Traffic</span>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]"></div>
+                    <span>Healthy</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]"></div>
+                    <span>Slow</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#ff003c]"></div>
+                    <span>Error</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="w-2 h-2 rounded-full bg-[#0aff68]"></div>
+                    <span>Internal</span>
+                </div>
             </div>
         </div>
     </div>

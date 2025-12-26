@@ -71,19 +71,14 @@ void main() {
     float subGrid = smoothstep(0.5 - lineThickness - 0.005, 0.5 - lineThickness, sx) +
                     smoothstep(0.5 - lineThickness - 0.005, 0.5 - lineThickness, sz);
 
-    // Radial pulse rings (multiple concentric)
-    float pulse1 = mod(uTime * 8.0, 100.0);
-    float pulse2 = mod(uTime * 8.0 + 33.0, 100.0);
-    float pulse3 = mod(uTime * 8.0 + 66.0, 100.0);
-    float pulseWidth = 1.5;
+    // Single subtle radial pulse ring (reduced from 3 for less visual noise)
+    float pulse1 = mod(uTime * 3.0, 120.0);
+    float pulseWidth = 2.5;
+    float ring1 = smoothstep(pulse1 - pulseWidth, pulse1, dist) * (1.0 - smoothstep(pulse1, pulse1 + 1.0, dist));
+    float rings = ring1 * 0.25;
 
-    float ring1 = smoothstep(pulse1 - pulseWidth, pulse1, dist) * (1.0 - smoothstep(pulse1, pulse1 + 0.3, dist));
-    float ring2 = smoothstep(pulse2 - pulseWidth, pulse2, dist) * (1.0 - smoothstep(pulse2, pulse2 + 0.3, dist));
-    float ring3 = smoothstep(pulse3 - pulseWidth, pulse3, dist) * (1.0 - smoothstep(pulse3, pulse3 + 0.3, dist));
-    float rings = (ring1 + ring2 + ring3) * 0.7;
-
-    // Central glow that pulses
-    float centerGlow = exp(-dist * 0.08) * (0.3 + 0.15 * sin(uTime * 2.0));
+    // Subtle central glow with slow pulse
+    float centerGlow = exp(-dist * 0.1) * (0.12 + 0.04 * sin(uTime * 0.8));
 
     // Combine effects
     vec3 color = uColor;
@@ -104,5 +99,74 @@ void main() {
     vec3 finalColor = mix(color, accentColor, rings * 0.5 + centerGlow * 0.3);
 
     gl_FragColor = vec4(finalColor, alpha * min(combinedGrid, 1.0) * 0.85);
+}
+`;
+
+// Health ring shader for Cluster Health Hub - shows arc based on health percentage
+export const healthRingVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const healthRingFragmentShader = `
+uniform float uProgress;
+uniform vec3 uColor;
+uniform float uTime;
+uniform float uPulseSpeed;
+varying vec2 vUv;
+
+void main() {
+    vec2 centered = vUv - 0.5;
+    float angle = atan(centered.y, centered.x) + 3.14159;
+    float normalizedAngle = angle / (2.0 * 3.14159);
+
+    float arcVisible = step(normalizedAngle, uProgress);
+
+    // Subtle breathing pulse
+    float pulse = 0.85 + 0.15 * sin(uTime * uPulseSpeed);
+
+    // Soft glow at the arc edge
+    float edgeDist = abs(normalizedAngle - uProgress);
+    float edgeGlow = smoothstep(0.03, 0.0, edgeDist) * arcVisible * 0.5;
+
+    float alpha = (arcVisible * 0.6 + edgeGlow) * pulse;
+
+    if (alpha < 0.01) discard;
+
+    gl_FragColor = vec4(uColor, alpha);
+}
+`;
+
+// Traffic particle shaders - support per-instance colors
+export const trafficVertexShader = `
+attribute vec3 instanceColor;
+varying vec3 vColor;
+varying float vDepth;
+
+void main() {
+    vColor = instanceColor;
+    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    vDepth = -mvPosition.z;
+    gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+export const trafficFragmentShader = `
+varying vec3 vColor;
+varying float vDepth;
+
+void main() {
+    // Soft sphere falloff
+    vec2 centered = gl_PointCoord - 0.5;
+    float dist = length(centered);
+    float alpha = smoothstep(0.5, 0.15, dist);
+
+    // Depth-based fade for particles further away
+    float depthFade = clamp(1.0 - vDepth / 100.0, 0.3, 1.0);
+
+    gl_FragColor = vec4(vColor, alpha * 0.7 * depthFade);
 }
 `;
