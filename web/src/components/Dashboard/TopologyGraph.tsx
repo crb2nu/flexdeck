@@ -108,7 +108,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let isAnimating = false;
 
   // Node style cache - recomputed only when nodes change, not every frame
-  let nodeStylesCache = new Map<string, { r: number; color: string }>();
+  // Includes pre-truncated labels to avoid string allocation every frame
+  let nodeStylesCache = new Map<string, { r: number; color: string; truncLabel: string }>();
   let nodeStylesCacheValid = false;
 
   // Frustum bounds cache - recomputed only when transform/dimensions change
@@ -556,9 +557,12 @@ const TopologyGraph: Component<Props> = (props) => {
     if (!nodeStylesCacheValid) {
       nodeStylesCache.clear();
       for (const node of graphNodes) {
+        // Pre-truncate labels to avoid string allocation in draw loop
+        const truncLabel = node.label.length > 14 ? node.label.slice(0, 12) + '...' : node.label;
         nodeStylesCache.set(node.id, {
           r: getNodeRadius(node),
-          color: getNodeColor(node)
+          color: getNodeColor(node),
+          truncLabel
         });
       }
       nodeStylesCacheValid = true;
@@ -705,8 +709,9 @@ const TopologyGraph: Component<Props> = (props) => {
                 ctx.font = font;
                 lastFont = font;
             }
+            // Use cached truncated label, or full label when hovered
             ctx.fillText(
-                node.label.length > 14 && !hoveredId ? node.label.slice(0, 12)+'...' : node.label,
+                hoveredId === node.id ? node.label : cached.truncLabel,
                 node.x,
                 node.y + cached.r + 12
             );
