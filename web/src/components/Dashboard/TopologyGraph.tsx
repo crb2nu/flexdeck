@@ -116,6 +116,41 @@ const TopologyGraph: Component<Props> = (props) => {
   let lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
   let lastFrustumDims = { width: -1, height: -1 };
 
+  // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
+  const GRID_CELL_SIZE = 50; // Pixels per cell
+  let spatialGrid = new Map<string, D3Node[]>();
+  let spatialGridValid = false;
+
+  const getSpatialKey = (x: number, y: number): string => {
+    const cellX = Math.floor(x / GRID_CELL_SIZE);
+    const cellY = Math.floor(y / GRID_CELL_SIZE);
+    return `${cellX},${cellY}`;
+  };
+
+  const rebuildSpatialGrid = () => {
+    spatialGrid.clear();
+    for (const node of graphNodes) {
+      if (node.x === undefined || node.y === undefined) continue;
+      const key = getSpatialKey(node.x, node.y);
+      if (!spatialGrid.has(key)) spatialGrid.set(key, []);
+      spatialGrid.get(key)!.push(node);
+    }
+    spatialGridValid = true;
+  };
+
+  const getNodesNear = (x: number, y: number): D3Node[] => {
+    // Check the cell and adjacent cells for nodes near the point
+    const candidates: D3Node[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = getSpatialKey(x + dx * GRID_CELL_SIZE, y + dy * GRID_CELL_SIZE);
+        const cellNodes = spatialGrid.get(key);
+        if (cellNodes) candidates.push(...cellNodes);
+      }
+    }
+    return candidates;
+  };
+
   // Compute a lightweight hash for data change detection (exclude dimensions to avoid resize re-init)
   const getDataKey = (): string => {
     // Use counts + sample IDs for O(1) approximate change detection instead of O(n log n) full sort
@@ -258,6 +293,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
+    // Invalidate spatial grid - will be rebuilt on next hover check
+    spatialGridValid = false;
 
     setNodeCount(nodes.length);
   };
@@ -343,6 +380,11 @@ const TopologyGraph: Component<Props> = (props) => {
 
     frameCount++;
     const { width, height } = dimensions();
+
+    // Invalidate spatial grid when simulation is active (nodes are moving)
+    if (isSimulationActive) {
+      spatialGridValid = false;
+    }
 
     // Clear & Background - use cached gradient
     ctx.clearRect(0, 0, width, height);
@@ -684,24 +726,30 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  // Click & Hover detection - optimized to avoid sqrt
+  // Click & Hover detection - uses spatial grid for O(1) average lookup
   const getKeyUnderMouse = (event: MouseEvent): D3Node | null => {
       if (!canvasRef) return null;
       const rect = canvasRef.getBoundingClientRect();
       const x = (event.clientX - rect.left - transform.x) / transform.k;
       const y = (event.clientY - rect.top - transform.y) / transform.k;
 
+      // Rebuild spatial grid if invalidated (nodes moved/changed)
+      if (!spatialGridValid) {
+          rebuildSpatialGrid();
+      }
+
       let minDistSq = Infinity;
       let found: D3Node | null = null;
 
-      // Iterate in reverse to prefer nodes drawn on top
-      for (let i = graphNodes.length - 1; i >= 0; i--) {
-          const n = graphNodes[i];
+      // Use spatial grid for O(1) lookup instead of O(N) iteration
+      const candidates = getNodesNear(x, y);
+      for (const n of candidates) {
           if (n.x === undefined || n.y === undefined) continue;
           const dx = x - n.x;
           const dy = y - n.y;
           const distSq = dx * dx + dy * dy; // Avoid sqrt - compare squared distances
-          const r = getNodeRadius(n) + 4; // 4px padding for easier selection
+          const cached = nodeStylesCache.get(n.id);
+          const r = (cached?.r ?? getNodeRadius(n)) + 4; // 4px padding for easier selection
           const rSq = r * r;
 
           if (distSq < rSq && distSq < minDistSq) {

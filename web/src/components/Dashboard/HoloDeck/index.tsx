@@ -80,6 +80,30 @@ const HoloDeck: Component<Props> = (props) => {
   const podMatCache = new Map<string, THREE.MeshStandardMaterial>();
   const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
 
+  // Data change detection - avoid unnecessary full rebuilds
+  let lastSceneDataKey = '';
+  const getSceneDataKey = (): string => {
+    const nodeCount = props.nodes.length;
+    const podCount = props.pods.length;
+    const svcCount = props.services.length;
+    // Sample first/last for lightweight change detection
+    const nodeSample = nodeCount > 0
+      ? `${props.nodes[0]?.metadata.name}:${props.nodes[nodeCount-1]?.metadata.name}`
+      : '';
+    const podSample = podCount > 0
+      ? `${props.pods[0]?.metadata.name}:${props.pods[podCount-1]?.status?.phase}`
+      : '';
+    const svcSample = svcCount > 0
+      ? `${props.services[0]?.metadata.name}`
+      : '';
+    return `${nodeCount}|${podCount}|${svcCount}|${nodeSample}|${podSample}|${svcSample}`;
+  };
+
+  // Track previous object IDs for incremental updates
+  let prevNodeIds = new Set<string>();
+  let prevPodIds = new Set<string>();
+  let prevServiceIds = new Set<string>();
+
   // Filter matching helpers
   const podMatchesFilter = (pod: K8sPod, filter?: HoloDeckFilter): boolean => {
     if (!filter) return true;
@@ -823,17 +847,64 @@ const HoloDeck: Component<Props> = (props) => {
     // --- SCENE BUILDER (EFFECT) ---
     // Rebuild scene when props change, with data caching for enhanced tooltips
     createEffect(() => {
-        // Clear existing objects RECURSIVELY
-        while (dataGroup.children.length > 0) {
-            const child = dataGroup.children[0];
-            dataGroup.remove(child);
-            disposeObject(child);
+        // Track props for reactivity
+        const currentNodes = props.nodes;
+        const currentPods = props.pods;
+        const currentServices = props.services;
+
+        // Skip rebuild if data hasn't meaningfully changed
+        const newDataKey = getSceneDataKey();
+        if (newDataKey === lastSceneDataKey && objectMap.size > 0) {
+            return; // No significant change, skip expensive rebuild
         }
-        objectMap.clear();
-        dataMap.clear();
-        serviceToPodsMap.clear();
-        curves = [];
-        serviceCurves = [];
+        lastSceneDataKey = newDataKey;
+
+        // Compute current IDs for incremental update tracking
+        const currentNodeIds = new Set(currentNodes.map(n => `node-${n.metadata.name}`));
+        const currentPodIds = new Set(currentPods.slice(0, 151).map(p => `pod-${p.metadata.name}`));
+        const currentServiceIds = new Set(currentServices.map(s => `service-${s.metadata.name}`));
+
+        // Find removed objects (in prev but not in current)
+        const removedIds: string[] = [];
+        prevNodeIds.forEach(id => { if (!currentNodeIds.has(id)) removedIds.push(id); });
+        prevPodIds.forEach(id => { if (!currentPodIds.has(id)) removedIds.push(id); });
+        prevServiceIds.forEach(id => { if (!currentServiceIds.has(id)) removedIds.push(id); });
+
+        // If this is a full rebuild (first time or major change), clear everything
+        const isFullRebuild = objectMap.size === 0 || removedIds.length > objectMap.size * 0.5;
+
+        if (isFullRebuild) {
+            // Clear existing objects RECURSIVELY
+            while (dataGroup.children.length > 0) {
+                const child = dataGroup.children[0];
+                dataGroup.remove(child);
+                disposeObject(child);
+            }
+            objectMap.clear();
+            dataMap.clear();
+            serviceToPodsMap.clear();
+            curves = [];
+            serviceCurves = [];
+        } else {
+            // Incremental: only remove objects that were deleted
+            for (const id of removedIds) {
+                const obj = objectMap.get(id);
+                if (obj) {
+                    dataGroup.remove(obj);
+                    disposeObject(obj);
+                    objectMap.delete(id);
+                    dataMap.delete(id);
+                }
+            }
+            // Clear curves for rebuild (connections change frequently)
+            curves = [];
+            serviceCurves = [];
+        }
+
+        // Update previous ID sets for next comparison
+        prevNodeIds = currentNodeIds;
+        prevPodIds = currentPodIds;
+        prevServiceIds = currentServiceIds;
 
         // Reset traffic pool (no mesh cleanup needed - InstancedMesh handles it)
         for (let i = 0; i < MAX_TRAFFIC; i++) {
@@ -846,9 +917,6 @@ const HoloDeck: Component<Props> = (props) => {
             serviceTrafficPool[i].active = false;
         }
         activeServiceTrafficCount = 0;
-
-        const currentNodes = props.nodes;
-        const currentPods = props.pods;
 
         if (currentNodes.length === 0) return;
 
@@ -1096,7 +1164,6 @@ const HoloDeck: Component<Props> = (props) => {
         });
 
         // 3. Create Services (Hexagonal Prisms)
-        const currentServices = props.services;
         const serviceRadius = nodeRadius + HOLO_THEME.dimensions.serviceRingOffset; // Place services outside the node ring
 
         // Helper: Check if pod matches service selector
