@@ -98,7 +98,6 @@ const TopologyGraph: Component<Props> = (props) => {
     colorIdx: 0
   }));
   let activeParticleCount = 0;
-  const PARTICLE_COLORS = ['#00d9ff', '#a855f7'] as const;
 
   // Performance optimization state
   let cachedGradient: CanvasGradient | null = null;
@@ -106,6 +105,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let isSimulationActive = false;
   let frameCount = 0;
   let isAnimating = false;
+  let simulationSettledAt = 0; // Frame when simulation settled
+  const PARTICLE_IDLE_FRAMES = 300; // Stop spawning particles ~5 seconds after simulation settles
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
@@ -119,13 +120,15 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
   const GRID_CELL_SIZE = 50; // Pixels per cell
-  let spatialGrid = new Map<string, D3Node[]>();
+  const GRID_KEY_MULTIPLIER = 100000; // Supports grid coords from -50000 to +50000
+  let spatialGrid = new Map<number, D3Node[]>();
   let spatialGridValid = false;
 
-  const getSpatialKey = (x: number, y: number): string => {
+  // Use numeric key instead of string concatenation - avoids allocation
+  const getSpatialKey = (x: number, y: number): number => {
     const cellX = Math.floor(x / GRID_CELL_SIZE);
     const cellY = Math.floor(y / GRID_CELL_SIZE);
-    return `${cellX},${cellY}`;
+    return cellX * GRID_KEY_MULTIPLIER + cellY;
   };
 
   const rebuildSpatialGrid = () => {
@@ -333,6 +336,14 @@ const TopologyGraph: Component<Props> = (props) => {
   const maybeSpawnParticle = () => {
     // Only spawn every 8 frames and with 60% chance
     if (frameCount % 8 !== 0) return;
+
+    // Stop spawning particles after simulation has been idle for a while
+    // This allows the animation loop to eventually stop
+    if (!isSimulationActive && simulationSettledAt > 0 &&
+        frameCount - simulationSettledAt > PARTICLE_IDLE_FRAMES) {
+      return;
+    }
+
     if (graphLinks.length === 0 || activeParticleCount >= MAX_PARTICLES * 0.75 || Math.random() > 0.6) return;
 
     const linkIdx = Math.floor(Math.random() * graphLinks.length);
@@ -491,7 +502,11 @@ const TopologyGraph: Component<Props> = (props) => {
     // Maybe spawn a particle (throttled)
     maybeSpawnParticle();
 
-    // Draw Particles using object pool - no array mutations, no allocations
+    // Draw Particles - BATCHED by color for fewer draw calls
+    // Pre-calculate all particle positions first, then batch draw by color/layer
+    const particlePositions: { x: number; y: number; colorIdx: 0 | 1 }[] = [];
+
+    // Update particles and collect positions
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const slot = particlePool[i];
       if (!slot.active) continue;
@@ -516,36 +531,57 @@ const TopologyGraph: Component<Props> = (props) => {
       const tx = target.x ?? 0;
       const ty = target.y ?? 0;
 
-      const x = sx + (tx - sx) * slot.progress;
-      const y = sy + (ty - sy) * slot.progress;
-      const color = PARTICLE_COLORS[slot.colorIdx];
+      particlePositions.push({
+        x: sx + (tx - sx) * slot.progress,
+        y: sy + (ty - sy) * slot.progress,
+        colorIdx: slot.colorIdx
+      });
+    }
 
-      // Draw particle trail (2 trailing dots - reduced from 3 for performance)
-      const trailLength = 0.06;
-      for (let t = 1; t >= 0; t--) {
-        const trailProgress = Math.max(0, slot.progress - t * trailLength);
-        const trailX = sx + (tx - sx) * trailProgress;
-        const trailY = sy + (ty - sy) * trailProgress;
-        const trailOpacity = (2 - t) * 0.12; // Slightly higher opacity to compensate
-        const trailSize = 1.8 - t * 0.4;
-
-        ctx.beginPath();
-        ctx.arc(trailX, trailY, trailSize, 0, 2 * Math.PI);
-        ctx.fillStyle = slot.colorIdx === 0
-          ? `rgba(0,217,255,${trailOpacity})`
-          : `rgba(168,85,247,${trailOpacity})`;
-        ctx.fill();
-      }
-
-      // Draw particle with 2-layer glow (reduced from 3 for performance)
+    // Batch draw particles by color - significantly fewer ctx state changes
+    if (particlePositions.length > 0) {
+      // Outer glow layer - cyan particles
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = slot.colorIdx === 0 ? 'rgba(0,217,255,0.25)' : 'rgba(168,85,247,0.25)';
+      for (const p of particlePositions) {
+        if (p.colorIdx === 0) {
+          ctx.moveTo(p.x + 4, p.y);
+          ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+        }
+      }
+      ctx.fillStyle = 'rgba(0,217,255,0.25)';
       ctx.fill();
 
+      // Outer glow layer - purple particles
       ctx.beginPath();
-      ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
+      for (const p of particlePositions) {
+        if (p.colorIdx === 1) {
+          ctx.moveTo(p.x + 4, p.y);
+          ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+        }
+      }
+      ctx.fillStyle = 'rgba(168,85,247,0.25)';
+      ctx.fill();
+
+      // Core layer - cyan particles
+      ctx.beginPath();
+      for (const p of particlePositions) {
+        if (p.colorIdx === 0) {
+          ctx.moveTo(p.x + 1.5, p.y);
+          ctx.arc(p.x, p.y, 1.5, 0, 2 * Math.PI);
+        }
+      }
+      ctx.fillStyle = '#00d9ff';
+      ctx.fill();
+
+      // Core layer - purple particles
+      ctx.beginPath();
+      for (const p of particlePositions) {
+        if (p.colorIdx === 1) {
+          ctx.moveTo(p.x + 1.5, p.y);
+          ctx.arc(p.x, p.y, 1.5, 0, 2 * Math.PI);
+        }
+      }
+      ctx.fillStyle = '#a855f7';
       ctx.fill();
     }
 
@@ -586,12 +622,14 @@ const TopologyGraph: Component<Props> = (props) => {
       lastFrustumDims = { width, height };
     }
 
-    graphNodes.forEach(node => {
-      if (node.x === undefined || node.y === undefined) return;
+    // Draw nodes - use indexed for loop to avoid closure allocation
+    for (let i = 0, len = graphNodes.length; i < len; i++) {
+      const node = graphNodes[i];
+      if (node.x === undefined || node.y === undefined) continue;
 
       // Frustum culling using cached bounds
       if (node.x < cachedFrustum.minX || node.x > cachedFrustum.maxX ||
-          node.y < cachedFrustum.minY || node.y > cachedFrustum.maxY) return;
+          node.y < cachedFrustum.minY || node.y > cachedFrustum.maxY) continue;
 
       // Use cached styles instead of recalculating
       const cached = nodeStylesCache.get(node.id)!;
@@ -687,7 +725,7 @@ const TopologyGraph: Component<Props> = (props) => {
         ctx.fill();
         ctx.globalAlpha = 1.0;
       }
-    });
+    }
 
     // Draw Labels (Separate loop to be on top) - reuse cached selectedId/hoveredId
     ctx.textAlign = 'center';
@@ -697,8 +735,10 @@ const TopologyGraph: Component<Props> = (props) => {
     // Track last font to minimize ctx.font changes
     let lastFont = '';
 
-    graphNodes.forEach(node => {
-        if (node.x === undefined || node.y === undefined) return;
+    // Draw labels - use indexed for loop to avoid closure allocation
+    for (let i = 0, len = graphNodes.length; i < len; i++) {
+        const node = graphNodes[i];
+        if (node.x === undefined || node.y === undefined) continue;
         const shouldDrawLabel = node.type === 'node' || node.type === 'service' ||
                                 selectedId === node.id || hoveredId === node.id;
 
@@ -716,7 +756,7 @@ const TopologyGraph: Component<Props> = (props) => {
                 node.y + cached.r + 12
             );
         }
-    });
+    }
 
     ctx.restore();
 
@@ -850,6 +890,7 @@ const TopologyGraph: Component<Props> = (props) => {
       .force('y', d3.forceY(cy).strength(0.03))
       .on('end', () => {
         isSimulationActive = false;
+        simulationSettledAt = frameCount; // Record when simulation settled for particle idle timeout
       });
 
     // Run minimal warmup ticks synchronously to prevent initial explosion
@@ -862,6 +903,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // NOW start animation loop after warmup
     isSimulationActive = true;
+    simulationSettledAt = 0; // Reset idle timeout when simulation starts
     startAnimationLoop();
 
     // Zoom behavior
