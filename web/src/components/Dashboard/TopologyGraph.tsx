@@ -40,6 +40,10 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
 
 // Particle pool for zero-allocation animation
 const MAX_PARTICLES = 40;
+const LARGE_GRAPH_NODE_THRESHOLD = 600;
+const LARGE_GRAPH_LINK_THRESHOLD = 1200;
+const REDUCED_FPS = 30;
+const PARTICLE_IDLE_MS = 5000;
 interface ParticleSlot {
   active: boolean;
   sourceIdx: number;
@@ -85,6 +89,8 @@ const TopologyGraph: Component<Props> = (props) => {
   // Data state
   let graphNodes: D3Node[] = [];
   let graphLinks: D3Link[] = [];
+  let hostsLinks: D3Link[] = [];
+  let selectsLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
   let nodeIndexMap = new Map<string, number>(); // O(1) lookup for particle spawning
 
@@ -109,8 +115,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let isSimulationActive = false;
   let frameCount = 0;
   let isAnimating = false;
-  let simulationSettledAt = 0; // Frame when simulation settled
-  const PARTICLE_IDLE_FRAMES = 300; // Stop spawning particles ~5 seconds after simulation settles
+  let simulationSettledAt = 0; // Timestamp when simulation settled
+  let lastFrameTime = 0;
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
@@ -179,6 +185,8 @@ const TopologyGraph: Component<Props> = (props) => {
     const prevNodeMap = new Map(graphNodes.map(n => [n.id, n]));
     
     const links: D3Link[] = [];
+    const hosts: D3Link[] = [];
+    const selects: D3Link[] = [];
     const nodes: D3Node[] = [];
     const nodeMap = new Map<string, D3Node>();
     const nsMap = new Map<string, number>();
@@ -247,11 +255,13 @@ const TopologyGraph: Component<Props> = (props) => {
       if (pod.spec.nodeName) {
         const nodeId = `node-${pod.spec.nodeName}`;
         if (nodeMap.has(nodeId)) {
-          links.push({
+          const link: D3Link = {
             source: d3Node.id,
             target: nodeId,
             type: 'hosts',
-          });
+          };
+          links.push(link);
+          hosts.push(link);
         }
       }
     }
@@ -281,11 +291,13 @@ const TopologyGraph: Component<Props> = (props) => {
             ([k, v]) => pod.metadata.labels?.[k] === v
           );
           if (matches) {
-            links.push({
+            const link: D3Link = {
               source: d3Node.id,
               target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
               type: 'selects',
-            });
+            };
+            links.push(link);
+            selects.push(link);
           }
         }
       }
@@ -293,6 +305,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
     graphNodes = nodes;
     graphLinks = links;
+    hostsLinks = hosts;
+    selectsLinks = selects;
     namespaceMap = nsMap;
 
     // Build O(1) index map for particle spawning
@@ -337,14 +351,15 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   // Throttled particle spawning using object pool - zero allocations
-  const maybeSpawnParticle = () => {
+  const maybeSpawnParticle = (now: number, allowParticles: boolean) => {
+    if (!allowParticles) return;
     // Only spawn every 8 frames and with 60% chance
     if (frameCount % 8 !== 0) return;
 
     // Stop spawning particles after simulation has been idle for a while
     // This allows the animation loop to eventually stop
     if (!isSimulationActive && simulationSettledAt > 0 &&
-        frameCount - simulationSettledAt > PARTICLE_IDLE_FRAMES) {
+        now - simulationSettledAt > PARTICLE_IDLE_MS) {
       return;
     }
 
@@ -394,8 +409,23 @@ const TopologyGraph: Component<Props> = (props) => {
     const ctx = canvasRef.getContext('2d');
     if (!ctx) return;
 
+    const now = performance.now();
+    const isDense = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
+      graphLinks.length > LARGE_GRAPH_LINK_THRESHOLD;
+    const minFrameMs = isDense ? 1000 / REDUCED_FPS : 0;
+    if (isAnimating && minFrameMs > 0 && now - lastFrameTime < minFrameMs) {
+      rafId = requestAnimationFrame(draw);
+      return;
+    }
+    lastFrameTime = now;
+
     frameCount++;
     const { width, height } = dimensions();
+    const zoomLevel = transform.k;
+    const reduceDetail = isDense && zoomLevel < 0.85;
+    const reduceLinks = reduceDetail || zoomLevel < 0.5;
+    const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
+    const allowParticles = !reduceLinks;
 
     // Invalidate spatial grid when simulation is active (nodes are moving)
     if (isSimulationActive) {
@@ -422,7 +452,7 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.fillRect(0, 0, width, height);
 
     // Subtle animated scanline effect (every 60 frames)
-    if (frameCount % 2 === 0) {
+    if (!reduceLinks && frameCount % 2 === 0) {
       const scanY = (frameCount * 2) % height;
       ctx.fillStyle = 'rgba(0, 217, 255, 0.015)';
       ctx.fillRect(0, scanY, width, 2);
@@ -433,78 +463,86 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
+    // Frustum culling bounds - cache and only recalculate when transform changes
+    if (transform.x !== lastFrustumTransform.x ||
+        transform.y !== lastFrustumTransform.y ||
+        transform.k !== lastFrustumTransform.k ||
+        width !== lastFrustumDims.width ||
+        height !== lastFrustumDims.height) {
+      const margin = 50 / transform.k;
+      cachedFrustum.minX = -transform.x / transform.k - margin;
+      cachedFrustum.maxX = (width - transform.x) / transform.k + margin;
+      cachedFrustum.minY = -transform.y / transform.k - margin;
+      cachedFrustum.maxY = (height - transform.y) / transform.k + margin;
+      lastFrustumTransform = { x: transform.x, y: transform.y, k: transform.k };
+      lastFrustumDims = { width, height };
+    }
+
+    const minX = cachedFrustum.minX;
+    const maxX = cachedFrustum.maxX;
+    const minY = cachedFrustum.minY;
+    const maxY = cachedFrustum.maxY;
+    const shouldCullLinks = zoomLevel > 0.8;
+
     // Draw Links with enhanced styling - Batched
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const hostsLinks: D3Link[] = [];
-    const selectsLinks: D3Link[] = [];
-
-    for (const link of graphLinks) {
-      if (link.type === 'selects') selectsLinks.push(link);
-      else hostsLinks.push(link);
-    }
-
     // Batch Draw 'hosts' links (solid, cyan)
     if (hostsLinks.length > 0) {
-      // Glow
       ctx.beginPath();
       for (const link of hostsLinks) {
         const s = link.source as D3Node; const t = link.target as D3Node;
         if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+          if (shouldCullLinks) {
+            const sIn = s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY;
+            const tIn = t.x >= minX && t.x <= maxX && t.y >= minY && t.y <= maxY;
+            if (!sIn && !tIn) continue;
+          }
           ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
       }
-      ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
-      ctx.lineWidth = 5;
-      ctx.setLineDash([]);
-      ctx.stroke();
-
-      // Main
-      ctx.beginPath();
-      for (const link of hostsLinks) {
-        const s = link.source as D3Node; const t = link.target as D3Node;
-        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
-          ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
-        }
+      if (!reduceLinks) {
+        ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
+        ctx.lineWidth = 5;
+        ctx.setLineDash([]);
+        ctx.stroke();
       }
       ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
       ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
       ctx.stroke();
     }
 
     // Batch Draw 'selects' links (dashed, purple)
     if (selectsLinks.length > 0) {
-      // Glow
       ctx.beginPath();
       for (const link of selectsLinks) {
         const s = link.source as D3Node; const t = link.target as D3Node;
         if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
+          if (shouldCullLinks) {
+            const sIn = s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY;
+            const tIn = t.x >= minX && t.x <= maxX && t.y >= minY && t.y <= maxY;
+            if (!sIn && !tIn) continue;
+          }
             ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
       }
-      ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
-      ctx.lineWidth = 4;
-      ctx.setLineDash([]);
-      ctx.stroke();
-
-      // Main
-      ctx.beginPath();
-      for (const link of selectsLinks) {
-        const s = link.source as D3Node; const t = link.target as D3Node;
-        if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
-            ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
-        }
+      if (!reduceLinks) {
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([]);
+        ctx.stroke();
       }
       ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
       ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash(reduceLinks ? [] : [4, 4]);
       ctx.stroke();
     }
     ctx.setLineDash([]); // Reset
 
     // Maybe spawn a particle (throttled)
-    maybeSpawnParticle();
+    maybeSpawnParticle(now, allowParticles);
 
     // Draw Particles - BATCHED by color for fewer draw calls
     // Use pre-allocated pool to avoid per-frame allocation
@@ -615,29 +653,13 @@ const TopologyGraph: Component<Props> = (props) => {
     // Draw Nodes with enhanced glow effects
     const time = frameCount * 0.05; // For subtle animation
 
-    // Frustum culling bounds - cache and only recalculate when transform changes
-    if (transform.x !== lastFrustumTransform.x ||
-        transform.y !== lastFrustumTransform.y ||
-        transform.k !== lastFrustumTransform.k ||
-        width !== lastFrustumDims.width ||
-        height !== lastFrustumDims.height) {
-      const margin = 50 / transform.k;
-      cachedFrustum.minX = -transform.x / transform.k - margin;
-      cachedFrustum.maxX = (width - transform.x) / transform.k + margin;
-      cachedFrustum.minY = -transform.y / transform.k - margin;
-      cachedFrustum.maxY = (height - transform.y) / transform.k + margin;
-      lastFrustumTransform = { x: transform.x, y: transform.y, k: transform.k };
-      lastFrustumDims = { width, height };
-    }
-
     // Draw nodes - use indexed for loop to avoid closure allocation
     for (let i = 0, len = graphNodes.length; i < len; i++) {
       const node = graphNodes[i];
       if (node.x === undefined || node.y === undefined) continue;
 
       // Frustum culling using cached bounds
-      if (node.x < cachedFrustum.minX || node.x > cachedFrustum.maxX ||
-          node.y < cachedFrustum.minY || node.y > cachedFrustum.maxY) continue;
+      if (node.x < minX || node.x > maxX || node.y < minY || node.y > maxY) continue;
 
       // Use cached styles instead of recalculating
       const cached = nodeStylesCache.get(node.id)!;
@@ -693,7 +715,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.stroke();
 
       // Inner Highlight Ring for nodes (enhanced)
-      if (node.type === 'node') {
+      if (node.type === 'node' && !reduceNodeDetail) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, r - 4, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -710,12 +732,14 @@ const TopologyGraph: Component<Props> = (props) => {
       // Enhanced center dot for pods with glow
       if (node.type === 'pod') {
         // Outer glow dot
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.4;
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
+        if (!reduceNodeDetail) {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.4;
+          ctx.fill();
+          ctx.globalAlpha = 1.0;
+        }
 
         // Core dot
         ctx.beginPath();
@@ -725,7 +749,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
 
       // Service diamond indicator
-      if (node.type === 'service') {
+      if (node.type === 'service' && !reduceNodeDetail) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, 4, 0, 2 * Math.PI);
         ctx.fillStyle = color;
@@ -744,13 +768,14 @@ const TopologyGraph: Component<Props> = (props) => {
     let lastFont = '';
 
     // Draw labels - use indexed for loop to avoid closure allocation
+    const labelZoomThreshold = reduceDetail ? 0.7 : 0.4;
     for (let i = 0, len = graphNodes.length; i < len; i++) {
         const node = graphNodes[i];
         if (node.x === undefined || node.y === undefined) continue;
         const shouldDrawLabel = node.type === 'node' || node.type === 'service' ||
                                 selectedId === node.id || hoveredId === node.id;
 
-        if (shouldDrawLabel && transform.k > 0.4) {
+        if (shouldDrawLabel && zoomLevel > labelZoomThreshold) {
             const cached = nodeStylesCache.get(node.id)!;
             const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
             if (font !== lastFont) {
@@ -823,7 +848,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
       // Trigger redraw for selection visual feedback
       if (!isAnimating) {
-        requestAnimationFrame(draw);
+        startAnimationLoop();
       }
   };
 
@@ -841,7 +866,7 @@ const TopologyGraph: Component<Props> = (props) => {
           if (canvasRef) canvasRef.style.cursor = node ? 'pointer' : 'default';
           // Trigger redraw for hover visual feedback (single frame, not continuous)
           if (!isAnimating) {
-            requestAnimationFrame(draw);
+            startAnimationLoop();
           }
       }
   };
@@ -900,7 +925,7 @@ const TopologyGraph: Component<Props> = (props) => {
         : null)
       .on('end', () => {
         isSimulationActive = false;
-        simulationSettledAt = frameCount;
+        simulationSettledAt = performance.now();
       });
 
     // Run warmup ticks synchronously to stabilize layout before first render
