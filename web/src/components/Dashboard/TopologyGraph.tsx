@@ -99,6 +99,10 @@ const TopologyGraph: Component<Props> = (props) => {
   }));
   let activeParticleCount = 0;
 
+  // Pre-allocated array for particle positions - avoids allocation every frame
+  const particlePositionsPool: { x: number; y: number; colorIdx: 0 | 1 }[] =
+    Array.from({ length: MAX_PARTICLES }, () => ({ x: 0, y: 0, colorIdx: 0 }));
+
   // Performance optimization state
   let cachedGradient: CanvasGradient | null = null;
   let cachedGradientDims = { width: 0, height: 0 };
@@ -503,10 +507,10 @@ const TopologyGraph: Component<Props> = (props) => {
     maybeSpawnParticle();
 
     // Draw Particles - BATCHED by color for fewer draw calls
-    // Pre-calculate all particle positions first, then batch draw by color/layer
-    const particlePositions: { x: number; y: number; colorIdx: 0 | 1 }[] = [];
+    // Use pre-allocated pool to avoid per-frame allocation
+    let particleCount = 0;
 
-    // Update particles and collect positions
+    // Update particles and collect positions into pool
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const slot = particlePool[i];
       if (!slot.active) continue;
@@ -531,18 +535,19 @@ const TopologyGraph: Component<Props> = (props) => {
       const tx = target.x ?? 0;
       const ty = target.y ?? 0;
 
-      particlePositions.push({
-        x: sx + (tx - sx) * slot.progress,
-        y: sy + (ty - sy) * slot.progress,
-        colorIdx: slot.colorIdx
-      });
+      // Reuse pool slot instead of allocating
+      const pos = particlePositionsPool[particleCount++];
+      pos.x = sx + (tx - sx) * slot.progress;
+      pos.y = sy + (ty - sy) * slot.progress;
+      pos.colorIdx = slot.colorIdx;
     }
 
     // Batch draw particles by color - significantly fewer ctx state changes
-    if (particlePositions.length > 0) {
+    if (particleCount > 0) {
       // Outer glow layer - cyan particles
       ctx.beginPath();
-      for (const p of particlePositions) {
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
         if (p.colorIdx === 0) {
           ctx.moveTo(p.x + 4, p.y);
           ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
@@ -553,7 +558,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
       // Outer glow layer - purple particles
       ctx.beginPath();
-      for (const p of particlePositions) {
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
         if (p.colorIdx === 1) {
           ctx.moveTo(p.x + 4, p.y);
           ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
@@ -564,7 +570,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
       // Core layer - cyan particles
       ctx.beginPath();
-      for (const p of particlePositions) {
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
         if (p.colorIdx === 0) {
           ctx.moveTo(p.x + 1.5, p.y);
           ctx.arc(p.x, p.y, 1.5, 0, 2 * Math.PI);
@@ -575,7 +582,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
       // Core layer - purple particles
       ctx.beginPath();
-      for (const p of particlePositions) {
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
         if (p.colorIdx === 1) {
           ctx.moveTo(p.x + 1.5, p.y);
           ctx.arc(p.x, p.y, 1.5, 0, 2 * Math.PI);
@@ -873,33 +881,38 @@ const TopologyGraph: Component<Props> = (props) => {
       node.y = cy + Math.sin(angle) * initialRadius * (0.5 + Math.random() * 0.5);
     });
 
-    // Create simulation with gentle initial alpha
+    // Create simulation with reduced force complexity
+    // Removed redundant x/y forces (center handles this)
     simulation = d3.forceSimulation<D3Node>(graphNodes)
-      .alpha(0.4) // Start with lower alpha for gentler initial movement
-      .alphaDecay(0.02) // Slower decay for smoother settling
-      .alphaMin(0.001) // Stop earlier
-      .velocityDecay(0.4) // Higher damping for smoother animation
+      .alpha(0.3) // Lower initial alpha for gentler start
+      .alphaDecay(0.03) // Faster decay to settle quicker
+      .alphaMin(0.001)
+      .velocityDecay(0.5) // Higher damping for stability
       .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
         .id(d => d.id)
         .distance(linkDistance)
-        .strength(0.2)) // Gentler link force
-      .force('charge', d3.forceManyBody().strength(chargeStrength).distanceMax(300))
-      .force('center', d3.forceCenter(cx, cy).strength(0.05))
-      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 12).strength(0.7))
-      .force('x', d3.forceX(cx).strength(0.03))
-      .force('y', d3.forceY(cy).strength(0.03))
+        .strength(0.3))
+      .force('charge', d3.forceManyBody().strength(chargeStrength).distanceMax(250))
+      .force('center', d3.forceCenter(cx, cy).strength(0.1))
+      // Collision is expensive - only enable for smaller graphs
+      .force('collision', graphNodes.length < 200
+        ? d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 8).strength(0.5)
+        : null)
       .on('end', () => {
         isSimulationActive = false;
-        simulationSettledAt = frameCount; // Record when simulation settled for particle idle timeout
+        simulationSettledAt = frameCount;
       });
 
-    // Run minimal warmup ticks synchronously to prevent initial explosion
-    // Using more ticks for better stability on load
-    // OPTIMIZATION: Removed synchronous warmup loop to prevent UI blocking
+    // Run warmup ticks synchronously to stabilize layout before first render
+    // This prevents the chaotic initial explosion
     simulation.stop();
-    
-    // Start with higher energy to settle visually
-    simulation.alpha(1.0).restart();
+    const warmupTicks = Math.min(100, Math.max(30, graphNodes.length));
+    for (let i = 0; i < warmupTicks; i++) {
+      simulation.tick();
+    }
+
+    // Continue with reduced alpha after warmup
+    simulation.alpha(0.2).restart();
 
     // NOW start animation loop after warmup
     isSimulationActive = true;
@@ -965,10 +978,9 @@ const TopologyGraph: Component<Props> = (props) => {
       // Invalidate gradient cache on resize
       cachedGradient = null;
       if (simulation && rect.width > 0) {
-        simulation.force('center', d3.forceCenter(rect.width / 2, rect.height / 2));
-        simulation.force('x', d3.forceX(rect.width / 2).strength(0.04));
-        simulation.force('y', d3.forceY(rect.height / 2).strength(0.04));
-        simulation.alpha(0.3).restart();
+        // Only update center force - keep it simple
+        simulation.force('center', d3.forceCenter(rect.width / 2, rect.height / 2).strength(0.1));
+        simulation.alpha(0.15).restart(); // Gentler restart on resize
         isSimulationActive = true;
         startAnimationLoop();
       }
