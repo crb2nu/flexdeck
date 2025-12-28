@@ -2,6 +2,7 @@ package litellm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,15 +20,21 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type openAIModelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
 // ModelMetrics holds metrics for a single model
 type ModelMetrics struct {
-	Model           string    `json:"model"`
-	TotalTokens     float64   `json:"total_tokens"`
-	InputTokens     float64   `json:"input_tokens"`
-	OutputTokens    float64   `json:"output_tokens"`
-	RequestCount    float64   `json:"request_count"`
-	TotalLatencyMs  float64   `json:"total_latency_ms"`
-	Timestamp       time.Time `json:"timestamp"`
+	Model          string    `json:"model"`
+	TotalTokens    float64   `json:"total_tokens"`
+	InputTokens    float64   `json:"input_tokens"`
+	OutputTokens   float64   `json:"output_tokens"`
+	RequestCount   float64   `json:"request_count"`
+	TotalLatencyMs float64   `json:"total_latency_ms"`
+	Timestamp      time.Time `json:"timestamp"`
 }
 
 // NewClient creates a new LiteLLM client
@@ -84,6 +91,38 @@ func (c *Client) ScrapeMetrics(ctx context.Context) ([]ModelMetrics, error) {
 	}
 
 	return parsePrometheusMetrics(resp.Body)
+}
+
+// ListModels returns the model IDs exposed via LiteLLM's OpenAI-compatible /v1/models endpoint.
+func (c *Client) ListModels(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	c.addAuthHeader(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var parsed openAIModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, fmt.Errorf("decode models: %w", err)
+	}
+
+	out := make([]string, 0, len(parsed.Data))
+	for _, item := range parsed.Data {
+		if item.ID != "" {
+			out = append(out, item.ID)
+		}
+	}
+	return out, nil
 }
 
 // parsePrometheusMetrics parses Prometheus text format into ModelMetrics

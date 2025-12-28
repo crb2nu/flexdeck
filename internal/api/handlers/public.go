@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/flexinfer/flexdeck/internal/models"
 )
 
 // Public API handlers expose sanitized, read-only data for the public portfolio site.
@@ -61,6 +64,12 @@ type PublicTopologyResponse struct {
 	Services   []PublicService `json:"services"`
 	UpdatedAt  string          `json:"updatedAt"`
 	ClusterAge string          `json:"clusterAge"` // "2+ years" etc
+	Source     string          `json:"source"`     // "live" | "demo"
+}
+
+func publicAllowDemoFallback() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("PUBLIC_API_ALLOW_DEMO")))
+	return v == "1" || v == "true" || v == "yes"
 }
 
 // sanitizeNodeName converts real node names to generic display names
@@ -135,8 +144,13 @@ func detectNodeType(name string, roles []string) string {
 
 func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
-		// Return demo data if K8s is disabled
-		respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "k8s client unavailable",
+		})
 		return
 	}
 
@@ -146,21 +160,39 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 	nodes, err := h.k8s.GetNodes(ctx)
 	if err != nil {
 		slog.Error("failed to fetch nodes for public API", "error", err)
-		respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to fetch cluster nodes",
+		})
 		return
 	}
 
 	pods, err := h.k8s.GetPods(ctx, "")
 	if err != nil {
 		slog.Error("failed to fetch pods for public API", "error", err)
-		respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to fetch cluster pods",
+		})
 		return
 	}
 
 	services, err := h.k8s.GetServices(ctx, "")
 	if err != nil {
 		slog.Error("failed to fetch services for public API", "error", err)
-		respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicTopologyDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to fetch cluster services",
+		})
 		return
 	}
 
@@ -281,6 +313,7 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 		Services:   publicServices,
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 		ClusterAge: "2+ years",
+		Source:     "live",
 	}
 
 	respondJSON(w, http.StatusOK, resp)
@@ -324,6 +357,7 @@ func getPublicTopologyDemo() PublicTopologyResponse {
 		},
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 		ClusterAge: "2+ years",
+		Source:     "demo",
 	}
 }
 
@@ -358,6 +392,7 @@ type PublicCIPipeline struct {
 type PublicCIResponse struct {
 	Pipelines []PublicCIPipeline `json:"pipelines"`
 	UpdatedAt string             `json:"updatedAt"`
+	Source    string             `json:"source"` // "live" | "demo"
 }
 
 // sanitizeProjectName keeps project names generic
@@ -375,8 +410,13 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	token := h.cfg.GitLab.Token
 
 	if token == "" {
-		// Return demo data if GitLab is not configured
-		respondJSON(w, http.StatusOK, getPublicCIDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicCIDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "gitlab token not configured",
+		})
 		return
 	}
 
@@ -387,7 +427,13 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		slog.Error("failed to create GitLab request", "error", err)
-		respondJSON(w, http.StatusOK, getPublicCIDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicCIDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to create gitlab request",
+		})
 		return
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
@@ -395,13 +441,25 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Error("failed to fetch GitLab projects", "error", err)
-		respondJSON(w, http.StatusOK, getPublicCIDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicCIDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to fetch gitlab projects",
+		})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respondJSON(w, http.StatusOK, getPublicCIDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicCIDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": fmt.Sprintf("gitlab returned %d", resp.StatusCode),
+		})
 		return
 	}
 
@@ -411,7 +469,13 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		DefaultBranch     string `json:"default_branch"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-		respondJSON(w, http.StatusOK, getPublicCIDemo())
+		if publicAllowDemoFallback() {
+			respondJSON(w, http.StatusOK, getPublicCIDemo())
+			return
+		}
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "failed to decode gitlab project list",
+		})
 		return
 	}
 
@@ -527,6 +591,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, PublicCIResponse{
 		Pipelines: pipelines,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:    "live",
 	})
 }
 
@@ -576,6 +641,7 @@ func getPublicCIDemo() PublicCIResponse {
 			},
 		},
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:    "demo",
 	}
 }
 
@@ -599,11 +665,13 @@ type PublicMetricsSummary struct {
 		AvgLatencyMs   float64 `json:"avgLatencyMs"`
 	} `json:"ai"`
 	UpdatedAt string `json:"updatedAt"`
+	Source    string `json:"source"` // "live" | "demo" | "mixed"
 }
 
 func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 	summary := PublicMetricsSummary{}
 	summary.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	summary.Source = "mixed"
 
 	// Try to gather real metrics
 	if h.k8s != nil {
@@ -634,12 +702,8 @@ func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fill in demo values for metrics we can't easily expose
-	if summary.Cluster.NodeCount == 0 {
-		summary.Cluster.NodeCount = 5
-		summary.Cluster.PodCount = 45
-		summary.Cluster.GPUCount = 1
-		summary.Cluster.HealthScore = 98
+	if summary.Cluster.NodeCount > 0 || summary.Cluster.PodCount > 0 {
+		summary.Source = "live"
 	}
 
 	// These would require Prometheus queries - use reasonable demo values
@@ -647,9 +711,34 @@ func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 	summary.Cluster.MemPercent = 62.3
 	summary.Cluster.GPUPercent = 78.2
 
-	summary.AI.ModelsLoaded = 3
-	summary.AI.InferenceCount = 1247
-	summary.AI.AvgLatencyMs = 245.8
+	// AI metrics: prefer real sources when available
+	if h.modelsRegistry != nil {
+		for _, m := range h.modelsRegistry.List() {
+			if m.DeploymentStatus == models.DeploymentDeployed {
+				summary.AI.ModelsLoaded++
+			}
+		}
+	}
+
+	if h.metricsStore != nil {
+		ctx := r.Context()
+		throughput, err := h.metricsStore.GetThroughput(ctx)
+		if err == nil && len(throughput) > 0 {
+			var totalReqPerMin float64
+			var latencyWeighted float64
+			for _, t := range throughput {
+				totalReqPerMin += t.RequestsPerMin
+				latencyWeighted += t.AvgLatencyMs * t.RequestsPerMin
+			}
+			if totalReqPerMin > 0 {
+				summary.AI.InferenceCount = int(totalReqPerMin + 0.5) // requests/min as an integer
+				summary.AI.AvgLatencyMs = latencyWeighted / totalReqPerMin
+			}
+			if summary.AI.ModelsLoaded == 0 {
+				summary.AI.ModelsLoaded = len(throughput)
+			}
+		}
+	}
 
 	respondJSON(w, http.StatusOK, summary)
 }
@@ -669,19 +758,174 @@ type PublicModelInfo struct {
 type PublicModelsResponse struct {
 	Models    []PublicModelInfo `json:"models"`
 	UpdatedAt string            `json:"updatedAt"`
+	Source    string            `json:"source"` // "live" | "demo"
 }
 
 func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
-	// For now, return a curated list of what's running
-	// In the future, this could query vLLM or litellm for real model status
-	models := []PublicModelInfo{
-		{ID: "1", Name: "Qwen 2.5 72B", Type: "llm", Status: "running", Parameters: "72B"},
-		{ID: "2", Name: "Mistral 7B", Type: "llm", Status: "running", Parameters: "7B"},
-		{ID: "3", Name: "Nomic Embed", Type: "embedding", Status: "running", Parameters: "137M"},
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Prefer the local models registry when available (reflects actual deployments)
+	if h.modelsRegistry != nil {
+		items := h.modelsRegistry.List()
+		out := make([]PublicModelInfo, 0, len(items))
+
+		for _, m := range items {
+			if m == nil {
+				continue
+			}
+
+			modelType := "llm"
+			switch m.Type {
+			case models.TypeEmbedding:
+				modelType = "embedding"
+			case models.TypeDiffusion:
+				modelType = "image"
+			}
+
+			status := "unknown"
+			switch m.DeploymentStatus {
+			case models.DeploymentDeployed:
+				status = "running"
+			case models.DeploymentPending:
+				status = "pending"
+			case models.DeploymentStopped:
+				status = "stopped"
+			case models.DeploymentFailed:
+				status = "failed"
+			default:
+				// Keep "unknown" (e.g. not deployed yet)
+			}
+
+			out = append(out, PublicModelInfo{
+				ID:         m.ID,
+				Name:       m.Name,
+				Type:       modelType,
+				Status:     status,
+				Parameters: inferModelParameters(m),
+			})
+		}
+
+		respondJSON(w, http.StatusOK, PublicModelsResponse{
+			Models:    out,
+			UpdatedAt: now,
+			Source:    "live",
+		})
+		return
 	}
 
-	respondJSON(w, http.StatusOK, PublicModelsResponse{
-		Models:    models,
-		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	// Next best: ask LiteLLM for its active model list (OpenAI-compatible).
+	if h.litellm != nil {
+		ctx := r.Context()
+		modelIDs, err := h.litellm.ListModels(ctx)
+		if err == nil && len(modelIDs) > 0 {
+			out := make([]PublicModelInfo, 0, len(modelIDs))
+			for i, id := range modelIDs {
+				out = append(out, PublicModelInfo{
+					ID:         fmt.Sprintf("m-%d", i+1),
+					Name:       id,
+					Type:       "llm",
+					Status:     "running",
+					Parameters: inferModelParameters(&models.Model{Name: id}),
+				})
+			}
+			respondJSON(w, http.StatusOK, PublicModelsResponse{
+				Models:    out,
+				UpdatedAt: now,
+				Source:    "live",
+			})
+			return
+		}
+	}
+
+	// Fallback: infer active models from LiteLLM metrics (if configured)
+	if h.metricsStore != nil {
+		ctx := r.Context()
+		throughput, err := h.metricsStore.GetThroughput(ctx)
+		if err == nil {
+			out := make([]PublicModelInfo, 0, len(throughput))
+			for i, t := range throughput {
+				out = append(out, PublicModelInfo{
+					ID:         fmt.Sprintf("m-%d", i+1),
+					Name:       t.Model,
+					Type:       "llm",
+					Status:     "running",
+					Parameters: "",
+				})
+			}
+			respondJSON(w, http.StatusOK, PublicModelsResponse{
+				Models:    out,
+				UpdatedAt: now,
+				Source:    "live",
+			})
+			return
+		}
+	}
+
+	if publicAllowDemoFallback() {
+		respondJSON(w, http.StatusOK, PublicModelsResponse{
+			Models:    []PublicModelInfo{},
+			UpdatedAt: now,
+			Source:    "demo",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+		"error": "models status unavailable",
 	})
+}
+
+func inferModelParameters(m *models.Model) string {
+	if m == nil {
+		return ""
+	}
+
+	// Look for common metadata keys
+	if m.Metadata != nil {
+		for _, key := range []string{"parameters", "params", "parameter_count", "param_count", "size_label"} {
+			if v, ok := m.Metadata[key]; ok {
+				switch vv := v.(type) {
+				case string:
+					if vv != "" {
+						return vv
+					}
+				case float64:
+					if vv > 0 {
+						// Best-effort: treat as a raw count and abbreviate
+						if vv >= 1_000_000_000 {
+							return fmt.Sprintf("%.0fB", vv/1_000_000_000)
+						}
+						if vv >= 1_000_000 {
+							return fmt.Sprintf("%.0fM", vv/1_000_000)
+						}
+						if vv >= 1_000 {
+							return fmt.Sprintf("%.0fK", vv/1_000)
+						}
+						return fmt.Sprintf("%.0f", vv)
+					}
+				}
+			}
+		}
+	}
+
+	// Scan tags for parameter-like tokens (e.g. "7B", "72B", "137M")
+	for _, tag := range m.Tags {
+		if p := extractParamToken(tag); p != "" {
+			return p
+		}
+	}
+	if p := extractParamToken(m.Name); p != "" {
+		return p
+	}
+
+	return ""
+}
+
+func extractParamToken(s string) string {
+	re := regexp.MustCompile(`(?i)\b(\d+(?:\.\d+)?)([bmk])\b`)
+	matches := re.FindStringSubmatch(s)
+	if len(matches) != 3 {
+		return ""
+	}
+	return strings.ToUpper(matches[1] + matches[2])
 }
