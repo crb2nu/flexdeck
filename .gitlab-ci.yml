@@ -33,6 +33,23 @@ variables:
     git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"
     git checkout -q -f "${CI_COMMIT_SHA}"
 
+.apk_add_git: &apk_add_git
+  - |
+    set -euo pipefail
+    if command -v git >/dev/null 2>&1; then
+      exit 0
+    fi
+    for i in 1 2 3; do
+      if apk add --no-cache git; then
+        exit 0
+      fi
+      echo "apk add git failed (attempt $i/3); retrying..."
+      sleep $((i * 3))
+    done
+    echo "Falling back to alternate Alpine mirror..."
+    sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.edge.kernel.org#' /etc/apk/repositories
+    apk add --no-cache git
+
 # Cache settings for GitLab runner cache (S3/MinIO)
 .go-cache: &go-cache
   cache:
@@ -63,7 +80,7 @@ test:backend:
     GOPATH: $CI_PROJECT_DIR/.go
     GOPROXY: "http://athens.ci.svc.cluster.local:3000,direct"
   before_script:
-    - apk add --no-cache git
+    - *apk_add_git
   script:
     - go mod download
     - go vet ./...
@@ -86,7 +103,7 @@ test:frontend:
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
   before_script:
-    - apk add --no-cache git
+    - *apk_add_git
     - *clone_repo
   script:
     - cd web
