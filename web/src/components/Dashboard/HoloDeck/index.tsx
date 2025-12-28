@@ -1,4 +1,4 @@
-import { Component, onMount, onCleanup, createEffect, createSignal, createMemo, Show } from 'solid-js';
+import { Component, onMount, onCleanup, createEffect, createSignal, createMemo, Show, untrack } from 'solid-js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -88,23 +88,34 @@ const HoloDeck: Component<Props> = (props) => {
   const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
 
   // Data change detection - avoid unnecessary full rebuilds
-  let lastSceneDataKey = '';
-  const getSceneDataKey = (): string => {
+  // Use memo to compute stable key that only updates when data meaningfully changes
+  const sceneDataKey = createMemo<string>(() => {
     const nodeCount = props.nodes.length;
     const podCount = props.pods.length;
     const svcCount = props.services.length;
-    // Sample first/last for lightweight change detection
-    const nodeSample = nodeCount > 0
-      ? `${props.nodes[0]?.metadata.name}:${props.nodes[nodeCount-1]?.metadata.name}`
-      : '';
-    const podSample = podCount > 0
-      ? `${props.pods[0]?.metadata.name}:${props.pods[podCount-1]?.status?.phase}`
-      : '';
-    const svcSample = svcCount > 0
-      ? `${props.services[0]?.metadata.name}`
-      : '';
-    return `${nodeCount}|${podCount}|${svcCount}|${nodeSample}|${podSample}|${svcSample}`;
-  };
+
+    // Hash node names and states
+    const nodeHash = props.nodes.map(n => {
+      const isReady = n.status?.conditions?.find(c => c.type === 'Ready')?.status === 'True';
+      return `${n.metadata.name}:${isReady ? 'R' : 'N'}`;
+    }).join(',');
+
+    // Hash pod names, phases, and node assignments (sample middle elements too)
+    const podSampleIndices = [0, Math.floor(podCount / 4), Math.floor(podCount / 2), Math.floor(podCount * 3 / 4), podCount - 1].filter(i => i >= 0 && i < podCount);
+    const podHash = podSampleIndices.map(i => {
+      const p = props.pods[i];
+      return p ? `${p.metadata.name}:${p.status?.phase}:${p.spec.nodeName}` : '';
+    }).join(',');
+
+    // Hash service count and names
+    const svcHash = props.services.slice(0, 10).map(s => s.metadata.name).join(',');
+
+    return `${nodeCount}|${podCount}|${svcCount}|${nodeHash}|${podHash}|${svcHash}`;
+  });
+
+  // Debounce scene rebuilds to prevent rapid successive updates
+  let rebuildDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const REBUILD_DEBOUNCE_MS = 100;
 
   // Track previous object IDs for incremental updates
   let prevNodeIds = new Set<string>();
@@ -1104,21 +1115,35 @@ const HoloDeck: Component<Props> = (props) => {
     // --- SCENE BUILDER (EFFECT) ---
     // Watch for filter changes and apply visual updates
     // (Moving this effect up to ensure it exists before scene builder, though order fine in Solid)
-    
+
+    // Reference for tracking last applied key (outside effect for persistence)
+    let lastAppliedKey = '';
+
     // --- SCENE BUILDER (EFFECT) ---
     // Rebuild scene when props change, with data caching for enhanced tooltips
+    // Uses memo-based change detection and debouncing to prevent stuttering
     createEffect(() => {
-        // Track props for reactivity
-        const currentNodes = props.nodes;
-        const currentPods = props.pods;
-        const currentServices = props.services;
+        // Track ONLY the memoized key to prevent unnecessary triggers
+        const dataKey = sceneDataKey();
 
-        // Skip rebuild if data hasn't meaningfully changed
-        const newDataKey = getSceneDataKey();
-        if (newDataKey === lastSceneDataKey && objectMap.size > 0) {
-            return; // No significant change, skip expensive rebuild
+        // Skip if no meaningful change
+        if (dataKey === lastAppliedKey && objectMap.size > 0) {
+            return;
         }
-        lastSceneDataKey = newDataKey;
+
+        // Debounce rapid updates (e.g., from SSE/WebSocket streams)
+        if (rebuildDebounceTimer) {
+            clearTimeout(rebuildDebounceTimer);
+        }
+
+        rebuildDebounceTimer = setTimeout(() => {
+            // Use untrack to read current props without creating additional subscriptions
+            const currentNodes = untrack(() => props.nodes);
+            const currentPods = untrack(() => props.pods);
+            const currentServices = untrack(() => props.services);
+
+            // Update last applied key
+            lastAppliedKey = dataKey;
 
         // Compute current IDs for incremental update tracking
         const currentNodeIds = new Set(currentNodes.map(n => `node-${n.metadata.name}`));
@@ -1538,6 +1563,7 @@ const HoloDeck: Component<Props> = (props) => {
 
         // Apply initial filter state
         applyFilterVisuals();
+        }, REBUILD_DEBOUNCE_MS);
     });
 
     // Watch for filter changes and apply visual updates
@@ -1560,6 +1586,11 @@ const HoloDeck: Component<Props> = (props) => {
 
 
     onCleanup(() => {
+        // Cancel debounce timer
+        if (rebuildDebounceTimer) {
+            clearTimeout(rebuildDebounceTimer);
+        }
+
         window.removeEventListener('resize', handleResize);
         containerRef?.removeEventListener('mousemove', onMouseMove);
         containerRef?.removeEventListener('click', onClick);

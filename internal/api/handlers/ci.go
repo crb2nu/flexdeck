@@ -35,8 +35,8 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Fetch Projects
-	// Using simple membership=true to get user's projects
-	apiURL := fmt.Sprintf("%s/api/v4/projects?membership=true&simple=true&per_page=20", gitlabURL)
+	// Query all visible projects (admin tokens may not have membership but can see all)
+	apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=20&order_by=last_activity_at", gitlabURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
