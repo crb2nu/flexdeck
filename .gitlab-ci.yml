@@ -39,6 +39,13 @@ variables:
     if command -v git >/dev/null 2>&1; then
       exit 0
     fi
+    if [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+      echo "Installing CA certificates..."
+      sed -i 's#^https:#http:#' /etc/apk/repositories
+      apk add --no-cache ca-certificates || true
+      update-ca-certificates || true
+      sed -i 's#^http:#https:#' /etc/apk/repositories
+    fi
     for i in 1 2 3; do
       if apk add --no-cache git; then
         exit 0
@@ -46,8 +53,8 @@ variables:
       echo "apk add git failed (attempt $i/3); retrying..."
       sleep $((i * 3))
     done
-    echo "Falling back to alternate Alpine mirror..."
-    sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.edge.kernel.org#' /etc/apk/repositories
+    echo "Falling back to alternate Alpine mirror over HTTP..."
+    sed -i 's#https://dl-cdn.alpinelinux.org#http://mirrors.edge.kernel.org#' /etc/apk/repositories
     apk add --no-cache git
 
 # Cache settings for GitLab runner cache (S3/MinIO)
