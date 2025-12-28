@@ -1,11 +1,12 @@
-import { Component, onMount, onCleanup, createEffect, createSignal, Show } from 'solid-js';
+import { Component, onMount, onCleanup, createEffect, createSignal, createMemo, Show } from 'solid-js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
-import { getNodeMetrics } from '../../../stores/metrics';
+import { getNodeMetrics, metricsStore } from '../../../stores/metrics';
+import { formatBytes, formatPercent } from '../../../lib/format';
 import {
     QUALITY_PRESETS,
     HOLO_THEME,
@@ -173,6 +174,63 @@ const HoloDeck: Component<Props> = (props) => {
       podsTotal
     };
   };
+
+  const clusterHealth = createMemo<ClusterHealthData>(() => computeClusterHealth());
+
+  const hasClusterData = createMemo(() => {
+    const health = clusterHealth();
+    return health.nodesTotal > 0 || health.podsTotal > 0;
+  });
+
+  const healthState = createMemo<'healthy' | 'warning' | 'critical' | 'nodata'>(() => {
+    if (!hasClusterData()) return 'nodata';
+    const health = clusterHealth();
+    if (health.healthPercent < HEALTH_HUB_CONFIG.thresholds.critical) return 'critical';
+    if (health.healthPercent < HEALTH_HUB_CONFIG.thresholds.warning) return 'warning';
+    return 'healthy';
+  });
+
+  const healthLabel = createMemo(() => {
+    const state = healthState();
+    return state === 'nodata' ? 'NO DATA' : state.toUpperCase();
+  });
+
+  const healthPercentText = createMemo(() => {
+    if (!hasClusterData()) return '--';
+    return formatPercent(clusterHealth().healthPercent * 100, 0);
+  });
+
+  const healthTextClass = () => {
+    const state = healthState();
+    if (state === 'healthy') return 'text-status-ok';
+    if (state === 'warning') return 'text-status-warn';
+    if (state === 'critical') return 'text-status-error';
+    return 'text-text-dim';
+  };
+
+  const metricsSnapshot = () => metricsStore();
+  const hasMetrics = createMemo(() => {
+    const metrics = metricsSnapshot();
+    return !metrics.loading && metrics.lastUpdate > 0;
+  });
+
+  const clusterCpuText = createMemo(() => {
+    if (!hasMetrics()) return '--';
+    return formatPercent(metricsSnapshot().clusterCpu, 0);
+  });
+
+  const clusterMemoryText = createMemo(() => {
+    const metrics = metricsSnapshot();
+    if (!hasMetrics() || metrics.clusterMemoryTotal <= 0) return '--';
+    return `${formatBytes(metrics.clusterMemory)} / ${formatBytes(metrics.clusterMemoryTotal)}`;
+  });
+
+  const clusterMemoryPercentText = createMemo(() => {
+    const metrics = metricsSnapshot();
+    if (!hasMetrics() || metrics.clusterMemoryTotal <= 0) return '--';
+    const percent = (metrics.clusterMemory / metrics.clusterMemoryTotal) * 100;
+    return formatPercent(percent, 0);
+  });
 
   // Update health hub visuals based on cluster health
   const updateHealthHub = (health: ClusterHealthData) => {
@@ -1478,10 +1536,6 @@ const HoloDeck: Component<Props> = (props) => {
             dataGroup.add(mergedServiceLines);
         }
 
-        // Update cluster health hub based on current data
-        const health = computeClusterHealth();
-        updateHealthHub(health);
-
         // Apply initial filter state
         applyFilterVisuals();
     });
@@ -1493,6 +1547,14 @@ const HoloDeck: Component<Props> = (props) => {
         // Only run if objectMap is populated (after scene build)
         if (objectMap.size > 0) {
             applyFilterVisuals();
+        }
+    });
+
+    // Keep health hub visuals in sync with live data
+    createEffect(() => {
+        const health = clusterHealth();
+        if (healthRingMaterials.length > 0) {
+            updateHealthHub(health);
         }
     });
 
@@ -1608,6 +1670,55 @@ const HoloDeck: Component<Props> = (props) => {
                 </div>
             )}
         </Show>
+
+        {/* Central Hub Overlay */}
+        <div class="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
+            <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/50 px-5 py-4 backdrop-blur-md shadow-[0_0_25px_rgba(0,240,255,0.18)]">
+                <div class="text-[9px] uppercase tracking-[0.4em] text-neon-cyan/70">Cluster Core</div>
+                <div class="flex items-end gap-2">
+                    <span class={`text-3xl font-semibold ${healthTextClass()}`}>{healthPercentText()}</span>
+                    <span class={`text-[10px] uppercase tracking-wider ${healthTextClass()}`}>{healthLabel()}</span>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3 text-[9px] font-mono text-text-dim">
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="text-white/50 uppercase tracking-wider">Nodes</span>
+                        <span class="text-white/90">{clusterHealth().nodesReady}/{clusterHealth().nodesTotal}</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="text-white/50 uppercase tracking-wider">Pods</span>
+                        <span class="text-white/90">{clusterHealth().podsRunning}/{clusterHealth().podsTotal}</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="text-white/50 uppercase tracking-wider">Services</span>
+                        <span class="text-white/90">{props.services.length}</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 text-[9px] font-mono text-text-dim">
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="text-white/50 uppercase tracking-wider">CPU</span>
+                        <span class="text-white/90">{clusterCpuText()}</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="text-white/50 uppercase tracking-wider">Memory</span>
+                        <span class="text-white/90">{clusterMemoryPercentText()}</span>
+                        <span class="text-[8px] text-text-muted">{clusterMemoryText()}</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 text-[9px] text-text-dim">
+                    <div class="flex items-center gap-1">
+                        <span class={`h-1.5 w-1.5 rounded-full ${clusterHealth().apiServerHealthy ? 'bg-status-ok' : 'bg-status-error'}`} />
+                        <span>API</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class={`h-1.5 w-1.5 rounded-full ${clusterHealth().controlPlaneHealthy ? 'bg-status-ok' : 'bg-status-error'}`} />
+                        <span>Control</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         {/* Overlay Title */}
         <div class="absolute top-6 left-1/2 -translate-x-1/2 text-center pointer-events-none select-none">
