@@ -75,7 +75,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
   let rafId: number | null = null;
-  let lastDataKey = '';
+  let lastTopologyKey = -1;
+  let lastStyleKey = -1;
 
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
@@ -165,19 +166,84 @@ const TopologyGraph: Component<Props> = (props) => {
     return candidates;
   };
 
-  // Compute a lightweight hash for data change detection (exclude dimensions to avoid resize re-init)
-  const getDataKey = (): string => {
-    // Use counts + sample IDs for O(1) approximate change detection instead of O(n log n) full sort
-    const nodeCount = props.nodes.length;
-    const podCount = props.pods.length;
-    const svcCount = props.services.length;
+  const hashString = (value: string): number => {
+    let hash = 5381;
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+    }
+    return hash >>> 0;
+  };
 
-    // Sample first/last items for change detection without sorting entire arrays
-    const nodeSample = nodeCount > 0 ? `${props.nodes[0]?.metadata.name}:${props.nodes[nodeCount-1]?.metadata.name}` : '';
-    const podSample = podCount > 0 ? `${props.pods[0]?.metadata.name}:${props.pods[podCount-1]?.status.phase}` : '';
-    const svcSample = svcCount > 0 ? `${props.services[0]?.metadata.name}` : '';
+  const getTopologyKey = (): number => {
+    let hash = 0;
+    hash = (hash + props.nodes.length * 3 + props.pods.length * 5 + props.services.length * 7) >>> 0;
 
-    return `${nodeCount}|${podCount}|${svcCount}|${nodeSample}|${podSample}|${svcSample}`;
+    for (const node of props.nodes) {
+      hash = (hash + hashString(`n:${node.metadata.name}`)) >>> 0;
+    }
+
+    for (const pod of props.pods) {
+      const ns = pod.metadata.namespace ?? 'undefined';
+      const nodeName = pod.spec.nodeName ?? '';
+      hash = (hash + hashString(`p:${ns}/${pod.metadata.name}@${nodeName}`)) >>> 0;
+    }
+
+    for (const svc of props.services) {
+      const ns = svc.metadata.namespace ?? 'undefined';
+      const selectorEntries = Object.entries(svc.spec.selector || {}).sort(([a], [b]) => a.localeCompare(b));
+      const selectorKey = selectorEntries.map(([k, v]) => `${k}=${v}`).join(';');
+      hash = (hash + hashString(`s:${ns}/${svc.metadata.name}|${svc.spec.type || ''}|${selectorKey}`)) >>> 0;
+    }
+
+    return hash >>> 0;
+  };
+
+  const getStyleKey = (): number => {
+    let hash = 0;
+    for (const node of props.nodes) {
+      const ready = isNodeReady(node as any) ? '1' : '0';
+      hash = (hash + hashString(`n:${node.metadata.name}:${ready}`)) >>> 0;
+    }
+    for (const pod of props.pods) {
+      const ns = pod.metadata.namespace ?? 'undefined';
+      const phase = pod.status?.phase || '';
+      hash = (hash + hashString(`p:${ns}/${pod.metadata.name}:${phase}`)) >>> 0;
+    }
+    return hash >>> 0;
+  };
+
+  const refreshNodeData = () => {
+    if (graphNodes.length === 0) return;
+
+    const nodeMap = new Map(props.nodes.map(node => [`node-${node.metadata.name}`, node]));
+    const podMap = new Map(props.pods.map(pod => [`pod-${pod.metadata.namespace ?? 'undefined'}-${pod.metadata.name}`, pod]));
+    const svcMap = new Map(props.services.map(svc => [`svc-${svc.metadata.namespace ?? 'undefined'}-${svc.metadata.name}`, svc]));
+
+    for (const node of graphNodes) {
+      if (node.type === 'node') {
+        const data = nodeMap.get(node.id);
+        if (data) {
+          node.data = data;
+          node.status = isNodeReady(data as any) ? 'ok' : 'error';
+        }
+      } else if (node.type === 'pod') {
+        const data = podMap.get(node.id);
+        if (data) {
+          node.data = data;
+          node.status = data.status.phase === 'Running' ? 'ok' :
+            data.status.phase === 'Pending' ? 'warn' : 'error';
+        }
+      } else if (node.type === 'service') {
+        const data = svcMap.get(node.id);
+        if (data) {
+          node.data = data;
+          node.status = 'ok';
+        }
+      }
+    }
+
+    nodeStylesCacheValid = false;
+    if (!isAnimating) startAnimationLoop();
   };
 
   const buildGraph = () => {
@@ -896,11 +962,12 @@ const TopologyGraph: Component<Props> = (props) => {
     const linkDistance = Math.max(80, Math.min(140, 2500 / Math.sqrt(nodeCount)));
     const chargeStrength = Math.max(-400, Math.min(-120, -2500 / Math.sqrt(nodeCount)));
 
-    // Pre-position nodes in a circle to avoid initial explosion
+    // Pre-position new nodes in a circle to avoid initial explosion
     const cx = width / 2;
     const cy = height / 2;
     const initialRadius = Math.min(width, height) * 0.3;
     graphNodes.forEach((node, i) => {
+      if (node.x !== undefined && node.y !== undefined) return;
       const angle = (i / graphNodes.length) * Math.PI * 2;
       node.x = cx + Math.cos(angle) * initialRadius * (0.5 + Math.random() * 0.5);
       node.y = cy + Math.sin(angle) * initialRadius * (0.5 + Math.random() * 0.5);
@@ -1030,26 +1097,37 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Debounce simulation initialization to prevent rapid re-init during initial data load
   let initTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const INIT_DEBOUNCE_MS = 150;
 
   createEffect(() => {
     // Track props for reactivity
     props.nodes; props.pods; props.services;
-    const key = getDataKey();
+    const topologyKey = getTopologyKey();
+    const styleKey = getStyleKey();
+    const topologyChanged = topologyKey !== lastTopologyKey;
+    const styleChanged = styleKey !== lastStyleKey;
 
-    if (key !== lastDataKey) {
-      lastDataKey = key;
+    if (!topologyChanged && !styleChanged) return;
 
+    lastTopologyKey = topologyKey;
+    lastStyleKey = styleKey;
+
+    if (topologyChanged) {
       // Clear any pending init
       if (initTimeoutId) {
         clearTimeout(initTimeoutId);
       }
 
-      // Debounce initialization by 50ms to batch rapid updates
+      // Debounce initialization to batch rapid updates
       initTimeoutId = setTimeout(() => {
         initTimeoutId = null;
         initializeSimulation();
-      }, 50);
+      }, INIT_DEBOUNCE_MS);
+      return;
     }
+
+    // Style-only updates (statuses, readiness) should not re-run simulation
+    refreshNodeData();
   });
 
   // Clean up init timeout on unmount
