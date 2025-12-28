@@ -16,6 +16,22 @@ variables:
   NODE_VERSION: "20"
   # BuildKit configuration
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
+  # Work around GitLab advertising an in-cluster clone URL to runners outside the cluster.
+  GIT_STRATEGY: none
+  GITLAB_EXTERNAL_HOST: gitlab.flexinfer.ai
+
+.clone_repo: &clone_repo
+  - |
+    set -euo pipefail
+    if [ -d ".git" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      echo "Repository already present"
+      exit 0
+    fi
+    echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
+    git init -q .
+    git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
+    git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"
+    git checkout -q -f "${CI_COMMIT_SHA}"
 
 # Cache settings for GitLab runner cache (S3/MinIO)
 .go-cache: &go-cache
@@ -69,6 +85,9 @@ test:frontend:
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
+  before_script:
+    - apk add --no-cache git
+    - *clone_repo
   script:
     - cd web
     - npm ci --prefer-offline
@@ -88,6 +107,7 @@ build:
     # Use GZIP for faster cache compression
     BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
   before_script:
+    - *clone_repo
     - |
       echo "Waiting for BuildKit..."
       for i in $(seq 1 30); do
