@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest",
+    "perf:topology": "node scripts/perf/topology-bench.mjs"
   },
   "dependencies": {
     "@solidjs/router": "^0.15.3",

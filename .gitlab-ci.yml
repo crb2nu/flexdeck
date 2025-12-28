@@ -6,6 +6,7 @@ include:
 
 stages:
   - test
+  - perf
   - build
   - deploy
 
@@ -116,6 +117,33 @@ test:frontend:
     - cd web
     - npm ci --prefer-offline
     - npm run typecheck
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ==============================================================================
+# PERF STAGE
+# ==============================================================================
+
+perf:topology:
+  stage: perf
+  image: node:${NODE_VERSION}-alpine
+  <<: *node-cache
+  variables:
+    npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - cd web
+    - npm ci --prefer-offline
+    - npm run perf:topology
+  artifacts:
+    paths:
+      - web/perf/
+    reports:
+      performance: web/perf/performance.json
+    expire_in: 2 weeks
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
