@@ -380,13 +380,14 @@ type PublicCIStage struct {
 }
 
 type PublicCIPipeline struct {
-	ID        string          `json:"id"`
-	Project   string          `json:"project"` // Sanitized project name
-	Ref       string          `json:"ref"`     // Branch name (these are usually fine)
-	Status    string          `json:"status"`
-	Stages    []PublicCIStage `json:"stages"`
-	CreatedAt string          `json:"createdAt"`
-	Duration  float64         `json:"duration"`
+	ID         string          `json:"id"`
+	Project    string          `json:"project"`    // Sanitized project name
+	Ref        string          `json:"ref"`        // Branch name (these are usually fine)
+	Status     string          `json:"status"`
+	Visibility string          `json:"visibility"` // "public", "internal", "private"
+	Stages     []PublicCIStage `json:"stages"`
+	CreatedAt  string          `json:"createdAt"`
+	Duration   float64         `json:"duration"`
 }
 
 type PublicCIResponse struct {
@@ -467,6 +468,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		ID                int    `json:"id"`
 		PathWithNamespace string `json:"path_with_namespace"`
 		DefaultBranch     string `json:"default_branch"`
+		Visibility        string `json:"visibility"` // "public", "internal", "private"
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
 		if publicAllowDemoFallback() {
@@ -578,13 +580,14 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		}
 
 		pipelines = append(pipelines, PublicCIPipeline{
-			ID:        fmt.Sprintf("%d", pipeline.ID),
-			Project:   sanitizeProjectName(proj.PathWithNamespace),
-			Ref:       pipeline.Ref,
-			Status:    pipeline.Status,
-			Stages:    stages,
-			CreatedAt: pipeline.CreatedAt.Format(time.RFC3339),
-			Duration:  totalDuration,
+			ID:         fmt.Sprintf("%d", pipeline.ID),
+			Project:    sanitizeProjectName(proj.PathWithNamespace),
+			Ref:        pipeline.Ref,
+			Status:     pipeline.Status,
+			Visibility: proj.Visibility,
+			Stages:     stages,
+			CreatedAt:  pipeline.CreatedAt.Format(time.RFC3339),
+			Duration:   totalDuration,
 		})
 	}
 
@@ -600,10 +603,11 @@ func getPublicCIDemo() PublicCIResponse {
 	return PublicCIResponse{
 		Pipelines: []PublicCIPipeline{
 			{
-				ID:      "demo-1",
-				Project: "flexdeck",
-				Ref:     "main",
-				Status:  "success",
+				ID:         "demo-1",
+				Project:    "flexdeck",
+				Ref:        "main",
+				Status:     "success",
+				Visibility: "public",
 				Stages: []PublicCIStage{
 					{Name: "build", Status: "success", Jobs: []PublicCIJob{
 						{ID: "1", Name: "docker_build", Stage: "build", Status: "success", Duration: 45.5},
@@ -620,10 +624,11 @@ func getPublicCIDemo() PublicCIResponse {
 				Duration:  88.6,
 			},
 			{
-				ID:      "demo-2",
-				Project: "flexinfer-site",
-				Ref:     "main",
-				Status:  "running",
+				ID:         "demo-2",
+				Project:    "flexinfer-site",
+				Ref:        "main",
+				Status:     "running",
+				Visibility: "public",
 				Stages: []PublicCIStage{
 					{Name: "verify", Status: "success", Jobs: []PublicCIJob{
 						{ID: "5", Name: "lint_code", Stage: "verify", Status: "success", Duration: 15.2},
