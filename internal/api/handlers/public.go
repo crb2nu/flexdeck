@@ -422,8 +422,8 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// Fetch projects
-	apiURL := fmt.Sprintf("%s/api/v4/projects?membership=true&simple=true&per_page=5", gitlabURL)
+	// Fetch projects (order by recent activity, exclude forks)
+	apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=5&order_by=last_activity_at", gitlabURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		slog.Error("failed to create GitLab request", "error", err)
