@@ -44,6 +44,7 @@ const LARGE_GRAPH_NODE_THRESHOLD = 600;
 const LARGE_GRAPH_LINK_THRESHOLD = 1200;
 const REDUCED_FPS = 30;
 const PARTICLE_IDLE_MS = 5000;
+const INTERACTION_IDLE_MS = 800;
 interface ParticleSlot {
   active: boolean;
   sourceIdx: number;
@@ -118,6 +119,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let isAnimating = false;
   let simulationSettledAt = 0; // Timestamp when simulation settled
   let lastFrameTime = 0;
+  let lastInteractionAt = -Infinity;
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
@@ -134,6 +136,18 @@ const TopologyGraph: Component<Props> = (props) => {
   const GRID_KEY_MULTIPLIER = 100000; // Supports grid coords from -50000 to +50000
   let spatialGrid = new Map<number, D3Node[]>();
   let spatialGridValid = false;
+  const bumpInteraction = () => {
+    lastInteractionAt = performance.now();
+  };
+
+  const resetParticles = () => {
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const slot = particlePool[i];
+      slot.active = false;
+      slot.progress = 0;
+    }
+    activeParticleCount = 0;
+  };
 
   // Use numeric key instead of string concatenation - avoids allocation
   const getSpatialKey = (x: number, y: number): number => {
@@ -476,6 +490,7 @@ const TopologyGraph: Component<Props> = (props) => {
     if (!ctx) return;
 
     const now = performance.now();
+    const isUserInteracting = now - lastInteractionAt < INTERACTION_IDLE_MS;
     const isDense = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
       graphLinks.length > LARGE_GRAPH_LINK_THRESHOLD;
     const minFrameMs = isDense ? 1000 / REDUCED_FPS : 0;
@@ -491,7 +506,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceDetail = isDense && zoomLevel < 0.85;
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
-    const allowParticles = !reduceLinks;
+    const allowParticles = !reduceLinks && (isSimulationActive || isUserInteracting);
 
     // Invalidate spatial grid when simulation is active (nodes are moving)
     if (isSimulationActive) {
@@ -861,7 +876,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Continue animation only if simulation is active or particles exist
     // This prevents infinite 60fps loop when nothing is changing
-    const shouldContinue = isSimulationActive || activeParticleCount > 0;
+    const shouldContinue = isSimulationActive || activeParticleCount > 0 || isUserInteracting;
     if (shouldContinue) {
       rafId = requestAnimationFrame(draw);
     } else {
@@ -905,6 +920,7 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const handleCanvasClick = (event: MouseEvent) => {
+      bumpInteraction();
       const node = getKeyUnderMouse(event);
       if (node) {
           setSelectedNode(node);
@@ -928,6 +944,7 @@ const TopologyGraph: Component<Props> = (props) => {
       const node = getKeyUnderMouse(event);
       const currentHover = hoverNode();
       if (node !== currentHover) {
+          bumpInteraction();
           setHoverNode(node);
           if (canvasRef) canvasRef.style.cursor = node ? 'pointer' : 'default';
           // Trigger redraw for hover visual feedback (single frame, not continuous)
@@ -946,6 +963,7 @@ const TopologyGraph: Component<Props> = (props) => {
       simulation = null;
     }
 
+    resetParticles();
     buildGraph();
 
     // Early exit if no data - just render empty background
@@ -1016,6 +1034,7 @@ const TopologyGraph: Component<Props> = (props) => {
       .scaleExtent([0.1, 8])
       .on('zoom', (e) => {
         transform = e.transform;
+        bumpInteraction();
         // Restart animation if not running (for pan/zoom after settling)
         startAnimationLoop();
       });
@@ -1044,11 +1063,13 @@ const TopologyGraph: Component<Props> = (props) => {
           isSimulationActive = true;
           startAnimationLoop();
         }
+        bumpInteraction();
         const n = e.subject as D3Node;
         n.fx = n.x;
         n.fy = n.y;
       })
       .on('drag', (e) => {
+        bumpInteraction();
         const n = e.subject as D3Node;
         n.fx = e.x;
         n.fy = e.y;
