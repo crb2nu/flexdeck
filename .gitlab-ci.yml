@@ -227,9 +227,8 @@ deploy:
     - apk add --no-cache kubectl
     - kubectl -n flexdeck rollout restart deployment/flexdeck
     - kubectl -n flexdeck rollout status deployment/flexdeck --timeout=5m
-  only:
-    - main
-  when: manual
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
   environment:
     name: production
     url: https://deck.flexinfer.ai
