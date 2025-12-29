@@ -73,25 +73,47 @@ func publicAllowDemoFallback() bool {
 }
 
 // sanitizeNodeName converts real node names to generic display names
-func sanitizeNodeName(realName string) string {
+func sanitizeNodeName(realName string, labels map[string]string) string {
 	lower := strings.ToLower(realName)
+	hash := sha256.Sum256([]byte(realName))
+	suffix := hex.EncodeToString(hash[:])[:4]
 
-	// Detect node type from common patterns
-	if strings.Contains(lower, "control") || strings.Contains(lower, "master") {
-		return "control-plane"
+	// Check for GPU via labels first (most reliable)
+	if labels != nil {
+		// Common GPU node labels
+		if _, ok := labels["nvidia.com/gpu.present"]; ok {
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+		if _, ok := labels["amd.com/gpu"]; ok {
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+		if v, ok := labels["node.kubernetes.io/instance-type"]; ok && strings.Contains(strings.ToLower(v), "gpu") {
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+		// Check for GPU capacity label
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_1002.present"]; ok && v == "true" {
+			// AMD GPU (vendor 1002)
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_10de.present"]; ok && v == "true" {
+			// NVIDIA GPU (vendor 10de)
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
 	}
-	if strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") || strings.Contains(lower, "nvidia") {
-		return "gpu-worker"
+
+	// Detect node type from name patterns
+	if strings.Contains(lower, "control") || strings.Contains(lower, "master") {
+		return fmt.Sprintf("control-plane-%s", suffix)
+	}
+	if strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") || strings.Contains(lower, "nvidia") || strings.Contains(lower, "amd") {
+		return fmt.Sprintf("gpu-worker-%s", suffix)
 	}
 	if strings.Contains(lower, "worker") || strings.Contains(lower, "w-") {
-		// Generate consistent but anonymous worker name
-		hash := sha256.Sum256([]byte(realName))
-		return fmt.Sprintf("worker-%s", hex.EncodeToString(hash[:])[:4])
+		return fmt.Sprintf("worker-%s", suffix)
 	}
 
 	// Fallback: generic node name based on hash
-	hash := sha256.Sum256([]byte(realName))
-	return fmt.Sprintf("node-%s", hex.EncodeToString(hash[:])[:4])
+	return fmt.Sprintf("node-%s", suffix)
 }
 
 // sanitizePodName strips the random suffixes from pod names
@@ -129,17 +151,54 @@ func categorizePod(namespace, name string) string {
 }
 
 // detectNodeType determines node type from labels/name
-func detectNodeType(name string, roles []string) string {
+func detectNodeType(name string, roles []string, labels map[string]string) string {
 	for _, role := range roles {
 		if role == "control-plane" || role == "master" {
 			return "control-plane"
 		}
 	}
+
+	// Check for GPU via labels (most reliable)
+	if labels != nil {
+		if _, ok := labels["nvidia.com/gpu.present"]; ok {
+			return "gpu-worker"
+		}
+		if _, ok := labels["amd.com/gpu"]; ok {
+			return "gpu-worker"
+		}
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_1002.present"]; ok && v == "true" {
+			return "gpu-worker"
+		}
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_10de.present"]; ok && v == "true" {
+			return "gpu-worker"
+		}
+	}
+
 	lower := strings.ToLower(name)
-	if strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") {
+	if strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") || strings.Contains(lower, "nvidia") || strings.Contains(lower, "amd") {
 		return "gpu-worker"
 	}
 	return "worker"
+}
+
+// hasGPU checks if a node has GPU capability via labels or name
+func hasGPU(name string, labels map[string]string) bool {
+	if labels != nil {
+		if _, ok := labels["nvidia.com/gpu.present"]; ok {
+			return true
+		}
+		if _, ok := labels["amd.com/gpu"]; ok {
+			return true
+		}
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_1002.present"]; ok && v == "true" {
+			return true
+		}
+		if v, ok := labels["feature.node.kubernetes.io/pci-0300_10de.present"]; ok && v == "true" {
+			return true
+		}
+	}
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") || strings.Contains(lower, "nvidia") || strings.Contains(lower, "amd")
 }
 
 func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
@@ -216,8 +275,8 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if strings.Contains(strings.ToLower(nodeName), "gpu") ||
-			strings.Contains(strings.ToLower(nodeName), "7900") {
+		// Check for GPU using the improved detection
+		if hasGPU(nodeName, node.Labels) {
 			nodeType = "gpu-worker"
 		}
 
@@ -239,7 +298,7 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 
 		pNode := PublicNode{
 			ID:     publicID,
-			Name:   sanitizeNodeName(nodeName),
+			Name:   sanitizeNodeName(nodeName, node.Labels),
 			Type:   nodeType,
 			Status: nodeStatus,
 			Roles:  roles,
@@ -323,19 +382,37 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 func getPublicTopologyDemo() PublicTopologyResponse {
 	return PublicTopologyResponse{
 		Nodes: []PublicNode{
-			{ID: "node-1", Name: "control-plane", Type: "control-plane", Status: "Ready", Roles: []string{"control-plane"},
+			{ID: "node-1", Name: "control-plane-a1b2", Type: "control-plane", Status: "Ready", Roles: []string{"control-plane"},
 				Capacity: struct {
 					CPU    string `json:"cpu"`
 					Memory string `json:"memory"`
 					GPU    string `json:"gpu,omitempty"`
 				}{CPU: "8", Memory: "32Gi"}},
-			{ID: "node-2", Name: "gpu-worker", Type: "gpu-worker", Status: "Ready", Roles: []string{"worker"},
+			{ID: "node-2", Name: "control-plane-c3d4", Type: "control-plane", Status: "Ready", Roles: []string{"control-plane"},
+				Capacity: struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+					GPU    string `json:"gpu,omitempty"`
+				}{CPU: "8", Memory: "32Gi"}},
+			{ID: "node-3", Name: "control-plane-e5f6", Type: "control-plane", Status: "Ready", Roles: []string{"control-plane"},
+				Capacity: struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+					GPU    string `json:"gpu,omitempty"`
+				}{CPU: "8", Memory: "32Gi"}},
+			{ID: "node-4", Name: "gpu-worker-7890", Type: "gpu-worker", Status: "Ready", Roles: []string{"worker"},
 				Capacity: struct {
 					CPU    string `json:"cpu"`
 					Memory string `json:"memory"`
 					GPU    string `json:"gpu,omitempty"`
 				}{CPU: "16", Memory: "64Gi", GPU: "1"}},
-			{ID: "node-3", Name: "worker-a1b2", Type: "worker", Status: "Ready", Roles: []string{"worker"},
+			{ID: "node-5", Name: "gpu-worker-abcd", Type: "gpu-worker", Status: "Ready", Roles: []string{"worker"},
+				Capacity: struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+					GPU    string `json:"gpu,omitempty"`
+				}{CPU: "16", Memory: "64Gi", GPU: "1"}},
+			{ID: "node-6", Name: "worker-a1b2", Type: "worker", Status: "Ready", Roles: []string{"worker"},
 				Capacity: struct {
 					CPU    string `json:"cpu"`
 					Memory string `json:"memory"`
@@ -343,12 +420,14 @@ func getPublicTopologyDemo() PublicTopologyResponse {
 				}{CPU: "4", Memory: "16Gi"}},
 		},
 		Pods: []PublicPod{
-			{ID: "pod-001", Name: "llm-server", Namespace: "ai", NodeID: "node-2", Status: "Running", Category: "ai"},
-			{ID: "pod-002", Name: "vllm-inference", Namespace: "ai", NodeID: "node-2", Status: "Running", Category: "ai"},
-			{ID: "pod-003", Name: "prometheus", Namespace: "monitoring", NodeID: "node-3", Status: "Running", Category: "monitoring"},
-			{ID: "pod-004", Name: "grafana", Namespace: "monitoring", NodeID: "node-3", Status: "Running", Category: "monitoring"},
-			{ID: "pod-005", Name: "flexinfer-site", Namespace: "flexinfer", NodeID: "node-3", Status: "Running", Category: "app"},
+			{ID: "pod-001", Name: "llm-server", Namespace: "ai", NodeID: "node-4", Status: "Running", Category: "ai"},
+			{ID: "pod-002", Name: "vllm-inference", Namespace: "ai", NodeID: "node-5", Status: "Running", Category: "ai"},
+			{ID: "pod-003", Name: "prometheus", Namespace: "monitoring", NodeID: "node-6", Status: "Running", Category: "monitoring"},
+			{ID: "pod-004", Name: "grafana", Namespace: "monitoring", NodeID: "node-6", Status: "Running", Category: "monitoring"},
+			{ID: "pod-005", Name: "flexinfer-site", Namespace: "flexinfer", NodeID: "node-6", Status: "Running", Category: "app"},
 			{ID: "pod-006", Name: "ingress-nginx", Namespace: "ingress-nginx", NodeID: "node-1", Status: "Running", Category: "infra"},
+			{ID: "pod-007", Name: "coredns", Namespace: "kube-system", NodeID: "node-2", Status: "Running", Category: "infra"},
+			{ID: "pod-008", Name: "etcd", Namespace: "kube-system", NodeID: "node-3", Status: "Running", Category: "infra"},
 		},
 		Services: []PublicService{
 			{ID: "svc-001", Name: "llm-api", Type: "ClusterIP", Category: "ai"},
@@ -683,10 +762,9 @@ func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		if nodes, err := h.k8s.GetNodes(ctx); err == nil {
 			summary.Cluster.NodeCount = len(nodes.Items)
-			// Count GPU nodes
+			// Count GPU nodes using improved detection
 			for _, n := range nodes.Items {
-				if strings.Contains(strings.ToLower(n.Name), "gpu") ||
-					strings.Contains(strings.ToLower(n.Name), "7900") {
+				if hasGPU(n.Name, n.Labels) {
 					summary.Cluster.GPUCount++
 				}
 			}
