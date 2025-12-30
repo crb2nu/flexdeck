@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,10 +74,20 @@ func publicAllowDemoFallback() bool {
 }
 
 // sanitizeNodeName converts real node names to generic display names
-func sanitizeNodeName(realName string, labels map[string]string) string {
+func sanitizeNodeName(realName string, labels map[string]string, capacity corev1.ResourceList) string {
 	lower := strings.ToLower(realName)
 	hash := sha256.Sum256([]byte(realName))
 	suffix := hex.EncodeToString(hash[:])[:4]
+
+	// Most reliable: check GPU capacity/extended resources
+	if capacity != nil {
+		if q, ok := capacity[corev1.ResourceName("nvidia.com/gpu")]; ok && q.Value() > 0 {
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+		if q, ok := capacity[corev1.ResourceName("amd.com/gpu")]; ok && q.Value() > 0 {
+			return fmt.Sprintf("gpu-worker-%s", suffix)
+		}
+	}
 
 	// Check for GPU via labels first (most reliable)
 	if labels != nil {
@@ -182,7 +193,15 @@ func detectNodeType(name string, roles []string, labels map[string]string) strin
 }
 
 // hasGPU checks if a node has GPU capability via labels or name
-func hasGPU(name string, labels map[string]string) bool {
+func hasGPU(name string, labels map[string]string, capacity corev1.ResourceList) bool {
+	if capacity != nil {
+		if q, ok := capacity[corev1.ResourceName("nvidia.com/gpu")]; ok && q.Value() > 0 {
+			return true
+		}
+		if q, ok := capacity[corev1.ResourceName("amd.com/gpu")]; ok && q.Value() > 0 {
+			return true
+		}
+	}
 	if labels != nil {
 		if _, ok := labels["nvidia.com/gpu.present"]; ok {
 			return true
@@ -276,7 +295,7 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check for GPU using the improved detection
-		if hasGPU(nodeName, node.Labels) {
+		if hasGPU(nodeName, node.Labels, node.Status.Capacity) {
 			nodeType = "gpu-worker"
 		}
 
@@ -298,7 +317,7 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 
 		pNode := PublicNode{
 			ID:     publicID,
-			Name:   sanitizeNodeName(nodeName, node.Labels),
+			Name:   sanitizeNodeName(nodeName, node.Labels, node.Status.Capacity),
 			Type:   nodeType,
 			Status: nodeStatus,
 			Roles:  roles,
@@ -311,39 +330,75 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 
 	// Transform pods
 	publicPods := make([]PublicPod, 0)
-	// Limit to avoid overwhelming the visualization
-	maxPods := 50
-	podCount := 0
+	// Limit to avoid overwhelming the public visualization.
+	// This is intentionally a sample, not a full pod inventory.
+	maxPods := 200
+	if v := strings.TrimSpace(os.Getenv("PUBLIC_TOPOLOGY_MAX_PODS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxPods = n
+		}
+	}
+
+	// Bucket pods so the sample includes more than just the first namespace returned by the API.
+	buckets := map[string][]corev1.Pod{
+		"ai":         {},
+		"app":        {},
+		"monitoring": {},
+		"infra":      {},
+	}
 
 	for _, pod := range pods.Items {
-		if podCount >= maxPods {
-			break
-		}
-
 		// Skip system pods that aren't interesting
 		if pod.Namespace == "kube-system" && !strings.Contains(pod.Name, "coredns") {
 			continue
 		}
-
-		nodeID := nodeIDMap[pod.Spec.NodeName]
-		if nodeID == "" {
-			nodeID = "unknown"
+		category := categorizePod(pod.Namespace, pod.Name)
+		if _, ok := buckets[category]; !ok {
+			category = "app"
 		}
+		buckets[category] = append(buckets[category], pod)
+	}
 
-		// Generate consistent pod ID from namespace + sanitized name
-		sanitizedName := sanitizePodName(pod.Name)
-		hash := sha256.Sum256([]byte(pod.Namespace + "/" + sanitizedName))
-		podID := fmt.Sprintf("pod-%s", hex.EncodeToString(hash[:])[:8])
+	categoryOrder := []string{"ai", "app", "monitoring", "infra"}
+	nextIdx := map[string]int{"ai": 0, "app": 0, "monitoring": 0, "infra": 0}
 
-		publicPods = append(publicPods, PublicPod{
-			ID:        podID,
-			Name:      sanitizedName,
-			Namespace: pod.Namespace,
-			NodeID:    nodeID,
-			Status:    string(pod.Status.Phase),
-			Category:  categorizePod(pod.Namespace, pod.Name),
-		})
-		podCount++
+	for len(publicPods) < maxPods {
+		madeProgress := false
+		for _, category := range categoryOrder {
+			i := nextIdx[category]
+			if i >= len(buckets[category]) {
+				continue
+			}
+			pod := buckets[category][i]
+			nextIdx[category] = i + 1
+			madeProgress = true
+
+			nodeID := nodeIDMap[pod.Spec.NodeName]
+			if nodeID == "" {
+				nodeID = "unknown"
+			}
+
+			// Generate consistent pod ID from namespace + sanitized name
+			sanitizedName := sanitizePodName(pod.Name)
+			hash := sha256.Sum256([]byte(pod.Namespace + "/" + sanitizedName))
+			podID := fmt.Sprintf("pod-%s", hex.EncodeToString(hash[:])[:8])
+
+			publicPods = append(publicPods, PublicPod{
+				ID:        podID,
+				Name:      sanitizedName,
+				Namespace: pod.Namespace,
+				NodeID:    nodeID,
+				Status:    string(pod.Status.Phase),
+				Category:  category,
+			})
+
+			if len(publicPods) >= maxPods {
+				break
+			}
+		}
+		if !madeProgress {
+			break
+		}
 	}
 
 	// Transform services
@@ -764,7 +819,7 @@ func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 			summary.Cluster.NodeCount = len(nodes.Items)
 			// Count GPU nodes using improved detection
 			for _, n := range nodes.Items {
-				if hasGPU(n.Name, n.Labels) {
+				if hasGPU(n.Name, n.Labels, n.Status.Capacity) {
 					summary.Cluster.GPUCount++
 				}
 			}
