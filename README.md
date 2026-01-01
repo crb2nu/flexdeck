@@ -1,3 +1,5 @@
+![FlexDeck Banner](assets/banner.png)
+
 # FlexDeck
 
 Central dashboard for the flexinfer.ai ecosystem.

@@ -47,3 +47,7 @@ Guidance for coding agents working in this repository.
 ## Change Hygiene
 - Make minimal edits to satisfy the request.
 - Call out behavior changes and suggest a quick validation step.
+
+## Planning
+- See `ROADMAP.md` for project status and plans.
+
