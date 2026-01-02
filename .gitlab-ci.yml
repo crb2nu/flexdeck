@@ -5,8 +5,8 @@ include:
       - /k3s/ci/caches/gitlab-ci-cache.yml
 
 stages:
+  - lint
   - test
-  - perf
   - build
   - deploy
 
@@ -76,6 +76,45 @@ variables:
     when: on_success
 
 # ==============================================================================
+# LINT STAGE
+# ==============================================================================
+
+lint:backend:
+  stage: lint
+  image: golang:${GO_VERSION}-alpine
+  <<: *go-cache
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    GOPROXY: "http://athens.ci.svc.cluster.local:3000,direct"
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - go mod download
+    - if [ -n "$(gofmt -l .)" ]; then echo "Go code is not formatted"; gofmt -d .; exit 1; fi
+    - go vet ./...
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+lint:frontend:
+  stage: lint
+  image: node:${NODE_VERSION}-alpine
+  <<: *node-cache
+  variables:
+    npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - cd web
+    - npm ci --prefer-offline
+    - npm run lint
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ==============================================================================
 # TEST STAGE
 # ==============================================================================
 
@@ -126,7 +165,7 @@ test:frontend:
 # ==============================================================================
 
 perf:topology:
-  stage: perf
+  stage: test
   image: node:${NODE_VERSION}-alpine
   <<: *node-cache
   variables:
