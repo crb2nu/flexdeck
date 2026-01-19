@@ -23,6 +23,10 @@ Guidance for coding agents working in this repository.
 - `go run ./cmd/server`
 - `go test ./...`
 
+## Library Dependencies
+
+- `libs/visual-kit` - Design tokens, Tailwind preset, and SolidJS components
+
 ## Code Conventions
 - Prefer descriptive names; avoid single-letter variables except in math-heavy code.
 - Avoid `as any` and `@ts-ignore` in TypeScript; add types or guards instead.
