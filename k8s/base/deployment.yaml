@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/component: server
     spec:
       serviceAccountName: flexdeck
+      nodeSelector:
+        kubernetes.io/arch: amd64
       containers:
         - name: flexdeck
           image: registry.harbor.lan/library/flexdeck:latest
@@ -51,9 +53,9 @@ spec:
                   name: flexdeck-secrets
                   key: litellm-api-key
                   optional: true
-            # GitLab
+            # GitLab VM (internal service)
             - name: GITLAB_URL
-              value: "https://gitlab.flexinfer.ai"
+              value: "http://gitlab-vm.gitlab.svc.cluster.local:80"
             - name: GITLAB_TOKEN
               valueFrom:
                 secretKeyRef:
