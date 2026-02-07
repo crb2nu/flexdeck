@@ -265,7 +265,7 @@ build:
 
 deploy:
   stage: deploy
-  image: alpine:3.21
+  image: registry.harbor.lan/dockerhub-cache/library/alpine:3.21
   before_script:
     - |
       # Bootstrap CA certificates
