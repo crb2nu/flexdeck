@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -44,25 +45,25 @@ const (
 type DeploymentStatus string
 
 const (
-	DeploymentNone      DeploymentStatus = "none"
-	DeploymentPending   DeploymentStatus = "pending"
-	DeploymentDeployed  DeploymentStatus = "deployed"
-	DeploymentStopped   DeploymentStatus = "stopped"
-	DeploymentFailed    DeploymentStatus = "failed"
+	DeploymentNone     DeploymentStatus = "none"
+	DeploymentPending  DeploymentStatus = "pending"
+	DeploymentDeployed DeploymentStatus = "deployed"
+	DeploymentStopped  DeploymentStatus = "stopped"
+	DeploymentFailed   DeploymentStatus = "failed"
 )
 
 // Model represents a registered model
 type Model struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Source      ModelSource      `json:"source"`
-	SourceID    string           `json:"source_id"`    // HF repo ID or CivitAI model ID
-	SourceURL   string           `json:"source_url"`   // Original URL
-	Type        ModelType        `json:"type"`
-	Description string           `json:"description"`
-	Tags        []string         `json:"tags"`
-	Size        int64            `json:"size"`         // Size in bytes
-	LocalPath   string           `json:"local_path"`   // Path to downloaded files
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Source      ModelSource `json:"source"`
+	SourceID    string      `json:"source_id"`  // HF repo ID or CivitAI model ID
+	SourceURL   string      `json:"source_url"` // Original URL
+	Type        ModelType   `json:"type"`
+	Description string      `json:"description"`
+	Tags        []string    `json:"tags"`
+	Size        int64       `json:"size"`       // Size in bytes
+	LocalPath   string      `json:"local_path"` // Path to downloaded files
 
 	// Download tracking
 	DownloadStatus   DownloadStatus `json:"download_status"`
@@ -77,8 +78,8 @@ type Model struct {
 	Replicas         int              `json:"replicas"`
 
 	// Metadata
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// Source-specific metadata
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -197,10 +198,14 @@ func (r *Registry) Register(m *Model) error {
 
 	r.models[m.ID] = m
 
-	// Persist to disk
+	// Persist to disk (best effort - don't fail if persistence unavailable)
+	// This allows K8s-discovered models to be available in memory even without storage
 	if err := r.save(); err != nil {
-		delete(r.models, m.ID)
-		return fmt.Errorf("failed to persist registry: %w", err)
+		// Keep model in memory; it will be available until restart.
+		slog.Warn("models registry: failed to persist (continuing with in-memory registry)",
+			"error", err,
+			"model_id", m.ID,
+		)
 	}
 
 	return nil

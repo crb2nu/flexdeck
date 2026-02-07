@@ -515,8 +515,8 @@ type PublicCIStage struct {
 
 type PublicCIPipeline struct {
 	ID         string          `json:"id"`
-	Project    string          `json:"project"`    // Sanitized project name
-	Ref        string          `json:"ref"`        // Branch name (these are usually fine)
+	Project    string          `json:"project"` // Sanitized project name
+	Ref        string          `json:"ref"`     // Branch name (these are usually fine)
 	Status     string          `json:"status"`
 	Visibility string          `json:"visibility"` // "public", "internal", "private"
 	Stages     []PublicCIStage `json:"stages"`
@@ -957,9 +957,10 @@ func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
 		modelIDs, err := h.litellm.ListModels(ctx)
 		if err == nil && len(modelIDs) > 0 {
 			out := make([]PublicModelInfo, 0, len(modelIDs))
-			for i, id := range modelIDs {
+			for _, id := range modelIDs {
+				// Preserve the actual model id so the portfolio site can show stable keys.
 				out = append(out, PublicModelInfo{
-					ID:         fmt.Sprintf("m-%d", i+1),
+					ID:         id,
 					Name:       id,
 					Type:       "llm",
 					Status:     "running",

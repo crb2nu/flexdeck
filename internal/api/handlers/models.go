@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -58,7 +59,7 @@ func (h *Handler) ModelsRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Source   string `json:"source"`   // "huggingface" or "civitai"
+		Source   string `json:"source"`    // "huggingface" or "civitai"
 		SourceID string `json:"source_id"` // HF repo ID or CivitAI model ID
 	}
 
@@ -458,4 +459,269 @@ func sendSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any
 	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
 	flusher.Flush()
+}
+
+// ModelsDiscoverK8s scans Kubernetes for flexinfer-managed model deployments
+// and syncs them to the models registry. This enables automatic discovery of
+// models deployed by the flexinfer controller.
+func (h *Handler) ModelsDiscoverK8s(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Models.Disabled || h.modelsRegistry == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "models feature disabled",
+		})
+		return
+	}
+
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "kubernetes client not configured",
+		})
+		return
+	}
+
+	// Namespace to scan - use flexinfer-system or configured AI namespace
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = h.cfg.Models.AINamespace
+		if namespace == "" {
+			namespace = "ai"
+		}
+	}
+
+	discovered, err := h.SyncModelsFromK8s(r.Context(), namespace)
+	if err != nil {
+		slog.Error("ModelsDiscoverK8s: failed to sync models", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("failed to discover models: %v", err),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"discovered": discovered,
+		"namespace":  namespace,
+	})
+}
+
+// SyncModelsFromK8s queries K8s for flexinfer model deployments and syncs to registry.
+// Exported for use by auto-discovery on startup.
+func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int, error) {
+	deployments, err := h.k8s.GetDeployments(ctx, namespace)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list deployments: %w", err)
+	}
+
+	discovered := 0
+	for _, dep := range deployments.Items {
+		labels := dep.Labels
+
+		// Primary discovery signal: served model annotation (matches actual k3s AI deployments)
+		servedModel := ""
+		aliases := ""
+		description := ""
+		if dep.Annotations != nil {
+			servedModel = dep.Annotations["litellm.flexinfer.ai/served-model"]
+			aliases = dep.Annotations["litellm.flexinfer.ai/aliases"]
+			description = dep.Annotations["description"]
+		}
+
+		// Backwards compatible: original flexinfer-managed label set.
+		if servedModel == "" {
+			if labels == nil {
+				continue
+			}
+			managedBy := labels["app.kubernetes.io/managed-by"]
+			appName := labels["app.kubernetes.io/name"]
+			if managedBy != "flexinfer" || appName != "model" {
+				continue
+			}
+			servedModel = labels["flexinfer.ai/model"]
+			if servedModel == "" {
+				servedModel = dep.Name
+			}
+		}
+
+		// Registry ID should match what LiteLLM exposes via /v1/models where possible.
+		modelID := servedModel
+
+		// Display name: prefer explicit label when available (more readable than "served model" IDs).
+		displayName := modelID
+		if dep.Spec.Template.Labels != nil {
+			if v := dep.Spec.Template.Labels["model"]; v != "" {
+				displayName = v
+			}
+		}
+		if labels != nil {
+			if v := labels["flexinfer.ai/model"]; v != "" {
+				displayName = v
+			}
+		}
+
+		// Extract model type from backend or annotations
+		backend := ""
+		engine := ""
+		component := ""
+		if labels != nil {
+			backend = labels["flexinfer.ai/backend"]
+			engine = labels["engine"]
+			component = labels["component"]
+		}
+		modelType := models.TypeLLM // Default to LLM
+		if backend == "stable-diffusion" || backend == "sdxl" || backend == "comfyui" ||
+			engine == "comfyui" || engine == "stable-diffusion" {
+			modelType = models.TypeDiffusion
+		} else if backend == "embedding" || backend == "bge" || backend == "nomic" ||
+			component == "embeddings" || containsIgnoreCase(modelID, "embedding") || containsIgnoreCase(modelID, "text-embedding") {
+			modelType = models.TypeEmbedding
+		}
+
+		// Determine deployment status from replicas
+		status := models.DeploymentStopped
+		replicas := 0
+		if dep.Spec.Replicas != nil {
+			replicas = int(*dep.Spec.Replicas)
+		}
+		if dep.Status.ReadyReplicas > 0 {
+			status = models.DeploymentDeployed
+			replicas = int(dep.Status.ReadyReplicas)
+		} else if replicas > 0 {
+			status = models.DeploymentPending
+		}
+
+		// Build metadata from annotations
+		metadata := make(map[string]any)
+		if dep.Annotations != nil {
+			if aliases != "" {
+				metadata["aliases"] = aliases
+			}
+			if servedModel != "" {
+				metadata["served_model"] = servedModel
+			}
+		}
+		if labels != nil {
+			if gpuGroup := labels["flexinfer.ai/gpu-group"]; gpuGroup != "" {
+				metadata["gpu_group"] = gpuGroup
+			}
+		}
+		metadata["backend"] = backend
+		metadata["engine"] = engine
+		metadata["component"] = component
+		metadata["namespace"] = namespace
+		if description != "" {
+			metadata["description"] = description
+		}
+
+		// Hardware best-effort from scheduling hints.
+		if dep.Spec.Template.Spec.NodeSelector != nil {
+			if v := dep.Spec.Template.Spec.NodeSelector["gpu.amd.com/model"]; v != "" {
+				metadata["hardware"] = "AMD " + v
+			} else if v := dep.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"]; v != "" {
+				metadata["node"] = v
+				if containsIgnoreCase(v, "7900") {
+					metadata["hardware"] = "AMD 7900 XTX"
+				}
+			}
+		}
+
+		// Extract parameter count from model name (e.g., "qwen3-14b-mlc" -> "14B")
+		params := inferParamsFromName(displayName)
+		if params == "" {
+			params = inferParamsFromName(modelID)
+		}
+		if params != "" {
+			metadata["parameters"] = params
+		}
+
+		// Create or update model in registry
+		if existing, err := h.modelsRegistry.Get(modelID); err == nil && existing != nil {
+			existing.Name = displayName
+			existing.Source = models.SourceLocal
+			existing.Type = modelType
+			if description != "" {
+				existing.Description = description
+			}
+			existing.DeploymentStatus = status
+			existing.DeploymentName = dep.Name
+			existing.DeploymentNS = namespace
+			existing.Replicas = replicas
+			existing.Metadata = metadata
+			_ = h.modelsRegistry.Update(existing)
+			discovered++
+			continue
+		}
+
+		model := &models.Model{
+			ID:               modelID,
+			Name:             displayName,
+			Source:           models.SourceLocal,
+			Type:             modelType,
+			Description:      description,
+			DeploymentStatus: status,
+			DeploymentName:   dep.Name,
+			DeploymentNS:     namespace,
+			Replicas:         replicas,
+			Metadata:         metadata,
+		}
+
+		// Register new model
+		if err := h.modelsRegistry.Register(model); err != nil {
+			slog.Warn("syncModelsFromK8s: failed to register model",
+				"model", modelID, "error", err)
+			continue
+		}
+
+		discovered++
+	}
+
+	return discovered, nil
+}
+
+// inferParamsFromName extracts parameter count from model name
+func inferParamsFromName(name string) string {
+	// Common patterns: qwen3-14b, llama-70b, mistral-7b, etc.
+	patterns := []string{
+		"0.5b", "1b", "1.5b", "2b", "3b", "4b", "7b", "8b", "13b", "14b",
+		"32b", "34b", "70b", "72b", "405b",
+		"137m", "335m", "560m",
+	}
+	nameLower := strToLower(name)
+	for _, p := range patterns {
+		if containsIgnoreCase(nameLower, p) {
+			return toUpper(p)
+		}
+	}
+	return ""
+}
+
+func strToLower(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
+}
+
+func toUpper(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if strToLower(s[i:i+len(substr)]) == substr {
+			return true
+		}
+	}
+	return false
 }

@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -37,6 +40,30 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	authMiddleware := auth.NewMiddleware(cfg)
 
 	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)
+
+	// Auto-discover models from K8s on startup (non-blocking)
+	if k8sClient != nil && deps != nil && deps.ModelsRegistry != nil {
+		go func() {
+			// Wait a bit for the server to fully start
+			time.Sleep(2 * time.Second)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Discover models from the configured AI namespace (default: ai).
+			aiNS := strings.TrimSpace(cfg.Models.AINamespace)
+			if aiNS == "" {
+				aiNS = "ai"
+			}
+
+			discovered, err := h.SyncModelsFromK8s(ctx, aiNS)
+			if err != nil {
+				slog.Warn("auto-discovery: failed to sync models from K8s", "error", err)
+			} else if discovered > 0 {
+				slog.Info("auto-discovery: synced models from K8s", "count", discovered, "namespace", aiNS)
+			}
+		}()
+	}
 
 	r.Get("/api/health", h.Health)
 
@@ -127,6 +154,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Route("/api/models", func(r chi.Router) {
 			r.Get("/", h.ModelsList)
 			r.Post("/register", h.ModelsRegister)
+			r.Post("/discover", h.ModelsDiscoverK8s) // Discover models from K8s deployments
 			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
 			r.Get("/{id}", h.ModelsGet)
