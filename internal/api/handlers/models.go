@@ -515,6 +515,21 @@ func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int,
 	discovered := 0
 	for _, dep := range deployments.Items {
 		labels := dep.Labels
+		podLabels := dep.Spec.Template.Labels
+
+		getLabel := func(key string) string {
+			if labels != nil {
+				if v := labels[key]; v != "" {
+					return v
+				}
+			}
+			if podLabels != nil {
+				if v := podLabels[key]; v != "" {
+					return v
+				}
+			}
+			return ""
+		}
 
 		// Primary discovery signal: served model annotation (matches actual k3s AI deployments)
 		servedModel := ""
@@ -547,26 +562,20 @@ func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int,
 
 		// Display name: prefer explicit label when available (more readable than "served model" IDs).
 		displayName := modelID
-		if dep.Spec.Template.Labels != nil {
-			if v := dep.Spec.Template.Labels["model"]; v != "" {
+		if podLabels != nil {
+			if v := podLabels["model"]; v != "" {
 				displayName = v
 			}
 		}
-		if labels != nil {
-			if v := labels["flexinfer.ai/model"]; v != "" {
-				displayName = v
-			}
+		if v := getLabel("flexinfer.ai/model"); v != "" {
+			displayName = v
 		}
 
 		// Extract model type from backend or annotations
-		backend := ""
-		engine := ""
-		component := ""
-		if labels != nil {
-			backend = labels["flexinfer.ai/backend"]
-			engine = labels["engine"]
-			component = labels["component"]
-		}
+		backend := getLabel("flexinfer.ai/backend")
+		engine := getLabel("engine")
+		component := getLabel("component")
+		capability := getLabel("capability")
 		modelType := models.TypeLLM // Default to LLM
 		if backend == "stable-diffusion" || backend == "sdxl" || backend == "comfyui" ||
 			engine == "comfyui" || engine == "stable-diffusion" {
@@ -599,14 +608,15 @@ func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int,
 				metadata["served_model"] = servedModel
 			}
 		}
-		if labels != nil {
-			if gpuGroup := labels["flexinfer.ai/gpu-group"]; gpuGroup != "" {
-				metadata["gpu_group"] = gpuGroup
-			}
+		if gpuGroup := getLabel("flexinfer.ai/gpu-group"); gpuGroup != "" {
+			metadata["gpu_group"] = gpuGroup
 		}
 		metadata["backend"] = backend
 		metadata["engine"] = engine
 		metadata["component"] = component
+		if capability != "" {
+			metadata["capability"] = capability
+		}
 		metadata["namespace"] = namespace
 		if description != "" {
 			metadata["description"] = description

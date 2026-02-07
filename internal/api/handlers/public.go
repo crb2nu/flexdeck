@@ -886,11 +886,14 @@ func (h *Handler) PublicMetricsSummary(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 
 type PublicModelInfo struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Type       string `json:"type"` // "llm", "embedding", "image"
-	Status     string `json:"status"`
-	Parameters string `json:"parameters"` // "7B", "70B", etc
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Type       string   `json:"type"` // "llm", "embedding", "image"
+	Status     string   `json:"status"`
+	Parameters string   `json:"parameters"` // "7B", "70B", etc
+	Engine     string   `json:"engine,omitempty"`
+	Hardware   string   `json:"hardware,omitempty"`
+	Aliases    []string `json:"aliases,omitempty"`
 }
 
 type PublicModelsResponse struct {
@@ -940,6 +943,9 @@ func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
 				Type:       modelType,
 				Status:     status,
 				Parameters: inferModelParameters(m),
+				Engine:     getModelMetadataString(m, "engine"),
+				Hardware:   getModelMetadataString(m, "hardware"),
+				Aliases:    parseAliases(getModelMetadataString(m, "aliases")),
 			})
 		}
 
@@ -1012,6 +1018,41 @@ func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusServiceUnavailable, map[string]any{
 		"error": "models status unavailable",
 	})
+}
+
+func getModelMetadataString(m *models.Model, key string) string {
+	if m == nil || m.Metadata == nil {
+		return ""
+	}
+	v, ok := m.Metadata[key]
+	if !ok || v == nil {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func parseAliases(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func inferModelParameters(m *models.Model) string {
