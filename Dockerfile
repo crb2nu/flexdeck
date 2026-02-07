@@ -23,6 +23,10 @@ FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 
+# Use the in-cluster Go module proxy (Athens). The build environment often has
+# restricted egress, and hitting proxy.golang.org can fail with TLS timeouts.
+ENV GOPROXY="http://athens.ci.svc.cluster.local:3000,direct"
+
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
 
