@@ -50,7 +50,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ==============================================================================
 # RUNTIME STAGE (minimal)
 # ==============================================================================
-FROM alpine:3.21 AS runtime
+FROM registry.harbor.lan/dockerhub-cache/library/alpine:3.21 AS runtime
 
 # Install runtime dependencies in single layer
 RUN apk add --no-cache ca-certificates tzdata && \
