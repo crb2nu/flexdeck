@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -678,19 +679,44 @@ func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int,
 
 // inferParamsFromName extracts parameter count from model name
 func inferParamsFromName(name string) string {
-	// Common patterns: qwen3-14b, llama-70b, mistral-7b, etc.
-	patterns := []string{
-		"0.5b", "1b", "1.5b", "2b", "3b", "4b", "7b", "8b", "13b", "14b",
-		"32b", "34b", "70b", "72b", "405b",
-		"137m", "335m", "560m",
+	// Extract parameter counts like "7b", "32B", "0.5b", "137m" from a model name.
+	// Prefer the largest match to avoid substring collisions (e.g. "32b" contains "2b").
+	//
+	// Examples:
+	// - qwen25-coder-32b -> 32B
+	// - qwen2.5-7b -> 7B
+	// - nemotron-3-nano-30b -> 30B
+	re := regexp.MustCompile(`(?i)(?:^|[^0-9])(\d+(?:\.\d+)?)([bm])(?:[^a-z0-9]|$)`)
+	matches := re.FindAllStringSubmatch(name, -1)
+	if len(matches) == 0 {
+		return ""
 	}
-	nameLower := strToLower(name)
-	for _, p := range patterns {
-		if containsIgnoreCase(nameLower, p) {
-			return toUpper(p)
+
+	best := ""
+	bestScore := -1.0
+	for _, m := range matches {
+		if len(m) < 3 {
+			continue
+		}
+		v, err := strconv.ParseFloat(m[1], 64)
+		if err != nil {
+			continue
+		}
+		suffix := strToLower(m[2])
+		mult := 1.0
+		if suffix == "b" {
+			mult = 1_000_000_000
+		} else if suffix == "m" {
+			mult = 1_000_000
+		}
+		score := v * mult
+		if score > bestScore {
+			bestScore = score
+			best = m[1] + toUpper(suffix)
 		}
 	}
-	return ""
+
+	return best
 }
 
 func strToLower(s string) string {
