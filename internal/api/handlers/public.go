@@ -943,9 +943,9 @@ func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
 				Type:       modelType,
 				Status:     status,
 				Parameters: inferModelParameters(m),
-				Engine:     getModelMetadataString(m, "engine"),
-				Hardware:   getModelMetadataString(m, "hardware"),
-				Aliases:    parseAliases(getModelMetadataString(m, "aliases")),
+				Engine:     inferModelEngine(m),
+				Hardware:   inferModelHardware(m),
+				Aliases:    inferModelAliases(m),
 			})
 		}
 
@@ -1053,6 +1053,117 @@ func parseAliases(raw string) []string {
 		return nil
 	}
 	return out
+}
+
+func inferModelAliases(m *models.Model) []string {
+	if m == nil || m.Metadata == nil {
+		return nil
+	}
+	if v := getModelMetadataString(m, "aliases"); v != "" {
+		return parseAliases(v)
+	}
+	// If upstream stored aliases as a slice, pass it through as-is.
+	if raw, ok := m.Metadata["aliases"]; ok {
+		if list, ok := raw.([]string); ok && len(list) > 0 {
+			out := make([]string, 0, len(list))
+			for _, a := range list {
+				a = strings.TrimSpace(a)
+				if a == "" {
+					continue
+				}
+				out = append(out, a)
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+	return nil
+}
+
+func inferModelEngine(m *models.Model) string {
+	if m == nil {
+		return ""
+	}
+
+	// Prefer explicit engine, then backend (synced from k8s labels).
+	engine := getModelMetadataString(m, "engine")
+	if engine == "" {
+		engine = getModelMetadataString(m, "backend")
+	}
+
+	// Heuristic fallback: infer from deployment or model name.
+	if engine == "" {
+		candidate := strings.ToLower(m.DeploymentName + " " + m.Name + " " + m.ID)
+		switch {
+		case strings.Contains(candidate, "vllm"):
+			engine = "vllm"
+		case strings.Contains(candidate, "tgi"):
+			engine = "tgi"
+		case strings.Contains(candidate, "ollama"):
+			engine = "ollama"
+		case strings.Contains(candidate, "llamacpp") || strings.Contains(candidate, "llama.cpp") || strings.Contains(candidate, "gguf"):
+			engine = "llamacpp"
+		case strings.Contains(candidate, "mlc"):
+			engine = "mlc"
+		case strings.Contains(candidate, "comfyui"):
+			engine = "comfyui"
+		case strings.Contains(candidate, "stable-diffusion") || strings.Contains(candidate, "sdxl"):
+			engine = "stable-diffusion"
+		}
+	}
+
+	// Normalize for display.
+	switch strings.ToLower(strings.TrimSpace(engine)) {
+	case "vllm":
+		return "vLLM"
+	case "tgi":
+		return "TGI"
+	case "ollama":
+		return "Ollama"
+	case "llamacpp", "llama.cpp":
+		return "llama.cpp"
+	case "mlc":
+		return "MLC"
+	case "comfyui":
+		return "ComfyUI"
+	case "stable-diffusion", "sdxl":
+		return "Stable Diffusion"
+	default:
+		return strings.TrimSpace(engine)
+	}
+}
+
+func inferModelHardware(m *models.Model) string {
+	if m == nil {
+		return ""
+	}
+	if v := getModelMetadataString(m, "hardware"); v != "" {
+		return v
+	}
+
+	// Best-effort mapping from gpu_group (if set by syncModelsFromK8s).
+	if g := strings.ToLower(getModelMetadataString(m, "gpu_group")); g != "" {
+		if strings.Contains(g, "7900") {
+			return "AMD 7900 XTX"
+		}
+		if strings.Contains(g, "980") {
+			return "NVIDIA GTX 980 Ti"
+		}
+		return strings.TrimSpace(g)
+	}
+
+	// If the node label was captured, do a lightweight mapping. Avoid emitting raw hostnames.
+	if n := strings.ToLower(getModelMetadataString(m, "node")); n != "" {
+		if strings.Contains(n, "7900") {
+			return "AMD 7900 XTX"
+		}
+		if strings.Contains(n, "980") {
+			return "NVIDIA GTX 980 Ti"
+		}
+	}
+
+	return ""
 }
 
 func inferModelParameters(m *models.Model) string {
