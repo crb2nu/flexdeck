@@ -194,6 +194,13 @@ perf:topology:
 build:
   stage: build
   image: registry.harbor.lan/library/ci-builder:latest
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - scheduler_failure
+      - stuck_or_timeout_failure
+      - script_failure
   variables:
     # Use GZIP for faster cache compression
     BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
@@ -226,16 +233,27 @@ build:
         --import-cache type=registry,ref=${CACHE_REPO}:${IMAGE_NAME}
       )
 
+      build_with_retry() {
+        local output_spec="$1"
+        for attempt in 1 2 3; do
+          echo "BuildKit build attempt ${attempt}/3..."
+          if buildctl --addr "${BUILDKIT_HOST}" build \
+            "${BUILD_ARGS[@]}" \
+            --output "${output_spec}"; then
+            return 0
+          fi
+          echo "buildctl failed (attempt ${attempt}/3)."
+          sleep $((attempt * 3))
+        done
+        return 1
+      }
+
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
         # Main branch: push SHA + latest tags
-        buildctl --addr "${BUILDKIT_HOST}" build \
-          "${BUILD_ARGS[@]}" \
-          --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
+        build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
       else
         # Feature branches: SHA tag only
-        buildctl --addr "${BUILDKIT_HOST}" build \
-          "${BUILD_ARGS[@]}" \
-          --output "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
+        build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
       fi
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
