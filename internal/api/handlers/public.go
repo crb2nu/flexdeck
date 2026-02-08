@@ -1077,6 +1077,24 @@ func inferModelAliases(m *models.Model) []string {
 				return out
 			}
 		}
+		// json.Unmarshal into map[string]any yields []any for arrays.
+		if list, ok := raw.([]any); ok && len(list) > 0 {
+			out := make([]string, 0, len(list))
+			for _, v := range list {
+				s, ok := v.(string)
+				if !ok {
+					continue
+				}
+				s = strings.TrimSpace(s)
+				if s == "" {
+					continue
+				}
+				out = append(out, s)
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
 	}
 	return nil
 }
@@ -1123,8 +1141,10 @@ func inferModelEngine(m *models.Model) string {
 		return "Ollama"
 	case "llamacpp", "llama.cpp":
 		return "llama.cpp"
-	case "mlc":
+	case "mlc", "mlc-llm", "mlc_llm":
 		return "MLC"
+	case "tensorrt-llm", "tensorrtllm", "trt-llm", "trtllm":
+		return "TensorRT-LLM"
 	case "comfyui":
 		return "ComfyUI"
 	case "stable-diffusion", "sdxl":
