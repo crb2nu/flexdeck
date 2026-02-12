@@ -6,6 +6,7 @@ import ChartWidget from './Widgets/ChartWidget';
 import StatusWidget from './Widgets/StatusWidget';
 import LogWidget from './Widgets/LogWidget';
 import ActionWidget from './Widgets/ActionWidget';
+import DeploymentWidget from './Widgets/DeploymentWidget';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -13,7 +14,7 @@ interface Message {
   timestamp: number;
   thinking?: boolean;
   widgets?: {
-    type: 'chart' | 'status' | 'code' | 'agent-config' | 'log' | 'action';
+    type: 'chart' | 'status' | 'code' | 'agent-config' | 'log' | 'action' | 'deployment';
     data: any;
   }[];
   metadata?: {
@@ -256,6 +257,15 @@ const AgentChat: Component<AgentChatProps> = (props) => {
         }
       }];
     }
+    // Deployment widget trigger
+    if (lowerQuery.includes('deployment') || lowerQuery.includes('model status') || lowerQuery.includes('what models') || lowerQuery.includes('running models')) {
+      return [{
+        type: 'deployment',
+        data: {
+          autoDiscover: true,
+        }
+      }];
+    }
     
     return undefined;
   }
@@ -392,6 +402,9 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                                               </Show>
                                               <Show when={widget.type === 'action'}>
                                                   <ActionWidget data={widget.data} />
+                                              </Show>
+                                              <Show when={widget.type === 'deployment'}>
+                                                  <DeploymentWidget data={widget.data} />
                                               </Show>
                                               <Show when={widget.type === 'agent-config'}>
                                                   <div class="bg-black/40 border border-neon-purple/30 rounded-lg p-3">
