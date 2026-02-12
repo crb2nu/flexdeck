@@ -4,6 +4,8 @@ import type { Agent } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import ChartWidget from './Widgets/ChartWidget';
 import StatusWidget from './Widgets/StatusWidget';
+import LogWidget from './Widgets/LogWidget';
+import ActionWidget from './Widgets/ActionWidget';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -11,7 +13,7 @@ interface Message {
   timestamp: number;
   thinking?: boolean;
   widgets?: {
-    type: 'chart' | 'status' | 'code' | 'agent-config';
+    type: 'chart' | 'status' | 'code' | 'agent-config' | 'log' | 'action';
     data: any;
   }[];
   metadata?: {
@@ -178,9 +180,16 @@ const AgentChat: Component<AgentChatProps> = (props) => {
   }
 
   function parseWidgetsFromResponse(response: string, query: string): Message['widgets'] {
+    // 1. Try to extract JSON widget blocks from agent response
+    //    Agents can emit ```flexdeck-widget\n{...}\n``` blocks
+    const jsonWidgets = extractJsonWidgets(response);
+    if (jsonWidgets && jsonWidgets.length > 0) return jsonWidgets;
+
+    // 2. Keyword-based heuristics as fallback
     const lowerQuery = query.toLowerCase();
+    const lowerResponse = response.toLowerCase();
     
-    if (lowerQuery.includes('status') || response.toLowerCase().includes('healthy')) {
+    if (lowerQuery.includes('status') || lowerResponse.includes('healthy')) {
       return [{
         type: 'status',
         data: { 
@@ -205,8 +214,67 @@ const AgentChat: Component<AgentChatProps> = (props) => {
         }
       }];
     }
+
+    // Log widget trigger
+    if (lowerQuery.includes('log') || lowerQuery.includes('tail')) {
+      // Try to extract a service/app name from the query
+      const appMatch = query.match(/(?:logs?\s+(?:for|from|of)\s+)([\w-]+)/i);
+      const appName = appMatch ? appMatch[1] : 'flexdeck';
+      return [{
+        type: 'log',
+        data: {
+          query: appName,
+          title: `Logs: ${appName}`,
+          limit: 15
+        }
+      }];
+    }
+
+    // Action widget trigger
+    if (lowerQuery.includes('restart') || lowerQuery.includes('scale')) {
+      const deployMatch = query.match(/(?:restart|scale)\s+([\w-]+)/i);
+      const deployName = deployMatch ? deployMatch[1] : 'unknown';
+      const isScale = lowerQuery.includes('scale');
+      const replicaMatch = query.match(/(\d+)\s*(?:replica|pod|instance)/i);
+      const replicas = replicaMatch ? parseInt(replicaMatch[1]) : 3;
+
+      return [{
+        type: 'action',
+        data: {
+          title: isScale ? `Scale ${deployName}` : `Restart ${deployName}`,
+          actions: [{
+            label: isScale ? `Scale to ${replicas}` : `Restart ${deployName}`,
+            description: isScale 
+              ? `Set ${deployName} to ${replicas} replicas`
+              : `Rolling restart of ${deployName}`,
+            type: isScale ? 'scale' : 'restart',
+            namespace: 'ai',
+            deployment: deployName,
+            ...(isScale ? { replicas } : {}),
+            variant: 'default' as const
+          }]
+        }
+      }];
+    }
     
     return undefined;
+  }
+
+  function extractJsonWidgets(response: string): Message['widgets'] | undefined {
+    const widgetRegex = /```flexdeck-widget\s*\n([\s\S]*?)\n```/g;
+    const widgets: NonNullable<Message['widgets']> = [];
+    let match;
+    while ((match = widgetRegex.exec(response)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (parsed.type && parsed.data) {
+          widgets.push(parsed);
+        }
+      } catch {
+        // Skip malformed JSON blocks
+      }
+    }
+    return widgets.length > 0 ? widgets : undefined;
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -318,6 +386,12 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                                               </Show>
                                               <Show when={widget.type === 'status'}>
                                                   <StatusWidget data={widget.data} />
+                                              </Show>
+                                              <Show when={widget.type === 'log'}>
+                                                  <LogWidget data={widget.data} />
+                                              </Show>
+                                              <Show when={widget.type === 'action'}>
+                                                  <ActionWidget data={widget.data} />
                                               </Show>
                                               <Show when={widget.type === 'agent-config'}>
                                                   <div class="bg-black/40 border border-neon-purple/30 rounded-lg p-3">
