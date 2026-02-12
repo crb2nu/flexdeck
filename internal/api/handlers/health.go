@@ -7,9 +7,9 @@ import (
 )
 
 type HealthResponse struct {
-	OK       bool              `json:"ok"`
-	Service  string            `json:"service"`
-	Time     string            `json:"time"`
+	OK       bool               `json:"ok"`
+	Service  string             `json:"service"`
+	Time     string             `json:"time"`
 	Features map[string]Feature `json:"features"`
 }
 
@@ -43,6 +43,13 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			},
 			"cache": {
 				Enabled: h.cfg.Cache.HFPath != "" || h.cfg.Cache.CivitAIPath != "",
+			},
+			"litellm": {
+				Enabled: !h.cfg.LiteLLM.Disabled,
+				URL:     h.cfg.LiteLLM.URL,
+			},
+			"redis": {
+				Enabled: !h.cfg.Redis.Disabled,
 			},
 		},
 	}

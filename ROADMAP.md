@@ -1,6 +1,10 @@
 # Project Roadmap
 
-> Last Updated: January 2026
+## Tracking
+
+- [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
+
+> Last Updated: February 2026
 
 ## Current Status
 
@@ -9,46 +13,60 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 ### Implemented Features
 
 #### Backend (Go)
-- ✅ **Kubernetes Integration**: Direct client for cluster management and Flux GitOps sync.
+
+- ✅ **Kubernetes Integration**: Direct client for cluster management, events feed, and Flux GitOps sync.
 - ✅ **LiteLLM Gateway**: Metrics scraping, Redis buffering, and proxying.
 - ✅ **Model Management**:
-    - Registry for tracking available models.
-    - Downloader for HuggingFace and CivitAI artifacts.
-    - GitOps generator for automated deployment manifests.
-- ✅ **Agent Orchestration**: Registry and proxy for managing AI agents.
+  - Registry for tracking available models.
+  - Downloader for HuggingFace and CivitAI artifacts.
+  - GitOps generator for automated deployment manifests.
+  - Auto-discovery of models from K8s deployments.
+- ✅ **Agent Orchestration**: Registry and proxy for managing AI agents (Dify, LangGraph, AgentScope).
 - ✅ **Observability**:
-    - Prometheus metrics proxy.
-    - Loki log streaming (SSE).
+  - Prometheus metrics proxy (queries, alerts, rules).
+  - Loki log streaming (SSE).
 - ✅ **Infrastructure**:
-    - Redis integration for state/metrics.
-    - Configurable feature flags (disable subsystems via env).
+  - Redis integration for state/metrics.
+  - Configurable feature flags (disable subsystems via env).
+  - Health endpoint with per-subsystem status.
 
 #### Frontend (SolidJS)
-- ✅ **Dashboard Layout**: Responsive sidebar/header layout.
-- ✅ **Log Viewer**: Live tailing of Loki logs.
-- ✅ **Metrics Charts**: Visualization of cluster and model performance.
-- ✅ **Resource Views**: K8s deployments, pods, and services.
+
+- ✅ **Dashboard**: Topology graph (2D + 3D HoloDeck), resource PulseCards, K8s events feed, pod detail panels.
+- ✅ **Services**: Full CRUD for Deployments, StatefulSets, DaemonSets, Jobs, Services, Ingresses.
+- ✅ **Flux GitOps**: Visualizer for Kustomizations and HelmReleases with reconcile buttons and drift detection.
+- ✅ **Pipeline / CI**: GitLab CI visualization, job trace viewer, retry/cancel/play actions.
+- ✅ **Log Viewer**: Matrix-style live tailing of Loki logs (warp + rain modes).
+- ✅ **Metrics**: Prometheus query dashboard with sparkline charts.
+- ✅ **Models**: Registry browser, HuggingFace/CivitAI search, download/deploy/scale.
+- ✅ **Agents**: Registry, health checks, CRUD, Neural Link chat interface.
+- ✅ **Command Palette**: ⌘K quick navigation to all sections.
+- ✅ **SystemCore**: Real-time health indicator showing subsystem status.
 
 ## Upcoming Work
 
 ### Phase 1: AI Workload Management
-- [ ] **Model Browser UI**: Rich interface for browsing the model registry and triggering downloads.
-- [ ] **GitOps visualizer**: Visual status of Flux synchronizations and drift detection.
+
+- [x] **Model Browser UI**: Rich interface for browsing the model registry and triggering downloads.
+- [x] **GitOps Visualizer**: Visual status of Flux synchronizations and drift detection.
 - [ ] **vLLM Control Plane**: Direct scaling and configuration of inference endpoints.
+- [ ] **GPU Metrics**: Dashboard integration for AMD ROCm / GPU utilization telemetry.
 
 ### Phase 2: Agent Interaction
-- [ ] **Agent Chat Interface**: Unified chat UI to interact with registered agents.
+
+- [x] **Agent Chat Interface**: Neural Link chat UI for interacting with registered agents.
 - [ ] **Flow Visualization**: Visual graph of agent interactions and dependencies.
 
 ### Phase 3: Enterprise Features
+
 - [ ] **RBAC UI**: User management and role assignment.
 - [ ] **Audit Logs**: Visual audit trail of all mutations performed via the dashboard.
 - [ ] **Multi-Cluster Support**: Switching context between different K8s clusters.
 
 ## References
 
-| Document | Purpose |
-|----------|---------|
+| Document               | Purpose                        |
+| ---------------------- | ------------------------------ |
 | [README.md](README.md) | Project setup and architecture |
-| [AGENTS.md](AGENTS.md) | Agent guidance |
-| [Makefile](Makefile) | Build and dev commands |
+| [AGENTS.md](AGENTS.md) | Agent guidance                 |
+| [Makefile](Makefile)   | Build and dev commands         |

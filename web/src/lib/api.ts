@@ -6,7 +6,10 @@ interface ApiError {
 }
 
 export class ApiRequestError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "ApiRequestError";
   }
@@ -14,7 +17,7 @@ export class ApiRequestError extends Error {
 
 export async function api<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   // Use /flexdeck/api when hosted at the subpath on www.flexinfer.ai
   const isPublicView =
@@ -67,6 +70,21 @@ export const k8s = {
     const apiBase = isPublicView ? "/flexdeck/api" : "/api";
     return `${apiBase}/k8s/watch-sse${ns ? `?ns=${ns}` : ""}`;
   },
+  getEvents: (ns?: string, limit = 20) =>
+    api<any>(`/k8s/events${ns ? `?ns=${ns}` : ""}`).then((data: any) => {
+      const items = data?.items || [];
+      return items
+        .sort(
+          (a: any, b: any) =>
+            new Date(
+              b.lastTimestamp || b.metadata?.creationTimestamp || 0,
+            ).getTime() -
+            new Date(
+              a.lastTimestamp || a.metadata?.creationTimestamp || 0,
+            ).getTime(),
+        )
+        .slice(0, limit);
+    }),
 };
 
 export const prom = {
@@ -75,13 +93,13 @@ export const prom = {
     api<any>(
       `/prom/query?query=${encodeURIComponent(query)}${
         time ? `&time=${time}` : ""
-      }`
+      }`,
     ),
   queryRange: (query: string, start: string, end: string, step: string) =>
     api<any>(
       `/prom/query_range?query=${encodeURIComponent(
-        query
-      )}&start=${start}&end=${end}&step=${step}`
+        query,
+      )}&start=${start}&end=${end}&step=${step}`,
     ),
 };
 
@@ -92,13 +110,13 @@ export const loki = {
     api<any>(
       `/loki/query?query=${encodeURIComponent(query)}${
         limit ? `&limit=${limit}` : ""
-      }`
+      }`,
     ),
   queryRange: (query: string, start: string, end: string, limit?: number) =>
     api<any>(
       `/loki/query_range?query=${encodeURIComponent(
-        query
-      )}&start=${start}&end=${end}${limit ? `&limit=${limit}` : ""}`
+        query,
+      )}&start=${start}&end=${end}${limit ? `&limit=${limit}` : ""}`,
     ),
 };
 
@@ -123,13 +141,13 @@ export const modelsApi = {
     api<any>(
       `/models/search/huggingface?q=${encodeURIComponent(query)}${
         filter ? `&filter=${encodeURIComponent(filter)}` : ""
-      }${limit ? `&limit=${limit}` : ""}`
+      }${limit ? `&limit=${limit}` : ""}`,
     ),
   searchCivitAI: (query: string, type?: string, limit?: number) =>
     api<any>(
       `/models/search/civitai?q=${encodeURIComponent(query)}${
         type ? `&type=${encodeURIComponent(type)}` : ""
-      }${limit ? `&limit=${limit}` : ""}`
+      }${limit ? `&limit=${limit}` : ""}`,
     ),
   startDownload: (id: string) =>
     api<any>(`/models/${encodeURIComponent(id)}/download`, { method: "POST" }),
@@ -194,7 +212,7 @@ export const agentsApi = {
   difyChat: (
     query: string,
     conversationId?: string,
-    inputs?: Record<string, string>
+    inputs?: Record<string, string>,
   ) =>
     api<any>("/agents/dify/chat", {
       method: "POST",
@@ -211,7 +229,7 @@ export const agentsApi = {
   langGraphRun: (
     graphId: string,
     input: Record<string, any>,
-    threadId?: string
+    threadId?: string,
   ) =>
     api<any>("/agents/langgraph/run", {
       method: "POST",
@@ -242,23 +260,50 @@ export const ciApi = {
   getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
   getJobTrace: (projectId: number, jobId: string) =>
     api<{ jobId: string; trace: string }>(
-      `/ci/projects/${projectId}/jobs/${jobId}/trace`
+      `/ci/projects/${projectId}/jobs/${jobId}/trace`,
     ),
   getJobInfo: (projectId: number, jobId: string) =>
     api<any>(`/ci/projects/${projectId}/jobs/${jobId}`),
   retryJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
       `/ci/projects/${projectId}/jobs/${jobId}/retry`,
-      { method: "POST" }
+      { method: "POST" },
     ),
   cancelJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
       `/ci/projects/${projectId}/jobs/${jobId}/cancel`,
-      { method: "POST" }
+      { method: "POST" },
     ),
   playJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
       `/ci/projects/${projectId}/jobs/${jobId}/play`,
-      { method: "POST" }
+      { method: "POST" },
+    ),
+};
+
+export interface FluxResource {
+  name: string;
+  namespace: string;
+  kind: string;
+  ready: boolean;
+  message?: string;
+  lastApplied?: string;
+}
+
+export const fluxApi = {
+  listKustomizations: () => api<FluxResource[]>("/flux/kustomizations"),
+  listHelmReleases: () => api<FluxResource[]>("/flux/helmreleases"),
+  reconcile: (
+    kind: string,
+    namespace: string,
+    name: string,
+    withSource = false,
+  ) =>
+    api<{ ok: boolean; message: string }>(
+      `/flux/reconcile/${kind}/${namespace}/${name}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ withSource }),
+      },
     ),
 };

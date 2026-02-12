@@ -35,8 +35,10 @@ const AppLayout: Component<ParentProps> = (props) => {
   const navItems = [
     { label: 'Dashboard', path: '/' },
     { label: 'Services', path: '/services' },
+    { label: 'Flux', path: '/flux' },
     { label: 'Pipeline', path: '/pipeline' },
     { label: 'Logs', path: '/logs' },
+    { label: 'Metrics', path: '/metrics' },
     { label: 'Models', path: '/models' },
     { label: 'Agents', path: '/agents' }, 
   ];

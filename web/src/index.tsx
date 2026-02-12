@@ -13,6 +13,7 @@ const Metrics = lazy(() => import('./components/Metrics'));
 const Models = lazy(() => import('./components/Models'));
 const Agents = lazy(() => import('./components/Agents'));
 const Pipeline = lazy(() => import('./components/Pipeline'));
+const FluxStatus = lazy(() => import('./components/FluxStatus'));
 
 const root = document.getElementById('root');
 
@@ -30,6 +31,7 @@ render(
       <Route path="/models" component={Models} />
       <Route path="/agents" component={Agents} />
       <Route path="/pipeline" component={Pipeline} />
+      <Route path="/flux" component={FluxStatus} />
     </HashRouter>
   ),
   root

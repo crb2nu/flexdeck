@@ -9,6 +9,7 @@ import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
 import HoloDeck, { type HoloDeckFilter } from './HoloDeck';
 import PodLogPanel from './PodLogPanel';
+import EventsFeed from './EventsFeed';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
@@ -181,6 +182,8 @@ const Dashboard: Component = () => {
         />
       </div>
 
+      {/* Main Content: Visualization + Events */}
+      <div class="flex flex-1 gap-4 overflow-hidden min-h-0">
       {/* Visualization Panel */}
       <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
         {/* Controls */}
@@ -692,6 +695,12 @@ const Dashboard: Component = () => {
           }}
         </Show>
       </div>
+
+      {/* Events Sidebar */}
+      <div class="hidden lg:flex w-80 flex-shrink-0">
+        <EventsFeed />
+      </div>
+      </div> {/* End Main Content */}
 
       {/* Pod Log Panel */}
       <Show when={logPanelPod()}>

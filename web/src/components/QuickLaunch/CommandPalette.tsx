@@ -55,6 +55,27 @@ const CommandPalette: Component = () => {
       action: () => navigate('/agents'),
     },
     {
+      id: 'nav-flux',
+      name: 'Go to Flux',
+      description: 'View GitOps Flux sync status',
+      keywords: ['gitops', 'kustomization', 'helm', 'reconcile', 'deploy'],
+      action: () => navigate('/flux'),
+    },
+    {
+      id: 'nav-pipeline',
+      name: 'Go to Pipeline',
+      description: 'View CI/CD pipelines',
+      keywords: ['ci', 'cd', 'gitlab', 'build', 'jobs'],
+      action: () => navigate('/pipeline'),
+    },
+    {
+      id: 'nav-metrics',
+      name: 'Go to Metrics',
+      description: 'View Prometheus metrics',
+      keywords: ['prometheus', 'graphs', 'monitoring'],
+      action: () => navigate('/metrics'),
+    },
+    {
       id: 'sys-reload',
       name: 'Reload UI',
       description: 'Refresh the application',
