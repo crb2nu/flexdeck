@@ -3,11 +3,14 @@ import { useLocation, A } from '@solidjs/router';
 import { healthApi, uiApi } from './lib/api';
 import { healthStore, fetchHealth } from './stores/health';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
+import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
 import SystemCore from './components/Navigation/SystemCore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [loading, setLoading] = createSignal(true);
+  useKeyboardShortcuts();
 
   // Check if we are in public read-only view
   const isPublicView = () => {
@@ -134,6 +137,7 @@ const AppLayout: Component<ParentProps> = (props) => {
 
       <Show when={!isPublicView()}>
         <CommandPalette />
+        <ShortcutsOverlay />
       </Show>
     </div>
   );
