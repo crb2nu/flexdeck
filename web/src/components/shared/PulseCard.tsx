@@ -1,4 +1,5 @@
 import { Component, Show, createMemo } from 'solid-js';
+import Sparkline from './Sparkline';
 
 interface PulseCardProps {
   title: string;
@@ -10,6 +11,7 @@ interface PulseCardProps {
   icon?: string;
   trend?: 'up' | 'down' | 'stable';
   color?: 'cyan' | 'purple' | 'green' | 'orange';
+  sparkData?: number[];
 }
 
 const PulseCard: Component<PulseCardProps> = (props) => {
@@ -108,6 +110,17 @@ const PulseCard: Component<PulseCardProps> = (props) => {
           </div>
           <Show when={props.sub}>
             <div class="text-[13px] text-text-muted mt-0.5">{props.sub}</div>
+          </Show>
+          <Show when={props.sparkData && props.sparkData.length >= 2}>
+            <div class="mt-1">
+              <Sparkline
+                data={props.sparkData!}
+                width={120}
+                height={20}
+                color={props.color === 'purple' ? '#a855f7' : props.color === 'green' ? '#22c55e' : props.color === 'orange' ? '#f97316' : '#00d9ff'}
+                trend={props.trend}
+              />
+            </div>
           </Show>
         </Show>
       </div>

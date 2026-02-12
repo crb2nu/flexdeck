@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
+import { Component, createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
 import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
@@ -55,6 +55,17 @@ const Dashboard: Component = () => {
   const memUsed = () => metricsStore().clusterMemory;
   const resourceLoading = () => metricsStore().loading;
   const resourceError = () => metricsStore().error || '';
+
+  // Rolling history for sparklines
+  const [cpuHistory, setCpuHistory] = createSignal<number[]>([]);
+  const [memHistory, setMemHistory] = createSignal<number[]>([]);
+
+  createEffect(() => {
+    const cpu = cpuPercent();
+    const mem = memUsed();
+    if (cpu > 0) setCpuHistory(prev => [...prev.slice(-19), cpu]);
+    if (mem > 0) setMemHistory(prev => [...prev.slice(-19), mem]);
+  });
 
   // AI Models state
   const [modelCount, setModelCount] = createSignal({ deployed: 0, total: 0, loading: true, error: '' });
@@ -189,6 +200,8 @@ const Dashboard: Component = () => {
           loading={resourceLoading()}
           error={resourceError()}
           icon="⚡"
+          sparkData={cpuHistory()}
+          trend={cpuHistory().length >= 2 ? (cpuHistory()[cpuHistory().length - 1] > cpuHistory()[cpuHistory().length - 2] ? 'up' : 'down') : undefined}
         />
 
         <PulseCard
@@ -198,6 +211,7 @@ const Dashboard: Component = () => {
           loading={resourceLoading()}
           error={resourceError()}
           icon="◉"
+          sparkData={memHistory()}
         />
 
         <PulseCard
