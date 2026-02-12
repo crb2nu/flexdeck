@@ -1,7 +1,7 @@
 import { Component, ParentProps, Show, createSignal, onMount, createEffect, Suspense } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import { healthApi, uiApi } from './lib/api';
-import { fetchHealth } from './stores/health';
+import { healthStore, fetchHealth } from './stores/health';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
 import SystemCore from './components/Navigation/SystemCore';
 
@@ -50,14 +50,16 @@ const AppLayout: Component<ParentProps> = (props) => {
         <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
       </div>
       
-      {/* Header */}
+      {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
         <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
         <div class="flex h-16 items-center justify-between px-6">
           {/* Logo */}
           <div class="flex items-center gap-3">
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
+            <div class="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
               <span class="font-mono text-xl font-bold text-white">F</span>
+              {/* Breathing border */}
+              <div class="absolute inset-0 rounded-lg border border-neon-cyan/40 animate-breathe" />
             </div>
             <h1 class="text-xl font-bold tracking-tight text-white">
               Flex<span class="text-neon-cyan">Deck</span>
@@ -90,6 +92,28 @@ const AppLayout: Component<ParentProps> = (props) => {
 
             <SystemCore />
           </div>
+        </div>
+
+        {/* Sentient Health Glow Bar */}
+        <div class="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden">
+          {/* Base glow that breathes */}
+          <div
+            class="absolute inset-0 animate-breathe"
+            style={{
+              background: healthStore.error
+                ? 'linear-gradient(90deg, transparent, #ef4444, transparent)'
+                : healthStore.ok
+                ? 'linear-gradient(90deg, transparent, var(--neon-cyan), transparent)'
+                : 'linear-gradient(90deg, transparent, #eab308, transparent)',
+            }}
+          />
+          {/* Scan line sweep */}
+          <div
+            class="absolute inset-y-0 w-24 animate-scan-line"
+            style={{
+              background: 'linear-gradient(90deg, transparent, rgba(0,217,255,0.6), transparent)',
+            }}
+          />
         </div>
       </header>
       </Show>

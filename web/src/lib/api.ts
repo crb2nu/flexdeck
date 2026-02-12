@@ -165,6 +165,11 @@ export const modelsApi = {
       method: "POST",
       body: JSON.stringify({ replicas }),
     }),
+  discover: (namespace?: string) =>
+    api<any>(
+      `/models/discover${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
+      { method: "POST" },
+    ),
 };
 
 export const agentsApi = {

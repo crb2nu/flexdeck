@@ -65,9 +65,35 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        breathe: {
+          '0%, 100%': { opacity: '0.3' },
+          '50%': { opacity: '0.8' },
+        },
+        scanLine: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(200%)' },
+        },
+        pingSlow: {
+          '0%': { transform: 'scale(1)', opacity: '0.5' },
+          '75%, 100%': { transform: 'scale(1.8)', opacity: '0' },
+        },
+        pingFast: {
+          '0%': { transform: 'scale(1)', opacity: '0.6' },
+          '75%, 100%': { transform: 'scale(1.5)', opacity: '0' },
+        },
+        spinSlow: {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
       },
       animation: {
         'fade-in-scale': 'fadeInScale 0.2s ease-out',
+        'breathe': 'breathe 4s ease-in-out infinite',
+        'scan-line': 'scanLine 3s linear infinite',
+        'ping-slow': 'pingSlow 3s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'ping-fast': 'pingFast 1s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'ping-normal': 'pingSlow 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'spin-slow': 'spinSlow 12s linear infinite',
       },
     },
   },

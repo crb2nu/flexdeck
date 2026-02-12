@@ -3,7 +3,7 @@ import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
-import { api } from '../../lib/api';
+import { api, modelsApi } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
@@ -55,6 +55,20 @@ const Dashboard: Component = () => {
   const memUsed = () => metricsStore().clusterMemory;
   const resourceLoading = () => metricsStore().loading;
   const resourceError = () => metricsStore().error || '';
+
+  // AI Models state
+  const [modelCount, setModelCount] = createSignal({ deployed: 0, total: 0, loading: true, error: '' });
+
+  const fetchModelCount = async () => {
+    try {
+      const result = await modelsApi.list();
+      const models = result?.models || [];
+      const deployed = models.filter((m: { deployment_status?: string }) => m.deployment_status === 'deployed').length;
+      setModelCount({ deployed, total: models.length, loading: false, error: '' });
+    } catch {
+      setModelCount(prev => ({ ...prev, loading: false, error: 'offline' }));
+    }
+  };
 
   let metricsInterval: ReturnType<typeof setInterval>;
 
@@ -134,17 +148,22 @@ const Dashboard: Component = () => {
 
     // Start metrics polling (for node/pod resource metrics)
     startMetricsPolling();
+
+    // Fetch model count
+    fetchModelCount();
+    metricsInterval = setInterval(fetchModelCount, METRICS_REFRESH_INTERVAL);
   });
 
   onCleanup(() => {
     disconnectK8sStream();
     stopMetricsPolling();
+    clearInterval(metricsInterval);
   });
 
   return (
     <div class="flex h-full flex-col gap-4">
       {/* Pulse Cards Grid */}
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <PulseCard
           title="Pods"
           value={`${podReady()}/${podTotal()}`}
@@ -179,6 +198,15 @@ const Dashboard: Component = () => {
           loading={resourceLoading()}
           error={resourceError()}
           icon="◉"
+        />
+
+        <PulseCard
+          title="AI Models"
+          value={`${modelCount().deployed}/${modelCount().total}`}
+          sub="deployed models"
+          loading={modelCount().loading}
+          error={modelCount().error}
+          icon="◆"
         />
       </div>
 
