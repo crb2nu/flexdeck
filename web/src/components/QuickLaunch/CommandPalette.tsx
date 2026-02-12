@@ -1,6 +1,5 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { modelsApi, agentsApi } from '../../lib/api';
 
 interface Command {
   id: string;
@@ -74,6 +73,28 @@ const CommandPalette: Component = () => {
       description: 'View Prometheus metrics',
       keywords: ['prometheus', 'graphs', 'monitoring'],
       action: () => navigate('/metrics'),
+    },
+    {
+      id: 'action-discover-models',
+      name: 'Discover Models',
+      description: 'Sync AI models from flexinfer-system controller',
+      keywords: ['sync', 'k8s', 'flexinfer', 'discover', 'refresh models'],
+      action: async () => {
+        try {
+          const { modelsApi } = await import('../../lib/api');
+          await modelsApi.discover();
+        } catch { /* silent */ }
+      },
+    },
+    {
+      id: 'action-refresh-health',
+      name: 'Refresh Health',
+      description: 'Re-check all subsystem health status',
+      keywords: ['health', 'check', 'status', 'system'],
+      action: async () => {
+        const { fetchHealth } = await import('../../stores/health');
+        fetchHealth();
+      },
     },
     {
       id: 'sys-reload',
