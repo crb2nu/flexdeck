@@ -20,4 +20,4 @@ labels:
 
 images:
   - name: registry.harbor.lan/library/flexdeck
-    newTag: cd9c0b6
+    newTag: latest
