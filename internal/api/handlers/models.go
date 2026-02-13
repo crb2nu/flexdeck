@@ -761,3 +761,38 @@ func containsIgnoreCase(s, substr string) bool {
 	}
 	return false
 }
+
+// ModelsCRD queries flexinfer.ai/v1alpha2 Model CRDs directly from K8s.
+// This returns the full CRD state: phase lifecycle, GPU allocation, metrics,
+// serverless config, cache status, KV-cache pressure, and shared GPU groups.
+func (h *Handler) ModelsCRD(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "kubernetes client not configured",
+		})
+		return
+	}
+
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = h.cfg.Models.AINamespace
+		if namespace == "" {
+			namespace = "flexinfer-system"
+		}
+	}
+
+	models, err := h.k8s.ListFlexInferModels(r.Context(), namespace)
+	if err != nil {
+		slog.Error("ModelsCRD: failed to list Model CRDs", "error", err, "namespace", namespace)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("failed to list Model CRDs: %v", err),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"models":    models,
+		"namespace": namespace,
+		"count":     len(models),
+	})
+}

@@ -170,6 +170,10 @@ export const modelsApi = {
       `/models/discover${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
       { method: "POST" },
     ),
+  crd: (namespace?: string) =>
+    api<any>(
+      `/models/crd${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
+    ),
 };
 
 export const agentsApi = {

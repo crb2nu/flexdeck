@@ -155,6 +155,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/", h.ModelsList)
 			r.Post("/register", h.ModelsRegister)
 			r.Post("/discover", h.ModelsDiscoverK8s) // Discover models from K8s deployments
+			r.Get("/crd", h.ModelsCRD)               // Query flexinfer.ai/v1alpha2 Model CRDs directly
 			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
 			r.Get("/{id}", h.ModelsGet)

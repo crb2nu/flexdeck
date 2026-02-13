@@ -306,6 +306,115 @@ export interface LiteLLMHealthResponse {
   error?: string;
 }
 
+// FlexInfer Model CRD types (flexinfer.ai/v1alpha2)
+export type ModelPhase =
+  | "Idle"
+  | "Pending"
+  | "Loading"
+  | "Ready"
+  | "Preempted"
+  | "Failed";
+
+export interface FlexInferModel {
+  name: string;
+  namespace: string;
+  creationTimestamp: string;
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+  spec: FlexInferModelSpec;
+  status: FlexInferModelStatus;
+}
+
+export interface FlexInferModelSpec {
+  backend: string;
+  source: string;
+  gpu?: {
+    vendor?: string;
+    shared?: string;
+    priority?: number;
+    count?: number;
+    vramEstimateMB?: number;
+  };
+  serverless?: {
+    enabled?: boolean;
+    minReplicas?: number;
+    idleTimeout?: string;
+    coldStartTimeout?: string;
+  };
+  cache?: {
+    strategy?: string;
+    pvcName?: string;
+    storageClass?: string;
+    size?: string;
+  };
+  litellm?: {
+    enabled?: boolean;
+    servedModelName?: string;
+    aliases?: string[];
+    copilotAlias?: string;
+  };
+  serviceLabels?: string[];
+  kvCache?: {
+    pressurePolicy?: string;
+    highWatermark?: string;
+    lowWatermark?: string;
+  };
+  nodeSelector?: Record<string, string>;
+}
+
+export interface FlexInferModelStatus {
+  phase?: ModelPhase;
+  conditions?: Array<{
+    type: string;
+    status: string;
+    reason?: string;
+    message?: string;
+    lastTransitionTime?: string;
+  }>;
+  gpu?: {
+    node?: string;
+    device?: string;
+    vendor?: string;
+    architecture?: string;
+    memoryMB?: number;
+  };
+  endpoint?: string;
+  lastActiveTime?: string;
+  metrics?: {
+    tokensPerSecond?: string;
+    loadTimeSeconds?: string;
+    avgLatencyMs?: string;
+  };
+  sharedGroup?: {
+    groupName?: string;
+    state?: string;
+    queuePosition?: number;
+    preemptedBy?: string;
+    preemptedAt?: string;
+  };
+  cache?: {
+    strategy?: string;
+    ready?: boolean;
+    pvcName?: string;
+    jobName?: string;
+    jobPhase?: string;
+    message?: string;
+    sizeBytes?: number;
+  };
+  kvCache?: {
+    utilization?: string;
+    pressure?: boolean;
+    lastPressureTime?: string;
+    lastAction?: string;
+  };
+}
+
+export interface FlexInferModelListResponse {
+  models: FlexInferModel[];
+  namespace: string;
+  count: number;
+}
+
 // Model Management types
 export type ModelSource = "huggingface" | "civitai" | "local";
 export type ModelType = "llm" | "diffusion" | "embedding" | "other";
