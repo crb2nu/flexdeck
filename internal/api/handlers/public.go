@@ -127,17 +127,16 @@ func sanitizeNodeName(realName string, labels map[string]string, capacity corev1
 	return fmt.Sprintf("node-%s", suffix)
 }
 
+// Package-level compiled regexes for pod name sanitization.
+var (
+	podHashRe     = regexp.MustCompile(`-[a-f0-9]{8,10}(-[a-z0-9]{5})?$`)
+	podStatefulRe = regexp.MustCompile(`-\d+$`)
+)
+
 // sanitizePodName strips the random suffixes from pod names
 func sanitizePodName(realName string) string {
-	// Common patterns: name-hash-hash, name-hash
-	// Remove UUID-like suffixes and ReplicaSet hashes
-	re := regexp.MustCompile(`-[a-f0-9]{8,10}(-[a-z0-9]{5})?$`)
-	cleaned := re.ReplaceAllString(realName, "")
-
-	// Also handle statefulset names like pod-0, pod-1
-	reStateful := regexp.MustCompile(`-\d+$`)
-	cleaned = reStateful.ReplaceAllString(cleaned, "")
-
+	cleaned := podHashRe.ReplaceAllString(realName, "")
+	cleaned = podStatefulRe.ReplaceAllString(cleaned, "")
 	return cleaned
 }
 

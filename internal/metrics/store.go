@@ -109,10 +109,20 @@ func (s *Store) StoreMetrics(ctx context.Context, metrics []litellm.ModelMetrics
 
 // GetThroughput calculates tok/s for all models across time windows
 func (s *Store) GetThroughput(ctx context.Context) ([]ModelThroughput, error) {
-	// Get all model keys
-	keys, err := s.redis.Keys(ctx, "litellm:metrics:*").Result()
-	if err != nil {
-		return nil, err
+	// Scan model keys incrementally to avoid blocking Redis
+	var keys []string
+	var cursor uint64
+	for {
+		var batch []string
+		var err error
+		batch, cursor, err = s.redis.Scan(ctx, cursor, "litellm:metrics:*", 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, batch...)
+		if cursor == 0 {
+			break
+		}
 	}
 
 	results := make([]ModelThroughput, 0, len(keys))
