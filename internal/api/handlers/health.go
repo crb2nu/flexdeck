@@ -51,6 +51,10 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"redis": {
 				Enabled: !h.cfg.Redis.Disabled,
 			},
+			"langfuse": {
+				Enabled: !h.cfg.Langfuse.Disabled,
+				URL:     h.cfg.Langfuse.URL,
+			},
 		},
 	}
 

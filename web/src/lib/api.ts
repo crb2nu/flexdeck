@@ -101,6 +101,9 @@ export const prom = {
         query,
       )}&start=${start}&end=${end}&step=${step}`,
     ),
+  alerts: () => api<any>("/prom/alerts"),
+  rules: (type?: string) =>
+    api<any>(`/prom/rules${type ? `?type=${encodeURIComponent(type)}` : ""}`),
 };
 
 export const loki = {
@@ -125,6 +128,52 @@ export const litellm = {
   metrics: () => api<any>("/litellm/metrics"),
   modelMetrics: (model: string) =>
     api<any>(`/litellm/metrics/${encodeURIComponent(model)}`),
+};
+
+export const langfuse = {
+  health: () => api<any>("/langfuse/health"),
+  metrics: (params?: {
+    traceName?: string;
+    fromTimestamp?: string;
+    toTimestamp?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.traceName) qs.set("traceName", params.traceName);
+    if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
+    if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
+    const q = qs.toString();
+    return api<any>(`/langfuse/metrics${q ? `?${q}` : ""}`);
+  },
+  traces: (params?: {
+    limit?: number;
+    name?: string;
+    userId?: string;
+    fromTimestamp?: string;
+    toTimestamp?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.name) qs.set("name", params.name);
+    if (params?.userId) qs.set("userId", params.userId);
+    if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
+    if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
+    const q = qs.toString();
+    return api<any>(`/langfuse/traces${q ? `?${q}` : ""}`);
+  },
+  scores: (params?: { limit?: number; name?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.name) qs.set("name", params.name);
+    const q = qs.toString();
+    return api<any>(`/langfuse/scores${q ? `?${q}` : ""}`);
+  },
+  models: (params?: { fromTimestamp?: string; toTimestamp?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
+    if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
+    const q = qs.toString();
+    return api<any>(`/langfuse/models${q ? `?${q}` : ""}`);
+  },
 };
 
 export const modelsApi = {

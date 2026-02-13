@@ -151,6 +151,14 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/metrics/{model}", h.LiteLLMModelMetrics)
 		})
 
+		r.Route("/api/langfuse", func(r chi.Router) {
+			r.Get("/health", h.LangfuseHealth)
+			r.Get("/metrics", h.LangfuseMetrics)
+			r.Get("/traces", h.LangfuseTraces)
+			r.Get("/scores", h.LangfuseScores)
+			r.Get("/models", h.LangfuseModels)
+		})
+
 		r.Route("/api/models", func(r chi.Router) {
 			r.Get("/", h.ModelsList)
 			r.Post("/register", h.ModelsRegister)

@@ -50,6 +50,9 @@ type Config struct {
 	// Agents
 	Agents AgentsConfig
 
+	// Langfuse (LLM observability)
+	Langfuse LangfuseConfig
+
 	// GitLab
 	GitLab GitLabConfig
 }
@@ -130,6 +133,13 @@ type AgentsConfig struct {
 	AgentScopeGUIURL string // AgentScope GUI sandbox URL
 }
 
+type LangfuseConfig struct {
+	Disabled  bool
+	URL       string // Langfuse web API URL
+	PublicKey string // Basic auth public key
+	SecretKey string // Basic auth secret key
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:     getEnv("PORT", "8080"),
@@ -207,6 +217,13 @@ func Load() (*Config, error) {
 			LangGraphURL:     getEnv("LANGGRAPH_URL", "http://langgraph.ai.svc.cluster.local:8000"),
 			AgentScopeURL:    getEnv("AGENTSCOPE_URL", "http://agentscope-sandbox-base.ai.svc.cluster.local:8000"),
 			AgentScopeGUIURL: getEnv("AGENTSCOPE_GUI_URL", "http://agentscope-sandbox-gui.ai.svc.cluster.local:8000"),
+		},
+
+		Langfuse: LangfuseConfig{
+			Disabled:  parseBool(getEnv("LANGFUSE_DISABLED", "false")),
+			URL:       getEnv("LANGFUSE_URL", "http://langfuse-web.ai.svc.cluster.local:3000"),
+			PublicKey: getEnv("LANGFUSE_PUBLIC_KEY", ""),
+			SecretKey: getEnv("LANGFUSE_SECRET_KEY", ""),
 		},
 
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
