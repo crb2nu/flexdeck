@@ -61,6 +61,19 @@ spec:
                 secretKeyRef:
                   name: flexdeck-secrets
                   key: gitlab-token
+            # Langfuse (LLM observability)
+            - name: LANGFUSE_URL
+              value: "http://langfuse-web.ai.svc.cluster.local:3000"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: langfuse-public-key
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: langfuse-secret-key
           resources:
             requests:
               cpu: 50m
