@@ -10,6 +10,8 @@ import TopologyGraph from './TopologyGraph';
 import HoloDeck, { type HoloDeckFilter } from './HoloDeck';
 import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
+import AlertsPanel from './AlertsPanel';
+import LangfuseWidget from './LangfuseWidget';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
@@ -738,9 +740,11 @@ const Dashboard: Component = () => {
         </Show>
       </div>
 
-      {/* Events Sidebar */}
-      <div class="hidden lg:flex w-80 flex-shrink-0">
+      {/* Observability Sidebar */}
+      <div class="hidden lg:flex w-80 flex-shrink-0 flex-col gap-3 overflow-y-auto">
+        <AlertsPanel />
         <EventsFeed />
+        <LangfuseWidget />
       </div>
       </div> {/* End Main Content */}
 
