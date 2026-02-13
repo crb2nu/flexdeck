@@ -1,35 +1,19 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { K8sDeployment, K8sPod, ModelThroughput, RegisteredModel, ModelSearchResult } from '../../lib/types';
-import { litellm, modelsApi, k8s } from '../../lib/api';
-import { Sparkline } from '../shared';
+import type { RegisteredModel, ModelSearchResult } from '../../lib/types';
+import { modelsApi } from '../../lib/api';
 
-type Tab = 'running' | 'registry' | 'search';
-
-interface ModelInstance {
-  name: string;
-  namespace: string;
-  model: string;
-  status: 'running' | 'pending' | 'stopped' | 'error';
-  replicas: number;
-  readyReplicas: number;
-  gpuType?: string;
-  endpoint?: string;
-  pod?: K8sPod;
-  metrics?: ModelThroughput;
-}
+type Tab = 'deployed' | 'registry' | 'search';
 
 const Models: Component = () => {
-  const [activeTab, setActiveTab] = createSignal<Tab>('running');
+  const [activeTab, setActiveTab] = createSignal<Tab>('deployed');
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
+  const [discoverLoading, setDiscoverLoading] = createSignal(false);
 
-  // Running models state
-  const [runningModels, setRunningModels] = createStore<ModelInstance[]>([]);
-
-  // Registry state
-  const [registeredModels, setRegisteredModels] = createStore<RegisteredModel[]>([]);
+  // All models from registry (controller-backed)
+  const [allModels, setAllModels] = createStore<RegisteredModel[]>([]);
 
   // Search state
   const [searchQuery, setSearchQuery] = createSignal('');
@@ -37,93 +21,18 @@ const Models: Component = () => {
   const [searchResults, setSearchResults] = createStore<RegisteredModel[]>([]);
   const [searching, setSearching] = createSignal(false);
 
-  // Fetch running K8s models
-  const fetchRunningModels = async () => {
+  // Derived: deployed models (from flexinfer-system controller)
+  const deployedModels = () =>
+    allModels.filter(m => m.deployment_status === 'deployed' || m.deployment_status === 'pending');
+
+  // Derived: registry models (downloaded/registered, not necessarily deployed)
+  const registryModels = () => allModels;
+
+  // Fetch models from the controller-backed registry
+  const fetchModels = async () => {
     try {
-      const [deploymentsRes, podsRes, metricsData] = await Promise.all([
-        fetch('/api/k8s/deployments'),
-        fetch('/api/k8s/pods'),
-        litellm.metrics().catch(() => ({ models: [] })),
-      ]);
-
-      if (!deploymentsRes.ok || !podsRes.ok) {
-        throw new Error('Failed to fetch K8s resources');
-      }
-
-      const deploymentsData = await deploymentsRes.json();
-      const podsData = await podsRes.json();
-
-      const deployments: K8sDeployment[] = deploymentsData.items || deploymentsData;
-      const pods: K8sPod[] = podsData.items || podsData;
-
-      const metricsMap = new Map<string, ModelThroughput>();
-      (metricsData.models || []).forEach((m: ModelThroughput) => {
-        metricsMap.set(m.model.toLowerCase(), m);
-      });
-
-      const aiLabels = ['vllm', 'llama', 'ollama', 'sglang', 'tgi'];
-      const aiDeployments = deployments.filter((d) => {
-        const name = d.metadata.name.toLowerCase();
-        const labels = Object.values(d.metadata.labels || {}).join(' ').toLowerCase();
-        return aiLabels.some((l) => name.includes(l) || labels.includes(l));
-      });
-
-      const instances: ModelInstance[] = aiDeployments.map((d) => {
-        const matchingPods = pods.filter(
-          (p) =>
-            p.metadata.namespace === d.metadata.namespace &&
-            Object.entries(d.spec.selector.matchLabels).every(
-              ([k, v]) => p.metadata.labels?.[k] === v
-            )
-        );
-
-        const runningPod = matchingPods.find((p) => p.status.phase === 'Running');
-
-        let model = 'Unknown';
-        const container = d.spec.template.spec.containers[0];
-        if (container?.image) {
-          const imageParts = container.image.split(':');
-          model = imageParts[imageParts.length - 1] || imageParts[0].split('/').pop() || 'Unknown';
-        }
-
-        const gpuType = d.metadata.annotations?.['gpu-type'] || d.metadata.labels?.['gpu-type'];
-
-        let status: ModelInstance['status'] = 'stopped';
-        if (d.spec.replicas === 0) {
-          status = 'stopped';
-        } else if (d.status.readyReplicas === d.spec.replicas) {
-          status = 'running';
-        } else if (d.status.readyReplicas && d.status.readyReplicas > 0) {
-          status = 'pending';
-        } else if (d.status.replicas && d.status.replicas > 0) {
-          status = 'pending';
-        } else {
-          status = 'error';
-        }
-
-        const deploymentNameLower = d.metadata.name.toLowerCase();
-        const modelLower = model.toLowerCase();
-        const metrics = metricsMap.get(deploymentNameLower) ||
-                        metricsMap.get(modelLower) ||
-                        Array.from(metricsMap.entries()).find(([k]) =>
-                          k.includes(deploymentNameLower) || deploymentNameLower.includes(k) ||
-                          k.includes(modelLower) || modelLower.includes(k)
-                        )?.[1];
-
-        return {
-          name: d.metadata.name,
-          namespace: d.metadata.namespace || 'default',
-          model,
-          status,
-          replicas: d.spec.replicas,
-          readyReplicas: d.status.readyReplicas || 0,
-          gpuType,
-          pod: runningPod,
-          metrics,
-        };
-      });
-
-      setRunningModels(instances);
+      const data = await modelsApi.list();
+      setAllModels(data.models || []);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch models');
@@ -132,20 +41,28 @@ const Models: Component = () => {
     }
   };
 
-  // Fetch registered models from registry
-  const fetchRegistry = async () => {
+  // Trigger K8s discovery from flexinfer-system namespace
+  const discoverModels = async () => {
+    setDiscoverLoading(true);
+    setError('');
     try {
-      const data = await modelsApi.list();
-      setRegisteredModels(data.models || []);
+      const result = await modelsApi.discover('flexinfer-system');
+      const count = result?.discovered || 0;
+      // Refresh the model list after discovery
+      await fetchModels();
+      if (count > 0) {
+        setError(''); // clear any stale error
+      }
     } catch (err) {
-      console.error('Failed to fetch model registry:', err);
+      setError(err instanceof Error ? err.message : 'Discovery failed');
+    } finally {
+      setDiscoverLoading(false);
     }
   };
 
   // Search models
   const handleSearch = async () => {
     if (!searchQuery().trim()) return;
-
     setSearching(true);
     try {
       const data: ModelSearchResult = searchSource() === 'huggingface'
@@ -164,7 +81,7 @@ const Models: Component = () => {
     setActionLoading(sourceId);
     try {
       await modelsApi.register(source, sourceId);
-      await fetchRegistry();
+      await fetchModels();
       setActiveTab('registry');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -178,7 +95,7 @@ const Models: Component = () => {
     setActionLoading(id);
     try {
       await modelsApi.startDownload(id);
-      await fetchRegistry();
+      await fetchModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Download failed to start');
     } finally {
@@ -192,7 +109,7 @@ const Models: Component = () => {
     setActionLoading(id);
     try {
       await modelsApi.delete(id);
-      await fetchRegistry();
+      await fetchModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
     } finally {
@@ -200,12 +117,13 @@ const Models: Component = () => {
     }
   };
 
-  // Scale K8s deployment
-  const scaleModel = async (name: string, namespace: string, replicas: number) => {
-    setActionLoading(name);
+  // Scale model via controller
+  const scaleModel = async (id: string, replicas: number) => {
+    setActionLoading(id);
     try {
-      await k8s.scaleDeployment(namespace, name, replicas);
-      await fetchRunningModels();
+      await modelsApi.scale(id, replicas);
+      // Give K8s a moment, then refresh
+      setTimeout(() => fetchModels(), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scale failed');
     } finally {
@@ -213,25 +131,10 @@ const Models: Component = () => {
     }
   };
 
-  const restartModel = async (name: string, namespace: string) => {
-    setActionLoading(name);
-    try {
-      await k8s.restartDeployment(namespace, name);
-      await fetchRunningModels();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Restart failed');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   createEffect(() => {
-    fetchRunningModels();
-    fetchRegistry();
-    const interval = setInterval(() => {
-      fetchRunningModels();
-      fetchRegistry();
-    }, 15000);
+    // Initial load: discover from flexinfer-system, then fetch registry
+    discoverModels();
+    const interval = setInterval(fetchModels, 15000);
     onCleanup(() => clearInterval(interval));
   });
 
@@ -267,12 +170,15 @@ const Models: Component = () => {
           <h2 class="text-lg font-medium text-text-main">AI Models</h2>
           <div class="flex gap-1 rounded-md bg-white/5 p-1">
             <button
-              onClick={() => setActiveTab('running')}
+              onClick={() => setActiveTab('deployed')}
               class={`rounded px-3 py-1 text-sm transition-colors ${
-                activeTab() === 'running' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'
+                activeTab() === 'deployed' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'
               }`}
             >
-              Running
+              Deployed
+              <Show when={deployedModels().length > 0}>
+                <span class="ml-1.5 text-[10px] opacity-60">{deployedModels().length}</span>
+              </Show>
             </button>
             <button
               onClick={() => setActiveTab('registry')}
@@ -281,6 +187,9 @@ const Models: Component = () => {
               }`}
             >
               Registry
+              <Show when={registryModels().length > 0}>
+                <span class="ml-1.5 text-[10px] opacity-60">{registryModels().length}</span>
+              </Show>
             </button>
             <button
               onClick={() => setActiveTab('search')}
@@ -293,13 +202,22 @@ const Models: Component = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => { fetchRunningModels(); fetchRegistry(); }}
-          disabled={loading()}
-          class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
-        >
-          Refresh
-        </button>
+        <div class="flex gap-2">
+          <button
+            onClick={discoverModels}
+            disabled={discoverLoading()}
+            class="rounded-md bg-neon-purple/20 px-3 py-1.5 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
+          >
+            {discoverLoading() ? 'Syncing...' : '⎈ Sync'}
+          </button>
+          <button
+            onClick={fetchModels}
+            disabled={loading()}
+            class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <Show when={error()}>
@@ -308,24 +226,23 @@ const Models: Component = () => {
 
       {/* Tab content */}
       <Switch>
-        {/* Running Models Tab */}
-        <Match when={activeTab() === 'running'}>
+        {/* Deployed Models Tab */}
+        <Match when={activeTab() === 'deployed'}>
           <Show
-            when={!loading() || runningModels.length > 0}
-            fallback={<LoadingState message="Loading running models..." />}
+            when={!loading() || deployedModels().length > 0}
+            fallback={<LoadingState message="Discovering models from flexinfer-system..." />}
           >
             <Show
-              when={runningModels.length > 0}
-              fallback={<EmptyState icon="◈" title="No AI Models Running" subtitle="Deploy vLLM, Ollama, or other AI workloads to see them here." />}
+              when={deployedModels().length > 0}
+              fallback={<EmptyState icon="⎈" title="No Models Deployed" subtitle="Models managed by the flexinfer-system controller will appear here." />}
             >
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <For each={runningModels}>
+                <For each={deployedModels()}>
                   {(model) => (
-                    <RunningModelCard
+                    <DeployedModelCard
                       model={model}
                       actionLoading={actionLoading()}
-                      onScale={(replicas) => scaleModel(model.name, model.namespace, replicas)}
-                      onRestart={() => restartModel(model.name, model.namespace)}
+                      onScale={(replicas) => scaleModel(model.id, replicas)}
                       getStatusColor={getStatusColor}
                       getStatusDot={getStatusDot}
                     />
@@ -339,11 +256,11 @@ const Models: Component = () => {
         {/* Registry Tab */}
         <Match when={activeTab() === 'registry'}>
           <Show
-            when={registeredModels.length > 0}
-            fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Search and add models from HuggingFace or CivitAI." />}
+            when={registryModels().length > 0}
+            fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from flexinfer-system or search HuggingFace/CivitAI." />}
           >
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <For each={registeredModels}>
+              <For each={registryModels()}>
                 {(model) => (
                   <RegistryModelCard
                     model={model}
@@ -430,103 +347,144 @@ const EmptyState: Component<{ icon: string; title: string; subtitle: string }> =
   </div>
 );
 
-const RunningModelCard: Component<{
-  model: ModelInstance;
+// Deployed model card — data from flexinfer-system controller via registry
+const DeployedModelCard: Component<{
+  model: RegisteredModel;
   actionLoading: string | null;
   onScale: (replicas: number) => void;
-  onRestart: () => void;
   getStatusColor: (s: string) => string;
   getStatusDot: (s: string) => string;
-}> = (props) => (
-  <div class="glass-panel p-4">
-    <div class="mb-4 flex items-start justify-between">
-      <div>
-        <h3 class="font-medium text-text-main">{props.model.name}</h3>
-        <p class="text-xs text-text-dim">{props.model.namespace}</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class={props.getStatusDot(props.model.status)} />
-        <span class={`text-sm capitalize ${props.getStatusColor(props.model.status)}`}>
-          {props.model.status}
-        </span>
-      </div>
-    </div>
+}> = (props) => {
+  const meta = () => props.model.metadata || {};
+  const isRunning = () => props.model.deployment_status === 'deployed';
+  const isPending = () => props.model.deployment_status === 'pending';
 
-    <div class="mb-4 space-y-2 text-sm">
-      <div class="flex justify-between">
-        <span class="text-text-dim">Model</span>
-        <span class="text-text-muted">{props.model.model}</span>
+  return (
+    <div class="glass-panel p-4 group hover:-translate-y-0.5 transition-all duration-200">
+      {/* Header */}
+      <div class="mb-3 flex items-start justify-between">
+        <div class="flex-1 min-w-0">
+          <h3 class="font-medium text-text-main truncate">{props.model.name}</h3>
+          <div class="flex items-center gap-2 mt-0.5">
+            <Show when={props.model.deployment_name}>
+              <span class="text-[10px] text-text-dim font-mono">{props.model.deployment_name}</span>
+            </Show>
+            <Show when={props.model.deployment_ns}>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-dim font-mono">
+                {props.model.deployment_ns}
+              </span>
+            </Show>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+          <span class={props.getStatusDot(props.model.deployment_status)} />
+          <span class={`text-sm capitalize ${props.getStatusColor(props.model.deployment_status)}`}>
+            {props.model.deployment_status}
+          </span>
+        </div>
       </div>
-      <div class="flex justify-between">
-        <span class="text-text-dim">Replicas</span>
-        <span class="text-text-muted">{props.model.readyReplicas}/{props.model.replicas}</span>
-      </div>
-      <Show when={props.model.gpuType}>
+
+      {/* Info grid */}
+      <div class="mb-3 space-y-1.5 text-sm">
+        <Show when={props.model.type}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Type</span>
+            <span class="text-text-muted capitalize">{props.model.type}</span>
+          </div>
+        </Show>
         <div class="flex justify-between">
-          <span class="text-text-dim">GPU</span>
-          <span class="text-neon-cyan">{props.model.gpuType}</span>
-        </div>
-      </Show>
-    </div>
-
-    <Show when={props.model.metrics}>
-      <div class="mb-4 rounded-md bg-white/5 p-3">
-        <div class="mb-2 flex items-center justify-between">
-          <span class="text-xs font-medium text-text-dim">Throughput</span>
-          <Sparkline data={props.model.metrics!.sparkline || []} trend={props.model.metrics!.trend} width={60} height={20} />
-        </div>
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <div class="text-lg font-semibold text-neon-cyan">{props.model.metrics!.tok_per_sec_1m.toFixed(0)}</div>
-            <div class="text-xs text-text-dim">tok/s 1m</div>
-          </div>
-          <div>
-            <div class="text-lg font-semibold text-text-muted">{props.model.metrics!.tok_per_sec_5m.toFixed(0)}</div>
-            <div class="text-xs text-text-dim">tok/s 5m</div>
-          </div>
-          <div>
-            <div class="text-lg font-semibold text-text-muted">{props.model.metrics!.tok_per_sec_15m.toFixed(0)}</div>
-            <div class="text-xs text-text-dim">tok/s 15m</div>
+          <span class="text-text-dim">Replicas</span>
+          <div class="flex items-center gap-1.5">
+            {/* Replica dots */}
+            <For each={Array.from({ length: Math.max(props.model.replicas, 1) })}>
+              {(_, i) => (
+                <div
+                  class={`w-2 h-2 rounded-full ${
+                    isRunning() ? 'bg-status-ok shadow-[0_0_4px_var(--color-ok)]' :
+                    isPending() && i() === 0 ? 'bg-status-warn animate-pulse' :
+                    'bg-white/10'
+                  }`}
+                />
+              )}
+            </For>
+            <span class="text-text-muted ml-1">{props.model.replicas}</span>
           </div>
         </div>
-        <div class="mt-2 flex justify-between text-xs text-text-dim">
-          <span>{props.model.metrics!.requests_per_min.toFixed(1)} req/min</span>
-          <span>{props.model.metrics!.avg_latency_ms.toFixed(0)}ms latency</span>
-        </div>
+        <Show when={meta().backend}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Backend</span>
+            <span class="text-neon-cyan font-mono text-xs">{meta().backend}</span>
+          </div>
+        </Show>
+        <Show when={meta().hardware}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Hardware</span>
+            <span class="text-neon-purple font-mono text-xs">{meta().hardware}</span>
+          </div>
+        </Show>
+        <Show when={meta().parameters}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Parameters</span>
+            <span class="text-text-muted font-mono text-xs">{meta().parameters}</span>
+          </div>
+        </Show>
+        <Show when={meta().served_model}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Served As</span>
+            <span class="text-text-muted font-mono text-xs truncate max-w-[180px]">{meta().served_model}</span>
+          </div>
+        </Show>
+        <Show when={meta().aliases}>
+          <div class="flex justify-between">
+            <span class="text-text-dim">Aliases</span>
+            <span class="text-text-muted font-mono text-xs truncate max-w-[180px]">{meta().aliases}</span>
+          </div>
+        </Show>
       </div>
-    </Show>
 
-    <div class="flex gap-2">
-      <Show
-        when={props.model.status === 'running' || props.model.status === 'pending'}
-        fallback={
-          <button
-            onClick={() => props.onScale(1)}
-            disabled={props.actionLoading === props.model.name}
-            class="flex-1 rounded-md bg-status-ok/20 px-3 py-1.5 text-sm font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
-          >
-            Start
-          </button>
-        }
-      >
-        <button
-          onClick={() => props.onScale(0)}
-          disabled={props.actionLoading === props.model.name}
-          class="flex-1 rounded-md bg-status-error/20 px-3 py-1.5 text-sm font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
-        >
-          Stop
-        </button>
+      {/* Description */}
+      <Show when={props.model.description || meta().description}>
+        <p class="text-xs text-text-dim mb-3 line-clamp-2">
+          {props.model.description || meta().description}
+        </p>
       </Show>
-      <button
-        onClick={props.onRestart}
-        disabled={props.actionLoading === props.model.name || props.model.status === 'stopped'}
-        class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
-      >
-        Restart
-      </button>
+
+      {/* Actions */}
+      <div class="flex gap-2">
+        <Show
+          when={isRunning() || isPending()}
+          fallback={
+            <button
+              onClick={() => props.onScale(1)}
+              disabled={props.actionLoading === props.model.id}
+              class="flex-1 rounded-md bg-status-ok/20 px-3 py-1.5 text-sm font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
+            >
+              Start
+            </button>
+          }
+        >
+          <button
+            onClick={() => props.onScale(0)}
+            disabled={props.actionLoading === props.model.id}
+            class="flex-1 rounded-md bg-status-error/20 px-3 py-1.5 text-sm font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
+          >
+            Stop
+          </button>
+        </Show>
+        <Show when={isRunning()}>
+          <button
+            onClick={() => props.onScale(props.model.replicas + 1)}
+            disabled={props.actionLoading === props.model.id}
+            class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
+            title="Scale up"
+          >
+            +1
+          </button>
+        </Show>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const RegistryModelCard: Component<{
   model: RegisteredModel;
@@ -541,12 +499,14 @@ const RegistryModelCard: Component<{
     <div class="mb-3 flex items-start justify-between">
       <div class="flex-1 min-w-0">
         <h3 class="font-medium text-text-main truncate">{props.model.name}</h3>
-        <p class="text-xs text-text-dim truncate">{props.model.source_id}</p>
+        <p class="text-xs text-text-dim truncate">{props.model.source_id || props.model.id}</p>
       </div>
-      <span class={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-        props.model.source === 'huggingface' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'
+      <span class={`ml-2 rounded-full px-2 py-0.5 text-xs flex-shrink-0 ${
+        props.model.source === 'huggingface' ? 'bg-yellow-500/20 text-yellow-400' :
+        props.model.source === 'local' ? 'bg-neon-purple/20 text-neon-purple' :
+        'bg-blue-500/20 text-blue-400'
       }`}>
-        {props.model.source === 'huggingface' ? '🤗 HF' : '🎨 Civit'}
+        {props.model.source === 'huggingface' ? '🤗 HF' : props.model.source === 'local' ? '⎈ Local' : '🎨 Civit'}
       </span>
     </div>
 
@@ -557,24 +517,37 @@ const RegistryModelCard: Component<{
         <span class="text-text-dim">Type</span>
         <span class="text-text-muted capitalize">{props.model.type}</span>
       </div>
-      <div class="flex justify-between">
-        <span class="text-text-dim">Size</span>
-        <span class="text-text-muted">{props.formatSize(props.model.size)}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-text-dim">Download</span>
-        <span class={props.getStatusColor(props.model.download_status)}>
-          {props.model.download_status === 'downloading'
-            ? `${props.model.download_progress.toFixed(0)}%`
-            : props.model.download_status}
-        </span>
-      </div>
+      <Show when={props.model.size > 0}>
+        <div class="flex justify-between">
+          <span class="text-text-dim">Size</span>
+          <span class="text-text-muted">{props.formatSize(props.model.size)}</span>
+        </div>
+      </Show>
+      <Show when={props.model.download_status && props.model.download_status !== 'pending'}>
+        <div class="flex justify-between">
+          <span class="text-text-dim">Download</span>
+          <span class={props.getStatusColor(props.model.download_status)}>
+            {props.model.download_status === 'downloading'
+              ? `${props.model.download_progress.toFixed(0)}%`
+              : props.model.download_status}
+          </span>
+        </div>
+      </Show>
       <Show when={props.model.deployment_status !== 'none'}>
         <div class="flex justify-between">
           <span class="text-text-dim">Deployment</span>
-          <span class={props.getStatusColor(props.model.deployment_status)}>
-            {props.model.deployment_status}
-          </span>
+          <div class="flex items-center gap-1.5">
+            <span class={props.getStatusDot(props.model.deployment_status)} />
+            <span class={props.getStatusColor(props.model.deployment_status)}>
+              {props.model.deployment_status}
+            </span>
+          </div>
+        </div>
+      </Show>
+      <Show when={props.model.metadata?.parameters}>
+        <div class="flex justify-between">
+          <span class="text-text-dim">Params</span>
+          <span class="text-text-muted font-mono">{props.model.metadata!.parameters}</span>
         </div>
       </Show>
     </div>
@@ -591,7 +564,7 @@ const RegistryModelCard: Component<{
     <div class="flex gap-2">
       <Show when={props.model.download_status === 'pending' || props.model.download_status === 'failed'}>
         <button
-          onClick={props.onDownload}
+          onClick={() => props.onDownload()}
           disabled={props.actionLoading === props.model.id}
           class="flex-1 rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
         >
@@ -607,7 +580,7 @@ const RegistryModelCard: Component<{
         </button>
       </Show>
       <button
-        onClick={props.onDelete}
+        onClick={() => props.onDelete()}
         disabled={props.actionLoading === props.model.id}
         class="rounded-md bg-status-error/20 px-3 py-1.5 text-sm font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
       >
@@ -652,7 +625,7 @@ const SearchResultCard: Component<{
     </div>
 
     <button
-      onClick={props.onRegister}
+      onClick={() => props.onRegister()}
       disabled={props.actionLoading === props.model.source_id}
       class="w-full rounded-md bg-status-ok/20 px-3 py-1.5 text-sm font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
     >
