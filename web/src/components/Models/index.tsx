@@ -2,6 +2,7 @@ import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Ma
 import { createStore } from 'solid-js/store';
 import type { RegisteredModel, ModelSearchResult, FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
+import GPUMetricsPanel from './GPUMetricsPanel';
 
 type Tab = 'controller' | 'registry' | 'search';
 
@@ -11,6 +12,7 @@ const Models: Component = () => {
   const [error, setError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
+  const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
 
   // CRD models from flexinfer-system (the real controller state)
   const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
@@ -115,6 +117,26 @@ const Models: Component = () => {
     }
   };
 
+  // CRD mutation actions
+  const handleCRDAction = async (action: 'activate' | 'scale0' | 'restart', model: FlexInferModel) => {
+    const key = `${model.namespace}/${model.name}/${action}`;
+    setCrdActionLoading(key);
+    try {
+      if (action === 'activate') {
+        await modelsApi.crdActivate(model.namespace, model.name);
+      } else if (action === 'scale0') {
+        await modelsApi.crdScale(model.namespace, model.name, 0);
+      } else {
+        await modelsApi.crdRestart(model.namespace, model.name);
+      }
+      await fetchCRDModels();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${action} failed`);
+    } finally {
+      setCrdActionLoading(null);
+    }
+  };
+
   createEffect(() => {
     // Initial load — fetch both CRDs and registry
     Promise.all([fetchCRDModels(), fetchRegistryModels()]).finally(() => setLoading(false));
@@ -125,6 +147,41 @@ const Models: Component = () => {
       fetchRegistryModels();
     }, 15000);
     onCleanup(() => clearInterval(interval));
+  });
+
+  // SSE for real-time CRD model phase changes
+  createEffect(() => {
+    if (activeTab() !== 'controller') return;
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(modelsApi.crdWatchSSEUrl('flexinfer-system'));
+      es.addEventListener('model', (e: MessageEvent) => {
+        try {
+          const event = JSON.parse(e.data);
+          if (!event?.model) return;
+          const incoming = event.model as FlexInferModel;
+          setCrdModels((prev) => {
+            const idx = prev.findIndex(m => m.name === incoming.name && m.namespace === incoming.namespace);
+            if (event.type === 'DELETED') {
+              return idx >= 0 ? [...prev.slice(0, idx), ...prev.slice(idx + 1)] : prev;
+            }
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = incoming;
+              return updated;
+            }
+            return [...prev, incoming];
+          });
+        } catch { /* ignore parse errors */ }
+      });
+      es.onerror = () => {
+        // SSE disconnected — polling fallback handles it
+        es?.close();
+      };
+    } catch { /* EventSource not supported — polling fallback */ }
+
+    onCleanup(() => es?.close());
   });
 
   // Phase summary for header
@@ -198,7 +255,15 @@ const Models: Component = () => {
             >
               <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 <For each={crdModels}>
-                  {(model) => <CRDModelCard model={model} />}
+                  {(model) => (
+                    <CRDModelCard
+                      model={model}
+                      actionLoading={crdActionLoading()}
+                      onActivate={() => handleCRDAction('activate', model)}
+                      onScaleToZero={() => handleCRDAction('scale0', model)}
+                      onRestart={() => handleCRDAction('restart', model)}
+                    />
+                  )}
                 </For>
               </div>
             </Show>
@@ -341,7 +406,13 @@ function getPhaseIcon(phase?: string): string {
 
 // ─── CRD Model Card (the rich controller card) ───
 
-const CRDModelCard: Component<{ model: FlexInferModel }> = (props) => {
+const CRDModelCard: Component<{
+  model: FlexInferModel;
+  actionLoading: string | null;
+  onActivate: () => void;
+  onScaleToZero: () => void;
+  onRestart: () => void;
+}> = (props) => {
   const phase = () => props.model.status?.phase || 'Unknown';
   const gpu = () => props.model.status?.gpu;
   const metrics = () => props.model.status?.metrics;
@@ -354,6 +425,8 @@ const CRDModelCard: Component<{ model: FlexInferModel }> = (props) => {
 
   const isReady = () => phase() === 'Ready';
   const isLoading = () => phase() === 'Loading' || phase() === 'Pending';
+  const isIdle = () => phase() === 'Idle' || phase() === 'Preempted';
+  const actionKey = () => `${props.model.namespace}/${props.model.name}`;
 
   return (
     <div class={`glass-panel p-4 transition-all duration-200 hover:-translate-y-0.5 ${
@@ -361,11 +434,19 @@ const CRDModelCard: Component<{ model: FlexInferModel }> = (props) => {
       phase() === 'Failed' ? 'ring-1 ring-status-error/20' :
       phase() === 'Preempted' ? 'ring-1 ring-neon-purple/20' : ''
     }`}>
-      {/* Header: Name + Phase */}
+      {/* Header: Name + Phase + Health Dot */}
       <div class="mb-3 flex items-start justify-between">
         <div class="flex-1 min-w-0">
-          <h3 class="font-medium text-text-main truncate">{props.model.name}</h3>
-          <div class="mt-0.5 flex items-center gap-2">
+          <div class="flex items-center gap-2">
+            <span class={`h-2 w-2 rounded-full flex-shrink-0 ${
+              isReady() ? 'bg-status-ok' :
+              phase() === 'Failed' ? 'bg-status-error' :
+              isLoading() ? 'bg-status-warn animate-pulse' :
+              'bg-white/20'
+            }`} />
+            <h3 class="font-medium text-text-main truncate">{props.model.name}</h3>
+          </div>
+          <div class="mt-0.5 flex items-center gap-2 ml-4">
             <span class="text-[10px] font-mono text-text-dim">{props.model.namespace}</span>
             <span class="text-[10px] font-mono text-text-dim opacity-50">{props.model.spec.backend}</span>
           </div>
@@ -410,6 +491,11 @@ const CRDModelCard: Component<{ model: FlexInferModel }> = (props) => {
               </div>
             </Show>
           </div>
+        </Show>
+
+        {/* GPU Metrics from Prometheus */}
+        <Show when={isReady() && gpu()?.node}>
+          <GPUMetricsPanel node={gpu()!.node!} vendor={gpu()?.vendor} />
         </Show>
 
         {/* Runtime Metrics */}
@@ -601,6 +687,35 @@ const CRDModelCard: Component<{ model: FlexInferModel }> = (props) => {
           </div>
         </div>
       </Show>
+
+      {/* Action Bar */}
+      <div class="mt-3 flex gap-2 border-t border-white/5 pt-3">
+        <Show when={isIdle()}>
+          <button
+            onClick={() => props.onActivate()}
+            disabled={props.actionLoading?.startsWith(actionKey())}
+            class="flex-1 rounded-md bg-status-ok/20 px-3 py-1.5 text-xs font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
+          >
+            {props.actionLoading === `${actionKey()}/activate` ? 'Activating...' : 'Activate'}
+          </button>
+        </Show>
+        <Show when={isReady() || isLoading()}>
+          <button
+            onClick={() => props.onScaleToZero()}
+            disabled={props.actionLoading?.startsWith(actionKey())}
+            class="flex-1 rounded-md bg-status-warn/20 px-3 py-1.5 text-xs font-medium text-status-warn transition-colors hover:bg-status-warn/30 disabled:opacity-50"
+          >
+            {props.actionLoading === `${actionKey()}/scale0` ? 'Scaling...' : 'Scale to 0'}
+          </button>
+        </Show>
+        <button
+          onClick={() => props.onRestart()}
+          disabled={props.actionLoading?.startsWith(actionKey())}
+          class="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
+        >
+          {props.actionLoading === `${actionKey()}/restart` ? '...' : 'Restart'}
+        </button>
+      </div>
     </div>
   );
 };

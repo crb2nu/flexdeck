@@ -762,6 +762,135 @@ func containsIgnoreCase(s, substr string) bool {
 	return false
 }
 
+// ModelsCRDScale sets spec.serverless.minReplicas on a Model CRD.
+func (h *Handler) ModelsCRDScale(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	var req struct {
+		MinReplicas int32 `json:"minReplicas"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return
+	}
+
+	if err := h.k8s.ScaleFlexInferModel(r.Context(), namespace, name, req.MinReplicas); err != nil {
+		slog.Error("ModelsCRDScale: failed", "error", err, "model", name)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	h.invalidateCRDCache(r.Context(), namespace)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"model":       name,
+		"minReplicas": req.MinReplicas,
+	})
+}
+
+// ModelsCRDActivate sets minReplicas=1 to activate an idle/preempted model.
+func (h *Handler) ModelsCRDActivate(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	if err := h.k8s.ScaleFlexInferModel(r.Context(), namespace, name, 1); err != nil {
+		slog.Error("ModelsCRDActivate: failed", "error", err, "model", name)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	h.invalidateCRDCache(r.Context(), namespace)
+
+	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "model": name, "action": "activate"})
+}
+
+// ModelsCRDRestart annotates the Model CRD with a restart timestamp.
+func (h *Handler) ModelsCRDRestart(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	if err := h.k8s.RestartFlexInferModel(r.Context(), namespace, name); err != nil {
+		slog.Error("ModelsCRDRestart: failed", "error", err, "model", name)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	h.invalidateCRDCache(r.Context(), namespace)
+
+	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "model": name, "action": "restart"})
+}
+
+// ModelsCRDWatchSSE streams Model CRD watch events via Server-Sent Events.
+func (h *Handler) ModelsCRDWatchSSE(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = "flexinfer-system"
+	}
+
+	ctx := r.Context()
+	events, err := h.k8s.WatchFlexInferModels(ctx, namespace)
+	if err != nil {
+		slog.Error("ModelsCRDWatchSSE: watch failed", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher.Flush()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			sendSSE(w, flusher, "model", event)
+		}
+	}
+}
+
+// invalidateCRDCache clears cached K8s data for the given namespace after a CRD mutation.
+func (h *Handler) invalidateCRDCache(ctx context.Context, namespace string) {
+	if h.cache == nil {
+		return
+	}
+	h.cache.Invalidate(ctx, fmt.Sprintf("k8s:pods:%s", namespace))
+	h.cache.Invalidate(ctx, fmt.Sprintf("k8s:deployments:%s", namespace))
+	h.cache.Invalidate(ctx, "topology:public")
+}
+
 // ModelsCRD queries flexinfer.ai/v1alpha2 Model CRDs directly from K8s.
 // This returns the full CRD state: phase lifecycle, GPU allocation, metrics,
 // serverless config, cache status, KV-cache pressure, and shared GPU groups.

@@ -35,6 +35,9 @@ type Config struct {
 	// vLLM
 	VLLM VLLMConfig
 
+	// FlexInfer proxy (backend-agnostic inference endpoint)
+	FlexInferProxyURL string
+
 	// Cache
 	Cache CacheConfig
 
@@ -179,6 +182,8 @@ func Load() (*Config, error) {
 			URL:       getEnv("VLLM_URL", ""),
 			Namespace: getEnv("VLLM_NAMESPACE", "ai"),
 		},
+
+		FlexInferProxyURL: getEnv("FLEXINFER_PROXY_URL", ""),
 
 		Cache: CacheConfig{
 			HFPath:      getEnv("HF_CACHE_PATH", ""),

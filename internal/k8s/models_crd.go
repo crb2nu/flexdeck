@@ -4,9 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -135,11 +140,26 @@ var modelGVR = schema.GroupVersionResource{
 	Resource: "models",
 }
 
-// ListFlexInferModels queries flexinfer.ai/v1alpha2 Model CRDs from the given namespace.
-func (c *Client) ListFlexInferModels(ctx context.Context, namespace string) ([]FlexInferModel, error) {
-	dynClient, err := dynamic.NewForConfig(c.restConfig)
+// dynamicClient returns a cached dynamic client, creating it on first use.
+func (c *Client) dynamicClient() (dynamic.Interface, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dynClient != nil {
+		return c.dynClient, nil
+	}
+	dc, err := dynamic.NewForConfig(c.restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+	c.dynClient = dc
+	return dc, nil
+}
+
+// ListFlexInferModels queries flexinfer.ai/v1alpha2 Model CRDs from the given namespace.
+func (c *Client) ListFlexInferModels(ctx context.Context, namespace string) ([]FlexInferModel, error) {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return nil, err
 	}
 
 	list, err := dynClient.Resource(modelGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
@@ -147,32 +167,139 @@ func (c *Client) ListFlexInferModels(ctx context.Context, namespace string) ([]F
 		return nil, fmt.Errorf("failed to list Model CRDs: %w", err)
 	}
 
+	return parseModelList(list)
+}
+
+// ScaleFlexInferModel patches spec.serverless.minReplicas on a Model CRD.
+func (c *Client) ScaleFlexInferModel(ctx context.Context, namespace, name string, minReplicas int32) error {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return err
+	}
+
+	patch := fmt.Sprintf(`{"spec":{"serverless":{"minReplicas":%d}}}`, minReplicas)
+	_, err = dynClient.Resource(modelGVR).Namespace(namespace).Patch(
+		ctx, name, types.MergePatchType, []byte(patch), metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to scale model %s/%s: %w", namespace, name, err)
+	}
+	return nil
+}
+
+// RestartFlexInferModel annotates a Model CRD with a restart timestamp.
+func (c *Client) RestartFlexInferModel(ctx context.Context, namespace, name string) error {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return err
+	}
+
+	ts := time.Now().Format(time.RFC3339)
+	patch := fmt.Sprintf(`{"metadata":{"annotations":{"flexinfer.ai/restartedAt":"%s"}}}`, ts)
+	_, err = dynClient.Resource(modelGVR).Namespace(namespace).Patch(
+		ctx, name, types.MergePatchType, []byte(patch), metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to restart model %s/%s: %w", namespace, name, err)
+	}
+	return nil
+}
+
+// ModelWatchEvent represents a model watch event for SSE streaming.
+type ModelWatchEvent struct {
+	Type  string          `json:"type"` // ADDED, MODIFIED, DELETED
+	Model *FlexInferModel `json:"model"`
+}
+
+// WatchFlexInferModels returns a channel of model watch events.
+func (c *Client) WatchFlexInferModels(ctx context.Context, namespace string) (<-chan ModelWatchEvent, error) {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return nil, err
+	}
+
+	watcher, err := dynClient.Resource(modelGVR).Namespace(namespace).Watch(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch Model CRDs: %w", err)
+	}
+
+	ch := make(chan ModelWatchEvent, 32)
+	go func() {
+		defer close(ch)
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+
+				obj, ok := event.Object.(*unstructured.Unstructured)
+				if !ok {
+					continue
+				}
+
+				model, err := parseModel(obj)
+				if err != nil {
+					slog.Warn("failed to parse model watch event", "error", err)
+					continue
+				}
+
+				eventType := "MODIFIED"
+				switch event.Type {
+				case watch.Added:
+					eventType = "ADDED"
+				case watch.Deleted:
+					eventType = "DELETED"
+				case watch.Modified:
+					eventType = "MODIFIED"
+				}
+
+				ch <- ModelWatchEvent{Type: eventType, Model: model}
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+func parseModel(obj *unstructured.Unstructured) (*FlexInferModel, error) {
+	raw, err := json.Marshal(obj.Object)
+	if err != nil {
+		return nil, err
+	}
+
+	var crd struct {
+		Metadata metav1.ObjectMeta    `json:"metadata"`
+		Spec     FlexInferModelSpec   `json:"spec"`
+		Status   FlexInferModelStatus `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &crd); err != nil {
+		return nil, err
+	}
+
+	return &FlexInferModel{
+		Name:              crd.Metadata.Name,
+		Namespace:         crd.Metadata.Namespace,
+		CreationTimestamp: crd.Metadata.CreationTimestamp.Format("2006-01-02T15:04:05Z"),
+		Spec:              crd.Spec,
+		Status:            crd.Status,
+		Labels:            crd.Metadata.Labels,
+		Annotations:       crd.Metadata.Annotations,
+	}, nil
+}
+
+func parseModelList(list *unstructured.UnstructuredList) ([]FlexInferModel, error) {
 	models := make([]FlexInferModel, 0, len(list.Items))
 	for _, item := range list.Items {
-		raw, err := json.Marshal(item.Object)
+		model, err := parseModel(&item)
 		if err != nil {
 			continue
 		}
-
-		var crd struct {
-			Metadata metav1.ObjectMeta    `json:"metadata"`
-			Spec     FlexInferModelSpec   `json:"spec"`
-			Status   FlexInferModelStatus `json:"status"`
-		}
-		if err := json.Unmarshal(raw, &crd); err != nil {
-			continue
-		}
-
-		models = append(models, FlexInferModel{
-			Name:              crd.Metadata.Name,
-			Namespace:         crd.Metadata.Namespace,
-			CreationTimestamp: crd.Metadata.CreationTimestamp.Format("2006-01-02T15:04:05Z"),
-			Spec:              crd.Spec,
-			Status:            crd.Status,
-			Labels:            crd.Metadata.Labels,
-			Annotations:       crd.Metadata.Annotations,
-		})
+		models = append(models, *model)
 	}
-
 	return models, nil
 }

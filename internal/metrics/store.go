@@ -63,6 +63,11 @@ func NewStore(cfg config.RedisConfig) (*Store, error) {
 	return &Store{redis: client}, nil
 }
 
+// RedisClient returns the underlying Redis client for use by other packages.
+func (s *Store) RedisClient() *redis.Client {
+	return s.redis
+}
+
 // Close closes the Redis connection
 func (s *Store) Close() error {
 	return s.redis.Close()

@@ -142,7 +142,11 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Route("/api/flux", func(r chi.Router) {
 			r.Get("/kustomizations", h.FluxListKustomizations)
 			r.Get("/helmreleases", h.FluxListHelmReleases)
+			r.Get("/sources", h.FluxListSources)
 			r.With(apimiddleware.LogFunc("flux.reconcile")).Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
+			if !cfg.K8s.ReadOnly {
+				r.With(apimiddleware.LogFunc("flux.suspend")).Post("/suspend/{kind}/{namespace}/{name}", h.FluxSuspend)
+			}
 		})
 
 		r.Route("/api/litellm", func(r chi.Router) {
@@ -164,8 +168,16 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Post("/register", h.ModelsRegister)
 			r.Post("/discover", h.ModelsDiscoverK8s) // Discover models from K8s deployments
 			r.Get("/crd", h.ModelsCRD)               // Query flexinfer.ai/v1alpha2 Model CRDs directly
+			r.Get("/crd/watch-sse", h.ModelsCRDWatchSSE)
 			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
+
+			if !cfg.K8s.ReadOnly {
+				r.With(apimiddleware.LogFunc("models.crd.scale")).Post("/crd/{namespace}/{name}/scale", h.ModelsCRDScale)
+				r.With(apimiddleware.LogFunc("models.crd.activate")).Post("/crd/{namespace}/{name}/activate", h.ModelsCRDActivate)
+				r.With(apimiddleware.LogFunc("models.crd.restart")).Post("/crd/{namespace}/{name}/restart", h.ModelsCRDRestart)
+			}
+
 			r.Get("/{id}", h.ModelsGet)
 			r.Delete("/{id}", h.ModelsDelete)
 			r.Post("/{id}/download", h.ModelsStartDownload)

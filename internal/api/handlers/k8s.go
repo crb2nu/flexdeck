@@ -26,6 +26,18 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:services:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
+			return h.k8s.GetServices(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
 	services, err := h.k8s.GetServices(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -40,6 +52,17 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
+	}
+
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:nodes", 15*time.Second, func() (any, error) {
+			return h.k8s.GetNodes(r.Context())
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
 	}
 
 	nodes, err := h.k8s.GetNodes(r.Context())
@@ -59,6 +82,18 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:deployments:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 15*time.Second, func() (any, error) {
+			return h.k8s.GetDeployments(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
 	deployments, err := h.k8s.GetDeployments(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -76,6 +111,18 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:pods:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 10*time.Second, func() (any, error) {
+			return h.k8s.GetPods(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
 	pods, err := h.k8s.GetPods(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,50 +22,61 @@ type RepoInfo struct {
 }
 
 func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
-	repos := []RepoInfo{}
+	ctx := r.Context()
 
+	// Try cache first (5 minute TTL for repo list)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, "ci:repos", 5*time.Minute, func() (any, error) {
+			return h.fetchRepositories()
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+		slog.Warn("ci cache miss with error, falling through", "error", err)
+	}
+
+	repos, err := h.fetchRepositories()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(repos)
+}
+
+func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
 	if token == "" {
-		// Log warning or return empty if no token
 		slog.Warn("GitLab token not configured")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(repos)
-		return
+		return []RepoInfo{}, nil
 	}
 
-	// 1. Fetch Projects
-	// Query all visible projects (admin tokens may not have membership but can see all)
 	apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=20&order_by=last_activity_at", gitlabURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Error("Failed to fetch GitLab projects", "error", err)
-		http.Error(w, "Failed to fetch projects", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to fetch projects: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("GitLab API error", "status", resp.Status)
-		http.Error(w, "GitLab API error", http.StatusBadGateway)
-		return
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
 	}
 
-	// Read body first to debug if needed
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		slog.Error("Failed to read response body", "error", err)
-		http.Error(w, "Failed to read response", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var projects []struct {
@@ -76,75 +88,98 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.Unmarshal(bodyBytes, &projects); err != nil {
-		// Log the body snippet for debugging html responses
 		snippet := string(bodyBytes)
 		if len(snippet) > 500 {
 			snippet = snippet[:500]
 		}
 		slog.Error("Failed to decode projects", "error", err, "body_snippet", snippet)
-		http.Error(w, "Failed to decode projects response", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to decode projects response: %w", err)
 	}
 
-	// 2. For each project, check for .gitlab-ci.yml
-	// In production, you might want to do this async or on-demand, fetching content only when selected.
-	// For now, we'll fetch it for the list as requested, but maybe limited to top 20
-	// To optimize, we could maybe search for files... but let's just try fetching the file.
+	// Fetch .gitlab-ci.yml for each project in parallel (fixes N+1)
+	repos := make([]RepoInfo, len(projects))
+	var wg sync.WaitGroup
 
-	for _, p := range projects {
-		repo := RepoInfo{
+	for i, p := range projects {
+		repos[i] = RepoInfo{
 			ID:   p.ID,
 			Name: p.PathWithNamespace,
 			Path: p.WebURL,
 			Type: "gitlab",
 		}
 
-		// Fetch .gitlab-ci.yml
-		// /projects/:id/repository/files/:file_path/raw?ref=master
-		ciFileObj := ".gitlab-ci.yml"
-		// Only attempt if default branch is set
-		ref := p.DefaultBranch
-		if ref == "" {
-			ref = "main" // fallback
-		}
+		wg.Add(1)
+		go func(idx int, proj struct {
+			ID                int    `json:"id"`
+			PathWithNamespace string `json:"path_with_namespace"`
+			Name              string `json:"name"`
+			DefaultBranch     string `json:"default_branch"`
+			WebURL            string `json:"web_url"`
+		}) {
+			defer wg.Done()
 
-		// Use the configured internal URL, but we might want to ensure we don't break if it's external.
-		fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s", gitlabURL, p.ID, ciFileObj, ref)
-		fileReq, err := http.NewRequest("GET", fileURL, nil)
-		if err != nil {
-			slog.Warn("Failed to create CI file request", "repo", p.PathWithNamespace, "error", err)
-			repos = append(repos, repo)
-			continue
-		}
-		fileReq.Header.Set("PRIVATE-TOKEN", token)
-
-		fileResp, err := client.Do(fileReq)
-		if err == nil && fileResp.StatusCode == http.StatusOK {
-			content, readErr := io.ReadAll(fileResp.Body)
-			if readErr != nil {
-				slog.Warn("Failed to read CI file content", "repo", p.PathWithNamespace, "error", readErr)
-			} else {
-				repo.HasConfig = true
-				repo.ConfigContent = string(content)
+			ref := proj.DefaultBranch
+			if ref == "" {
+				ref = "main"
 			}
-			fileResp.Body.Close()
-		} else if fileResp != nil {
-			fileResp.Body.Close()
-		}
 
-		repos = append(repos, repo)
+			fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
+				gitlabURL, proj.ID, ".gitlab-ci.yml", ref)
+			fileReq, err := http.NewRequest("GET", fileURL, nil)
+			if err != nil {
+				return
+			}
+			fileReq.Header.Set("PRIVATE-TOKEN", token)
+
+			fileResp, err := client.Do(fileReq)
+			if err != nil {
+				return
+			}
+			defer fileResp.Body.Close()
+
+			if fileResp.StatusCode == http.StatusOK {
+				content, readErr := io.ReadAll(fileResp.Body)
+				if readErr == nil {
+					repos[idx].HasConfig = true
+					repos[idx].ConfigContent = string(content)
+				}
+			}
+		}(i, p)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repos)
+	wg.Wait()
+	return repos, nil
 }
 
 func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	// Try cache (30s TTL for pipeline status)
+	if h.cache != nil {
+		cacheKey := fmt.Sprintf("ci:pipeline:%s", idStr)
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchRepoPipeline(idStr)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	data, err := h.fetchRepoPipeline(idStr)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
-	// Response types moved to top for reuse
 	type Job struct {
 		ID         string  `json:"id"`
 		Name       string  `json:"name"`
@@ -169,42 +204,26 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if token == "" {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{
-			"error": "GitLab token not configured",
-		})
-		return
+		return nil, fmt.Errorf("GitLab token not configured")
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// 1. Get Latest Pipeline
 	pipelineURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=1", gitlabURL, idStr)
 	req, err := http.NewRequest("GET", pipelineURL, nil)
 	if err != nil {
-		slog.Error("Failed to create request", "error", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]any{
-			"error": "Failed to create request",
-		})
-		return
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Error("Failed to fetch pipeline from GitLab", "error", err)
-		respondJSON(w, http.StatusBadGateway, map[string]any{
-			"error": "Failed to connect to GitLab",
-		})
-		return
+		return nil, fmt.Errorf("failed to connect to GitLab: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Warn("GitLab API returned non-OK status", "status", resp.StatusCode, "project", idStr)
-		respondJSON(w, http.StatusBadGateway, map[string]any{
-			"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode),
-		})
-		return
+		return nil, fmt.Errorf("GitLab API error: %d", resp.StatusCode)
 	}
 
 	var pipelines []struct {
@@ -214,37 +233,27 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
-		slog.Error("Failed to decode pipelines response", "error", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]any{
-			"error": "Failed to decode pipelines",
-		})
-		return
+		return nil, fmt.Errorf("failed to decode pipelines: %w", err)
 	}
 
-	// No pipelines found - return empty pipeline structure instead of error
 	if len(pipelines) == 0 {
-		respondJSON(w, http.StatusOK, PipelineResponse{
-			ID:        "",
-			Ref:       "",
-			Status:    "none",
-			CreatedAt: "",
-			Stages:    []Stage{},
-		})
-		return
+		return PipelineResponse{Status: "none", Stages: []Stage{}}, nil
 	}
 	latest := pipelines[0]
 
-	// 2. Get Pipeline Jobs
 	jobsURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", gitlabURL, idStr, latest.ID)
 	jReq, _ := http.NewRequest("GET", jobsURL, nil)
 	jReq.Header.Set("PRIVATE-TOKEN", token)
 
 	jResp, err := client.Do(jReq)
-	if err != nil || jResp.StatusCode != http.StatusOK {
-		http.Error(w, "Failed to fetch jobs", http.StatusInternalServerError)
-		return
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch jobs: %w", err)
 	}
 	defer jResp.Body.Close()
+
+	if jResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch jobs: status %d", jResp.StatusCode)
+	}
 
 	var jobs []struct {
 		ID         int     `json:"id"`
@@ -259,16 +268,10 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("Failed to decode jobs response", "error", err)
 	}
 
-	// Group jobs by stage
 	stageMap := make(map[string][]Job)
-
-	// GitLab jobs typically come newest first, we reverse this iteration potentially if we want execution order
-	// but standard grouping is safer.
-
 	seenStages := []string{}
 	seenStagesSet := make(map[string]bool)
 
-	// Pre-define standard order
 	stdOrder := []string{".pre", "build", "test", "deploy", ".post"}
 	for _, s := range stdOrder {
 		if !seenStagesSet[s] {
@@ -301,23 +304,17 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	stages := []Stage{}
 	for _, sName := range seenStages {
 		if jList, ok := stageMap[sName]; ok && len(jList) > 0 {
-			stages = append(stages, Stage{
-				Name: sName,
-				Jobs: jList,
-			})
+			stages = append(stages, Stage{Name: sName, Jobs: jList})
 		}
 	}
 
-	respData := PipelineResponse{
+	return PipelineResponse{
 		ID:        fmt.Sprintf("%d", latest.ID),
 		Ref:       latest.Ref,
 		Status:    latest.Status,
 		CreatedAt: latest.CreatedAt.Format(time.RFC3339),
 		Stages:    stages,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(respData)
+	}, nil
 }
 
 // GetJobTrace fetches the trace/log output for a specific job

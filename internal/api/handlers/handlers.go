@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/flexinfer/flexdeck/internal/agents"
+	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
@@ -14,6 +15,7 @@ type Handler struct {
 	k8s          *k8s.Client
 	litellm      *litellm.Client
 	metricsStore *metrics.Store
+	cache        *cache.Cache
 
 	// Models management
 	modelsRegistry   *models.Registry
@@ -54,6 +56,11 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		k8s:          k8sClient,
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
+	}
+
+	// Initialize Redis cache if metrics store has a Redis client
+	if metricsStore != nil {
+		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
 	}
 
 	if deps != nil {

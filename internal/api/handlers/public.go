@@ -231,6 +231,15 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Try serving from cache (30s TTL)
+	if h.cache != nil {
+		if cached, _ := h.cache.Get(r.Context(), "topology:public"); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
 	ctx := r.Context()
 
 	// Fetch real data
@@ -429,6 +438,13 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 		Source:     "live",
 	}
 
+	// Cache the response (30s TTL)
+	if h.cache != nil {
+		if data, err := json.Marshal(resp); err == nil {
+			h.cache.Set(r.Context(), "topology:public", data, 30*time.Second)
+		}
+	}
+
 	respondJSON(w, http.StatusOK, resp)
 }
 
@@ -540,6 +556,15 @@ func sanitizeProjectName(fullPath string) string {
 }
 
 func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
+	// Try cache (60s TTL for public CI status)
+	if h.cache != nil {
+		if cached, _ := h.cache.Get(r.Context(), "ci:status:public"); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
@@ -724,11 +749,20 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respondJSON(w, http.StatusOK, PublicCIResponse{
+	ciResp := PublicCIResponse{
 		Pipelines: pipelines,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 		Source:    "live",
-	})
+	}
+
+	// Cache the response (60s TTL)
+	if h.cache != nil {
+		if data, err := json.Marshal(ciResp); err == nil {
+			h.cache.Set(r.Context(), "ci:status:public", data, 60*time.Second)
+		}
+	}
+
+	respondJSON(w, http.StatusOK, ciResp)
 }
 
 // getPublicCIDemo returns demo pipeline data

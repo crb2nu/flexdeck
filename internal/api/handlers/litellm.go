@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -45,6 +46,18 @@ func (h *Handler) LiteLLMMetrics(w http.ResponseWriter, r *http.Request) {
 			"error": "litellm metrics disabled",
 		})
 		return
+	}
+
+	// Try cached throughput first (5s TTL)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), "litellm:throughput", 5*time.Second, func() (any, error) {
+			return h.metricsStore.GetThroughput(r.Context())
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
 	}
 
 	throughput, err := h.metricsStore.GetThroughput(r.Context())

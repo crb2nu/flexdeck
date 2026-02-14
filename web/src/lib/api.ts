@@ -223,6 +223,22 @@ export const modelsApi = {
     api<any>(
       `/models/crd${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
     ),
+  crdScale: (namespace: string, name: string, minReplicas: number) =>
+    api<any>(`/models/crd/${namespace}/${name}/scale`, {
+      method: "POST",
+      body: JSON.stringify({ minReplicas }),
+    }),
+  crdActivate: (namespace: string, name: string) =>
+    api<any>(`/models/crd/${namespace}/${name}/activate`, { method: "POST" }),
+  crdRestart: (namespace: string, name: string) =>
+    api<any>(`/models/crd/${namespace}/${name}/restart`, { method: "POST" }),
+  crdWatchSSEUrl: (namespace?: string) => {
+    const isPublicView =
+      typeof window !== "undefined" &&
+      window.location.hostname === "www.flexinfer.ai";
+    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
+  },
 };
 
 export const agentsApi = {
@@ -339,6 +355,20 @@ export const ciApi = {
     ),
 };
 
+export interface FluxCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+}
+
+export interface FluxSourceRef {
+  kind: string;
+  name: string;
+  namespace?: string;
+}
+
 export interface FluxResource {
   name: string;
   namespace: string;
@@ -346,11 +376,28 @@ export interface FluxResource {
   ready: boolean;
   message?: string;
   lastApplied?: string;
+  suspended?: boolean;
+  sourceRef?: FluxSourceRef;
+  conditions?: FluxCondition[];
+  dependsOn?: string[];
+}
+
+export interface FluxSource {
+  name: string;
+  namespace: string;
+  kind: string;
+  url?: string;
+  branch?: string;
+  ready: boolean;
+  revision?: string;
+  lastFetched?: string;
+  conditions?: FluxCondition[];
 }
 
 export const fluxApi = {
   listKustomizations: () => api<FluxResource[]>("/flux/kustomizations"),
   listHelmReleases: () => api<FluxResource[]>("/flux/helmreleases"),
+  listSources: () => api<FluxSource[]>("/flux/sources"),
   reconcile: (
     kind: string,
     namespace: string,
@@ -362,6 +409,14 @@ export const fluxApi = {
       {
         method: "POST",
         body: JSON.stringify({ withSource }),
+      },
+    ),
+  suspend: (kind: string, namespace: string, name: string, suspend: boolean) =>
+    api<{ ok: boolean; message: string }>(
+      `/flux/suspend/${kind}/${namespace}/${name}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ suspend }),
       },
     ),
 };
