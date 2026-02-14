@@ -1,0 +1,143 @@
+import { Component, createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
+import { api } from '../../lib/api';
+import Sparkline from '../shared/Sparkline';
+
+interface ModelGPUEntry {
+  modelId: string;
+  modelName: string;
+  node: string;
+  gpuUtilization: number | null;
+  vramUsedPercent: number | null;
+  temperature: number | null;
+  power: number | null;
+}
+
+interface ModelGPUHistory {
+  utilization: number[];
+  vram: number[];
+}
+
+const POLL_INTERVAL = 15_000;
+const HISTORY_SIZE = 20;
+
+function pushHistory(arr: number[], val: number | null): number[] {
+  if (val == null) return arr;
+  const next = [...arr, val];
+  return next.length > HISTORY_SIZE ? next.slice(next.length - HISTORY_SIZE) : next;
+}
+
+function utilColor(val: number): string {
+  if (val >= 80) return 'text-status-error';
+  if (val >= 50) return 'text-neon-cyan';
+  return 'text-status-ok';
+}
+
+const ModelGPUTable: Component = () => {
+  const [models, setModels] = createSignal<ModelGPUEntry[]>([]);
+  const [historyMap, setHistoryMap] = createSignal<Record<string, ModelGPUHistory>>({});
+  const [error, setError] = createSignal(false);
+
+  const fetchData = async () => {
+    try {
+      const data = await api<{ models: ModelGPUEntry[] }>('/k8s/metrics/gpu/models');
+      const entries = data.models || [];
+      setModels(entries);
+      setError(false);
+
+      setHistoryMap(prev => {
+        const next = { ...prev };
+        for (const m of entries) {
+          const key = m.modelName;
+          const existing = next[key] || { utilization: [], vram: [] };
+          next[key] = {
+            utilization: pushHistory(existing.utilization, m.gpuUtilization),
+            vram: pushHistory(existing.vram, m.vramUsedPercent),
+          };
+        }
+        return next;
+      });
+    } catch {
+      setError(true);
+    }
+  };
+
+  let timer: ReturnType<typeof setInterval>;
+  createEffect(() => {
+    fetchData();
+    timer = setInterval(fetchData, POLL_INTERVAL);
+  });
+  onCleanup(() => clearInterval(timer));
+
+  return (
+    <Show when={!error() && models().length > 0}>
+      <div class="glass-panel p-4">
+        <div class="text-[10px] font-medium text-neon-purple uppercase tracking-wider mb-2">
+          GPU Usage by Model
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-text-dim border-b border-white/5">
+                <th class="text-left py-1.5 pr-3 font-medium">Model</th>
+                <th class="text-left py-1.5 pr-3 font-medium">Node</th>
+                <th class="text-right py-1.5 pr-3 font-medium">GPU Util</th>
+                <th class="text-right py-1.5 pr-3 font-medium">VRAM</th>
+                <th class="text-right py-1.5 pr-3 font-medium">Temp</th>
+                <th class="text-right py-1.5 pr-3 font-medium">Power</th>
+                <th class="text-center py-1.5 font-medium">Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={models()}>
+                {(m) => {
+                  const hist = () => historyMap()[m.modelName];
+                  return (
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td class="py-1.5 pr-3 font-mono text-text-main truncate max-w-[160px]">
+                        {m.modelName}
+                      </td>
+                      <td class="py-1.5 pr-3 font-mono text-text-dim truncate max-w-[120px]">
+                        {m.node}
+                      </td>
+                      <td class="py-1.5 pr-3 text-right font-mono">
+                        <Show when={m.gpuUtilization != null} fallback={<span class="text-text-dim">-</span>}>
+                          <span class={utilColor(m.gpuUtilization!)}>{m.gpuUtilization!.toFixed(0)}%</span>
+                        </Show>
+                      </td>
+                      <td class="py-1.5 pr-3 text-right font-mono">
+                        <Show when={m.vramUsedPercent != null} fallback={<span class="text-text-dim">-</span>}>
+                          <span class={m.vramUsedPercent! > 90 ? 'text-status-error' : 'text-neon-purple'}>
+                            {m.vramUsedPercent!.toFixed(0)}%
+                          </span>
+                        </Show>
+                      </td>
+                      <td class="py-1.5 pr-3 text-right font-mono">
+                        <Show when={m.temperature != null} fallback={<span class="text-text-dim">-</span>}>
+                          <span class={m.temperature! > 85 ? 'text-status-error' : 'text-text-muted'}>
+                            {m.temperature!.toFixed(0)}°C
+                          </span>
+                        </Show>
+                      </td>
+                      <td class="py-1.5 pr-3 text-right font-mono">
+                        <Show when={m.power != null} fallback={<span class="text-text-dim">-</span>}>
+                          <span class="text-text-muted">{m.power!.toFixed(0)}W</span>
+                        </Show>
+                      </td>
+                      <td class="py-1.5 text-center">
+                        <Show when={hist()?.utilization?.length >= 2}>
+                          <Sparkline data={hist()!.utilization} width={50} height={14} color="#22d3ee" />
+                        </Show>
+                      </td>
+                    </tr>
+                  );
+                }}
+              </For>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Show>
+  );
+};
+
+export default ModelGPUTable;

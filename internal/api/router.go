@@ -106,6 +106,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/pods/{ns}/{name}/logs/stream", h.K8sPodLogsSSE)
 			r.Get("/metrics/nodes", h.K8sNodeMetrics)
 			r.Get("/metrics/pods", h.K8sPodMetrics)
+			r.Get("/metrics/gpu/models", h.K8sGPUByModel)
 			r.Get("/watch-sse", h.K8sWatchSSE)
 
 			if !cfg.K8s.ReadOnly {

@@ -3,6 +3,7 @@ import { createStore } from 'solid-js/store';
 import type { RegisteredModel, ModelSearchResult, FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
 import GPUMetricsPanel from './GPUMetricsPanel';
+import ModelGPUTable from './ModelGPUTable';
 
 type Tab = 'controller' | 'registry' | 'search';
 
@@ -253,6 +254,7 @@ const Models: Component = () => {
               when={crdModels.length > 0}
               fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to flexinfer-system namespace, then click Sync." />}
             >
+              <ModelGPUTable />
               <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 <For each={crdModels}>
                   {(model) => (

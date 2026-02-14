@@ -542,6 +542,209 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// K8sGPUByModel returns GPU metrics correlated with flexinfer Model CRDs.
+// It queries pods in the AI namespace with the flexinfer.ai/model label,
+// determines which node each pod runs on, then queries GPU metrics for those nodes.
+func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+	if h.cfg.Prom.Disabled || h.cfg.Prom.URL == "" {
+		http.Error(w, "prometheus disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	aiNS := strings.TrimSpace(h.cfg.Models.AINamespace)
+	if aiNS == "" {
+		aiNS = "ai"
+	}
+
+	cacheKey := fmt.Sprintf("k8s:gpu-by-model:%s", aiNS)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchGPUByModel(r.Context(), aiNS)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	result, err := h.fetchGPUByModel(r.Context(), aiNS)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+type modelGPUEntry struct {
+	ModelID        string   `json:"modelId"`
+	ModelName      string   `json:"modelName"`
+	Node           string   `json:"node"`
+	GPUUtilization *float64 `json:"gpuUtilization"`
+	VRAMUsedPct    *float64 `json:"vramUsedPercent"`
+	Temperature    *float64 `json:"temperature"`
+	Power          *float64 `json:"power"`
+}
+
+func (h *Handler) fetchGPUByModel(ctx context.Context, namespace string) (map[string]any, error) {
+	pods, err := h.k8s.GetPods(ctx, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("list pods: %w", err)
+	}
+
+	// Collect pods that have the model label and are running on a node
+	type podInfo struct {
+		modelID   string
+		modelName string
+		node      string
+	}
+	var targets []podInfo
+	for _, pod := range pods.Items {
+		modelName := pod.Labels["flexinfer.ai/model"]
+		if modelName == "" {
+			continue
+		}
+		if pod.Spec.NodeName == "" {
+			continue
+		}
+		targets = append(targets, podInfo{
+			modelID:   string(pod.UID),
+			modelName: modelName,
+			node:      pod.Spec.NodeName,
+		})
+	}
+
+	// Deduplicate nodes for GPU queries
+	nodeSet := make(map[string]struct{})
+	for _, t := range targets {
+		nodeSet[t.node] = struct{}{}
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	// Query GPU metrics per unique node in parallel
+	type nodeMetrics struct {
+		utilization *float64
+		vramPct     *float64
+		temperature *float64
+		power       *float64
+	}
+
+	nodeResults := make(map[string]*nodeMetrics)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	queryProm := func(query string) (*float64, error) {
+		u := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(query))
+		resp, err := client.Get(u)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+
+		var promResp struct {
+			Data struct {
+				Result []struct {
+					Value []json.RawMessage `json:"value"`
+				} `json:"result"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &promResp); err != nil {
+			return nil, nil
+		}
+		if len(promResp.Data.Result) == 0 {
+			return nil, nil
+		}
+		var valStr string
+		if err := json.Unmarshal(promResp.Data.Result[0].Value[1], &valStr); err != nil {
+			return nil, nil
+		}
+		val, err := strconv.ParseFloat(valStr, 64)
+		if err != nil {
+			return nil, nil
+		}
+		return &val, nil
+	}
+
+	for node := range nodeSet {
+		wg.Add(1)
+		go func(node string) {
+			defer wg.Done()
+			nf := fmt.Sprintf(`instance=~".*%s.*"`, apiutil.EscapeLabelValue(node))
+
+			// Try AMD first, then NVIDIA
+			util, _ := queryProm(fmt.Sprintf(`amdgpu_gpu_busy_percent{%s}`, nf))
+			if util == nil {
+				util, _ = queryProm(fmt.Sprintf(`DCGM_FI_DEV_GPU_UTIL{%s}`, nf))
+			}
+			if util == nil {
+				util, _ = queryProm(fmt.Sprintf(`nvidia_gpu_duty_cycle{%s}`, nf))
+			}
+
+			var vramPct *float64
+			vramUsed, _ := queryProm(fmt.Sprintf(`amdgpu_vram_used_bytes{%s}`, nf))
+			vramTotal, _ := queryProm(fmt.Sprintf(`amdgpu_vram_total_bytes{%s}`, nf))
+			if vramUsed != nil && vramTotal != nil && *vramTotal > 0 {
+				pct := (*vramUsed / *vramTotal) * 100
+				vramPct = &pct
+			} else {
+				fbUsed, _ := queryProm(fmt.Sprintf(`DCGM_FI_DEV_FB_USED{%s}`, nf))
+				fbFree, _ := queryProm(fmt.Sprintf(`DCGM_FI_DEV_FB_FREE{%s}`, nf))
+				if fbUsed != nil && fbFree != nil && (*fbUsed+*fbFree) > 0 {
+					pct := (*fbUsed / (*fbUsed + *fbFree)) * 100
+					vramPct = &pct
+				}
+			}
+
+			temp, _ := queryProm(fmt.Sprintf(`amdgpu_temperature_edge{%s}`, nf))
+			if temp == nil {
+				temp, _ = queryProm(fmt.Sprintf(`DCGM_FI_DEV_GPU_TEMP{%s}`, nf))
+			}
+
+			pwr, _ := queryProm(fmt.Sprintf(`amdgpu_power_average_watts{%s}`, nf))
+			if pwr == nil {
+				pwr, _ = queryProm(fmt.Sprintf(`DCGM_FI_DEV_POWER_USAGE{%s}`, nf))
+			}
+
+			mu.Lock()
+			nodeResults[node] = &nodeMetrics{
+				utilization: util,
+				vramPct:     vramPct,
+				temperature: temp,
+				power:       pwr,
+			}
+			mu.Unlock()
+		}(node)
+	}
+	wg.Wait()
+
+	// Build response entries
+	models := make([]modelGPUEntry, 0, len(targets))
+	for _, t := range targets {
+		entry := modelGPUEntry{
+			ModelID:   t.modelID,
+			ModelName: t.modelName,
+			Node:      t.node,
+		}
+		if nm, ok := nodeResults[t.node]; ok {
+			entry.GPUUtilization = nm.utilization
+			entry.VRAMUsedPct = nm.vramPct
+			entry.Temperature = nm.temperature
+			entry.Power = nm.power
+		}
+		models = append(models, entry)
+	}
+
+	return map[string]any{"models": models}, nil
+}
+
 // K8sEventsSSE implements Server-Sent Events for real-time K8s events streaming.
 // It watches Kubernetes events (warnings, normal events, etc.) and streams them to the client.
 func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
