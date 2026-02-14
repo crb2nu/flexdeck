@@ -3,13 +3,16 @@
 Guidance for coding agents working in this repository.
 
 ## Project Overview
-- FlexDeck is a Kubernetes dashboard for the flexinfer.ai ecosystem.
-- Backend: Go (Chi router, client-go, Loki, Prometheus).
+- FlexDeck is a Kubernetes dashboard for the flexinfer.ai ecosystem — workload management, FlexInfer CRD lifecycle, GPU metrics, Langfuse tracing, and Flux GitOps.
+- Backend: Go (Chi router, client-go, Prometheus, Loki, Langfuse, Redis cache).
 - Frontend: SolidJS + Tailwind CSS + Vite, with D3/Three for visualizations.
 
 ## Key Paths
 - `cmd/server/` application entrypoint
-- `internal/` backend modules (api, auth, config, k8s, loki)
+- `internal/` backend modules (agents, api, auth, cache, config, k8s, litellm, metrics, models)
+- `internal/k8s/models_crd.go` FlexInfer v1alpha2 Model CRD operations
+- `internal/cache/cache.go` Redis caching layer
+- `internal/metrics/` Prometheus metrics store + scraper
 - `web/src/` frontend source (components, stores, lib, styles)
 
 ## Common Commands
@@ -54,4 +57,5 @@ Guidance for coding agents working in this repository.
 
 ## Planning
 - See `ROADMAP.md` for project status and plans.
+- Recent additions: FlexInfer controller integration, GPU metrics panels, Langfuse observability, Prometheus alerts API, Redis caching layer.
 

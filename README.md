@@ -2,7 +2,7 @@
 
 # FlexDeck
 
-Central dashboard for the flexinfer.ai ecosystem.
+Central dashboard for the flexinfer.ai ecosystem — Kubernetes workload management, FlexInfer AI model lifecycle (CRD), GPU metrics, Prometheus/Loki observability, Langfuse tracing, and Flux GitOps.
 
 ## Tech Stack
 
@@ -66,7 +66,12 @@ Environment variables:
 | `K8S_READONLY` | `false` | Disable mutation operations |
 | `PROM_URL` | | Prometheus URL |
 | `LOKI_URL` | | Loki URL |
-| `VLLM_URL` | | vLLM API URL |
+| `VLLM_URL` | | vLLM inference proxy URL (one of flexinfer's backends) |
+| `LITELLM_URL` | | LiteLLM gateway URL |
+| `REDIS_URL` | | Redis connection for caching/metrics |
+| `LANGFUSE_URL` | | Langfuse observability URL |
+| `LANGFUSE_PUBLIC_KEY` | | Langfuse public API key |
+| `LANGFUSE_SECRET_KEY` | | Langfuse secret API key |
 
 ## Docker
 
@@ -84,11 +89,15 @@ docker run -p 8080:8080 flexdeck:dev
 flexdeck/
 ├── cmd/server/          # Go entrypoint
 ├── internal/
+│   ├── agents/          # Agent orchestration
 │   ├── api/             # HTTP handlers
 │   ├── auth/            # Authentication
+│   ├── cache/           # Redis caching layer
 │   ├── config/          # Configuration
-│   ├── k8s/             # Kubernetes client
-│   └── loki/            # Loki SSE bridge
+│   ├── k8s/             # Kubernetes client + FlexInfer CRD
+│   ├── litellm/         # LiteLLM gateway proxy
+│   ├── metrics/         # Prometheus metrics store + scraper
+│   └── models/          # Model management + registry
 ├── web/
 │   ├── src/
 │   │   ├── components/  # SolidJS components
