@@ -506,6 +506,25 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface AgentNode {
+  id: string;
+  name: string;
+  type: AgentType;
+  status: AgentStatus;
+  tags: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface AgentEdge {
+  source: string;
+  target: string;
+}
+
+export interface AgentGraphResponse {
+  nodes: AgentNode[];
+  edges: AgentEdge[];
+}
+
 export interface AgentUsage {
   agent_id: string;
   request_count: number;

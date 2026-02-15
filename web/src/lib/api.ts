@@ -243,6 +243,7 @@ export const modelsApi = {
 
 export const agentsApi = {
   list: () => api<any>("/agents/"),
+  graph: () => api<{ nodes: any[]; edges: any[] }>("/agents/graph"),
   get: (id: string) => api<any>(`/agents/${encodeURIComponent(id)}`),
   create: (agent: any) =>
     api<any>("/agents/", {

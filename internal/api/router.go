@@ -192,6 +192,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/", h.AgentsList)
 			r.Post("/", h.AgentsCreate)
 			r.Get("/health", h.AgentsHealth)
+			r.Get("/graph", h.AgentsGraph)
 
 			// Built-in Agent Builder
 			r.Get("/builder", h.AgentBuilderInfo)

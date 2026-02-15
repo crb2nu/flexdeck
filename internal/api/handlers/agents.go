@@ -9,6 +9,77 @@ import (
 	"github.com/flexinfer/flexdeck/internal/agents"
 )
 
+// AgentsGraph returns agents as a graph with nodes and dependency edges
+func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "agents feature disabled",
+		})
+		return
+	}
+
+	agentList := h.agentsRegistry.List()
+
+	type graphNode struct {
+		ID       string            `json:"id"`
+		Name     string            `json:"name"`
+		Type     agents.AgentType  `json:"type"`
+		Status   agents.AgentStatus `json:"status"`
+		Tags     []string          `json:"tags"`
+		Metadata map[string]any    `json:"metadata,omitempty"`
+	}
+
+	type graphEdge struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+
+	// Build lookup set for valid agent IDs
+	agentIDs := make(map[string]struct{}, len(agentList))
+	for _, a := range agentList {
+		agentIDs[a.ID] = struct{}{}
+	}
+
+	nodes := make([]graphNode, 0, len(agentList))
+	edges := make([]graphEdge, 0)
+
+	for _, a := range agentList {
+		nodes = append(nodes, graphNode{
+			ID:       a.ID,
+			Name:     a.Name,
+			Type:     a.Type,
+			Status:   a.Status,
+			Tags:     a.Tags,
+			Metadata: a.Metadata,
+		})
+
+		// Extract depends_on from metadata
+		if deps, ok := a.Metadata["depends_on"]; ok {
+			switch v := deps.(type) {
+			case []any:
+				for _, dep := range v {
+					if depID, ok := dep.(string); ok {
+						if _, exists := agentIDs[depID]; exists {
+							edges = append(edges, graphEdge{Source: a.ID, Target: depID})
+						}
+					}
+				}
+			case []string:
+				for _, depID := range v {
+					if _, exists := agentIDs[depID]; exists {
+						edges = append(edges, graphEdge{Source: a.ID, Target: depID})
+					}
+				}
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"nodes": nodes,
+		"edges": edges,
+	})
+}
+
 // AgentsList returns all registered agents
 func (h *Handler) AgentsList(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {

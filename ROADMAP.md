@@ -59,12 +59,12 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - [x] **Model Browser UI**: Rich interface for browsing the model registry and triggering downloads.
 - [x] **GitOps Visualizer**: Visual status of Flux synchronizations and drift detection.
 - [x] **FlexInfer Controller Integration**: CRD v1alpha2 listing, mutations, SSE watch. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/2))
-- [x] **GPU Metrics** *(partial)*: Per-node DCGM/ROCm panels implemented. Remaining: historical time-series charts, multi-GPU aggregation, per-model GPU correlation. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/3))
+- [x] **GPU Metrics**: Per-node DCGM/ROCm panels, sparkline history, multi-GPU aggregation, per-model GPU correlation table. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/3))
 
 ### Phase 2: Agent Interaction
 
 - [x] **Agent Chat Interface**: Neural Link chat UI for interacting with registered agents.
-- [ ] **Flow Visualization**: Visual graph of agent interactions and dependencies. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/4))
+- [x] **Flow Visualization**: Visual graph of agent interactions and dependencies. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/4))
 
 ### Phase 3: Enterprise Features
 
