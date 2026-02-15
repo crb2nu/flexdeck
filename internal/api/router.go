@@ -212,6 +212,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Put("/{id}", h.AgentsUpdate)
 			r.Delete("/{id}", h.AgentsDelete)
 			r.Get("/{id}/health", h.AgentsCheckHealth)
+			r.Get("/{id}/sessions", h.HUDAgentSessions)
 			r.Post("/{id}/test", h.AgentsTest)
 			r.Post("/{id}/invoke", h.AgentsInvoke)
 			r.Post("/{id}/stream", h.AgentsStream)

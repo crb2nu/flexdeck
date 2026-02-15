@@ -130,6 +130,15 @@ func main() {
 		slog.Info("agents subsystem disabled")
 	}
 
+	// Initialize HUD client (independent of agents registry)
+	if !cfg.LoomHUD.Disabled && cfg.LoomHUD.URL != "" {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+		handlerDeps.HUDClient = agents.NewHUDClient(cfg.LoomHUD.URL)
+		slog.Info("loom HUD client initialized", "url", cfg.LoomHUD.URL)
+	}
+
 	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)
 
 	server := &http.Server{

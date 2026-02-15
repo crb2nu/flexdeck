@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -11,22 +13,29 @@ import (
 
 // AgentsGraph returns agents as a graph with nodes and dependency edges
 func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "agents feature disabled",
-		})
-		return
+	var allAgents []*agents.Agent
+
+	// Source 1: Registry
+	if !h.cfg.Agents.Disabled && h.agentsRegistry != nil {
+		allAgents = append(allAgents, h.agentsRegistry.List()...)
 	}
 
-	agentList := h.agentsRegistry.List()
+	// Source 2: HUD presence
+	if h.hudClient != nil {
+		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
+			for i := range presence.Agents {
+				allAgents = append(allAgents, presence.Agents[i].ToAgent())
+			}
+		}
+	}
 
 	type graphNode struct {
-		ID       string            `json:"id"`
-		Name     string            `json:"name"`
-		Type     agents.AgentType  `json:"type"`
+		ID       string             `json:"id"`
+		Name     string             `json:"name"`
+		Type     agents.AgentType   `json:"type"`
 		Status   agents.AgentStatus `json:"status"`
-		Tags     []string          `json:"tags"`
-		Metadata map[string]any    `json:"metadata,omitempty"`
+		Tags     []string           `json:"tags"`
+		Metadata map[string]any     `json:"metadata,omitempty"`
 	}
 
 	type graphEdge struct {
@@ -35,15 +44,18 @@ func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build lookup set for valid agent IDs
-	agentIDs := make(map[string]struct{}, len(agentList))
-	for _, a := range agentList {
+	agentIDs := make(map[string]struct{}, len(allAgents))
+	for _, a := range allAgents {
 		agentIDs[a.ID] = struct{}{}
 	}
 
-	nodes := make([]graphNode, 0, len(agentList))
+	nodes := make([]graphNode, 0, len(allAgents))
 	edges := make([]graphEdge, 0)
 
-	for _, a := range agentList {
+	// Track HUD agents by branch for edge generation
+	branchAgents := make(map[string][]string)
+
+	for _, a := range allAgents {
 		nodes = append(nodes, graphNode{
 			ID:       a.ID,
 			Name:     a.Name,
@@ -53,24 +65,38 @@ func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
 			Metadata: a.Metadata,
 		})
 
-		// Extract depends_on from metadata
-		if deps, ok := a.Metadata["depends_on"]; ok {
-			switch v := deps.(type) {
-			case []any:
-				for _, dep := range v {
-					if depID, ok := dep.(string); ok {
+		// Extract depends_on from metadata (registry agents)
+		if a.Metadata != nil {
+			if deps, ok := a.Metadata["depends_on"]; ok {
+				switch v := deps.(type) {
+				case []any:
+					for _, dep := range v {
+						if depID, ok := dep.(string); ok {
+							if _, exists := agentIDs[depID]; exists {
+								edges = append(edges, graphEdge{Source: a.ID, Target: depID})
+							}
+						}
+					}
+				case []string:
+					for _, depID := range v {
 						if _, exists := agentIDs[depID]; exists {
 							edges = append(edges, graphEdge{Source: a.ID, Target: depID})
 						}
 					}
 				}
-			case []string:
-				for _, depID := range v {
-					if _, exists := agentIDs[depID]; exists {
-						edges = append(edges, graphEdge{Source: a.ID, Target: depID})
-					}
-				}
 			}
+
+			// Track branch for HUD agents
+			if branch, ok := a.Metadata["branch"].(string); ok && branch != "" {
+				branchAgents[branch] = append(branchAgents[branch], a.ID)
+			}
+		}
+	}
+
+	// Connect HUD agents on the same branch
+	for _, ids := range branchAgents {
+		for i := 1; i < len(ids); i++ {
+			edges = append(edges, graphEdge{Source: ids[0], Target: ids[i]})
 		}
 	}
 
@@ -80,40 +106,59 @@ func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// AgentsList returns all registered agents
+// AgentsList returns all registered agents, merging registry and HUD sources
 func (h *Handler) AgentsList(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "agents feature disabled",
-		})
-		return
+	var allAgents []*agents.Agent
+
+	// Source 1: Registry (if enabled)
+	if !h.cfg.Agents.Disabled && h.agentsRegistry != nil {
+		allAgents = append(allAgents, h.agentsRegistry.List()...)
 	}
 
-	agentList := h.agentsRegistry.List()
+	// Source 2: HUD presence (if configured)
+	if h.hudClient != nil {
+		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
+			for i := range presence.Agents {
+				allAgents = append(allAgents, presence.Agents[i].ToAgent())
+			}
+		} else {
+			slog.Debug("HUD presence unavailable", "error", err)
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]any{
-		"agents": agentList,
+		"agents": allAgents,
 	})
 }
 
-// AgentsGet returns a specific agent
+// AgentsGet returns a specific agent from registry or HUD
 func (h *Handler) AgentsGet(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "agents feature disabled",
-		})
-		return
-	}
-
 	id := chi.URLParam(r, "id")
-	agent, err := h.agentsRegistry.Get(id)
-	if err != nil {
-		respondJSON(w, http.StatusNotFound, map[string]any{
-			"error": err.Error(),
-		})
-		return
+
+	// Try registry first
+	if !h.cfg.Agents.Disabled && h.agentsRegistry != nil {
+		if agent, err := h.agentsRegistry.Get(id); err == nil {
+			respondJSON(w, http.StatusOK, agent)
+			return
+		}
 	}
 
-	respondJSON(w, http.StatusOK, agent)
+	// Try HUD (strip "hud-" prefix to look up by original agent_id)
+	if h.hudClient != nil {
+		hudAgentID := strings.TrimPrefix(id, "hud-")
+		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
+			for i := range presence.Agents {
+				if presence.Agents[i].AgentID == hudAgentID {
+					respondJSON(w, http.StatusOK, presence.Agents[i].ToAgent())
+					return
+				}
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusNotFound, map[string]any{
+		"error": "agent not found: " + id,
+	})
 }
 
 // AgentsCreate registers a new agent
@@ -207,16 +252,27 @@ func (h *Handler) AgentsDelete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// AgentsHealth checks health of all agents
+// AgentsHealth checks health of all agents (registry + HUD)
 func (h *Handler) AgentsHealth(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Agents.Disabled || h.agentsRegistry == nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "agents feature disabled",
-		})
-		return
+	results := make(map[string]agents.AgentStatus)
+
+	// Registry health
+	if !h.cfg.Agents.Disabled && h.agentsRegistry != nil {
+		for k, v := range h.agentsRegistry.CheckAllHealth(r.Context()) {
+			results[k] = v
+		}
 	}
 
-	results := h.agentsRegistry.CheckAllHealth(r.Context())
+	// HUD health (derived from presence status)
+	if h.hudClient != nil {
+		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
+			for _, p := range presence.Agents {
+				a := p.ToAgent()
+				results[a.ID] = a.Status
+			}
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]any{
 		"health": results,
 	})
@@ -540,6 +596,33 @@ func (h *Handler) LangGraphRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, resp)
+}
+
+// HUDAgentSessions returns sessions for a specific agent from the HUD API
+func (h *Handler) HUDAgentSessions(w http.ResponseWriter, r *http.Request) {
+	if h.hudClient == nil {
+		respondJSON(w, http.StatusOK, map[string]any{
+			"sessions": []any{},
+		})
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	// Strip "hud-" prefix to get the original agent ID
+	hudAgentID := strings.TrimPrefix(id, "hud-")
+
+	sessions, err := h.hudClient.GetSessionsByAgent(r.Context(), hudAgentID)
+	if err != nil {
+		slog.Debug("HUD sessions unavailable", "error", err)
+		respondJSON(w, http.StatusOK, map[string]any{
+			"sessions": []any{},
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"sessions": sessions,
+	})
 }
 
 // LangGraphListAssistants lists available LangGraph assistants/graphs

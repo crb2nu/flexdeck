@@ -35,6 +35,7 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 const TYPE_ICONS: Record<string, string> = {
   langgraph: 'LG',
   custom: 'C',
+  'cli-agent': 'CLI',
 };
 
 const AgentFlowGraph: Component<Props> = (props) => {
@@ -202,11 +203,12 @@ const AgentFlowGraph: Component<Props> = (props) => {
     nodeElements.append('circle')
       .attr('r', d => getNodeRadius(d))
       .attr('fill', '#0a1020')
-      .attr('stroke', d => getStatusColor(d.status))
+      .attr('stroke', d => d.type === 'cli-agent' ? '#a855f7' : getStatusColor(d.status))
       .attr('stroke-width', d => {
         const isBuiltIn = d.id === 'agent-builder' || d.tags?.includes('built-in');
         return isBuiltIn ? 2.5 : 1.5;
-      });
+      })
+      .attr('stroke-dasharray', d => d.type === 'cli-agent' ? '6 3' : 'none');
 
     // Inner tint
     nodeElements.append('circle')
@@ -373,6 +375,10 @@ const AgentFlowGraph: Component<Props> = (props) => {
           <div class="flex items-center gap-2">
             <div class="h-3 w-3 rounded-full border-2 border-text-dim/50 bg-text-dim/10" />
             <span class="text-text-dim">Unknown</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="h-3 w-3 rounded-full border-2 border-dashed border-purple-400 bg-purple-400/10" />
+            <span class="text-text-dim">CLI Agent</span>
           </div>
           <div class="mt-1 border-t border-white/5 pt-2">
             <span class="text-[10px] text-text-dim">Click node for Neural Link</span>

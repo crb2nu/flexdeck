@@ -53,6 +53,9 @@ type Config struct {
 	// Agents
 	Agents AgentsConfig
 
+	// Loom HUD (agent presence from loom-core)
+	LoomHUD LoomHUDConfig
+
 	// Langfuse (LLM observability)
 	Langfuse LangfuseConfig
 
@@ -134,6 +137,11 @@ type AgentsConfig struct {
 	// AgentScope integration (multi-agent sandbox)
 	AgentScopeURL    string // AgentScope sandbox base URL
 	AgentScopeGUIURL string // AgentScope GUI sandbox URL
+}
+
+type LoomHUDConfig struct {
+	Disabled bool
+	URL      string // env: LOOM_HUD_URL, default: http://localhost:3333
 }
 
 type LangfuseConfig struct {
@@ -222,6 +230,11 @@ func Load() (*Config, error) {
 			LangGraphURL:     getEnv("LANGGRAPH_URL", "http://langgraph.ai.svc.cluster.local:8000"),
 			AgentScopeURL:    getEnv("AGENTSCOPE_URL", "http://agentscope-sandbox-base.ai.svc.cluster.local:8000"),
 			AgentScopeGUIURL: getEnv("AGENTSCOPE_GUI_URL", "http://agentscope-sandbox-gui.ai.svc.cluster.local:8000"),
+		},
+
+		LoomHUD: LoomHUDConfig{
+			Disabled: parseBool(getEnv("LOOM_HUD_DISABLED", "false")),
+			URL:      getEnv("LOOM_HUD_URL", "http://localhost:3333"),
 		},
 
 		Langfuse: LangfuseConfig{

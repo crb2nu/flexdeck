@@ -27,6 +27,7 @@ type Handler struct {
 	// Agents management
 	agentsRegistry *agents.Registry
 	agentsProxy    *agents.Proxy
+	hudClient      *agents.HUDClient
 }
 
 // HandlerDeps contains optional dependencies for the handler
@@ -38,6 +39,7 @@ type HandlerDeps struct {
 	GitOpsGen        *models.GitOpsGenerator
 	AgentsRegistry   *agents.Registry
 	AgentsProxy      *agents.Proxy
+	HUDClient        *agents.HUDClient
 }
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
@@ -71,6 +73,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		h.gitopsGen = deps.GitOpsGen
 		h.agentsRegistry = deps.AgentsRegistry
 		h.agentsProxy = deps.AgentsProxy
+		h.hudClient = deps.HUDClient
 	}
 
 	return h

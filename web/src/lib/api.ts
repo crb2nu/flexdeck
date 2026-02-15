@@ -271,6 +271,7 @@ export const agentsApi = {
       body: JSON.stringify(request),
     }),
   usage: (id: string) => api<any>(`/agents/${encodeURIComponent(id)}/usage`),
+  sessions: (id: string) => api<{ sessions: any[] }>(`/agents/${encodeURIComponent(id)}/sessions`),
 
   // Built-in Agent Builder
   builderInfo: () => api<any>("/agents/builder"),

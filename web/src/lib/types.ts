@@ -487,7 +487,7 @@ export interface ModelSearchResult {
 }
 
 // Agent types
-export type AgentType = "langgraph" | "custom";
+export type AgentType = "langgraph" | "custom" | "cli-agent";
 export type AgentStatus = "unknown" | "healthy" | "unhealthy";
 
 export interface Agent {
@@ -531,6 +531,18 @@ export interface AgentUsage {
   total_tokens: number;
   total_latency_ms: number;
   last_used: string;
+}
+
+export interface AgentSession {
+  id: string;
+  agent_id: string;
+  namespace?: string;
+  started_at: string;
+  ended_at?: string;
+  status: string;
+  description?: string;
+  entry_count?: number;
+  total_tokens?: number;
 }
 
 export interface InvokeRequest {
