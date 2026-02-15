@@ -20,12 +20,10 @@ func (h *Handler) AgentsGraph(w http.ResponseWriter, r *http.Request) {
 		allAgents = append(allAgents, h.agentsRegistry.List()...)
 	}
 
-	// Source 2: HUD presence
+	// Source 2: HUD agents (presence + recent sessions)
 	if h.hudClient != nil {
-		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
-			for i := range presence.Agents {
-				allAgents = append(allAgents, presence.Agents[i].ToAgent())
-			}
+		if hudAgents, err := h.hudClient.GetAgents(r.Context()); err == nil {
+			allAgents = append(allAgents, hudAgents...)
 		}
 	}
 
@@ -115,14 +113,12 @@ func (h *Handler) AgentsList(w http.ResponseWriter, r *http.Request) {
 		allAgents = append(allAgents, h.agentsRegistry.List()...)
 	}
 
-	// Source 2: HUD presence (if configured)
+	// Source 2: HUD agents (presence + recent sessions)
 	if h.hudClient != nil {
-		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
-			for i := range presence.Agents {
-				allAgents = append(allAgents, presence.Agents[i].ToAgent())
-			}
+		if hudAgents, err := h.hudClient.GetAgents(r.Context()); err == nil {
+			allAgents = append(allAgents, hudAgents...)
 		} else {
-			slog.Debug("HUD presence unavailable", "error", err)
+			slog.Debug("HUD agents unavailable", "error", err)
 		}
 	}
 
@@ -143,13 +139,12 @@ func (h *Handler) AgentsGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Try HUD (strip "hud-" prefix to look up by original agent_id)
+	// Try HUD (presence + sessions)
 	if h.hudClient != nil {
-		hudAgentID := strings.TrimPrefix(id, "hud-")
-		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
-			for i := range presence.Agents {
-				if presence.Agents[i].AgentID == hudAgentID {
-					respondJSON(w, http.StatusOK, presence.Agents[i].ToAgent())
+		if hudAgents, err := h.hudClient.GetAgents(r.Context()); err == nil {
+			for _, a := range hudAgents {
+				if a.ID == id {
+					respondJSON(w, http.StatusOK, a)
 					return
 				}
 			}
@@ -263,11 +258,10 @@ func (h *Handler) AgentsHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// HUD health (derived from presence status)
+	// HUD health (derived from presence + sessions)
 	if h.hudClient != nil {
-		if presence, err := h.hudClient.GetPresence(r.Context()); err == nil {
-			for _, p := range presence.Agents {
-				a := p.ToAgent()
+		if hudAgents, err := h.hudClient.GetAgents(r.Context()); err == nil {
+			for _, a := range hudAgents {
 				results[a.ID] = a.Status
 			}
 		}
@@ -479,6 +473,7 @@ func (h *Handler) AgentBuilderInfo(w http.ResponseWriter, r *http.Request) {
 	// Add runtime config
 	info.Metadata["litellm_configured"] = !h.cfg.LiteLLM.Disabled && h.cfg.LiteLLM.URL != ""
 	info.Metadata["litellm_url"] = h.cfg.LiteLLM.URL
+	info.Metadata["flexinfer_namespace"] = "flexinfer-system"
 
 	respondJSON(w, http.StatusOK, info)
 }

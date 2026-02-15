@@ -18,8 +18,6 @@ interface Message {
     data: any;
   }[];
   metadata?: {
-    iterations?: number;
-    approved?: boolean;
     totalTokens?: number;
     latencyMs?: number;
   };
@@ -34,7 +32,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
   const [messages, setMessages] = createStore<Message[]>([
     {
       role: 'assistant',
-      content: `**Neural Link established** with **${props.agent.name}**.\n\n${getWelcomeMessage(props.agent)}`,
+      content: `**Connected** to **${props.agent.name}**.\n\n${getWelcomeMessage(props.agent)}`,
       timestamp: Date.now(),
     }
   ]);
@@ -45,8 +43,8 @@ const AgentChat: Component<AgentChatProps> = (props) => {
   let inputRef: HTMLTextAreaElement | undefined;
 
   function getWelcomeMessage(agent: Agent): string {
-    if (agent.id === 'agent-builder' || agent.metadata?.spec_decode) {
-      return `I'm the **Agent Builder** - your AI assistant for designing and configuring agents.\n\nI use speculative decoding with local models for fast, high-quality responses.\n\nTry asking me to:\n- Design an agent for a specific task\n- Explain how to set up RAG with Qdrant\n- Configure speculative decoding\n- List available models`;
+    if (agent.id === 'agent-builder' || agent.metadata?.backend === 'flexinfer') {
+      return `I'm the **Agent Builder** - your AI assistant for designing and configuring agents.\n\nI use FlexInfer-managed models via LiteLLM for inference.\n\nTry asking me to:\n- Design an agent for a specific task\n- Explain how to set up RAG with Qdrant\n- Configure FlexInfer Model CRDs\n- List available models`;
     }
     return `Ready to process commands. Type your query below.`;
   }
@@ -88,8 +86,8 @@ const AgentChat: Component<AgentChatProps> = (props) => {
 
     try {
       // Check if this is the built-in Agent Builder
-      const isAgentBuilder = props.agent.id === 'agent-builder' || 
-                             props.agent.metadata?.spec_decode ||
+      const isAgentBuilder = props.agent.id === 'agent-builder' ||
+                             props.agent.metadata?.backend === 'flexinfer' ||
                              props.agent.url?.includes('agent-builder');
 
       let responseContent: string;
@@ -113,8 +111,6 @@ const AgentChat: Component<AgentChatProps> = (props) => {
         responseContent = result.response || 'No response received';
         
         metadata = {
-          iterations: result.metadata?.iterations,
-          approved: result.metadata?.approved,
           totalTokens: result.metadata?.total_tokens,
           latencyMs: result.metadata?.latency_ms
         };
@@ -311,7 +307,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
         <div class="flex items-center justify-between border-b border-neon-cyan/20 bg-[#030508]/95 px-6 py-4 backdrop-blur-sm">
             <div class="flex items-center gap-4">
                 <div class="relative flex h-12 w-12 items-center justify-center rounded-lg border border-neon-cyan/50 bg-neon-cyan/10">
-                    <span class="text-2xl">{props.agent.metadata?.spec_decode ? '⚡' : '🤖'}</span>
+                    <span class="text-2xl">{props.agent.metadata?.backend === 'flexinfer' ? '\u2B22' : '\u2B21'}</span>
                     <div class={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-[#060a14] ${
                       connectionStatus() === 'connected' ? 'bg-status-success' : 
                       connectionStatus() === 'error' ? 'bg-status-error' : 'bg-status-warning'
@@ -325,11 +321,11 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-cyan opacity-75"></span>
                             <span class="relative inline-flex rounded-full h-2 w-2 bg-neon-cyan"></span>
                           </span>
-                          NEURAL LINK ACTIVE
+                          CONNECTED
                         </span>
-                        {props.agent.metadata?.spec_decode && (
+                        {props.agent.metadata?.backend === 'flexinfer' && (
                           <span class="px-2 py-0.5 rounded bg-neon-purple/20 text-neon-purple border border-neon-purple/30">
-                            SPEC-DECODE
+                            FLEXINFER
                           </span>
                         )}
                     </div>
@@ -360,22 +356,14 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                               innerHTML={formatMarkdown(msg.content)}
                             />
                             
-                            {/* Metadata (for spec-decode) */}
+                            {/* Metadata */}
                             <Show when={msg.metadata && msg.role === 'assistant'}>
                                 <div class="mt-3 pt-2 border-t border-white/5 flex items-center gap-3 text-[10px] text-text-dim">
-                                    <Show when={msg.metadata?.iterations}>
-                                        <span>🔄 {msg.metadata?.iterations} iterations</span>
-                                    </Show>
-                                    <Show when={msg.metadata?.approved !== undefined}>
-                                        <span class={msg.metadata?.approved ? 'text-status-success' : 'text-status-warning'}>
-                                            {msg.metadata?.approved ? '✓ Approved' : '⚠ Max iterations'}
-                                        </span>
-                                    </Show>
                                     <Show when={msg.metadata?.totalTokens}>
-                                        <span>📊 {msg.metadata?.totalTokens} tokens</span>
+                                        <span>{msg.metadata?.totalTokens} tokens</span>
                                     </Show>
                                     <Show when={msg.metadata?.latencyMs}>
-                                        <span>⚡ {msg.metadata?.latencyMs}ms</span>
+                                        <span>{msg.metadata?.latencyMs}ms</span>
                                     </Show>
                                 </div>
                             </Show>
@@ -434,7 +422,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                             <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "150ms"}}></div>
                             <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "300ms"}}></div>
                         </div>
-                        <span class="text-xs text-text-dim">Processing with speculative decode...</span>
+                        <span class="text-xs text-text-dim">Processing...</span>
                     </div>
                 </div>
             </Show>
@@ -470,7 +458,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                     <span class="text-neon-cyan">SHIFT + ENTER</span> for new line
                 </span>
                 <span class="opacity-60">
-                    {props.agent.metadata?.spec_decode ? 'Speculative Decode • Draft→Verify→Revise' : props.agent.model || 'Standard Agent'}
+                    {props.agent.metadata?.backend === 'flexinfer' ? 'FlexInfer \u00B7 LiteLLM' : props.agent.model || 'Standard Agent'}
                 </span>
             </div>
         </div>

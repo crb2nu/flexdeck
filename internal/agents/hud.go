@@ -190,6 +190,136 @@ func (c *HUDClient) GetSessionsByAgent(ctx context.Context, agentID string) ([]S
 	return filtered, nil
 }
 
+// GetAgents returns agents from both presence and recent sessions.
+// Active agents (from presence) take priority; agents with only session
+// history appear as offline with their last session metadata.
+func (c *HUDClient) GetAgents(ctx context.Context) ([]*Agent, error) {
+	// Fetch presence (active/idle agents)
+	presence, presenceErr := c.GetPresence(ctx)
+
+	// Fetch sessions (all agents with history)
+	sessions, sessionsErr := c.GetSessions(ctx)
+
+	// If both fail, return error
+	if presenceErr != nil && sessionsErr != nil {
+		return nil, fmt.Errorf("presence: %w; sessions: %v", presenceErr, sessionsErr)
+	}
+
+	agentMap := make(map[string]*Agent)
+
+	// Add presence agents first (they have the richest data)
+	if presence != nil {
+		for i := range presence.Agents {
+			a := presence.Agents[i].ToAgent()
+			agentMap[a.ID] = a
+		}
+	}
+
+	// Add agents from sessions that aren't already in presence
+	if sessions != nil {
+		// Group sessions by agent_id, keep most recent
+		latestSession := make(map[string]*SessionInfo)
+		for i := range sessions.Sessions {
+			s := &sessions.Sessions[i]
+			existing, ok := latestSession[s.AgentID]
+			if !ok || s.StartedAt > existing.StartedAt {
+				latestSession[s.AgentID] = s
+			}
+		}
+
+		// Count sessions per agent
+		sessionCounts := make(map[string]int)
+		for _, s := range sessions.Sessions {
+			sessionCounts[s.AgentID]++
+		}
+
+		for agentID, session := range latestSession {
+			hudID := "hud-" + agentID
+			if _, exists := agentMap[hudID]; exists {
+				// Already have this agent from presence, just add session count
+				agentMap[hudID].Metadata["session_count"] = sessionCounts[agentID]
+				continue
+			}
+
+			// Determine status from session
+			presenceStatus := "offline"
+			agentStatus := AgentStatusUnhealthy
+			if session.Status == "active" {
+				presenceStatus = "idle"
+				agentStatus = AgentStatusHealthy
+			}
+
+			// Infer agent type from agent ID
+			agentType := inferAgentType(agentID)
+			name := formatAgentName(agentType, agentID)
+
+			tags := []string{"hud", "cli"}
+			if agentType != "" {
+				tags = append(tags, agentType)
+			}
+
+			metadata := map[string]any{
+				"source":          "hud",
+				"agent_type":      agentType,
+				"presence_status": presenceStatus,
+				"session_count":   sessionCounts[agentID],
+				"last_session_id": session.ID,
+			}
+			if session.Namespace != "" {
+				metadata["namespace"] = session.Namespace
+			}
+			if session.Description != "" && session.Description != "Heartbeat bootstrap session" {
+				metadata["current_task"] = session.Description
+			}
+			if session.StartedAt != "" {
+				metadata["last_heartbeat"] = session.StartedAt
+			}
+
+			now := time.Now()
+			agentMap[hudID] = &Agent{
+				ID:          hudID,
+				Name:        name,
+				Description: sessionDescription(session),
+				Type:        AgentTypeCLI,
+				Tags:        tags,
+				Metadata:    metadata,
+				Status:      agentStatus,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+		}
+	}
+
+	agents := make([]*Agent, 0, len(agentMap))
+	for _, a := range agentMap {
+		agents = append(agents, a)
+	}
+	return agents, nil
+}
+
+func inferAgentType(agentID string) string {
+	switch {
+	case strings.HasPrefix(agentID, "claude"):
+		return "claude-code"
+	case strings.HasPrefix(agentID, "codex"):
+		return "codex"
+	case strings.HasPrefix(agentID, "gemini"):
+		return "gemini"
+	default:
+		return ""
+	}
+}
+
+func sessionDescription(s *SessionInfo) string {
+	if s.Description != "" && s.Description != "Heartbeat bootstrap session" {
+		return s.Description
+	}
+	if s.Status == "active" {
+		return "Active session"
+	}
+	return "Last seen " + s.StartedAt
+}
+
 func formatAgentName(agentType, agentID string) string {
 	switch agentType {
 	case "claude-code":

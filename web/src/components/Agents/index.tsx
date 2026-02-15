@@ -377,9 +377,21 @@ const Agents: Component = () => {
                               <span class="text-text-muted">{(hudMeta().active_files as string[]).length}</span>
                             </div>
                           </Show>
+                          <Show when={hudMeta().namespace}>
+                            <div class="flex justify-between">
+                              <span class="text-text-dim">Namespace</span>
+                              <span class="font-mono text-text-muted truncate max-w-[150px]">{hudMeta().namespace as string}</span>
+                            </div>
+                          </Show>
+                          <Show when={hudMeta().session_count}>
+                            <div class="flex justify-between">
+                              <span class="text-text-dim">Sessions</span>
+                              <span class="text-text-muted">{hudMeta().session_count as number}</span>
+                            </div>
+                          </Show>
                           <Show when={hudMeta().last_heartbeat}>
                             <div class="flex justify-between">
-                              <span class="text-text-dim">Heartbeat</span>
+                              <span class="text-text-dim">Last Seen</span>
                               <span class="text-text-muted">
                                 {(() => {
                                   const hb = hudMeta().last_heartbeat as string;
@@ -388,7 +400,9 @@ const Agents: Component = () => {
                                   if (secs < 60) return `${secs}s ago`;
                                   const mins = Math.floor(secs / 60);
                                   if (mins < 60) return `${mins}m ago`;
-                                  return `${Math.floor(mins / 60)}h ago`;
+                                  const hrs = Math.floor(mins / 60);
+                                  if (hrs < 24) return `${hrs}h ago`;
+                                  return `${Math.floor(hrs / 24)}d ago`;
                                 })()}
                               </span>
                             </div>
@@ -459,10 +473,10 @@ const Agents: Component = () => {
                             <span class="text-text-muted truncate max-w-[150px]">{agent.url}</span>
                           </div>
                         </Show>
-                        <Show when={agent.metadata?.spec_decode}>
+                        <Show when={agent.metadata?.backend === 'flexinfer'}>
                           <div class="flex justify-between">
-                            <span class="text-text-dim">Mode</span>
-                            <span class="text-neon-purple">Speculative Decode</span>
+                            <span class="text-text-dim">Backend</span>
+                            <span class="text-neon-purple">FlexInfer</span>
                           </div>
                         </Show>
                         <Show when={agent.model}>
@@ -494,7 +508,7 @@ const Agents: Component = () => {
                               : 'bg-neon-cyan/10 border border-neon-cyan/20 text-neon-cyan hover:bg-neon-cyan/20 hover:shadow-[0_0_10px_rgba(0,217,255,0.2)]'
                           }`}
                         >
-                          Neural Link
+                          Chat
                         </button>
                         <Show when={!isBuiltIn}>
                           <button
@@ -647,7 +661,7 @@ const Agents: Component = () => {
         </div>
       </Show>
 
-      {/* Neural Link Chat Modal */}
+      {/* Agent Chat Modal */}
       <Show when={chatAgent()}>
         {(agent) => (
           <AgentChat

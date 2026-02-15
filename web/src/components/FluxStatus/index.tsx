@@ -363,7 +363,7 @@ const FluxResourceRow: Component<{
           } opacity-0 group-hover:opacity-100`}
           title={props.resource.suspended ? 'Resume' : 'Suspend'}
         >
-          {props.suspending ? '...' : props.resource.suspended ? '&#9654;' : '&#9646;&#9646;'}
+          {props.suspending ? '...' : props.resource.suspended ? '\u25B6' : '\u25AE\u25AE'}
         </button>
 
         {/* Reconcile button */}
@@ -375,7 +375,7 @@ const FluxResourceRow: Component<{
           disabled={props.reconciling || props.resource.suspended}
           class="text-[10px] font-mono px-2 py-1 rounded bg-white/5 border border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
         >
-          {props.reconciling ? '&#10227;...' : '&#10227; Sync'}
+          {props.reconciling ? '\u27F3...' : '\u27F3 Sync'}
         </button>
       </div>
 

@@ -381,7 +381,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
             <span class="text-text-dim">CLI Agent</span>
           </div>
           <div class="mt-1 border-t border-white/5 pt-2">
-            <span class="text-[10px] text-text-dim">Click node for Neural Link</span>
+            <span class="text-[10px] text-text-dim">Click node to chat</span>
           </div>
         </div>
       </div>
