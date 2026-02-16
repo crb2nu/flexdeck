@@ -250,6 +250,12 @@ export const modelsApi = {
   },
   crdEvents: (ns: string, name: string) =>
     api<{ events: import("./types").ModelEvent[]; model: string; namespace: string }>(`/models/crd/${ns}/${name}/events`),
+  crdInference: (ns: string, name: string) =>
+    api<import("./types").InferenceMetrics>(`/models/crd/${ns}/${name}/inference`),
+  lora: (ns: string, name: string) =>
+    api<{ adapters: import("./types").LoRAAdapter[]; model: string; namespace: string }>(`/models/lora/${ns}/${name}`),
+  catalogs: () =>
+    api<{ catalogs: import("./types").ModelCatalogEntry[]; namespace: string }>("/models/catalogs"),
 };
 
 export const agentsApi = {
@@ -466,6 +472,31 @@ export const fluxApi = {
     api<any>(`/flux/helmreleases/${ns}/${name}/values`),
   helmReleaseHistory: (ns: string, name: string) =>
     api<any>(`/flux/helmreleases/${ns}/${name}/history`),
+};
+
+export const flexinferProxyApi = {
+  health: () => api<any>("/flexinfer/proxy/health"),
+  models: () => api<any>("/flexinfer/proxy/models"),
+  metrics: () => api<any>("/flexinfer/proxy/metrics"),
+};
+
+export const hudApi = {
+  fleet: () => api<import("./types").HUDFleetResponse>("/hud/fleet"),
+  presence: () => api<import("./types").HUDAgentPresence[]>("/hud/presence"),
+  tasks: () => api<import("./types").HUDTask[]>("/hud/tasks"),
+  workflows: () => api<import("./types").HUDWorkflow[]>("/hud/workflows"),
+  timeline: () => api<import("./types").HUDTimelineEvent[]>("/hud/timeline"),
+  approveWorkflow: (id: string) =>
+    api<any>(`/hud/workflows/${id}/approve`, { method: "POST" }),
+  rejectWorkflow: (id: string) =>
+    api<any>(`/hud/workflows/${id}/reject`, { method: "POST" }),
+  eventsSSEUrl: () => {
+    const isPublicView =
+      typeof window !== "undefined" &&
+      window.location.hostname === "www.flexinfer.ai";
+    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    return `${apiBase}/hud/events`;
+  },
 };
 
 export const alertmanagerApi = {

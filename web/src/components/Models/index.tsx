@@ -8,8 +8,10 @@ import ModelGPUTable from './ModelGPUTable';
 const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
 const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
+const InferenceTab = lazy(() => import('./InferenceTab'));
+const CatalogTab = lazy(() => import('./CatalogTab'));
 
-type Tab = 'controller' | 'registry' | 'search' | 'router' | 'compare';
+type Tab = 'controller' | 'registry' | 'search' | 'router' | 'compare' | 'inference' | 'catalog';
 
 const Models: Component = () => {
   const [activeTab, setActiveTab] = createSignal<Tab>('controller');
@@ -212,6 +214,8 @@ const Models: Component = () => {
               <TabButton active={activeTab() === 'search'} onClick={() => setActiveTab('search')} label="Search" color="status-ok" />
               <TabButton active={activeTab() === 'router'} onClick={() => setActiveTab('router')} label="Router" color="neon-cyan" />
               <TabButton active={activeTab() === 'compare'} onClick={() => setActiveTab('compare')} label="Compare" color="neon-purple" />
+              <TabButton active={activeTab() === 'inference'} onClick={() => setActiveTab('inference')} label="Inference" color="status-ok" />
+              <TabButton active={activeTab() === 'catalog'} onClick={() => setActiveTab('catalog')} label="Catalog" color="blue-400" />
             </div>
           </div>
           <div class="flex items-center gap-3">
@@ -362,6 +366,24 @@ const Models: Component = () => {
           <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Compare error: {err.message}</div>}>
             <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading comparison...</div>}>
               <ModelComparison />
+            </Suspense>
+          </ErrorBoundary>
+        </Match>
+
+        {/* Inference Tab */}
+        <Match when={activeTab() === 'inference'}>
+          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Inference error: {err.message}</div>}>
+            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading inference metrics...</div>}>
+              <InferenceTab />
+            </Suspense>
+          </ErrorBoundary>
+        </Match>
+
+        {/* Catalog Tab */}
+        <Match when={activeTab() === 'catalog'}>
+          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Catalog error: {err.message}</div>}>
+            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading catalogs...</div>}>
+              <CatalogTab />
             </Suspense>
           </ErrorBoundary>
         </Match>

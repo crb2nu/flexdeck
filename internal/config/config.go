@@ -36,7 +36,7 @@ type Config struct {
 	VLLM VLLMConfig
 
 	// FlexInfer proxy (backend-agnostic inference endpoint)
-	FlexInferProxyURL string
+	FlexInferProxy FlexInferProxyConfig
 
 	// Cache
 	Cache CacheConfig
@@ -163,6 +163,11 @@ type LangfuseConfig struct {
 	SecretKey string // Basic auth secret key
 }
 
+type FlexInferProxyConfig struct {
+	Disabled bool
+	URL      string
+}
+
 type AlertmanagerConfig struct {
 	Disabled bool
 	URL      string
@@ -208,7 +213,10 @@ func Load() (*Config, error) {
 			Namespace: getEnv("VLLM_NAMESPACE", "ai"),
 		},
 
-		FlexInferProxyURL: getEnv("FLEXINFER_PROXY_URL", ""),
+		FlexInferProxy: FlexInferProxyConfig{
+			Disabled: parseBool(getEnv("FLEXINFER_PROXY_DISABLED", "false")),
+			URL:      getEnv("FLEXINFER_PROXY_URL", ""),
+		},
 
 		Cache: CacheConfig{
 			HFPath:      getEnv("HF_CACHE_PATH", ""),

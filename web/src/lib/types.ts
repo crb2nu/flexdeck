@@ -593,6 +593,90 @@ export interface ModelComparisonData {
   gpuNode: string | null;
 }
 
+// FlexInfer Inference Metrics (Phase 3)
+export interface InferenceMetrics {
+  model: string;
+  tps: number | null;
+  p95LatencyMs: number | null;
+  queueDepth: number | null;
+  activeConnections: number | null;
+}
+
+export interface LoRAAdapter {
+  name: string;
+  namespace: string;
+  modelRef: string;
+  state: "Pending" | "Loaded" | "Unloading";
+  adapterSource: string;
+}
+
+export interface ModelCatalogEntry {
+  name: string;
+  namespace: string;
+  source: string;
+  models: Array<{ name: string; size?: string; tags?: string[] }>;
+  lastSyncTime: string;
+}
+
+// Loom Agent HUD (Phase 3)
+export interface HUDFleetResponse {
+  sessions: HUDSession[];
+  agents: HUDAgentPresence[];
+  tasks: HUDTask[];
+  kpis: Record<string, number>;
+}
+
+export interface HUDSession {
+  id: string;
+  agentId: string;
+  agentType: string;
+  namespace: string;
+  description: string;
+  startedAt: string;
+  contextCount: number;
+  taskCount: number;
+}
+
+export interface HUDAgentPresence {
+  agentId: string;
+  agentType: string;
+  status: "active" | "idle" | "offline";
+  activeFiles: string[];
+  conflicts: string[];
+  lastHeartbeat: string;
+}
+
+export interface HUDTask {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "blocked";
+  priority: number;
+  agentId?: string;
+  filePath?: string;
+  tags: string[];
+}
+
+export interface HUDWorkflow {
+  id: string;
+  definitionId: string;
+  status: string;
+  currentStep: number;
+  steps: Array<{
+    name: string;
+    status: string;
+    requiresApproval: boolean;
+  }>;
+  startedAt: string;
+}
+
+export interface HUDTimelineEvent {
+  timestamp: string;
+  type: string;
+  agentId: string;
+  summary: string;
+  data?: Record<string, any>;
+}
+
 // Alertmanager (Step 4)
 export interface AlertmanagerAlert {
   labels: Record<string, string>;

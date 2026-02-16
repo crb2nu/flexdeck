@@ -192,6 +192,23 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.With(apimiddleware.LogFunc("alertmanager.silence.delete")).Delete("/silences/{id}", h.AlertmanagerDeleteSilence)
 		})
 
+		r.Route("/api/flexinfer", func(r chi.Router) {
+			r.Get("/proxy/health", h.FlexInferProxyHealth)
+			r.Get("/proxy/models", h.FlexInferProxyModels)
+			r.Get("/proxy/metrics", h.FlexInferProxyMetrics)
+		})
+
+		r.Route("/api/hud", func(r chi.Router) {
+			r.Get("/fleet", h.HUDFleet)
+			r.Get("/presence", h.HUDPresence)
+			r.Get("/tasks", h.HUDTasks)
+			r.Get("/workflows", h.HUDWorkflows)
+			r.Get("/timeline", h.HUDTimeline)
+			r.Get("/events", h.HUDEventsSSE)
+			r.With(apimiddleware.LogFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
+			r.With(apimiddleware.LogFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)
+		})
+
 		r.Route("/api/langfuse", func(r chi.Router) {
 			r.Get("/health", h.LangfuseHealth)
 			r.Get("/metrics", h.LangfuseMetrics)
@@ -207,6 +224,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/crd", h.ModelsCRD)               // Query flexinfer.ai/v1alpha2 Model CRDs directly
 			r.Get("/crd/watch-sse", h.ModelsCRDWatchSSE)
 			r.Get("/crd/{namespace}/{name}/events", h.ModelsCRDEvents)
+			r.Get("/crd/{namespace}/{name}/inference", h.ModelsInferenceMetrics)
+			r.Get("/lora/{namespace}/{name}", h.ModelsLoRA)
+			r.Get("/catalogs", h.ModelsCatalog)
 			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
 

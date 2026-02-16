@@ -152,6 +152,43 @@ var modelGVR = schema.GroupVersionResource{
 	Resource: "models",
 }
 
+var loraAdapterGVR = schema.GroupVersionResource{
+	Group:    "flexinfer.ai",
+	Version:  "v1alpha2",
+	Resource: "loraadapters",
+}
+
+var modelCatalogGVR = schema.GroupVersionResource{
+	Group:    "flexinfer.ai",
+	Version:  "v1alpha2",
+	Resource: "modelcatalogs",
+}
+
+// LoRAAdapter represents a flexinfer.ai/v1alpha2 LoRAAdapter CRD.
+type LoRAAdapter struct {
+	Name          string `json:"name"`
+	Namespace     string `json:"namespace"`
+	ModelRef      string `json:"modelRef"`
+	State         string `json:"state"` // Pending, Loaded, Unloading
+	AdapterSource string `json:"adapterSource"`
+}
+
+// ModelCatalogEntry represents a flexinfer.ai/v1alpha2 ModelCatalog CRD.
+type ModelCatalogEntry struct {
+	Name         string              `json:"name"`
+	Namespace    string              `json:"namespace"`
+	Source       string              `json:"source"` // HuggingFace, OCI, Ollama
+	Models       []CatalogModelRef   `json:"models"`
+	LastSyncTime string              `json:"lastSyncTime"`
+}
+
+// CatalogModelRef is a model reference within a catalog.
+type CatalogModelRef struct {
+	Name string   `json:"name"`
+	Size string   `json:"size,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+}
+
 // dynamicClient returns a cached dynamic client, creating it on first use.
 func (c *Client) dynamicClient() (dynamic.Interface, error) {
 	c.mu.Lock()
@@ -355,4 +392,98 @@ func (c *Client) GetFlexInferModelEvents(ctx context.Context, namespace, modelNa
 	}
 
 	return events, nil
+}
+
+// ListLoRAAdapters queries flexinfer.ai/v1alpha2 LoRAAdapter CRDs from the given namespace.
+func (c *Client) ListLoRAAdapters(ctx context.Context, namespace string) ([]LoRAAdapter, error) {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := dynClient.Resource(loraAdapterGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list LoRAAdapter CRDs: %w", err)
+	}
+
+	adapters := make([]LoRAAdapter, 0, len(list.Items))
+	for _, item := range list.Items {
+		raw, err := json.Marshal(item.Object)
+		if err != nil {
+			continue
+		}
+
+		var crd struct {
+			Metadata metav1.ObjectMeta `json:"metadata"`
+			Spec     struct {
+				ModelRef      string `json:"modelRef"`
+				AdapterSource string `json:"adapterSource"`
+			} `json:"spec"`
+			Status struct {
+				State string `json:"state"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(raw, &crd); err != nil {
+			continue
+		}
+
+		state := crd.Status.State
+		if state == "" {
+			state = "Pending"
+		}
+		adapters = append(adapters, LoRAAdapter{
+			Name:          crd.Metadata.Name,
+			Namespace:     crd.Metadata.Namespace,
+			ModelRef:      crd.Spec.ModelRef,
+			State:         state,
+			AdapterSource: crd.Spec.AdapterSource,
+		})
+	}
+
+	return adapters, nil
+}
+
+// ListModelCatalogs queries flexinfer.ai/v1alpha2 ModelCatalog CRDs from the given namespace.
+func (c *Client) ListModelCatalogs(ctx context.Context, namespace string) ([]ModelCatalogEntry, error) {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := dynClient.Resource(modelCatalogGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ModelCatalog CRDs: %w", err)
+	}
+
+	entries := make([]ModelCatalogEntry, 0, len(list.Items))
+	for _, item := range list.Items {
+		raw, err := json.Marshal(item.Object)
+		if err != nil {
+			continue
+		}
+
+		var crd struct {
+			Metadata metav1.ObjectMeta `json:"metadata"`
+			Spec     struct {
+				Source string            `json:"source"`
+				Models []CatalogModelRef `json:"models"`
+			} `json:"spec"`
+			Status struct {
+				LastSyncTime string `json:"lastSyncTime"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(raw, &crd); err != nil {
+			continue
+		}
+
+		entries = append(entries, ModelCatalogEntry{
+			Name:         crd.Metadata.Name,
+			Namespace:    crd.Metadata.Namespace,
+			Source:       crd.Spec.Source,
+			Models:       crd.Spec.Models,
+			LastSyncTime: crd.Status.LastSyncTime,
+		})
+	}
+
+	return entries, nil
 }

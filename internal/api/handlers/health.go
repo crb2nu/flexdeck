@@ -55,6 +55,22 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Enabled: !h.cfg.Langfuse.Disabled,
 				URL:     h.cfg.Langfuse.URL,
 			},
+			"grafana": {
+				Enabled: !h.cfg.Grafana.Disabled,
+				URL:     h.cfg.Grafana.URL,
+			},
+			"alertmanager": {
+				Enabled: !h.cfg.Alertmanager.Disabled,
+				URL:     h.cfg.Alertmanager.URL,
+			},
+			"flexinfer_proxy": {
+				Enabled: !h.cfg.FlexInferProxy.Disabled && h.cfg.FlexInferProxy.URL != "",
+				URL:     h.cfg.FlexInferProxy.URL,
+			},
+			"loom_hud": {
+				Enabled: !h.cfg.LoomHUD.Disabled,
+				URL:     h.cfg.LoomHUD.URL,
+			},
 		},
 	}
 

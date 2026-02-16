@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
@@ -6,7 +6,9 @@ import AgentChat from './AgentChat';
 import AgentFlowGraph from './AgentFlowGraph';
 import AgentSessionPanel from './AgentSessionPanel';
 
-type ViewMode = 'grid' | 'flow';
+const HUDTab = lazy(() => import('./HUDTab'));
+
+type ViewMode = 'grid' | 'flow' | 'hud';
 
 const Agents: Component = () => {
   const [agents, setAgents] = createStore<Agent[]>([]);
@@ -244,6 +246,16 @@ const Agents: Component = () => {
               }`}
             >
               Flow
+            </button>
+            <button
+              onClick={() => setViewMode('hud')}
+              class={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                viewMode() === 'hud'
+                  ? 'bg-white/15 text-text-main'
+                  : 'text-text-dim hover:text-text-muted'
+              }`}
+            >
+              HUD
             </button>
           </div>
           <button
@@ -538,6 +550,23 @@ const Agents: Component = () => {
                 }}
               </For>
             </div>
+          </Show>
+
+          {/* HUD View */}
+          <Show when={viewMode() === 'hud'}>
+            <ErrorBoundary fallback={(err) => (
+              <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+                HUD error: {err.message}
+              </div>
+            )}>
+              <Suspense fallback={
+                <div class="flex items-center justify-center py-12">
+                  <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-purple" />
+                </div>
+              }>
+                <HUDTab />
+              </Suspense>
+            </ErrorBoundary>
           </Show>
         </Show>
       </Show>
