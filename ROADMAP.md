@@ -89,23 +89,23 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 *Spec and plan in `.loom/` context pack.*
 
 #### Track 1: FlexInfer Inference Metrics
-- [ ] **Inference Metrics Tab**: Per-model TPS, p95 latency, error rate, queue depth, active connections from FlexInfer proxy Prometheus metrics.
-- [ ] **Scale-to-Zero Visibility**: Cold start activations, idle timeout state, queue wait time.
-- [ ] **GPU Sharing State**: Active model, queue position, swap history from GPUGroup metrics.
-- [ ] **KV-Cache Pressure**: Utilization gauge, pressure events, eviction policy for vLLM models.
-- [ ] **LoRA Adapter Status**: Per-model loaded adapters with lifecycle state (Pending/Loaded/Unloading).
-- [ ] **Model Catalog Browser**: Registry entries from ModelCatalog CRDs (HuggingFace, OCI, Ollama sources).
+- [x] **Inference Metrics Tab**: Per-model TPS, p95 latency, error rate, queue depth, active connections from FlexInfer proxy Prometheus metrics.
+- [x] **Scale-to-Zero Visibility**: Cold start activations, idle timeout state, queue wait time.
+- [x] **GPU Sharing State**: Active model, queue position, swap history from GPUGroup metrics.
+- [x] **KV-Cache Pressure**: Utilization gauge, pressure events, eviction policy for vLLM models.
+- [x] **LoRA Adapter Status**: Per-model loaded adapters with lifecycle state (Pending/Loaded/Unloading).
+- [x] **Model Catalog Browser**: Registry entries from ModelCatalog CRDs (HuggingFace, OCI, Ollama sources).
 
 #### Track 2: Loom Agent HUD
-- [ ] **Agent Presence Grid**: Active agent cards with type, status (active/idle/offline), session duration, current file.
-- [ ] **Task Board**: Kanban view of agent tasks (pending/in_progress/completed) with priority, agent assignment, file location.
-- [ ] **Workflow Monitor**: Active workflows with step indicators, approval gates, approve/reject controls.
-- [ ] **Activity Timeline**: Real-time event feed from Loom HUD SSE stream.
-- [ ] **File Claims & Conflicts**: Advisory lock display with conflict warnings.
+- [x] **Agent Presence Grid**: Active agent cards with type, status (active/idle/offline), session duration, current file.
+- [x] **Task Board**: Kanban view of agent tasks (pending/in_progress/completed) with priority, agent assignment, file location.
+- [x] **Workflow Monitor**: Active workflows with step indicators, approval gates, approve/reject controls.
+- [x] **Activity Timeline**: Real-time event feed from Loom HUD SSE stream.
+- [x] **File Claims & Conflicts**: Advisory lock display with conflict warnings.
 
 #### Dashboard Widgets
-- [ ] **Inference Health Widget**: Model count by phase, total TPS, queue alerts.
-- [ ] **Agent Activity Widget**: Active agent count, tasks completed today, workflow approvals pending.
+- [x] **Inference Health Widget**: Model count by phase, total TPS, queue alerts.
+- [x] **Agent Activity Widget**: Active agent count, tasks completed today, workflow approvals pending.
 
 ### Phase 4: Enterprise Features
 
