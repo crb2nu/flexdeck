@@ -8,7 +8,8 @@ import (
 
 // ModelsCatalog lists ModelCatalog CRDs from the configured AI namespace.
 func (h *Handler) ModelsCatalog(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s disabled"})
 		return
 	}
@@ -21,7 +22,7 @@ func (h *Handler) ModelsCatalog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(ctx, "models:catalogs", 60*time.Second, func() (any, error) {
-			catalogs, err := h.k8s.ListModelCatalogs(ctx, ns)
+			catalogs, err := kc.ListModelCatalogs(ctx, ns)
 			if err != nil {
 				return nil, err
 			}
@@ -35,7 +36,7 @@ func (h *Handler) ModelsCatalog(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("catalogs cache error", "error", err)
 	}
 
-	catalogs, err := h.k8s.ListModelCatalogs(ctx, ns)
+	catalogs, err := kc.ListModelCatalogs(ctx, ns)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

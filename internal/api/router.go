@@ -74,7 +74,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 				aiNS = "ai"
 			}
 
-			discovered, err := h.SyncModelsFromK8s(ctx, aiNS)
+			discovered, err := h.SyncModelsFromK8s(ctx, k8sClient, aiNS)
 			if err != nil {
 				slog.Warn("auto-discovery: failed to sync models from K8s", "error", err)
 			} else if discovered > 0 {

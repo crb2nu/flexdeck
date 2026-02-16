@@ -13,7 +13,8 @@ func (h *Handler) ModelsLoRA(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
 
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s disabled"})
 		return
 	}
@@ -22,7 +23,7 @@ func (h *Handler) ModelsLoRA(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("models:lora:%s:%s", ns, name)
 
 	h.cachedProxyJSON(w, r, cacheKey, 30*time.Second, "lora", func() (any, error) {
-		adapters, err := h.k8s.ListLoRAAdapters(ctx, ns)
+		adapters, err := kc.ListLoRAAdapters(ctx, ns)
 		if err != nil {
 			return nil, err
 		}

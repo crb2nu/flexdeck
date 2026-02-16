@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/models"
 )
 
@@ -431,8 +432,9 @@ func (h *Handler) ModelsScale(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use K8s client to scale if available
-	if h.k8s != nil && model.DeploymentName != "" && model.DeploymentNS != "" {
-		if err := h.k8s.ScaleDeployment(r.Context(), model.DeploymentNS, model.DeploymentName, int32(req.Replicas)); err != nil {
+	kc := h.k8sForRequest(r)
+	if kc != nil && model.DeploymentName != "" && model.DeploymentNS != "" {
+		if err := kc.ScaleDeployment(r.Context(), model.DeploymentNS, model.DeploymentName, int32(req.Replicas)); err != nil {
 			respondJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": fmt.Sprintf("failed to scale: %v", err),
 			})
@@ -474,7 +476,8 @@ func (h *Handler) ModelsDiscoverK8s(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"error": "kubernetes client not configured",
 		})
@@ -490,7 +493,7 @@ func (h *Handler) ModelsDiscoverK8s(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	discovered, err := h.SyncModelsFromK8s(r.Context(), namespace)
+	discovered, err := h.SyncModelsFromK8s(r.Context(), kc, namespace)
 	if err != nil {
 		slog.Error("ModelsDiscoverK8s: failed to sync models", "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -507,8 +510,8 @@ func (h *Handler) ModelsDiscoverK8s(w http.ResponseWriter, r *http.Request) {
 
 // SyncModelsFromK8s queries K8s for flexinfer model deployments and syncs to registry.
 // Exported for use by auto-discovery on startup.
-func (h *Handler) SyncModelsFromK8s(ctx context.Context, namespace string) (int, error) {
-	deployments, err := h.k8s.GetDeployments(ctx, namespace)
+func (h *Handler) SyncModelsFromK8s(ctx context.Context, kc *k8s.Client, namespace string) (int, error) {
+	deployments, err := kc.GetDeployments(ctx, namespace)
 	if err != nil {
 		return 0, fmt.Errorf("failed to list deployments: %w", err)
 	}
@@ -765,7 +768,8 @@ func containsIgnoreCase(s, substr string) bool {
 
 // ModelsCRDScale sets spec.serverless.minReplicas on a Model CRD.
 func (h *Handler) ModelsCRDScale(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
 		return
 	}
@@ -781,7 +785,7 @@ func (h *Handler) ModelsCRDScale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.k8s.ScaleFlexInferModel(r.Context(), namespace, name, req.MinReplicas); err != nil {
+	if err := kc.ScaleFlexInferModel(r.Context(), namespace, name, req.MinReplicas); err != nil {
 		slog.Error("ModelsCRDScale: failed", "error", err, "model", name)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -798,7 +802,8 @@ func (h *Handler) ModelsCRDScale(w http.ResponseWriter, r *http.Request) {
 
 // ModelsCRDActivate sets minReplicas=1 to activate an idle/preempted model.
 func (h *Handler) ModelsCRDActivate(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
 		return
 	}
@@ -806,7 +811,7 @@ func (h *Handler) ModelsCRDActivate(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
 
-	if err := h.k8s.ScaleFlexInferModel(r.Context(), namespace, name, 1); err != nil {
+	if err := kc.ScaleFlexInferModel(r.Context(), namespace, name, 1); err != nil {
 		slog.Error("ModelsCRDActivate: failed", "error", err, "model", name)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -819,7 +824,8 @@ func (h *Handler) ModelsCRDActivate(w http.ResponseWriter, r *http.Request) {
 
 // ModelsCRDRestart annotates the Model CRD with a restart timestamp.
 func (h *Handler) ModelsCRDRestart(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
 		return
 	}
@@ -827,7 +833,7 @@ func (h *Handler) ModelsCRDRestart(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
 
-	if err := h.k8s.RestartFlexInferModel(r.Context(), namespace, name); err != nil {
+	if err := kc.RestartFlexInferModel(r.Context(), namespace, name); err != nil {
 		slog.Error("ModelsCRDRestart: failed", "error", err, "model", name)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -840,7 +846,8 @@ func (h *Handler) ModelsCRDRestart(w http.ResponseWriter, r *http.Request) {
 
 // ModelsCRDWatchSSE streams Model CRD watch events via Server-Sent Events.
 func (h *Handler) ModelsCRDWatchSSE(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -857,7 +864,7 @@ func (h *Handler) ModelsCRDWatchSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	events, err := h.k8s.WatchFlexInferModels(ctx, namespace)
+	events, err := kc.WatchFlexInferModels(ctx, namespace)
 	if err != nil {
 		slog.Error("ModelsCRDWatchSSE: watch failed", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -894,7 +901,8 @@ func (h *Handler) invalidateCRDCache(ctx context.Context, namespace string) {
 
 // ModelsCRDEvents returns K8s events for a specific FlexInfer Model CRD.
 func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
 		return
 	}
@@ -905,7 +913,7 @@ func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("models:events:%s:%s", namespace, name)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 15*time.Second, func() (any, error) {
-			return h.k8s.GetFlexInferModelEvents(r.Context(), namespace, name)
+			return kc.GetFlexInferModelEvents(r.Context(), namespace, name)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -914,7 +922,7 @@ func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	events, err := h.k8s.GetFlexInferModelEvents(r.Context(), namespace, name)
+	events, err := kc.GetFlexInferModelEvents(r.Context(), namespace, name)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -931,7 +939,8 @@ func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
 // This returns the full CRD state: phase lifecycle, GPU allocation, metrics,
 // serverless config, cache status, KV-cache pressure, and shared GPU groups.
 func (h *Handler) ModelsCRD(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"error": "kubernetes client not configured",
 		})
@@ -946,7 +955,7 @@ func (h *Handler) ModelsCRD(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	models, err := h.k8s.ListFlexInferModels(r.Context(), namespace)
+	models, err := kc.ListFlexInferModels(r.Context(), namespace)
 	if err != nil {
 		slog.Error("ModelsCRD: failed to list Model CRDs", "error", err, "namespace", namespace)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{

@@ -22,7 +22,8 @@ import (
 )
 
 func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -31,7 +32,7 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:services:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
-			return h.k8s.GetServices(r.Context(), ns)
+			return kc.GetServices(r.Context(), ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -40,7 +41,7 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	services, err := h.k8s.GetServices(r.Context(), ns)
+	services, err := kc.GetServices(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -51,14 +52,15 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:nodes", 15*time.Second, func() (any, error) {
-			return h.k8s.GetNodes(r.Context())
+			return kc.GetNodes(r.Context())
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -67,7 +69,7 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	nodes, err := h.k8s.GetNodes(r.Context())
+	nodes, err := kc.GetNodes(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -78,7 +80,8 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -87,7 +90,7 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:deployments:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 15*time.Second, func() (any, error) {
-			return h.k8s.GetDeployments(r.Context(), ns)
+			return kc.GetDeployments(r.Context(), ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -96,7 +99,7 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	deployments, err := h.k8s.GetDeployments(r.Context(), ns)
+	deployments, err := kc.GetDeployments(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -107,7 +110,8 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -116,7 +120,7 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:pods:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 10*time.Second, func() (any, error) {
-			return h.k8s.GetPods(r.Context(), ns)
+			return kc.GetPods(r.Context(), ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -125,7 +129,7 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pods, err := h.k8s.GetPods(r.Context(), ns)
+	pods, err := kc.GetPods(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -136,13 +140,14 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	ingresses, err := h.k8s.GetIngresses(r.Context(), ns)
+	ingresses, err := kc.GetIngresses(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -153,13 +158,14 @@ func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sStatefulSets(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	statefulsets, err := h.k8s.GetStatefulSets(r.Context(), ns)
+	statefulsets, err := kc.GetStatefulSets(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -170,13 +176,14 @@ func (h *Handler) K8sStatefulSets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sDaemonSets(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	daemonsets, err := h.k8s.GetDaemonSets(r.Context(), ns)
+	daemonsets, err := kc.GetDaemonSets(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -187,13 +194,14 @@ func (h *Handler) K8sDaemonSets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sJobs(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	jobs, err := h.k8s.GetJobs(r.Context(), ns)
+	jobs, err := kc.GetJobs(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -204,13 +212,14 @@ func (h *Handler) K8sJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sCronJobs(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
-	cronjobs, err := h.k8s.GetCronJobs(r.Context(), ns)
+	cronjobs, err := kc.GetCronJobs(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -221,14 +230,15 @@ func (h *Handler) K8sCronJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	ns := r.URL.Query().Get("ns")
 	fieldSelector := r.URL.Query().Get("fieldSelector")
-	events, err := h.k8s.GetEvents(r.Context(), ns, fieldSelector)
+	events, err := kc.GetEvents(r.Context(), ns, fieldSelector)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -240,7 +250,8 @@ func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
 
 // K8sPodLogs returns logs for a specific pod
 func (h *Handler) K8sPodLogs(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -261,7 +272,7 @@ func (h *Handler) K8sPodLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	stream, err := h.k8s.GetPodLogs(r.Context(), ns, name, opts)
+	stream, err := kc.GetPodLogs(r.Context(), ns, name, opts)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -274,7 +285,8 @@ func (h *Handler) K8sPodLogs(w http.ResponseWriter, r *http.Request) {
 
 // K8sPodLogsSSE streams pod logs via Server-Sent Events
 func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -312,7 +324,7 @@ func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	stream, err := h.k8s.GetPodLogs(ctx, ns, name, opts)
+	stream, err := kc.GetPodLogs(ctx, ns, name, opts)
 	if err != nil {
 		log.Printf("Failed to get pod logs: %v", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", err.Error())
@@ -354,7 +366,8 @@ func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -369,7 +382,7 @@ func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.k8s.ScaleDeployment(r.Context(), ns, name, int32(replicas)); err != nil {
+	if err := kc.ScaleDeployment(r.Context(), ns, name, int32(replicas)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -383,7 +396,8 @@ func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -391,7 +405,7 @@ func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	if err := h.k8s.RestartDeployment(r.Context(), ns, name); err != nil {
+	if err := kc.RestartDeployment(r.Context(), ns, name); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -548,7 +562,8 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 // It queries pods in the AI namespace with the flexinfer.ai/model label,
 // determines which node each pod runs on, then queries GPU metrics for those nodes.
 func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -565,7 +580,7 @@ func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:gpu-by-model:%s", aiNS)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchGPUByModel(r.Context(), aiNS)
+			return h.fetchGPUByModel(r.Context(), kc, aiNS)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -574,7 +589,7 @@ func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchGPUByModel(r.Context(), aiNS)
+	result, err := h.fetchGPUByModel(r.Context(), kc, aiNS)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -594,8 +609,8 @@ type modelGPUEntry struct {
 	Power          *float64 `json:"power"`
 }
 
-func (h *Handler) fetchGPUByModel(ctx context.Context, namespace string) (map[string]any, error) {
-	pods, err := h.k8s.GetPods(ctx, namespace)
+func (h *Handler) fetchGPUByModel(ctx context.Context, kc *k8s.Client, namespace string) (map[string]any, error) {
+	pods, err := kc.GetPods(ctx, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("list pods: %w", err)
 	}
@@ -750,7 +765,8 @@ func (h *Handler) fetchGPUByModel(ctx context.Context, namespace string) (map[st
 // K8sEventsSSE implements Server-Sent Events for real-time K8s events streaming.
 // It watches Kubernetes events (warnings, normal events, etc.) and streams them to the client.
 func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -776,7 +792,7 @@ func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Start events watcher
-	eventsChan, err := h.k8s.WatchEvents(ctx, ns, fieldSelector)
+	eventsChan, err := kc.WatchEvents(ctx, ns, fieldSelector)
 	if err != nil {
 		log.Printf("Failed to watch events: %v", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch events\"}\n\n")
@@ -821,7 +837,8 @@ func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
 // K8sWatchSSE implements Server-Sent Events for real-time K8s resource streaming.
 // It watches nodes, pods, and services and streams changes to the client.
 func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -846,7 +863,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Start watchers
-	nodeEvents, err := h.k8s.WatchNodes(ctx)
+	nodeEvents, err := kc.WatchNodes(ctx)
 	if err != nil {
 		log.Printf("Failed to watch nodes: %v", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch nodes\"}\n\n")
@@ -854,7 +871,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	podEvents, err := h.k8s.WatchPods(ctx, ns)
+	podEvents, err := kc.WatchPods(ctx, ns)
 	if err != nil {
 		log.Printf("Failed to watch pods: %v", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch pods\"}\n\n")
@@ -862,7 +879,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceEvents, err := h.k8s.WatchServices(ctx, ns)
+	serviceEvents, err := kc.WatchServices(ctx, ns)
 	if err != nil {
 		log.Printf("Failed to watch services: %v", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch services\"}\n\n")
@@ -938,7 +955,8 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 
 // K8sPVCs returns PersistentVolumeClaims
 func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -947,7 +965,7 @@ func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:pvcs:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
-			return h.k8s.GetPVCs(r.Context(), ns)
+			return kc.GetPVCs(r.Context(), ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -956,7 +974,7 @@ func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pvcs, err := h.k8s.GetPVCs(r.Context(), ns)
+	pvcs, err := kc.GetPVCs(r.Context(), ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -968,14 +986,15 @@ func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
 
 // K8sPVs returns PersistentVolumes
 func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:pvs", 30*time.Second, func() (any, error) {
-			return h.k8s.GetPVs(r.Context())
+			return kc.GetPVs(r.Context())
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -984,7 +1003,7 @@ func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pvs, err := h.k8s.GetPVs(r.Context())
+	pvs, err := kc.GetPVs(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -996,14 +1015,15 @@ func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
 
 // K8sStorageClasses returns StorageClasses
 func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:storageclasses", 60*time.Second, func() (any, error) {
-			return h.k8s.GetStorageClasses(r.Context())
+			return kc.GetStorageClasses(r.Context())
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -1012,7 +1032,7 @@ func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	scs, err := h.k8s.GetStorageClasses(r.Context())
+	scs, err := kc.GetStorageClasses(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1024,7 +1044,8 @@ func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
 
 // K8sConfigMaps returns ConfigMaps (keys only, no data values)
 func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -1033,7 +1054,7 @@ func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:configmaps:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchConfigMapsList(r.Context(), ns)
+			return h.fetchConfigMapsList(r.Context(), kc, ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -1042,7 +1063,7 @@ func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchConfigMapsList(r.Context(), ns)
+	result, err := h.fetchConfigMapsList(r.Context(), kc, ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1052,8 +1073,8 @@ func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func (h *Handler) fetchConfigMapsList(ctx context.Context, ns string) ([]map[string]any, error) {
-	cms, err := h.k8s.GetConfigMaps(ctx, ns)
+func (h *Handler) fetchConfigMapsList(ctx context.Context, kc *k8s.Client, ns string) ([]map[string]any, error) {
+	cms, err := kc.GetConfigMaps(ctx, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +1099,8 @@ func (h *Handler) fetchConfigMapsList(ctx context.Context, ns string) ([]map[str
 
 // K8sConfigMapDetail returns full ConfigMap data
 func (h *Handler) K8sConfigMapDetail(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -1086,7 +1108,7 @@ func (h *Handler) K8sConfigMapDetail(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	cm, err := h.k8s.GetConfigMap(r.Context(), ns, name)
+	cm, err := kc.GetConfigMap(r.Context(), ns, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -1101,7 +1123,8 @@ func (h *Handler) K8sConfigMapDetail(w http.ResponseWriter, r *http.Request) {
 
 // K8sSecrets returns Secrets (keys only, no values)
 func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -1110,7 +1133,7 @@ func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("k8s:secrets:%s", ns)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchSecretsList(r.Context(), ns)
+			return h.fetchSecretsList(r.Context(), kc, ns)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -1119,7 +1142,7 @@ func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchSecretsList(r.Context(), ns)
+	result, err := h.fetchSecretsList(r.Context(), kc, ns)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1129,8 +1152,8 @@ func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func (h *Handler) fetchSecretsList(ctx context.Context, ns string) ([]map[string]any, error) {
-	secrets, err := h.k8s.GetSecrets(ctx, ns)
+func (h *Handler) fetchSecretsList(ctx context.Context, kc *k8s.Client, ns string) ([]map[string]any, error) {
+	secrets, err := kc.GetSecrets(ctx, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -1156,7 +1179,8 @@ func (h *Handler) fetchSecretsList(ctx context.Context, ns string) ([]map[string
 
 // K8sSecretDetail returns Secret data (base64-encoded values)
 func (h *Handler) K8sSecretDetail(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
 		return
 	}
@@ -1164,7 +1188,7 @@ func (h *Handler) K8sSecretDetail(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "ns")
 	name := chi.URLParam(r, "name")
 
-	secret, err := h.k8s.GetSecret(r.Context(), ns, name)
+	secret, err := kc.GetSecret(r.Context(), ns, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

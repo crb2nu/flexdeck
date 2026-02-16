@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/flexinfer/flexdeck/internal/k8s"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -94,11 +95,16 @@ func resolveFluxGVR(kind string) (schema.GroupVersionResource, bool) {
 
 // FluxListKustomizations lists Flux Kustomization resources
 func (h *Handler) FluxListKustomizations(w http.ResponseWriter, r *http.Request) {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	ctx := r.Context()
 
 	gvr, _ := resolveFluxGVR("kustomization")
 
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,11 +128,16 @@ func (h *Handler) FluxListKustomizations(w http.ResponseWriter, r *http.Request)
 
 // FluxListHelmReleases lists Flux HelmRelease resources
 func (h *Handler) FluxListHelmReleases(w http.ResponseWriter, r *http.Request) {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	ctx := r.Context()
 
 	gvr, _ := resolveFluxGVR("helmrelease")
 
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -150,6 +161,11 @@ func (h *Handler) FluxListHelmReleases(w http.ResponseWriter, r *http.Request) {
 
 // FluxReconcile triggers reconciliation of a Flux resource
 func (h *Handler) FluxReconcile(w http.ResponseWriter, r *http.Request) {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	ctx := r.Context()
 	kind := chi.URLParam(r, "kind")
 	namespace := chi.URLParam(r, "namespace")
@@ -172,7 +188,7 @@ func (h *Handler) FluxReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -354,7 +370,8 @@ func extractFluxStatus(obj *unstructured.Unstructured, kind string) FluxStatus {
 
 // FluxSuspend toggles spec.suspend on a Flux resource.
 func (h *Handler) FluxSuspend(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -375,7 +392,7 @@ func (h *Handler) FluxSuspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -417,14 +434,15 @@ func (h *Handler) FluxSuspend(w http.ResponseWriter, r *http.Request) {
 
 // FluxListSources lists GitRepositories and HelmRepositories.
 func (h *Handler) FluxListSources(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
 	ctx := r.Context()
 
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -459,7 +477,8 @@ func (h *Handler) FluxListSources(w http.ResponseWriter, r *http.Request) {
 
 // FluxHelmReleaseValues returns the spec.values from a HelmRelease CR.
 func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -471,7 +490,7 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 	cacheKey := fmt.Sprintf("flux:hr-values:%s:%s", namespace, name)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchHelmReleaseValues(ctx, namespace, name)
+			return h.fetchHelmReleaseValues(ctx, kc, namespace, name)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -480,7 +499,7 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	result, err := h.fetchHelmReleaseValues(ctx, namespace, name)
+	result, err := h.fetchHelmReleaseValues(ctx, kc, namespace, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -490,9 +509,9 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(result)
 }
 
-func (h *Handler) fetchHelmReleaseValues(ctx context.Context, namespace, name string) (map[string]any, error) {
+func (h *Handler) fetchHelmReleaseValues(ctx context.Context, kc *k8s.Client, namespace, name string) (map[string]any, error) {
 	gvr, _ := resolveFluxGVR("helmrelease")
-	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	dynamicClient, err := dynamic.NewForConfig(kc.Config())
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +534,8 @@ func (h *Handler) fetchHelmReleaseValues(ctx context.Context, namespace, name st
 
 // FluxHelmReleaseHistory returns Helm release revision history from Secrets.
 func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request) {
-	if h.k8s == nil {
+	kc := h.k8sForRequest(r)
+	if kc == nil {
 		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -527,7 +547,7 @@ func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request)
 	cacheKey := fmt.Sprintf("flux:hr-history:%s:%s", namespace, name)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchHelmReleaseHistory(ctx, namespace, name)
+			return h.fetchHelmReleaseHistory(ctx, kc, namespace, name)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -536,7 +556,7 @@ func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	result, err := h.fetchHelmReleaseHistory(ctx, namespace, name)
+	result, err := h.fetchHelmReleaseHistory(ctx, kc, namespace, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -546,8 +566,8 @@ func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(result)
 }
 
-func (h *Handler) fetchHelmReleaseHistory(ctx context.Context, namespace, name string) ([]map[string]any, error) {
-	secrets, err := h.k8s.GetSecrets(ctx, namespace)
+func (h *Handler) fetchHelmReleaseHistory(ctx context.Context, kc *k8s.Client, namespace, name string) ([]map[string]any, error) {
+	secrets, err := kc.GetSecrets(ctx, namespace)
 	if err != nil {
 		return nil, err
 	}
