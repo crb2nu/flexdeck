@@ -7,6 +7,7 @@ resources:
   - namespace.yaml
   - serviceaccount.yaml
   - secret.sops.yaml
+  - redis.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

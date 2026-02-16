@@ -74,7 +74,27 @@ spec:
                 secretKeyRef:
                   name: flexdeck-secrets
                   key: langfuse-secret-key
-            # Loom HUD push webhook (local HUD → cluster flexdeck)
+            # Redis (cache, pipeline trends, metrics buffering)
+            - name: REDIS_URL
+              value: "redis://redis.flexdeck.svc.cluster.local:6379/0"
+            # AI namespace for FlexInfer CRDs
+            - name: AI_NAMESPACE
+              value: "flexinfer-system"
+            # Grafana
+            - name: GRAFANA_URL
+              value: "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"
+            - name: GRAFANA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: grafana-token
+                  optional: true
+            # Alertmanager
+            - name: ALERTMANAGER_URL
+              value: "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"
+            # Loom HUD (push mode — local HUD pushes via webhook)
+            - name: LOOM_HUD_URL
+              value: ""
             - name: LOOM_HUD_PUSH_TOKEN
               valueFrom:
                 secretKeyRef:
