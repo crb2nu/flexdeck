@@ -265,6 +265,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/langgraph/assistants", h.LangGraphListAssistants)
 			r.Post("/langgraph/run", h.LangGraphRun)
 
+			// HUD push webhook (local HUD → cluster flexdeck)
+			r.Post("/hud/push", h.HUDPresencePush)
+
 			r.Get("/{id}", h.AgentsGet)
 			r.Put("/{id}", h.AgentsUpdate)
 			r.Delete("/{id}", h.AgentsDelete)

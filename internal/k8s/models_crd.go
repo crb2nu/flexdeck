@@ -147,19 +147,19 @@ type ModelEvent struct {
 }
 
 var modelGVR = schema.GroupVersionResource{
-	Group:    "flexinfer.ai",
+	Group:    "ai.flexinfer",
 	Version:  "v1alpha2",
 	Resource: "models",
 }
 
 var loraAdapterGVR = schema.GroupVersionResource{
-	Group:    "flexinfer.ai",
+	Group:    "ai.flexinfer",
 	Version:  "v1alpha2",
 	Resource: "loraadapters",
 }
 
 var modelCatalogGVR = schema.GroupVersionResource{
-	Group:    "flexinfer.ai",
+	Group:    "ai.flexinfer",
 	Version:  "v1alpha2",
 	Resource: "modelcatalogs",
 }

@@ -146,8 +146,9 @@ type AgentsConfig struct {
 }
 
 type LoomHUDConfig struct {
-	Disabled bool
-	URL      string // env: LOOM_HUD_URL, default: http://localhost:3333
+	Disabled  bool
+	URL       string // env: LOOM_HUD_URL, default: http://localhost:3333
+	PushToken string // env: LOOM_HUD_PUSH_TOKEN — shared secret for push webhook auth
 }
 
 type GrafanaConfig struct {
@@ -244,7 +245,7 @@ func Load() (*Config, error) {
 			CivitAIKey:     getEnv("CIVITAI_API_KEY", ""),
 			DownloadPath:   getEnv("MODELS_DOWNLOAD_PATH", "/models"),
 			GitOpsRepoPath: getEnv("GITOPS_REPO_PATH", ""),
-			AINamespace:    getEnv("AI_NAMESPACE", "ai"),
+			AINamespace:    getEnv("AI_NAMESPACE", "flexinfer-system"),
 		},
 
 		Agents: AgentsConfig{
@@ -258,8 +259,9 @@ func Load() (*Config, error) {
 		},
 
 		LoomHUD: LoomHUDConfig{
-			Disabled: parseBool(getEnv("LOOM_HUD_DISABLED", "false")),
-			URL:      getEnv("LOOM_HUD_URL", "http://localhost:3333"),
+			Disabled:  parseBool(getEnv("LOOM_HUD_DISABLED", "false")),
+			URL:       getEnv("LOOM_HUD_URL", "http://localhost:3333"),
+			PushToken: getEnv("LOOM_HUD_PUSH_TOKEN", ""),
 		},
 
 		Langfuse: LangfuseConfig{

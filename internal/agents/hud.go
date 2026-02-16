@@ -12,10 +12,13 @@ import (
 // AgentTypeCLI represents a CLI dev agent (Claude Code, Gemini, Codex)
 const AgentTypeCLI AgentType = "cli-agent"
 
-// HUDClient is a thin HTTP client for the loom-core HUD REST API
+// HUDClient is a thin HTTP client for the loom-core HUD REST API.
+// When a push store is attached, GetPresence/GetSessions check it first
+// and fall through to HTTP pull only if the push data is stale or absent.
 type HUDClient struct {
 	url        string
 	httpClient *http.Client
+	pushStore  *HUDPushStore
 }
 
 // NewHUDClient creates a new HUD client
@@ -124,8 +127,19 @@ func (p *PresenceInfo) ToAgent() *Agent {
 	}
 }
 
-// GetPresence fetches agent presence from the HUD API
+// SetPushStore attaches a push store for receiving data from the local HUD webhook.
+func (c *HUDClient) SetPushStore(store *HUDPushStore) {
+	c.pushStore = store
+}
+
+// GetPresence returns agent presence. It checks the push store first and
+// falls through to an HTTP pull if no fresh pushed data is available.
 func (c *HUDClient) GetPresence(ctx context.Context) (*PresenceResponse, error) {
+	if c.pushStore != nil {
+		if resp, ok := c.pushStore.GetPresence(); ok {
+			return resp, nil
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/api/presence", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -149,8 +163,14 @@ func (c *HUDClient) GetPresence(ctx context.Context) (*PresenceResponse, error) 
 	return &result, nil
 }
 
-// GetSessions fetches sessions from the HUD API
+// GetSessions returns session data. It checks the push store first and
+// falls through to an HTTP pull if no fresh pushed data is available.
 func (c *HUDClient) GetSessions(ctx context.Context) (*SessionsResponse, error) {
+	if c.pushStore != nil {
+		if resp, ok := c.pushStore.GetSessions(); ok {
+			return resp, nil
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/api/sessions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

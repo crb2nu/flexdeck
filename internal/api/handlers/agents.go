@@ -620,6 +620,47 @@ func (h *Handler) HUDAgentSessions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HUDPresencePush receives a presence + session snapshot pushed by the local HUD webhook.
+// POST /api/agents/hud/push
+func (h *Handler) HUDPresencePush(w http.ResponseWriter, r *http.Request) {
+	if h.hudPushStore == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "push store not configured",
+		})
+		return
+	}
+
+	// Validate bearer token.
+	token := r.Header.Get("X-Push-Token")
+	if h.cfg.LoomHUD.PushToken != "" && token != h.cfg.LoomHUD.PushToken {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "invalid push token",
+		})
+		return
+	}
+
+	var body struct {
+		Agents   []agents.PresenceInfo `json:"agents"`
+		Sessions []agents.SessionInfo  `json:"sessions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	h.hudPushStore.Store(body.Agents, body.Sessions)
+
+	slog.Debug("HUD push received", "agents", len(body.Agents), "sessions", len(body.Sessions))
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"agents":   len(body.Agents),
+		"sessions": len(body.Sessions),
+	})
+}
+
 // LangGraphListAssistants lists available LangGraph assistants/graphs
 func (h *Handler) LangGraphListAssistants(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Agents.Disabled || h.cfg.Agents.LangGraphURL == "" {

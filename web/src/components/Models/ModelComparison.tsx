@@ -14,7 +14,7 @@ const ModelComparison: Component = () => {
   createEffect(async () => {
     try {
       const [crd, gpu] = await Promise.all([
-        modelsApi.crd('flexinfer-system'),
+        modelsApi.crd(),
         fetch('/api/k8s/metrics/gpu/models').then(r => r.ok ? r.json() : { models: [] }),
       ]);
       setModels((crd as FlexInferModelListResponse).models || []);

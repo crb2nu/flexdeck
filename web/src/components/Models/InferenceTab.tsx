@@ -10,18 +10,21 @@ const InferenceTab: Component = () => {
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
   const [modelMetrics, setModelMetrics] = createSignal<any>(null);
   const [modelMetricsLoading, setModelMetricsLoading] = createSignal(false);
+  const [aiNamespace, setAiNamespace] = createSignal('flexinfer-system');
 
   const fetchAll = async () => {
     try {
-      const [health, models, metrics] = await Promise.allSettled([
+      const [health, models, metrics, crdData] = await Promise.allSettled([
         flexinferProxyApi.health(),
         flexinferProxyApi.models(),
         flexinferProxyApi.metrics(),
+        modelsApi.crd(),
       ]);
 
       if (health.status === 'fulfilled') setProxyHealth(health.value);
       if (models.status === 'fulfilled') setProxyModels(models.value);
       if (metrics.status === 'fulfilled') setProxyMetrics(metrics.value);
+      if (crdData.status === 'fulfilled' && crdData.value?.namespace) setAiNamespace(crdData.value.namespace);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch inference data');
@@ -33,7 +36,7 @@ const InferenceTab: Component = () => {
   const fetchModelDetail = async (model: string) => {
     setModelMetricsLoading(true);
     try {
-      const data = await modelsApi.crdInference('flexinfer-system', model);
+      const data = await modelsApi.crdInference(aiNamespace(), model);
       setModelMetrics(data);
     } catch {
       setModelMetrics(null);

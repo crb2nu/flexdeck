@@ -77,7 +77,7 @@ const CommandPalette: Component = () => {
     {
       id: 'action-discover-models',
       name: 'Discover Models',
-      description: 'Sync AI models from flexinfer-system controller',
+      description: 'Sync AI models from FlexInfer controller',
       keywords: ['sync', 'k8s', 'flexinfer', 'discover', 'refresh models'],
       action: async () => {
         try {

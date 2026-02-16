@@ -21,7 +21,7 @@ const Models: Component = () => {
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
   const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
 
-  // CRD models from flexinfer-system (the real controller state)
+  // CRD models from the backend-configured AI namespace (the real controller state)
   const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
 
   // Registry models (flexdeck's internal model registry)
@@ -33,11 +33,13 @@ const Models: Component = () => {
   const [searchResults, setSearchResults] = createStore<RegisteredModel[]>([]);
   const [searching, setSearching] = createSignal(false);
 
-  // Fetch CRD models directly from flexinfer-system
+  // Fetch CRD models from the backend's configured AI namespace
+  const [crdNamespace, setCrdNamespace] = createSignal('');
   const fetchCRDModels = async () => {
     try {
-      const data: FlexInferModelListResponse = await modelsApi.crd('flexinfer-system');
+      const data: FlexInferModelListResponse = await modelsApi.crd();
       setCrdModels(data.models || []);
+      if (data.namespace) setCrdNamespace(data.namespace);
     } catch (err) {
       // CRD might not be installed — fall back silently
       console.warn('CRD fetch failed, falling back to registry:', err);
@@ -57,11 +59,11 @@ const Models: Component = () => {
     }
   };
 
-  // Trigger K8s discovery from flexinfer-system namespace
+  // Trigger K8s discovery from the configured AI namespace
   const discoverModels = async () => {
     setDiscoverLoading(true);
     try {
-      await modelsApi.discover('flexinfer-system');
+      await modelsApi.discover(crdNamespace() || undefined);
       await Promise.all([fetchCRDModels(), fetchRegistryModels()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Discovery failed');
@@ -162,7 +164,7 @@ const Models: Component = () => {
 
     let es: EventSource | null = null;
     try {
-      es = new EventSource(modelsApi.crdWatchSSEUrl('flexinfer-system'));
+      es = new EventSource(modelsApi.crdWatchSSEUrl(crdNamespace() || undefined));
       es.addEventListener('model', (e: MessageEvent) => {
         try {
           const event = JSON.parse(e.data);
@@ -263,11 +265,11 @@ const Models: Component = () => {
         <Match when={activeTab() === 'controller'}>
           <Show
             when={!loading() || crdModels.length > 0}
-            fallback={<LoadingState message="Querying flexinfer-system Model CRDs..." />}
+            fallback={<LoadingState message="Querying Model CRDs..." />}
           >
             <Show
               when={crdModels.length > 0}
-              fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to flexinfer-system namespace, then click Sync." />}
+              fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to your AI namespace, then click Sync." />}
             >
               <ModelGPUTable />
               <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -291,7 +293,7 @@ const Models: Component = () => {
         <Match when={activeTab() === 'registry'}>
           <Show
             when={registryModels.length > 0}
-            fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from flexinfer-system or search HuggingFace/CivitAI." />}
+            fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from K8s or search HuggingFace/CivitAI." />}
           >
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <For each={registryModels}>

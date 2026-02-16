@@ -28,6 +28,7 @@ type Handler struct {
 	agentsRegistry *agents.Registry
 	agentsProxy    *agents.Proxy
 	hudClient      *agents.HUDClient
+	hudPushStore   *agents.HUDPushStore
 }
 
 // HandlerDeps contains optional dependencies for the handler
@@ -40,6 +41,7 @@ type HandlerDeps struct {
 	AgentsRegistry   *agents.Registry
 	AgentsProxy      *agents.Proxy
 	HUDClient        *agents.HUDClient
+	HUDPushStore     *agents.HUDPushStore
 }
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
@@ -74,6 +76,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		h.agentsRegistry = deps.AgentsRegistry
 		h.agentsProxy = deps.AgentsProxy
 		h.hudClient = deps.HUDClient
+		h.hudPushStore = deps.HUDPushStore
 	}
 
 	return h

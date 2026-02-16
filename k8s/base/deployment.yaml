@@ -74,6 +74,13 @@ spec:
                 secretKeyRef:
                   name: flexdeck-secrets
                   key: langfuse-secret-key
+            # Loom HUD push webhook (local HUD → cluster flexdeck)
+            - name: LOOM_HUD_PUSH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: hud-push-token
+                  optional: true
           resources:
             requests:
               cpu: 50m

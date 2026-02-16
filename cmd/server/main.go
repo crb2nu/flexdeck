@@ -138,13 +138,23 @@ func main() {
 		slog.Info("agents subsystem disabled")
 	}
 
-	// Initialize HUD client (independent of agents registry)
-	if !cfg.LoomHUD.Disabled && cfg.LoomHUD.URL != "" {
+	// Initialize HUD client and push store (independent of agents registry)
+	if !cfg.LoomHUD.Disabled {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
-		handlerDeps.HUDClient = agents.NewHUDClient(cfg.LoomHUD.URL)
-		slog.Info("loom HUD client initialized", "url", cfg.LoomHUD.URL)
+
+		pushStore := agents.NewHUDPushStore(60 * time.Second)
+		handlerDeps.HUDPushStore = pushStore
+
+		if cfg.LoomHUD.URL != "" {
+			hudClient := agents.NewHUDClient(cfg.LoomHUD.URL)
+			hudClient.SetPushStore(pushStore)
+			handlerDeps.HUDClient = hudClient
+			slog.Info("loom HUD client initialized", "url", cfg.LoomHUD.URL, "push_store", true)
+		} else {
+			slog.Info("loom HUD push store initialized (no pull URL)")
+		}
 	}
 
 	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)

@@ -14,20 +14,21 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 #### Backend (Go)
 
-- ✅ **Kubernetes Integration**: Direct client for cluster management, events feed, and Flux GitOps sync.
-- ✅ **LiteLLM Gateway**: Metrics scraping, Redis buffering, and proxying.
+- ✅ **Kubernetes Integration**: Direct client for cluster management, events feed, Flux GitOps sync, storage (PVC/PV/StorageClass), ConfigMap/Secret viewer.
+- ✅ **LiteLLM Gateway**: Metrics scraping, Redis buffering, proxying, model info API, router health/routing table.
 - ✅ **Model Management**:
   - Registry for tracking available models.
   - Downloader for HuggingFace and CivitAI artifacts.
   - GitOps generator for automated deployment manifests.
   - Auto-discovery of models from K8s deployments.
-- ✅ **FlexInfer Controller Integration**: Model CRD v1alpha2 listing, SSE watch, mutations (scale, activate, restart).
+- ✅ **FlexInfer Controller Integration**: Model CRD v1alpha2 listing, SSE watch, mutations (scale, activate, restart), per-model K8s events.
 - ✅ **Agent Orchestration**: Registry and proxy for managing AI agents (Dify, LangGraph, AgentScope).
 - ✅ **Observability**:
   - Prometheus metrics proxy (queries, alerts, rules).
   - Prometheus Alerts API: query firing alerts and rules.
   - Loki log streaming (SSE).
   - Langfuse observability: trace ingestion and API proxy.
+  - Alertmanager proxy: alerts, silences, create/delete silence.
 - ✅ **Infrastructure**:
   - Redis caching layer: SCAN-based iteration, regex caching, cache-aside pattern.
   - Configurable feature flags (disable subsystems via env).
@@ -37,7 +38,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 - ✅ **Dashboard**: Topology graph (2D + 3D HoloDeck), resource PulseCards, K8s events feed, pod detail panels.
 - ✅ **Services**: Full CRUD for Deployments, StatefulSets, DaemonSets, Jobs, Services, Ingresses.
-- ✅ **Flux GitOps**: Visualizer for Kustomizations and HelmReleases with reconcile buttons and drift detection.
+- ✅ **Flux GitOps**: Visualizer for Kustomizations and HelmReleases with reconcile buttons, drift detection, inline values display, and revision history.
 - ✅ **Pipeline / CI**: GitLab CI visualization, job trace viewer, retry/cancel/play actions.
 - ✅ **Log Viewer**: Matrix-style live tailing of Loki logs (warp + rain modes).
 - ✅ **Metrics**: Prometheus query dashboard with sparkline charts.
@@ -51,6 +52,13 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - ✅ **Langfuse Widget**: Observability traces on dashboard.
 - ✅ **Vim Keyboard Shortcuts**: `g`-prefix navigation + `?` help overlay.
 - ✅ **PulseCard Sparklines**: Rolling CPU/memory history.
+- ✅ **Model Events Timeline**: Per-model K8s event history in CRD cards.
+- ✅ **LiteLLM Router Panel**: Proxy health status and model routing table.
+- ✅ **Model Comparison**: Side-by-side throughput, latency, GPU metrics for ready models.
+- ✅ **Alertmanager UI**: Alert list, silence management, create/delete silences.
+- ✅ **Storage Browser**: PVC/PV/StorageClass listing with status indicators.
+- ✅ **ConfigMap/Secret Viewer**: Expandable rows with per-key reveal for secrets.
+- ✅ **Helm Values/History**: Inline values display and revision history for HelmReleases.
 
 ## Upcoming Work
 
@@ -66,7 +74,40 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - [x] **Agent Chat Interface**: Neural Link chat UI for interacting with registered agents.
 - [x] **Flow Visualization**: Visual graph of agent interactions and dependencies. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/4))
 
-### Phase 3: Enterprise Features
+### Phase 2.5: Feature Expansion & FlexInfer Integration (Feb 2026)
+
+- [x] **Model Events Timeline**: Per-model K8s event history with cached API and vertical timeline UI.
+- [x] **LiteLLM Router Panel**: Proxy health, model routing table with backend/mode/RPM columns.
+- [x] **Model Comparison**: Side-by-side metrics (throughput, latency, GPU utilization) with chart and table views.
+- [x] **Alertmanager UI**: Full alerts/silences browser with create/delete silence capability.
+- [x] **Storage Browser**: PVC, PV, and StorageClass listing with phase indicators and capacity display.
+- [x] **ConfigMap/Secret Viewer**: Expandable key-value browser with masked secret values and per-key reveal.
+- [x] **Helm Values/History**: Inline Helm release values and revision history with status indicators.
+
+### Phase 3: Deep FlexInfer & Loom Integration
+
+*Spec and plan in `.loom/` context pack.*
+
+#### Track 1: FlexInfer Inference Metrics
+- [ ] **Inference Metrics Tab**: Per-model TPS, p95 latency, error rate, queue depth, active connections from FlexInfer proxy Prometheus metrics.
+- [ ] **Scale-to-Zero Visibility**: Cold start activations, idle timeout state, queue wait time.
+- [ ] **GPU Sharing State**: Active model, queue position, swap history from GPUGroup metrics.
+- [ ] **KV-Cache Pressure**: Utilization gauge, pressure events, eviction policy for vLLM models.
+- [ ] **LoRA Adapter Status**: Per-model loaded adapters with lifecycle state (Pending/Loaded/Unloading).
+- [ ] **Model Catalog Browser**: Registry entries from ModelCatalog CRDs (HuggingFace, OCI, Ollama sources).
+
+#### Track 2: Loom Agent HUD
+- [ ] **Agent Presence Grid**: Active agent cards with type, status (active/idle/offline), session duration, current file.
+- [ ] **Task Board**: Kanban view of agent tasks (pending/in_progress/completed) with priority, agent assignment, file location.
+- [ ] **Workflow Monitor**: Active workflows with step indicators, approval gates, approve/reject controls.
+- [ ] **Activity Timeline**: Real-time event feed from Loom HUD SSE stream.
+- [ ] **File Claims & Conflicts**: Advisory lock display with conflict warnings.
+
+#### Dashboard Widgets
+- [ ] **Inference Health Widget**: Model count by phase, total TPS, queue alerts.
+- [ ] **Agent Activity Widget**: Active agent count, tasks completed today, workflow approvals pending.
+
+### Phase 4: Enterprise Features
 
 - [ ] **RBAC UI**: User management and role assignment. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5))
 - [ ] **Audit Logs**: Visual audit trail of all mutations performed via the dashboard. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6))
