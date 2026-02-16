@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -454,6 +455,127 @@ func (h *Handler) FluxListSources(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, sources)
+}
+
+// FluxHelmReleaseValues returns the spec.values from a HelmRelease CR.
+func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	cacheKey := fmt.Sprintf("flux:hr-values:%s:%s", namespace, name)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchHelmReleaseValues(ctx, namespace, name)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	result, err := h.fetchHelmReleaseValues(ctx, namespace, name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) fetchHelmReleaseValues(ctx context.Context, namespace, name string) (map[string]any, error) {
+	gvr, _ := resolveFluxGVR("helmrelease")
+	dynamicClient, err := dynamic.NewForConfig(h.k8s.Config())
+	if err != nil {
+		return nil, err
+	}
+
+	resource, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get HelmRelease %s/%s: %w", namespace, name, err)
+	}
+
+	values, _, _ := unstructured.NestedMap(resource.Object, "spec", "values")
+	valuesFrom, _, _ := unstructured.NestedSlice(resource.Object, "spec", "valuesFrom")
+
+	return map[string]any{
+		"values":     values,
+		"valuesFrom": valuesFrom,
+		"name":       name,
+		"namespace":  namespace,
+	}, nil
+}
+
+// FluxHelmReleaseHistory returns Helm release revision history from Secrets.
+func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	cacheKey := fmt.Sprintf("flux:hr-history:%s:%s", namespace, name)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchHelmReleaseHistory(ctx, namespace, name)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	result, err := h.fetchHelmReleaseHistory(ctx, namespace, name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) fetchHelmReleaseHistory(ctx context.Context, namespace, name string) ([]map[string]any, error) {
+	secrets, err := h.k8s.GetSecrets(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	var history []map[string]any
+	for _, s := range secrets.Items {
+		if s.Labels == nil {
+			continue
+		}
+		if s.Labels["owner"] != "helm" || s.Labels["name"] != name {
+			continue
+		}
+		entry := map[string]any{
+			"version": s.Labels["version"],
+			"status":  s.Labels["status"],
+			"updated": s.CreationTimestamp.Format("2006-01-02T15:04:05Z"),
+		}
+		history = append(history, entry)
+	}
+
+	// Sort by version desc
+	sort.Slice(history, func(i, j int) bool {
+		vi, _ := history[i]["version"].(string)
+		vj, _ := history[j]["version"].(string)
+		return vi > vj
+	})
+
+	return history, nil
 }
 
 func extractFluxSource(obj *unstructured.Unstructured, kind string) FluxSource {

@@ -10,6 +10,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
@@ -331,6 +332,43 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, podName string, opts
 	}
 
 	return stream, nil
+}
+
+func (c *Client) GetPVCs(ctx context.Context, namespace string) (*corev1.PersistentVolumeClaimList, error) {
+	if namespace == "" {
+		return c.clientset.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetPVs(ctx context.Context) (*corev1.PersistentVolumeList, error) {
+	return c.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetStorageClasses(ctx context.Context) (*storagev1.StorageClassList, error) {
+	return c.clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetConfigMaps(ctx context.Context, namespace string) (*corev1.ConfigMapList, error) {
+	if namespace == "" {
+		return c.clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetConfigMap(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
+	return c.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+func (c *Client) GetSecrets(ctx context.Context, namespace string) (*corev1.SecretList, error) {
+	if namespace == "" {
+		return c.clientset.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (c *Client) GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+	return c.clientset.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
 // WatchEvents returns a channel of watch events for Kubernetes events

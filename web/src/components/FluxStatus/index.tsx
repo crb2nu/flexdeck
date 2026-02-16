@@ -13,6 +13,9 @@ const FluxStatus: Component = () => {
   const [reconciling, setReconciling] = createSignal<string | null>(null);
   const [suspending, setSuspending] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal('');
+  const [hrValues, setHrValues] = createSignal<Record<string, any>>({});
+  const [hrHistory, setHrHistory] = createSignal<Record<string, any[]>>({});
+  const [hrExpanded, setHrExpanded] = createSignal<Record<string, string | null>>({});
 
   const fetchAll = async () => {
     try {
@@ -189,15 +192,42 @@ const FluxStatus: Component = () => {
                 </div>
                 <div class="divide-y divide-white/5">
                   <For each={helmReleases()}>
-                    {(hr) => (
-                      <FluxResourceRow
-                        resource={hr}
-                        reconciling={reconciling() === `helmrelease/${hr.namespace}/${hr.name}`}
-                        suspending={suspending() === `helmrelease/${hr.namespace}/${hr.name}`}
-                        onReconcile={() => handleReconcile('helmrelease', hr.namespace, hr.name)}
-                        onSuspend={(suspend) => handleSuspend('helmrelease', hr.namespace, hr.name, suspend)}
-                      />
-                    )}
+                    {(hr) => {
+                      const hrKey = `${hr.namespace}/${hr.name}`;
+                      return (
+                        <FluxResourceRow
+                          resource={hr}
+                          reconciling={reconciling() === `helmrelease/${hr.namespace}/${hr.name}`}
+                          suspending={suspending() === `helmrelease/${hr.namespace}/${hr.name}`}
+                          onReconcile={() => handleReconcile('helmrelease', hr.namespace, hr.name)}
+                          onSuspend={(suspend) => handleSuspend('helmrelease', hr.namespace, hr.name, suspend)}
+                          isHelmRelease={true}
+                          hrExpandedSection={hrExpanded()[hrKey] || null}
+                          hrValuesData={hrValues()[hrKey]}
+                          hrHistoryData={hrHistory()[hrKey]}
+                          onHrToggle={async (section: string) => {
+                            const currentSection = hrExpanded()[hrKey];
+                            if (currentSection === section) {
+                              setHrExpanded(prev => ({ ...prev, [hrKey]: null }));
+                              return;
+                            }
+                            setHrExpanded(prev => ({ ...prev, [hrKey]: section }));
+                            if (section === 'values' && !hrValues()[hrKey]) {
+                              try {
+                                const data = await fluxApi.helmReleaseValues(hr.namespace, hr.name);
+                                setHrValues(prev => ({ ...prev, [hrKey]: data }));
+                              } catch { setHrValues(prev => ({ ...prev, [hrKey]: { error: 'Failed to load values' } })); }
+                            }
+                            if (section === 'history' && !hrHistory()[hrKey]) {
+                              try {
+                                const data = await fluxApi.helmReleaseHistory(hr.namespace, hr.name);
+                                setHrHistory(prev => ({ ...prev, [hrKey]: Array.isArray(data) ? data : (data?.history || []) }));
+                              } catch { setHrHistory(prev => ({ ...prev, [hrKey]: [] })); }
+                            }
+                          }}
+                        />
+                      );
+                    }}
                   </For>
                 </div>
               </div>
@@ -272,6 +302,11 @@ const FluxResourceRow: Component<{
   suspending: boolean;
   onReconcile: () => void;
   onSuspend: (suspend: boolean) => void;
+  isHelmRelease?: boolean;
+  hrExpandedSection?: string | null;
+  hrValuesData?: any;
+  hrHistoryData?: any[];
+  onHrToggle?: (section: string) => void;
 }> = (props) => {
   const [expanded, setExpanded] = createSignal(false);
 
@@ -436,6 +471,100 @@ const FluxResourceRow: Component<{
                 </tbody>
               </table>
             </div>
+          </Show>
+
+          {/* HelmRelease Values + History buttons */}
+          <Show when={props.isHelmRelease && props.onHrToggle}>
+            <div class="flex gap-2 mt-2">
+              <button
+                class={`text-[10px] font-mono px-2 py-1 rounded border transition-colors ${
+                  props.hrExpandedSection === 'values'
+                    ? 'bg-neon-cyan/10 border-neon-cyan/20 text-neon-cyan'
+                    : 'bg-white/5 border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30'
+                }`}
+                onClick={(e) => { e.stopPropagation(); props.onHrToggle!('values'); }}
+              >
+                Values
+              </button>
+              <button
+                class={`text-[10px] font-mono px-2 py-1 rounded border transition-colors ${
+                  props.hrExpandedSection === 'history'
+                    ? 'bg-neon-cyan/10 border-neon-cyan/20 text-neon-cyan'
+                    : 'bg-white/5 border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30'
+                }`}
+                onClick={(e) => { e.stopPropagation(); props.onHrToggle!('history'); }}
+              >
+                History
+              </button>
+            </div>
+
+            {/* Values section */}
+            <Show when={props.hrExpandedSection === 'values'}>
+              <div class="mt-2 rounded-md bg-white/[0.02] overflow-hidden">
+                <Show when={props.hrValuesData} fallback={
+                  <div class="px-3 py-2 text-[11px] text-text-dim animate-pulse">Loading values...</div>
+                }>
+                  <Show when={props.hrValuesData?.error}>
+                    <div class="px-3 py-2 text-[11px] text-status-error">{props.hrValuesData.error}</div>
+                  </Show>
+                  <Show when={!props.hrValuesData?.error}>
+                    <pre class="px-3 py-2 text-[11px] text-text-muted font-mono whitespace-pre-wrap break-all max-h-64 overflow-auto">
+                      {JSON.stringify(props.hrValuesData, null, 2)}
+                    </pre>
+                  </Show>
+                </Show>
+              </div>
+            </Show>
+
+            {/* History section */}
+            <Show when={props.hrExpandedSection === 'history'}>
+              <div class="mt-2 rounded-md bg-white/[0.02] overflow-hidden">
+                <Show when={props.hrHistoryData} fallback={
+                  <div class="px-3 py-2 text-[11px] text-text-dim animate-pulse">Loading history...</div>
+                }>
+                  <Show when={props.hrHistoryData!.length === 0}>
+                    <div class="px-3 py-2 text-[11px] text-text-dim">No history available</div>
+                  </Show>
+                  <Show when={props.hrHistoryData!.length > 0}>
+                    <table class="w-full text-[11px]">
+                      <thead>
+                        <tr class="border-b border-white/5">
+                          <th class="text-left px-2 py-1.5 text-text-dim font-medium">Revision</th>
+                          <th class="text-left px-2 py-1.5 text-text-dim font-medium">Status</th>
+                          <th class="text-left px-2 py-1.5 text-text-dim font-medium">Chart</th>
+                          <th class="text-left px-2 py-1.5 text-text-dim font-medium">App Version</th>
+                          <th class="text-right px-2 py-1.5 text-text-dim font-medium">Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <For each={props.hrHistoryData!}>
+                          {(entry: any) => (
+                            <tr class="border-b border-white/[0.03]">
+                              <td class="px-2 py-1.5 font-mono text-text-main">{entry.revision || entry.version || '-'}</td>
+                              <td class="px-2 py-1.5">
+                                <span class={`font-mono ${
+                                  entry.status === 'deployed' ? 'text-status-ok' :
+                                  entry.status === 'failed' ? 'text-status-error' :
+                                  entry.status === 'superseded' ? 'text-text-dim' :
+                                  'text-text-muted'
+                                }`}>
+                                  {entry.status || '-'}
+                                </span>
+                              </td>
+                              <td class="px-2 py-1.5 font-mono text-text-muted">{entry.chart || '-'}</td>
+                              <td class="px-2 py-1.5 font-mono text-text-muted">{entry.appVersion || entry.app_version || '-'}</td>
+                              <td class="px-2 py-1.5 text-text-dim text-right">
+                                {entry.updated || entry.last_deployed ? formatRelativeTime(entry.updated || entry.last_deployed) : '-'}
+                              </td>
+                            </tr>
+                          )}
+                        </For>
+                      </tbody>
+                    </table>
+                  </Show>
+                </Show>
+              </div>
+            </Show>
           </Show>
         </div>
       </Show>

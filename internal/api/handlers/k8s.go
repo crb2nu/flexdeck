@@ -3,12 +3,14 @@ package handlers
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -932,4 +934,252 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// K8sPVCs returns PersistentVolumeClaims
+func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:pvcs:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
+			return h.k8s.GetPVCs(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	pvcs, err := h.k8s.GetPVCs(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pvcs)
+}
+
+// K8sPVs returns PersistentVolumes
+func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:pvs", 30*time.Second, func() (any, error) {
+			return h.k8s.GetPVs(r.Context())
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	pvs, err := h.k8s.GetPVs(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pvs)
+}
+
+// K8sStorageClasses returns StorageClasses
+func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), "k8s:storageclasses", 60*time.Second, func() (any, error) {
+			return h.k8s.GetStorageClasses(r.Context())
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	scs, err := h.k8s.GetStorageClasses(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(scs)
+}
+
+// K8sConfigMaps returns ConfigMaps (keys only, no data values)
+func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:configmaps:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchConfigMapsList(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	result, err := h.fetchConfigMapsList(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) fetchConfigMapsList(ctx context.Context, ns string) ([]map[string]any, error) {
+	cms, err := h.k8s.GetConfigMaps(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]any, 0, len(cms.Items))
+	for _, cm := range cms.Items {
+		keys := make([]string, 0, len(cm.Data))
+		for k := range cm.Data {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		result = append(result, map[string]any{
+			"name":      cm.Name,
+			"namespace": cm.Namespace,
+			"keys":      keys,
+			"keyCount":  len(cm.Data),
+			"age":       cm.CreationTimestamp.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	return result, nil
+}
+
+// K8sConfigMapDetail returns full ConfigMap data
+func (h *Handler) K8sConfigMapDetail(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	cm, err := h.k8s.GetConfigMap(r.Context(), ns, name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"name":      cm.Name,
+		"namespace": cm.Namespace,
+		"data":      cm.Data,
+	})
+}
+
+// K8sSecrets returns Secrets (keys only, no values)
+func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	cacheKey := fmt.Sprintf("k8s:secrets:%s", ns)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchSecretsList(r.Context(), ns)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	result, err := h.fetchSecretsList(r.Context(), ns)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) fetchSecretsList(ctx context.Context, ns string) ([]map[string]any, error) {
+	secrets, err := h.k8s.GetSecrets(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]any, 0, len(secrets.Items))
+	for _, s := range secrets.Items {
+		keys := make([]string, 0, len(s.Data))
+		for k := range s.Data {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		result = append(result, map[string]any{
+			"name":      s.Name,
+			"namespace": s.Namespace,
+			"type":      string(s.Type),
+			"keys":      keys,
+			"keyCount":  len(s.Data),
+			"age":       s.CreationTimestamp.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	return result, nil
+}
+
+// K8sSecretDetail returns Secret data (base64-encoded values)
+func (h *Handler) K8sSecretDetail(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		http.Error(w, "k8s disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := chi.URLParam(r, "ns")
+	name := chi.URLParam(r, "name")
+
+	secret, err := h.k8s.GetSecret(r.Context(), ns, name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// K8s client returns decoded []byte — re-encode to base64 for the API response
+	data := make(map[string]string, len(secret.Data))
+	for k, v := range secret.Data {
+		data[k] = base64.StdEncoding.EncodeToString(v)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"name":      secret.Name,
+		"namespace": secret.Namespace,
+		"type":      string(secret.Type),
+		"data":      data,
+	})
 }

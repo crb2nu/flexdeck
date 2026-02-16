@@ -556,3 +556,59 @@ export interface InvokeResponse {
   metadata?: Record<string, any>;
   latency_ms?: number;
 }
+
+// Model Events (Step 1)
+export interface ModelEvent {
+  type: "Normal" | "Warning";
+  reason: string;
+  message: string;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  count: number;
+  source?: string;
+}
+
+// LiteLLM Router (Step 2)
+export interface LiteLLMModelEntry {
+  model_name: string;
+  litellm_params: { model?: string; api_base?: string; rpm?: number; tpm?: number };
+  model_info: { id?: string; mode?: string; max_tokens?: number };
+}
+
+export interface LiteLLMRouterResponse {
+  healthy: boolean;
+  models: string[];
+  modelInfo: LiteLLMModelEntry[];
+}
+
+// Model Comparison (Step 3)
+export interface ModelComparisonData {
+  name: string;
+  phase: string;
+  throughput: number | null;
+  latencyMs: number | null;
+  gpuUtilization: number | null;
+  vramPercent: number | null;
+  vramMB: number | null;
+  gpuNode: string | null;
+}
+
+// Alertmanager (Step 4)
+export interface AlertmanagerAlert {
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  startsAt: string;
+  endsAt: string;
+  fingerprint: string;
+  status: { state: "active" | "suppressed" | "unprocessed"; silencedBy: string[]; inhibitedBy: string[] };
+}
+
+export interface AlertmanagerSilence {
+  id: string;
+  matchers: Array<{ name: string; value: string; isRegex: boolean; isEqual: boolean }>;
+  startsAt: string;
+  endsAt: string;
+  createdBy: string;
+  comment: string;
+  status: { state: "active" | "pending" | "expired" };
+}

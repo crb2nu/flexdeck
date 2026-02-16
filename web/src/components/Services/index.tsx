@@ -26,7 +26,7 @@ interface ServiceRow {
   endpoints: string[];
 }
 
-type TabType = 'deployments' | 'services' | 'ingresses' | 'statefulsets' | 'daemonsets' | 'jobs';
+type TabType = 'deployments' | 'services' | 'ingresses' | 'statefulsets' | 'daemonsets' | 'jobs' | 'storage' | 'configmaps' | 'secrets';
 
 const Services: Component = () => {
   const [deployments, setDeployments] = createSignal<K8sDeployment[]>([]);
@@ -35,6 +35,14 @@ const Services: Component = () => {
   const [statefulsets, setStatefulsets] = createSignal<K8sStatefulSet[]>([]);
   const [daemonsets, setDaemonsets] = createSignal<K8sDaemonSet[]>([]);
   const [jobs, setJobs] = createSignal<K8sJob[]>([]);
+  const [pvcs, setPvcs] = createSignal<any[]>([]);
+  const [configmaps, setConfigmaps] = createSignal<any[]>([]);
+  const [secrets, setSecrets] = createSignal<any[]>([]);
+  const [expandedCM, setExpandedCM] = createSignal<Set<string>>(new Set());
+  const [expandedSecret, setExpandedSecret] = createSignal<Set<string>>(new Set());
+  const [secretData, setSecretData] = createSignal<Record<string, any>>({});
+  const [cmData, setCmData] = createSignal<Record<string, any>>({});
+  const [revealedKeys, setRevealedKeys] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [namespaceFilter, setNamespaceFilter] = createSignal('');
@@ -81,6 +89,9 @@ const Services: Component = () => {
   const filteredStatefulsets = createMemo(() => filterResources(statefulsets()));
   const filteredDaemonsets = createMemo(() => filterResources(daemonsets()));
   const filteredJobs = createMemo(() => filterResources(jobs()));
+  const filteredPvcs = createMemo(() => filterResources(pvcs()));
+  const filteredConfigmaps = createMemo(() => filterResources(configmaps()));
+  const filteredSecrets = createMemo(() => filterResources(secrets()));
 
   async function fetchData() {
     if (!isK8sEnabled()) {
@@ -90,13 +101,16 @@ const Services: Component = () => {
     }
 
     try {
-      const [deploys, svcs, ings, sts, ds, jbs] = await Promise.all([
+      const [deploys, svcs, ings, sts, ds, jbs, pvcData, cmData, secData] = await Promise.all([
         api<K8sList<K8sDeployment>>('/k8s/deployments'),
         api<K8sList<K8sService>>('/k8s/services'),
         api<K8sList<K8sIngress>>('/k8s/ingresses'),
         api<K8sList<K8sStatefulSet>>('/k8s/statefulsets').catch(() => ({ items: [] })),
         api<K8sList<K8sDaemonSet>>('/k8s/daemonsets').catch(() => ({ items: [] })),
         api<K8sList<K8sJob>>('/k8s/jobs').catch(() => ({ items: [] })),
+        api<any>('/k8s/pvcs').then(d => d.items || d).catch(() => []),
+        api<any>('/k8s/configmaps').catch(() => []),
+        api<any>('/k8s/secrets').catch(() => []),
       ]);
 
       setDeployments(deploys.items || []);
@@ -105,6 +119,9 @@ const Services: Component = () => {
       setStatefulsets(sts.items || []);
       setDaemonsets(ds.items || []);
       setJobs(jbs.items || []);
+      setPvcs(Array.isArray(pvcData) ? pvcData : (pvcData?.items || []));
+      setConfigmaps(Array.isArray(cmData) ? cmData : (cmData?.items || []));
+      setSecrets(Array.isArray(secData) ? secData : (secData?.items || []));
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch data');
@@ -161,6 +178,9 @@ const Services: Component = () => {
     { id: 'jobs', label: 'Jobs', count: () => filteredJobs().length },
     { id: 'services', label: 'Services', count: () => filteredServices().length },
     { id: 'ingresses', label: 'Ingresses', count: () => filteredIngresses().length },
+    { id: 'storage' as TabType, label: 'Storage', count: () => filteredPvcs().length },
+    { id: 'configmaps' as TabType, label: 'ConfigMaps', count: () => filteredConfigmaps().length },
+    { id: 'secrets' as TabType, label: 'Secrets', count: () => filteredSecrets().length },
   ];
 
   return (
@@ -283,6 +303,62 @@ const Services: Component = () => {
 
         <Show when={!loading() && !error() && activeTab() === 'ingresses'}>
           <IngressesTable ingresses={filteredIngresses()} />
+        </Show>
+
+        <Show when={!loading() && !error() && activeTab() === 'storage'}>
+          <PVCTable pvcs={filteredPvcs()} />
+        </Show>
+
+        <Show when={!loading() && !error() && activeTab() === 'configmaps'}>
+          <ConfigMapsTable
+            configmaps={filteredConfigmaps()}
+            expanded={expandedCM()}
+            cmData={cmData()}
+            onToggle={async (ns: string, name: string) => {
+              const key = `${ns}/${name}`;
+              setExpandedCM(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) { next.delete(key); } else { next.add(key); }
+                return next;
+              });
+              if (!cmData()[key]) {
+                try {
+                  const data = await api<any>(`/k8s/configmaps/${ns}/${name}`);
+                  setCmData(prev => ({ ...prev, [key]: data }));
+                } catch { /* ignore */ }
+              }
+            }}
+          />
+        </Show>
+
+        <Show when={!loading() && !error() && activeTab() === 'secrets'}>
+          <SecretsTable
+            secrets={filteredSecrets()}
+            expanded={expandedSecret()}
+            secretData={secretData()}
+            revealedKeys={revealedKeys()}
+            onToggle={async (ns: string, name: string) => {
+              const key = `${ns}/${name}`;
+              setExpandedSecret(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) { next.delete(key); } else { next.add(key); }
+                return next;
+              });
+              if (!secretData()[key]) {
+                try {
+                  const data = await api<any>(`/k8s/secrets/${ns}/${name}`);
+                  setSecretData(prev => ({ ...prev, [key]: data }));
+                } catch { /* ignore */ }
+              }
+            }}
+            onRevealKey={(key: string) => {
+              setRevealedKeys(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) { next.delete(key); } else { next.add(key); }
+                return next;
+              });
+            }}
+          />
         </Show>
       </div>
     </div>
@@ -747,6 +823,241 @@ const IngressesTable: Component<{ ingresses: K8sIngress[] }> = (props) => (
         </For>
       </tbody>
     </table>
+  </Show>
+);
+
+// PVC Table
+const PVCTable: Component<{ pvcs: any[] }> = (props) => (
+  <Show
+    when={props.pvcs.length > 0}
+    fallback={
+      <div class="flex h-48 items-center justify-center text-text-dim">
+        <div class="text-center">
+          <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
+          </svg>
+          <p>No PVCs found</p>
+        </div>
+      </div>
+    }
+  >
+    <table class="w-full text-sm">
+      <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
+        <tr>
+          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3">Name</th>
+          <th class="px-4 py-3">Namespace</th>
+          <th class="px-4 py-3">Status</th>
+          <th class="px-4 py-3">Capacity</th>
+          <th class="px-4 py-3">Storage Class</th>
+          <th class="px-4 py-3">Age</th>
+        </tr>
+      </thead>
+      <tbody>
+        <For each={props.pvcs}>
+          {(pvc) => {
+            const phase = pvc.status?.phase || 'Unknown';
+            const status: Status = phase === 'Bound' ? 'ok' : phase === 'Pending' ? 'pending' : 'warn';
+            const capacity = pvc.status?.capacity?.storage || pvc.spec?.resources?.requests?.storage || '-';
+            const storageClass = pvc.spec?.storageClassName || '-';
+
+            return (
+              <tr class="border-b border-white/5 hover:bg-white/5 transition-colors group">
+                <td class="px-4 py-3">
+                  <StatusDot status={status} />
+                </td>
+                <td class="px-4 py-3 font-medium text-text-main group-hover:text-neon-cyan transition-colors">
+                  {pvc.metadata?.name}
+                </td>
+                <td class="px-4 py-3 text-text-dim">{pvc.metadata?.namespace}</td>
+                <td class="px-4 py-3">
+                  <span class={`px-2 py-0.5 rounded text-xs ${
+                    phase === 'Bound' ? 'bg-status-ok/10 text-status-ok' :
+                    phase === 'Pending' ? 'bg-status-warn/10 text-status-warn' :
+                    'bg-white/5 text-text-muted'
+                  }`}>
+                    {phase}
+                  </span>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-text-muted">{capacity}</td>
+                <td class="px-4 py-3 font-mono text-xs text-text-muted">{storageClass}</td>
+                <td class="px-4 py-3 text-text-muted">
+                  {pvc.metadata?.creationTimestamp ? formatRelativeTime(pvc.metadata.creationTimestamp) : '-'}
+                </td>
+              </tr>
+            );
+          }}
+        </For>
+      </tbody>
+    </table>
+  </Show>
+);
+
+// ConfigMaps Table
+const ConfigMapsTable: Component<{
+  configmaps: any[];
+  expanded: Set<string>;
+  cmData: Record<string, any>;
+  onToggle: (ns: string, name: string) => void;
+}> = (props) => (
+  <Show
+    when={props.configmaps.length > 0}
+    fallback={
+      <div class="flex h-48 items-center justify-center text-text-dim">
+        <div class="text-center">
+          <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <p>No configmaps found</p>
+        </div>
+      </div>
+    }
+  >
+    <div class="divide-y divide-white/5">
+      <For each={props.configmaps}>
+        {(cm) => {
+          const key = `${cm.metadata?.namespace}/${cm.metadata?.name}`;
+          const isExpanded = props.expanded.has(key);
+          const dataKeys = Object.keys(cm.data || {});
+
+          return (
+            <div>
+              <div
+                class="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={() => props.onToggle(cm.metadata?.namespace || 'default', cm.metadata?.name || '')}
+              >
+                <span class={`text-[10px] text-text-dim transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                  &#9656;
+                </span>
+                <span class="font-medium text-text-main text-sm group-hover:text-neon-cyan transition-colors">
+                  {cm.metadata?.name}
+                </span>
+                <span class="text-text-dim text-xs">{cm.metadata?.namespace}</span>
+                <span class="text-text-dim/50 text-xs ml-auto">{dataKeys.length} keys</span>
+                <span class="text-text-muted text-xs">
+                  {cm.metadata?.creationTimestamp ? formatRelativeTime(cm.metadata.creationTimestamp) : '-'}
+                </span>
+              </div>
+              <Show when={isExpanded}>
+                <div class="px-4 pb-3 ml-8">
+                  <Show when={props.cmData[key]} fallback={
+                    <div class="text-xs text-text-dim animate-pulse py-2">Loading...</div>
+                  }>
+                    <div class="rounded-md bg-white/[0.02] overflow-hidden">
+                      <For each={Object.entries(props.cmData[key]?.data || {})}>
+                        {([k, v]) => (
+                          <div class="border-b border-white/5 last:border-0">
+                            <div class="px-3 py-1.5 text-xs font-mono text-neon-cyan">{k}</div>
+                            <pre class="px-3 pb-2 text-[11px] text-text-muted font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto">
+                              {String(v)}
+                            </pre>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+          );
+        }}
+      </For>
+    </div>
+  </Show>
+);
+
+// Secrets Table
+const SecretsTable: Component<{
+  secrets: any[];
+  expanded: Set<string>;
+  secretData: Record<string, any>;
+  revealedKeys: Set<string>;
+  onToggle: (ns: string, name: string) => void;
+  onRevealKey: (key: string) => void;
+}> = (props) => (
+  <Show
+    when={props.secrets.length > 0}
+    fallback={
+      <div class="flex h-48 items-center justify-center text-text-dim">
+        <div class="text-center">
+          <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <p>No secrets found</p>
+        </div>
+      </div>
+    }
+  >
+    <div class="divide-y divide-white/5">
+      <For each={props.secrets}>
+        {(secret) => {
+          const key = `${secret.metadata?.namespace}/${secret.metadata?.name}`;
+          const isExpanded = props.expanded.has(key);
+          const secretType = secret.type || 'Opaque';
+          const dataKeys = Object.keys(secret.data || {});
+
+          return (
+            <div>
+              <div
+                class="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={() => props.onToggle(secret.metadata?.namespace || 'default', secret.metadata?.name || '')}
+              >
+                <span class={`text-[10px] text-text-dim transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                  &#9656;
+                </span>
+                <span class="font-medium text-text-main text-sm group-hover:text-neon-cyan transition-colors">
+                  {secret.metadata?.name}
+                </span>
+                <span class="text-text-dim text-xs">{secret.metadata?.namespace}</span>
+                <span class="text-[10px] font-mono text-text-dim px-1.5 py-0.5 rounded bg-white/5">
+                  {secretType}
+                </span>
+                <span class="text-text-dim/50 text-xs ml-auto">{dataKeys.length} keys</span>
+                <span class="text-text-muted text-xs">
+                  {secret.metadata?.creationTimestamp ? formatRelativeTime(secret.metadata.creationTimestamp) : '-'}
+                </span>
+              </div>
+              <Show when={isExpanded}>
+                <div class="px-4 pb-3 ml-8">
+                  <Show when={props.secretData[key]} fallback={
+                    <div class="text-xs text-text-dim animate-pulse py-2">Loading...</div>
+                  }>
+                    <div class="rounded-md bg-white/[0.02] overflow-hidden">
+                      <For each={Object.entries(props.secretData[key]?.data || {})}>
+                        {([k, v]) => {
+                          const revealKey = `${key}/${k}`;
+                          const isRevealed = props.revealedKeys.has(revealKey);
+                          return (
+                            <div class="border-b border-white/5 last:border-0 px-3 py-1.5">
+                              <div class="flex items-center gap-2">
+                                <span class="text-xs font-mono text-neon-cyan">{k}</span>
+                                <button
+                                  class="text-[10px] text-text-dim hover:text-neon-cyan transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    props.onRevealKey(revealKey);
+                                  }}
+                                >
+                                  {isRevealed ? 'Hide' : 'Reveal'}
+                                </button>
+                              </div>
+                              <div class="text-[11px] text-text-muted font-mono mt-0.5">
+                                {isRevealed ? String(v) : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+          );
+        }}
+      </For>
+    </div>
   </Show>
 );
 

@@ -85,6 +85,13 @@ export const k8s = {
         )
         .slice(0, limit);
     }),
+  getPVCs: (ns?: string) => api<any>(`/k8s/pvcs${ns ? `?ns=${ns}` : ""}`),
+  getPVs: () => api<any>("/k8s/pvs"),
+  getStorageClasses: () => api<any>("/k8s/storageclasses"),
+  getConfigMaps: (ns?: string) => api<any>(`/k8s/configmaps${ns ? `?ns=${ns}` : ""}`),
+  getConfigMap: (ns: string, name: string) => api<any>(`/k8s/configmaps/${ns}/${name}`),
+  getSecrets: (ns?: string) => api<any>(`/k8s/secrets${ns ? `?ns=${ns}` : ""}`),
+  getSecret: (ns: string, name: string) => api<any>(`/k8s/secrets/${ns}/${name}`),
 };
 
 export const prom = {
@@ -128,6 +135,8 @@ export const litellm = {
   metrics: () => api<any>("/litellm/metrics"),
   modelMetrics: (model: string) =>
     api<any>(`/litellm/metrics/${encodeURIComponent(model)}`),
+  models: () => api<any>("/litellm/models"),
+  router: () => api<any>("/litellm/router"),
 };
 
 export const langfuse = {
@@ -239,6 +248,8 @@ export const modelsApi = {
     const apiBase = isPublicView ? "/flexdeck/api" : "/api";
     return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
   },
+  crdEvents: (ns: string, name: string) =>
+    api<{ events: import("./types").ModelEvent[]; model: string; namespace: string }>(`/models/crd/${ns}/${name}/events`),
 };
 
 export const agentsApi = {
@@ -451,4 +462,21 @@ export const fluxApi = {
         body: JSON.stringify({ suspend }),
       },
     ),
+  helmReleaseValues: (ns: string, name: string) =>
+    api<any>(`/flux/helmreleases/${ns}/${name}/values`),
+  helmReleaseHistory: (ns: string, name: string) =>
+    api<any>(`/flux/helmreleases/${ns}/${name}/history`),
+};
+
+export const alertmanagerApi = {
+  alerts: () => api<import("./types").AlertmanagerAlert[]>("/alertmanager/alerts"),
+  silences: () => api<import("./types").AlertmanagerSilence[]>("/alertmanager/silences"),
+  createSilence: (silence: any) =>
+    api<any>("/alertmanager/silences", {
+      method: "POST",
+      body: JSON.stringify(silence),
+    }),
+  deleteSilence: (id: string) =>
+    api<any>(`/alertmanager/silences/${id}`, { method: "DELETE" }),
+  status: () => api<any>("/alertmanager/status"),
 };

@@ -125,6 +125,13 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/metrics/pods", h.K8sPodMetrics)
 			r.Get("/metrics/gpu/models", h.K8sGPUByModel)
 			r.Get("/watch-sse", h.K8sWatchSSE)
+			r.Get("/pvcs", h.K8sPVCs)
+			r.Get("/pvs", h.K8sPVs)
+			r.Get("/storageclasses", h.K8sStorageClasses)
+			r.Get("/configmaps", h.K8sConfigMaps)
+			r.Get("/configmaps/{ns}/{name}", h.K8sConfigMapDetail)
+			r.Get("/secrets", h.K8sSecrets)
+			r.Get("/secrets/{ns}/{name}", h.K8sSecretDetail)
 
 			if !cfg.K8s.ReadOnly {
 				r.With(apimiddleware.LogFunc("k8s.scale")).Post("/deployments/{ns}/{name}/scale", h.K8sScale)
@@ -161,6 +168,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/kustomizations", h.FluxListKustomizations)
 			r.Get("/helmreleases", h.FluxListHelmReleases)
 			r.Get("/sources", h.FluxListSources)
+			r.Get("/helmreleases/{namespace}/{name}/values", h.FluxHelmReleaseValues)
+			r.Get("/helmreleases/{namespace}/{name}/history", h.FluxHelmReleaseHistory)
 			r.With(apimiddleware.LogFunc("flux.reconcile")).Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
 			if !cfg.K8s.ReadOnly {
 				r.With(apimiddleware.LogFunc("flux.suspend")).Post("/suspend/{kind}/{namespace}/{name}", h.FluxSuspend)
@@ -171,6 +180,16 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/health", h.LiteLLMHealth)
 			r.Get("/metrics", h.LiteLLMMetrics)
 			r.Get("/metrics/{model}", h.LiteLLMModelMetrics)
+			r.Get("/models", h.LiteLLMModels)
+			r.Get("/router", h.LiteLLMRouter)
+		})
+
+		r.Route("/api/alertmanager", func(r chi.Router) {
+			r.Get("/alerts", h.AlertmanagerAlerts)
+			r.Get("/silences", h.AlertmanagerSilences)
+			r.Get("/status", h.AlertmanagerStatus)
+			r.With(apimiddleware.LogFunc("alertmanager.silence.create")).Post("/silences", h.AlertmanagerCreateSilence)
+			r.With(apimiddleware.LogFunc("alertmanager.silence.delete")).Delete("/silences/{id}", h.AlertmanagerDeleteSilence)
 		})
 
 		r.Route("/api/langfuse", func(r chi.Router) {
@@ -187,6 +206,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Post("/discover", h.ModelsDiscoverK8s) // Discover models from K8s deployments
 			r.Get("/crd", h.ModelsCRD)               // Query flexinfer.ai/v1alpha2 Model CRDs directly
 			r.Get("/crd/watch-sse", h.ModelsCRDWatchSSE)
+			r.Get("/crd/{namespace}/{name}/events", h.ModelsCRDEvents)
 			r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
 

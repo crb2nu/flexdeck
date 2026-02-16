@@ -125,6 +125,41 @@ func (c *Client) ListModels(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+// LiteLLMModelInfo represents model info from the LiteLLM admin API.
+type LiteLLMModelInfo struct {
+	ModelName     string         `json:"model_name"`
+	LiteLLMParams map[string]any `json:"litellm_params"`
+	ModelInfo     map[string]any `json:"model_info"`
+}
+
+// ModelInfo returns model info from the LiteLLM /model/info endpoint.
+func (c *Client) ModelInfo(ctx context.Context) ([]LiteLLMModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/model/info", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	c.addAuthHeader(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []LiteLLMModelInfo `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode model info: %w", err)
+	}
+
+	return result.Data, nil
+}
+
 // parsePrometheusMetrics parses Prometheus text format into ModelMetrics
 func parsePrometheusMetrics(body io.Reader) ([]ModelMetrics, error) {
 	var parser expfmt.TextParser

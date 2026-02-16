@@ -2,6 +2,7 @@ import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo
 import { createStore } from 'solid-js/store';
 
 const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
+const Alerts = lazy(() => import('../Alerts'));
 
 interface MetricValue {
   time: number;
@@ -17,7 +18,7 @@ interface MetricPanel {
 }
 
 const Metrics: Component = () => {
-  const [metricsTab, setMetricsTab] = createSignal<'prometheus' | 'grafana'>('prometheus');
+  const [metricsTab, setMetricsTab] = createSignal<'prometheus' | 'grafana' | 'alerts'>('prometheus');
 
   const [panels, setPanels] = createStore<MetricPanel[]>([
     {
@@ -170,6 +171,16 @@ const Metrics: Component = () => {
             >
               Grafana
             </button>
+            <button
+              onClick={() => setMetricsTab('alerts')}
+              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                metricsTab() === 'alerts'
+                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
+                  : 'text-text-muted hover:text-text-main'
+              }`}
+            >
+              Alerts
+            </button>
           </div>
           <Show when={metricsTab() === 'prometheus' && lastUpdated()}>
             <span class="text-xs text-text-dim">
@@ -243,6 +254,21 @@ const Metrics: Component = () => {
             </div>
           }>
             <GrafanaDashboards />
+          </Suspense>
+        </ErrorBoundary>
+      </Show>
+
+      {/* Alerts tab content */}
+      <Show when={metricsTab() === 'alerts'}>
+        <ErrorBoundary fallback={(err) => (
+          <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+            {err.message}
+          </div>
+        )}>
+          <Suspense fallback={
+            <div class="glass-panel p-4 text-text-dim animate-pulse">Loading alerts...</div>
+          }>
+            <Alerts />
           </Suspense>
         </ErrorBoundary>
       </Show>

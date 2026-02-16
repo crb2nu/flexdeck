@@ -64,6 +64,9 @@ type Config struct {
 
 	// Grafana
 	Grafana GrafanaConfig
+
+	// Alertmanager
+	Alertmanager AlertmanagerConfig
 }
 
 type K8sConfig struct {
@@ -158,6 +161,11 @@ type LangfuseConfig struct {
 	URL       string // Langfuse web API URL
 	PublicKey string // Basic auth public key
 	SecretKey string // Basic auth secret key
+}
+
+type AlertmanagerConfig struct {
+	Disabled bool
+	URL      string
 }
 
 func Load() (*Config, error) {
@@ -257,6 +265,11 @@ func Load() (*Config, error) {
 			Disabled: parseBool(getEnv("GRAFANA_DISABLED", "false")),
 			URL:      getEnv("GRAFANA_URL", "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"),
 			Token:    getEnv("GRAFANA_TOKEN", ""),
+		},
+
+		Alertmanager: AlertmanagerConfig{
+			Disabled: parseBool(getEnv("ALERTMANAGER_DISABLED", "false")),
+			URL:      getEnv("ALERTMANAGER_URL", "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"),
 		},
 
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),

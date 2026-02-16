@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -889,6 +890,41 @@ func (h *Handler) invalidateCRDCache(ctx context.Context, namespace string) {
 	h.cache.Invalidate(ctx, fmt.Sprintf("k8s:pods:%s", namespace))
 	h.cache.Invalidate(ctx, fmt.Sprintf("k8s:deployments:%s", namespace))
 	h.cache.Invalidate(ctx, "topology:public")
+}
+
+// ModelsCRDEvents returns K8s events for a specific FlexInfer Model CRD.
+func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	cacheKey := fmt.Sprintf("models:events:%s:%s", namespace, name)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(r.Context(), cacheKey, 15*time.Second, func() (any, error) {
+			return h.k8s.GetFlexInferModelEvents(r.Context(), namespace, name)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	events, err := h.k8s.GetFlexInferModelEvents(r.Context(), namespace, name)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"events":    events,
+		"model":     name,
+		"namespace": namespace,
+	})
 }
 
 // ModelsCRD queries flexinfer.ai/v1alpha2 Model CRDs directly from K8s.

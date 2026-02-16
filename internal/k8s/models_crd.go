@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,6 +133,17 @@ type FlexInferKVCacheStatus struct {
 	Pressure         bool   `json:"pressure,omitempty"`
 	LastPressureTime string `json:"lastPressureTime,omitempty"`
 	LastAction       string `json:"lastAction,omitempty"`
+}
+
+// ModelEvent represents a K8s event for a FlexInfer Model CRD.
+type ModelEvent struct {
+	Type           string `json:"type"`
+	Reason         string `json:"reason"`
+	Message        string `json:"message"`
+	FirstTimestamp string `json:"firstTimestamp"`
+	LastTimestamp   string `json:"lastTimestamp"`
+	Count          int32  `json:"count"`
+	Source         string `json:"source,omitempty"`
 }
 
 var modelGVR = schema.GroupVersionResource{
@@ -302,4 +314,45 @@ func parseModelList(list *unstructured.UnstructuredList) ([]FlexInferModel, erro
 		models = append(models, *model)
 	}
 	return models, nil
+}
+
+// GetFlexInferModelEvents returns K8s events for a specific FlexInfer Model CRD.
+func (c *Client) GetFlexInferModelEvents(ctx context.Context, namespace, modelName string) ([]ModelEvent, error) {
+	eventList, err := c.clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s", modelName),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list events: %w", err)
+	}
+
+	var events []ModelEvent
+	for _, e := range eventList.Items {
+		if e.InvolvedObject.Kind != "Model" {
+			continue
+		}
+		source := ""
+		if e.Source.Component != "" {
+			source = e.Source.Component
+		}
+		events = append(events, ModelEvent{
+			Type:           e.Type,
+			Reason:         e.Reason,
+			Message:        e.Message,
+			FirstTimestamp: e.FirstTimestamp.Format("2006-01-02T15:04:05Z"),
+			LastTimestamp:   e.LastTimestamp.Format("2006-01-02T15:04:05Z"),
+			Count:          e.Count,
+			Source:         source,
+		})
+	}
+
+	// Sort by lastTimestamp desc
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].LastTimestamp > events[j].LastTimestamp
+	})
+
+	if len(events) > 50 {
+		events = events[:50]
+	}
+
+	return events, nil
 }

@@ -1,11 +1,15 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo, ErrorBoundary } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { RegisteredModel, ModelSearchResult, FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
 
-type Tab = 'controller' | 'registry' | 'search';
+const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
+const ModelComparison = lazy(() => import('./ModelComparison'));
+const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
+
+type Tab = 'controller' | 'registry' | 'search' | 'router' | 'compare';
 
 const Models: Component = () => {
   const [activeTab, setActiveTab] = createSignal<Tab>('controller');
@@ -206,6 +210,8 @@ const Models: Component = () => {
               <TabButton active={activeTab() === 'controller'} onClick={() => setActiveTab('controller')} label="Controller" count={crdModels.length} color="neon-cyan" />
               <TabButton active={activeTab() === 'registry'} onClick={() => setActiveTab('registry')} label="Registry" count={registryModels.length} color="neon-purple" />
               <TabButton active={activeTab() === 'search'} onClick={() => setActiveTab('search')} label="Search" color="status-ok" />
+              <TabButton active={activeTab() === 'router'} onClick={() => setActiveTab('router')} label="Router" color="neon-cyan" />
+              <TabButton active={activeTab() === 'compare'} onClick={() => setActiveTab('compare')} label="Compare" color="neon-purple" />
             </div>
           </div>
           <div class="flex items-center gap-3">
@@ -341,6 +347,24 @@ const Models: Component = () => {
             </div>
           </Show>
         </Match>
+
+        {/* Router Tab */}
+        <Match when={activeTab() === 'router'}>
+          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Router panel error: {err.message}</div>}>
+            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading router...</div>}>
+              <LiteLLMRouterPanel />
+            </Suspense>
+          </ErrorBoundary>
+        </Match>
+
+        {/* Compare Tab */}
+        <Match when={activeTab() === 'compare'}>
+          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Compare error: {err.message}</div>}>
+            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading comparison...</div>}>
+              <ModelComparison />
+            </Suspense>
+          </ErrorBoundary>
+        </Match>
       </Switch>
       </ErrorBoundary>
     </div>
@@ -421,6 +445,7 @@ const CRDModelCard: Component<{
   onScaleToZero: () => void;
   onRestart: () => void;
 }> = (props) => {
+  const [showEvents, setShowEvents] = createSignal(false);
   const phase = () => props.model.status?.phase || 'Unknown';
   const gpu = () => props.model.status?.gpu;
   const metrics = () => props.model.status?.metrics;
@@ -723,7 +748,24 @@ const CRDModelCard: Component<{
         >
           {props.actionLoading === `${actionKey()}/restart` ? '...' : 'Restart'}
         </button>
+        <button
+          onClick={() => setShowEvents(!showEvents())}
+          class={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            showEvents()
+              ? 'bg-neon-cyan/20 text-neon-cyan'
+              : 'bg-white/10 text-text-muted hover:bg-white/20'
+          }`}
+        >
+          Events
+        </button>
       </div>
+
+      {/* Events Timeline */}
+      <Show when={showEvents()}>
+        <Suspense fallback={<div class="py-2 text-xs text-text-dim animate-pulse">Loading events...</div>}>
+          <ModelEventsTimeline namespace={props.model.namespace} name={props.model.name} />
+        </Suspense>
+      </Show>
     </div>
   );
 };
