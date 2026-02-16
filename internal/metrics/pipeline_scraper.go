@@ -157,28 +157,38 @@ type gitlabJob struct {
 }
 
 func (ps *PipelineScraper) fetchProjects(ctx context.Context) ([]gitlabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=50", ps.cfg.URL)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("PRIVATE-TOKEN", ps.cfg.Token)
+	var all []gitlabProject
+	for page := 1; page <= 10; page++ {
+		url := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=100&page=%d", ps.cfg.URL, page)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("PRIVATE-TOKEN", ps.cfg.Token)
 
-	resp, err := ps.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+		resp, err := ps.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("projects API status %d", resp.StatusCode)
-	}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("projects API status %d", resp.StatusCode)
+		}
 
-	var projects []gitlabProject
-	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-		return nil, err
+		var projects []gitlabProject
+		if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		all = append(all, projects...)
+		if len(projects) < 100 {
+			break // last page
+		}
 	}
-	return projects, nil
+	return all, nil
 }
 
 func (ps *PipelineScraper) fetchPipelines(ctx context.Context, projectID int) ([]gitlabPipeline, error) {
