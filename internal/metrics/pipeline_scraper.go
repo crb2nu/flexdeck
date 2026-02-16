@@ -64,7 +64,7 @@ func (ps *PipelineScraper) Stop() {
 }
 
 func (ps *PipelineScraper) scrape(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	scrapeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	projects, err := ps.fetchProjects(scrapeCtx)
