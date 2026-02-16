@@ -19,6 +19,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
+	"github.com/flexinfer/flexdeck/internal/rbac"
 )
 
 func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) chi.Router {
@@ -38,6 +39,23 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	r.Use(corsMiddleware(cfg.AllowedOrigins))
 
 	authMiddleware := auth.NewMiddleware(cfg)
+
+	// Create audit logger with optional Redis persistence
+	var auditLogger *apimiddleware.AuditLogger
+	if deps != nil && deps.AuditStore != nil {
+		auditLogger = apimiddleware.NewAuditLogger(nil, deps.AuditStore)
+	}
+
+	// Create RBAC middleware when enabled
+	var rbacMiddleware *rbac.Middleware
+	if !cfg.RBAC.Disabled && deps != nil && deps.RBACRegistry != nil {
+		rbacMiddleware = rbac.NewMiddleware(
+			deps.RBACRegistry,
+			cfg.TokenCookie,
+			cfg.CookieSecure,
+			cfg.TokenCookieTTL,
+		)
+	}
 
 	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)
 
@@ -76,8 +94,16 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/models/status", h.PublicModelsStatus)
 	})
 
+	// Helper: audit-aware LogFunc — uses persistent audit logger when available
+	logFunc := apimiddleware.LogFunc
+	if auditLogger != nil {
+		logFunc = auditLogger.Log
+	}
+
 	r.Group(func(r chi.Router) {
-		if cfg.Token != "" {
+		if rbacMiddleware != nil {
+			r.Use(rbacMiddleware.Handler)
+		} else if cfg.Token != "" {
 			r.Use(authMiddleware.Handler)
 		}
 
@@ -86,9 +112,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
 		r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
-		r.With(apimiddleware.LogFunc("ci.retry")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
-		r.With(apimiddleware.LogFunc("ci.cancel")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
-		r.With(apimiddleware.LogFunc("ci.play")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
+		r.With(logFunc("ci.retry")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
+		r.With(logFunc("ci.cancel")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
+		r.With(logFunc("ci.play")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
 
 		// Pipeline trends & history
 		r.Get("/api/ci/trends", h.GetAllPipelineTrends)
@@ -97,9 +123,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 		// Pipeline-level actions
 		r.Get("/api/ci/projects/{id}/pipelines", h.ListProjectPipelines)
-		r.With(apimiddleware.LogFunc("ci.pipeline.retry")).Post("/api/ci/projects/{id}/pipelines/{pid}/retry", h.RetryPipeline)
-		r.With(apimiddleware.LogFunc("ci.pipeline.cancel")).Post("/api/ci/projects/{id}/pipelines/{pid}/cancel", h.CancelPipeline)
-		r.With(apimiddleware.LogFunc("ci.pipeline.trigger")).Post("/api/ci/projects/{id}/pipelines", h.TriggerPipeline)
+		r.With(logFunc("ci.pipeline.retry")).Post("/api/ci/projects/{id}/pipelines/{pid}/retry", h.RetryPipeline)
+		r.With(logFunc("ci.pipeline.cancel")).Post("/api/ci/projects/{id}/pipelines/{pid}/cancel", h.CancelPipeline)
+		r.With(logFunc("ci.pipeline.trigger")).Post("/api/ci/projects/{id}/pipelines", h.TriggerPipeline)
 
 		r.Route("/api/grafana", func(r chi.Router) {
 			r.Get("/dashboards", h.GrafanaDashboards)
@@ -134,8 +160,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/secrets/{ns}/{name}", h.K8sSecretDetail)
 
 			if !cfg.K8s.ReadOnly {
-				r.With(apimiddleware.LogFunc("k8s.scale")).Post("/deployments/{ns}/{name}/scale", h.K8sScale)
-				r.With(apimiddleware.LogFunc("k8s.restart")).Post("/deployments/{ns}/{name}/restart", h.K8sRestart)
+				r.With(logFunc("k8s.scale")).Post("/deployments/{ns}/{name}/scale", h.K8sScale)
+				r.With(logFunc("k8s.restart")).Post("/deployments/{ns}/{name}/restart", h.K8sRestart)
 			}
 		})
 
@@ -170,9 +196,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/sources", h.FluxListSources)
 			r.Get("/helmreleases/{namespace}/{name}/values", h.FluxHelmReleaseValues)
 			r.Get("/helmreleases/{namespace}/{name}/history", h.FluxHelmReleaseHistory)
-			r.With(apimiddleware.LogFunc("flux.reconcile")).Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
+			r.With(logFunc("flux.reconcile")).Post("/reconcile/{kind}/{namespace}/{name}", h.FluxReconcile)
 			if !cfg.K8s.ReadOnly {
-				r.With(apimiddleware.LogFunc("flux.suspend")).Post("/suspend/{kind}/{namespace}/{name}", h.FluxSuspend)
+				r.With(logFunc("flux.suspend")).Post("/suspend/{kind}/{namespace}/{name}", h.FluxSuspend)
 			}
 		})
 
@@ -188,8 +214,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/alerts", h.AlertmanagerAlerts)
 			r.Get("/silences", h.AlertmanagerSilences)
 			r.Get("/status", h.AlertmanagerStatus)
-			r.With(apimiddleware.LogFunc("alertmanager.silence.create")).Post("/silences", h.AlertmanagerCreateSilence)
-			r.With(apimiddleware.LogFunc("alertmanager.silence.delete")).Delete("/silences/{id}", h.AlertmanagerDeleteSilence)
+			r.With(logFunc("alertmanager.silence.create")).Post("/silences", h.AlertmanagerCreateSilence)
+			r.With(logFunc("alertmanager.silence.delete")).Delete("/silences/{id}", h.AlertmanagerDeleteSilence)
 		})
 
 		r.Route("/api/flexinfer", func(r chi.Router) {
@@ -205,8 +231,8 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/workflows", h.HUDWorkflows)
 			r.Get("/timeline", h.HUDTimeline)
 			r.Get("/events", h.HUDEventsSSE)
-			r.With(apimiddleware.LogFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
-			r.With(apimiddleware.LogFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)
+			r.With(logFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
+			r.With(logFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)
 		})
 
 		r.Route("/api/langfuse", func(r chi.Router) {
@@ -231,9 +257,9 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Get("/search/civitai", h.ModelsSearchCivitAI)
 
 			if !cfg.K8s.ReadOnly {
-				r.With(apimiddleware.LogFunc("models.crd.scale")).Post("/crd/{namespace}/{name}/scale", h.ModelsCRDScale)
-				r.With(apimiddleware.LogFunc("models.crd.activate")).Post("/crd/{namespace}/{name}/activate", h.ModelsCRDActivate)
-				r.With(apimiddleware.LogFunc("models.crd.restart")).Post("/crd/{namespace}/{name}/restart", h.ModelsCRDRestart)
+				r.With(logFunc("models.crd.scale")).Post("/crd/{namespace}/{name}/scale", h.ModelsCRDScale)
+				r.With(logFunc("models.crd.activate")).Post("/crd/{namespace}/{name}/activate", h.ModelsCRDActivate)
+				r.With(logFunc("models.crd.restart")).Post("/crd/{namespace}/{name}/restart", h.ModelsCRDRestart)
 			}
 
 			r.Get("/{id}", h.ModelsGet)
@@ -278,6 +304,43 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			r.Post("/{id}/stream", h.AgentsStream)
 			r.Get("/{id}/usage", h.AgentsUsage)
 		})
+
+		// RBAC routes
+		if !cfg.RBAC.Disabled && deps != nil && deps.RBACRegistry != nil {
+			r.Route("/api/rbac", func(r chi.Router) {
+				r.Get("/me", h.RBACCurrentUser)
+				r.Get("/roles", h.RBACRoles)
+				r.Group(func(r chi.Router) {
+					r.Use(rbac.RequirePermission(rbac.PermAdmin))
+					r.Get("/users", h.RBACListUsers)
+					r.Get("/users/{id}", h.RBACGetUser)
+					r.With(logFunc("rbac.user.create")).Post("/users", h.RBACCreateUser)
+					r.With(logFunc("rbac.user.update")).Put("/users/{id}", h.RBACUpdateUser)
+					r.With(logFunc("rbac.user.delete")).Delete("/users/{id}", h.RBACDeleteUser)
+				})
+			})
+		}
+
+		// Audit routes
+		if !cfg.Audit.Disabled && deps != nil && deps.AuditStore != nil {
+			r.Route("/api/audit", func(r chi.Router) {
+				r.Get("/", h.AuditList)
+				r.Get("/stats", h.AuditStats)
+			})
+		}
+
+		// Multi-cluster routes
+		if !cfg.MultiCluster.Disabled && deps != nil && deps.ClusterRegistry != nil {
+			r.Route("/api/clusters", func(r chi.Router) {
+				r.Get("/", h.ClustersList)
+				r.Get("/{id}", h.ClustersGet)
+				r.With(logFunc("cluster.create")).Post("/", h.ClustersCreate)
+				r.With(logFunc("cluster.update")).Put("/{id}", h.ClustersUpdate)
+				r.With(logFunc("cluster.delete")).Delete("/{id}", h.ClustersDelete)
+				r.With(logFunc("cluster.test")).Post("/{id}/test", h.ClustersTest)
+				r.With(logFunc("cluster.default")).Post("/{id}/default", h.ClustersSetDefault)
+			})
+		}
 	})
 
 	fileServer(r, "/", cfg.StaticDir)

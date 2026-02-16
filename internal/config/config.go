@@ -67,6 +67,15 @@ type Config struct {
 
 	// Alertmanager
 	Alertmanager AlertmanagerConfig
+
+	// RBAC
+	RBAC RBACConfig
+
+	// Audit
+	Audit AuditConfig
+
+	// Multi-Cluster
+	MultiCluster MultiClusterConfig
 }
 
 type K8sConfig struct {
@@ -172,6 +181,22 @@ type FlexInferProxyConfig struct {
 type AlertmanagerConfig struct {
 	Disabled bool
 	URL      string
+}
+
+type RBACConfig struct {
+	Disabled   bool
+	UsersPath  string // JSON file for user/role persistence
+	AdminToken string // Bootstrap admin token (creates admin user on first run)
+}
+
+type AuditConfig struct {
+	Disabled bool
+	TTLDays  int // How long to retain audit entries (default: 90)
+}
+
+type MultiClusterConfig struct {
+	Disabled     bool
+	RegistryPath string // JSON file for cluster registry persistence
 }
 
 func Load() (*Config, error) {
@@ -280,6 +305,22 @@ func Load() (*Config, error) {
 		Alertmanager: AlertmanagerConfig{
 			Disabled: parseBool(getEnv("ALERTMANAGER_DISABLED", "false")),
 			URL:      getEnv("ALERTMANAGER_URL", "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"),
+		},
+
+		RBAC: RBACConfig{
+			Disabled:   parseBool(getEnv("RBAC_DISABLED", "true")),
+			UsersPath:  getEnv("RBAC_USERS_PATH", "/data/rbac-users.json"),
+			AdminToken: getEnv("RBAC_ADMIN_TOKEN", ""),
+		},
+
+		Audit: AuditConfig{
+			Disabled: parseBool(getEnv("AUDIT_DISABLED", "true")),
+			TTLDays:  parseInt(getEnv("AUDIT_TTL_DAYS", "90")),
+		},
+
+		MultiCluster: MultiClusterConfig{
+			Disabled:     parseBool(getEnv("MULTICLUSTER_DISABLED", "true")),
+			RegistryPath: getEnv("CLUSTERS_REGISTRY_PATH", "/data/clusters.json"),
 		},
 
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),

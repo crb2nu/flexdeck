@@ -12,11 +12,14 @@ import (
 	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/api"
 	"github.com/flexinfer/flexdeck/internal/api/handlers"
+	"github.com/flexinfer/flexdeck/internal/audit"
+	"github.com/flexinfer/flexdeck/internal/cluster"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
+	"github.com/flexinfer/flexdeck/internal/rbac"
 )
 
 func main() {
@@ -136,6 +139,45 @@ func main() {
 		}
 	} else {
 		slog.Info("agents subsystem disabled")
+	}
+
+	// Initialize RBAC subsystem
+	if !cfg.RBAC.Disabled {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+		rbacRegistry, err := rbac.NewRegistry(cfg.RBAC)
+		if err != nil {
+			slog.Warn("failed to create RBAC registry", "error", err)
+		} else {
+			handlerDeps.RBACRegistry = rbacRegistry
+			slog.Info("RBAC registry initialized", "path", cfg.RBAC.UsersPath)
+		}
+	}
+
+	// Initialize audit store (requires Redis)
+	if !cfg.Audit.Disabled && metricsStore != nil {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+		auditStore := audit.NewStore(metricsStore.RedisClient(), cfg.Audit.TTLDays)
+		handlerDeps.AuditStore = auditStore
+		slog.Info("audit store initialized", "ttl_days", cfg.Audit.TTLDays)
+	}
+
+	// Initialize multi-cluster subsystem
+	if !cfg.MultiCluster.Disabled {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+		clusterReg, err := cluster.NewRegistry(cfg.MultiCluster, cfg.K8s)
+		if err != nil {
+			slog.Warn("failed to create cluster registry", "error", err)
+		} else {
+			handlerDeps.ClusterRegistry = clusterReg
+			handlerDeps.ClusterManager = cluster.NewManager(clusterReg)
+			slog.Info("multi-cluster initialized", "path", cfg.MultiCluster.RegistryPath)
+		}
 	}
 
 	// Initialize HUD client and push store (independent of agents registry)

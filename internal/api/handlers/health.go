@@ -71,6 +71,15 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Enabled: !h.cfg.LoomHUD.Disabled,
 				URL:     h.cfg.LoomHUD.URL,
 			},
+			"rbac": {
+				Enabled: !h.cfg.RBAC.Disabled,
+			},
+			"audit": {
+				Enabled: !h.cfg.Audit.Disabled,
+			},
+			"multi_cluster": {
+				Enabled: !h.cfg.MultiCluster.Disabled,
+			},
 		},
 	}
 

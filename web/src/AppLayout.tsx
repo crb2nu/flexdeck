@@ -1,10 +1,11 @@
-import { Component, ParentProps, Show, createSignal, onMount, createEffect, Suspense } from 'solid-js';
+import { Component, ParentProps, Show, createSignal, createMemo, onMount, createEffect, Suspense } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import { healthApi, uiApi } from './lib/api';
 import { healthStore, fetchHealth } from './stores/health';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
 import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
 import SystemCore from './components/Navigation/SystemCore';
+import ClusterSelector from './components/Navigation/ClusterSelector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const AppLayout: Component<ParentProps> = (props) => {
@@ -35,16 +36,27 @@ const AppLayout: Component<ParentProps> = (props) => {
     setLoading(false);
   });
   
-  const navItems = [
-    { label: 'Dashboard', path: '/' },
-    { label: 'Services', path: '/services' },
-    { label: 'Flux', path: '/flux' },
-    { label: 'Pipeline', path: '/pipeline' },
-    { label: 'Logs', path: '/logs' },
-    { label: 'Metrics', path: '/metrics' },
-    { label: 'Models', path: '/models' },
-    { label: 'Agents', path: '/agents' }, 
-  ];
+  const adminEnabled = createMemo(() => {
+    const f = healthStore.features || {};
+    return f.rbac?.enabled || f.audit?.enabled || f.multi_cluster?.enabled;
+  });
+
+  const navItems = createMemo(() => {
+    const items = [
+      { label: 'Dashboard', path: '/' },
+      { label: 'Services', path: '/services' },
+      { label: 'Flux', path: '/flux' },
+      { label: 'Pipeline', path: '/pipeline' },
+      { label: 'Logs', path: '/logs' },
+      { label: 'Metrics', path: '/metrics' },
+      { label: 'Models', path: '/models' },
+      { label: 'Agents', path: '/agents' },
+    ];
+    if (adminEnabled()) {
+      items.push({ label: 'Admin', path: '/admin' });
+    }
+    return items;
+  });
 
   return (
     <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
@@ -71,7 +83,7 @@ const AppLayout: Component<ParentProps> = (props) => {
 
           {/* Navigation */}
           <nav class="hidden md:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
-            {navItems.map((item) => (
+            {navItems().map((item) => (
               <A
                 href={item.path}
                 class="rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 hover:text-white"
@@ -93,6 +105,7 @@ const AppLayout: Component<ParentProps> = (props) => {
                 <span class="opacity-50">Command</span>
              </div>
 
+            <ClusterSelector />
             <SystemCore />
           </div>
         </div>

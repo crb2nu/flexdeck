@@ -1,8 +1,25 @@
+import { createSignal } from "solid-js";
 import { authenticatedFetch } from "../stores/auth";
 
 interface ApiError {
   error: string;
   message?: string;
+}
+
+// Multi-cluster: active cluster ID persisted in localStorage
+export const [activeClusterId, setActiveClusterId] = createSignal(
+  typeof localStorage !== "undefined"
+    ? localStorage.getItem("flexdeck_cluster") || ""
+    : "",
+);
+
+export function switchCluster(id: string): void {
+  if (id) {
+    localStorage.setItem("flexdeck_cluster", id);
+  } else {
+    localStorage.removeItem("flexdeck_cluster");
+  }
+  setActiveClusterId(id);
 }
 
 export class ApiRequestError extends Error {
@@ -25,10 +42,20 @@ export async function api<T>(
     window.location.hostname === "www.flexinfer.ai";
   const apiBase = isPublicView ? "/flexdeck/api" : "/api";
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Attach multi-cluster header if a cluster is selected
+  const clusterId = activeClusterId();
+  if (clusterId) {
+    headers["X-Cluster-ID"] = clusterId;
+  }
+
   const response = await authenticatedFetch(`${apiBase}${endpoint}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...headers,
       ...options.headers,
     },
   });
@@ -510,4 +537,86 @@ export const alertmanagerApi = {
   deleteSilence: (id: string) =>
     api<any>(`/alertmanager/silences/${id}`, { method: "DELETE" }),
   status: () => api<any>("/alertmanager/status"),
+};
+
+export const rbacApi = {
+  me: () => api<import("./types").RBACUser>("/rbac/me"),
+  roles: () => api<import("./types").RBACRole[]>("/rbac/roles"),
+  listUsers: () => api<import("./types").RBACUser[]>("/rbac/users"),
+  getUser: (id: string) => api<import("./types").RBACUser>(`/rbac/users/${id}`),
+  createUser: (data: { username: string; role: string }) =>
+    api<import("./types").RBACUser & { token: string }>("/rbac/users", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateUser: (
+    id: string,
+    data: Partial<{ username: string; role: string; disabled: boolean }>,
+  ) =>
+    api<import("./types").RBACUser>(`/rbac/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteUser: (id: string) =>
+    api<void>(`/rbac/users/${id}`, { method: "DELETE" }),
+};
+
+export const auditApi = {
+  list: (params?: {
+    since?: string;
+    until?: string;
+    action?: string;
+    user?: string;
+    offset?: number;
+    limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.since) qs.set("since", params.since);
+    if (params?.until) qs.set("until", params.until);
+    if (params?.action) qs.set("action", params.action);
+    if (params?.user) qs.set("user", params.user);
+    if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    return api<{ entries: import("./types").AuditEntry[]; total: number }>(
+      `/audit?${qs}`,
+    );
+  },
+  stats: () => api<import("./types").AuditStats>("/audit/stats"),
+};
+
+export const clustersApi = {
+  list: () => api<import("./types").ClusterInfo[]>("/clusters"),
+  get: (id: string) => api<import("./types").ClusterInfo>(`/clusters/${id}`),
+  create: (data: {
+    name: string;
+    host: string;
+    token: string;
+    namespace?: string;
+  }) =>
+    api<import("./types").ClusterInfo>("/clusters", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: string,
+    data: Partial<{
+      name: string;
+      host: string;
+      token: string;
+      namespace: string;
+      readOnly: boolean;
+    }>,
+  ) =>
+    api<import("./types").ClusterInfo>(`/clusters/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    api<void>(`/clusters/${id}`, { method: "DELETE" }),
+  test: (id: string) =>
+    api<{ ok: boolean; error?: string }>(`/clusters/${id}/test`, {
+      method: "POST",
+    }),
+  setDefault: (id: string) =>
+    api<void>(`/clusters/${id}/default`, { method: "POST" }),
 };
