@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { RegisteredModel, ModelSearchResult, FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
@@ -243,6 +243,11 @@ const Models: Component = () => {
         <div class="glass-panel p-4 text-sm text-status-error">{error()}</div>
       </Show>
 
+      <ErrorBoundary fallback={(err) => (
+        <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+          Rendering error: {err.message}
+        </div>
+      )}>
       <Switch>
         {/* Controller (CRD) Tab */}
         <Match when={activeTab() === 'controller'}>
@@ -337,6 +342,7 @@ const Models: Component = () => {
           </Show>
         </Match>
       </Switch>
+      </ErrorBoundary>
     </div>
   );
 };

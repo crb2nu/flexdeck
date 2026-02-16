@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo, lazy, Suspense } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
@@ -232,13 +232,19 @@ const Metrics: Component = () => {
 
       {/* Grafana tab content */}
       <Show when={metricsTab() === 'grafana'}>
-        <Suspense fallback={
-          <div class="flex items-center justify-center py-12">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+        <ErrorBoundary fallback={(err) => (
+          <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+            Failed to load Grafana dashboards: {err.message}
           </div>
-        }>
-          <GrafanaDashboards />
-        </Suspense>
+        )}>
+          <Suspense fallback={
+            <div class="flex items-center justify-center py-12">
+              <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+            </div>
+          }>
+            <GrafanaDashboards />
+          </Suspense>
+        </ErrorBoundary>
       </Show>
     </div>
   );

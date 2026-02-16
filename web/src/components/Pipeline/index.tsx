@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo, lazy, Suspense } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
@@ -26,6 +26,7 @@ const Pipeline: Component = () => {
   const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
 
   // View mode and sorting state for pipeline overview
   const [viewMode, setViewMode] = createSignal<'overview' | 'detail'>('overview');
@@ -145,12 +146,22 @@ const Pipeline: Component = () => {
     }
   });
 
+  const scheduleRefresh = (fn: () => void, delay: number) => {
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id);
+      fn();
+    }, delay);
+    pendingTimeouts.add(id);
+  };
+
   // Cleanup on unmount
   onCleanup(() => {
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;
     }
+    pendingTimeouts.forEach(clearTimeout);
+    pendingTimeouts.clear();
   });
 
   // Format time ago
@@ -217,7 +228,7 @@ const Pipeline: Component = () => {
     setPipelineActionLoading(true);
     try {
       await ciApi.retryPipeline(repo.id, pipeline.id);
-      setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+      scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
     } catch (e) {
       console.error('Failed to retry pipeline', e);
     } finally {
@@ -232,7 +243,7 @@ const Pipeline: Component = () => {
     setPipelineActionLoading(true);
     try {
       await ciApi.cancelPipeline(repo.id, pipeline.id);
-      setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+      scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
     } catch (e) {
       console.error('Failed to cancel pipeline', e);
     } finally {
@@ -246,7 +257,7 @@ const Pipeline: Component = () => {
     setPipelineActionLoading(true);
     try {
       await ciApi.triggerPipeline(repo.id, triggerRef());
-      setTimeout(() => fetchPipelineStatus(repo.id), 2000);
+      scheduleRefresh(() => fetchPipelineStatus(repo.id), 2000);
     } catch (e) {
       console.error('Failed to trigger pipeline', e);
     } finally {
@@ -454,24 +465,36 @@ const Pipeline: Component = () => {
         <div class="flex-1 overflow-hidden relative bg-[#050a14] flex flex-col">
             {/* Trends Tab */}
             <Show when={pageTab() === 'trends'}>
-                <Suspense fallback={
-                    <div class="flex items-center justify-center py-12">
-                        <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                <ErrorBoundary fallback={(err) => (
+                    <div class="glass-panel m-4 p-4 text-sm text-status-error border border-status-error/20">
+                        Failed to load Trends: {err.message}
                     </div>
-                }>
-                    <PipelineTrends />
-                </Suspense>
+                )}>
+                    <Suspense fallback={
+                        <div class="flex items-center justify-center py-12">
+                            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                        </div>
+                    }>
+                        <PipelineTrends />
+                    </Suspense>
+                </ErrorBoundary>
             </Show>
 
             {/* History Tab */}
             <Show when={pageTab() === 'history'}>
-                <Suspense fallback={
-                    <div class="flex items-center justify-center py-12">
-                        <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                <ErrorBoundary fallback={(err) => (
+                    <div class="glass-panel m-4 p-4 text-sm text-status-error border border-status-error/20">
+                        Failed to load History: {err.message}
                     </div>
-                }>
-                    <PipelineHistory repos={repos()} />
-                </Suspense>
+                )}>
+                    <Suspense fallback={
+                        <div class="flex items-center justify-center py-12">
+                            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                        </div>
+                    }>
+                        <PipelineHistory repos={repos()} />
+                    </Suspense>
+                </ErrorBoundary>
             </Show>
 
             {/* Pipelines Tab - Overview Mode */}
@@ -595,7 +618,7 @@ const Pipeline: Component = () => {
                                 const repo = selectedRepo();
                                 if (repo?.id) {
                                     // Delay refresh to allow GitLab to process the action
-                                    setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+                                    scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
                                 }
                             }}
                         />

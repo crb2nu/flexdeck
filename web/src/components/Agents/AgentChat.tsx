@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
@@ -376,33 +376,39 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                                         Generated Interface
                                         <div class="h-px flex-1 bg-gradient-to-l from-neon-cyan/30 to-transparent"></div>
                                     </div>
-                                    <For each={msg.widgets}>
-                                        {(widget) => (
-                                            <>
-                                              <Show when={widget.type === 'chart'}>
-                                                  <ChartWidget data={widget.data} />
-                                              </Show>
-                                              <Show when={widget.type === 'status'}>
-                                                  <StatusWidget data={widget.data} />
-                                              </Show>
-                                              <Show when={widget.type === 'log'}>
-                                                  <LogWidget data={widget.data} />
-                                              </Show>
-                                              <Show when={widget.type === 'action'}>
-                                                  <ActionWidget data={widget.data} />
-                                              </Show>
-                                              <Show when={widget.type === 'deployment'}>
-                                                  <DeploymentWidget data={widget.data} />
-                                              </Show>
-                                              <Show when={widget.type === 'agent-config'}>
-                                                  <div class="bg-black/40 border border-neon-purple/30 rounded-lg p-3">
-                                                      <div class="text-neon-purple text-xs mb-2 font-bold">AGENT CONFIGURATION</div>
-                                                      <pre class="text-[11px] text-text-main overflow-x-auto">{JSON.stringify(widget.data, null, 2)}</pre>
-                                                  </div>
-                                              </Show>
-                                            </>
-                                        )}
-                                    </For>
+                                    <ErrorBoundary fallback={(err) => (
+                                        <div class="text-xs text-status-error bg-status-error/10 rounded p-2">
+                                            Widget render error: {err.message}
+                                        </div>
+                                    )}>
+                                        <For each={msg.widgets}>
+                                            {(widget) => (
+                                                <>
+                                                  <Show when={widget.type === 'chart'}>
+                                                      <ChartWidget data={widget.data} />
+                                                  </Show>
+                                                  <Show when={widget.type === 'status'}>
+                                                      <StatusWidget data={widget.data} />
+                                                  </Show>
+                                                  <Show when={widget.type === 'log'}>
+                                                      <LogWidget data={widget.data} />
+                                                  </Show>
+                                                  <Show when={widget.type === 'action'}>
+                                                      <ActionWidget data={widget.data} />
+                                                  </Show>
+                                                  <Show when={widget.type === 'deployment'}>
+                                                      <DeploymentWidget data={widget.data} />
+                                                  </Show>
+                                                  <Show when={widget.type === 'agent-config'}>
+                                                      <div class="bg-black/40 border border-neon-purple/30 rounded-lg p-3">
+                                                          <div class="text-neon-purple text-xs mb-2 font-bold">AGENT CONFIGURATION</div>
+                                                          <pre class="text-[11px] text-text-main overflow-x-auto">{JSON.stringify(widget.data, null, 2)}</pre>
+                                                      </div>
+                                                  </Show>
+                                                </>
+                                            )}
+                                        </For>
+                                    </ErrorBoundary>
                                 </div>
                             </Show>
 
