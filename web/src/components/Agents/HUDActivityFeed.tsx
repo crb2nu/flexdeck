@@ -2,25 +2,41 @@ import { Component, createSignal, createEffect, onCleanup, For, Show } from 'sol
 import type { HUDTimelineEvent } from '../../lib/types';
 import { hudApi } from '../../lib/api';
 
+const MAX_RECONNECT_DELAY = 30000;
+const BASE_RECONNECT_DELAY = 2000;
+
 const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (props) => {
   const [events, setEvents] = createSignal<HUDTimelineEvent[]>(props.initialEvents || []);
   const [connected, setConnected] = createSignal(false);
 
+  // Merge initial events without replacing SSE events
   createEffect(() => {
     if (props.initialEvents && props.initialEvents.length > 0) {
-      setEvents(props.initialEvents);
+      setEvents(prev => {
+        if (prev.length === 0) return props.initialEvents!;
+        // Merge: deduplicate by timestamp+agentId, keep newest first
+        const seen = new Set(prev.map(e => `${e.timestamp}:${e.agentId}:${e.type}`));
+        const newEvents = props.initialEvents!.filter(
+          e => !seen.has(`${e.timestamp}:${e.agentId}:${e.type}`)
+        );
+        return [...prev, ...newEvents].slice(0, 50);
+      });
     }
   });
 
   createEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectAttempts = 0;
 
     const connect = () => {
       const url = hudApi.eventsSSEUrl();
       eventSource = new EventSource(url);
 
-      eventSource.onopen = () => setConnected(true);
+      eventSource.onopen = () => {
+        setConnected(true);
+        reconnectAttempts = 0;
+      };
 
       eventSource.onmessage = (e) => {
         try {
@@ -34,8 +50,13 @@ const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (prop
       eventSource.onerror = () => {
         setConnected(false);
         eventSource?.close();
-        // Reconnect after 5 seconds
-        reconnectTimer = setTimeout(connect, 5000);
+        // Exponential backoff with jitter, capped at MAX_RECONNECT_DELAY
+        const delay = Math.min(
+          BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) + Math.random() * 1000,
+          MAX_RECONNECT_DELAY
+        );
+        reconnectAttempts++;
+        reconnectTimer = setTimeout(connect, delay);
       };
     };
 

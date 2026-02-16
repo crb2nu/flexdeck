@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// sseClient is a shared HTTP client for SSE connections (no timeout).
+var sseClient = &http.Client{Timeout: 0}
+
 // HUDEventsSSE proxies the Loom HUD SSE events stream to the browser.
 func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
@@ -23,7 +26,6 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 	// Connect to upstream HUD SSE stream
 	url := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + "/api/events"
 
-	client := &http.Client{Timeout: 0} // No timeout for SSE
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to create request"})
@@ -31,7 +33,7 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := client.Do(req)
+	resp, err := sseClient.Do(req)
 	if err != nil {
 		slog.Warn("HUD events SSE: upstream connection failed", "error", err)
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "failed to connect to HUD events stream"})

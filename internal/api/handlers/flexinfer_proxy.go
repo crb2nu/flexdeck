@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 )
 
 // FlexInferProxyHealth proxies the FlexInfer proxy healthz endpoint.
@@ -16,26 +20,9 @@ func (h *Handler) FlexInferProxyHealth(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "flexinfer proxy disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "fip:health", 10*time.Second, func() (any, error) {
-			return h.fetchFlexInferProxy("/healthz")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("flexinfer proxy health cache error", "error", err)
-	}
-
-	data, err := h.fetchFlexInferProxy("/healthz")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "fip:health", 10*time.Second, "flexinfer proxy health", func() (any, error) {
+		return h.fetchFlexInferProxy(r.Context(), "/healthz")
+	})
 }
 
 // FlexInferProxyModels proxies the FlexInfer proxy /v1/models endpoint.
@@ -44,26 +31,9 @@ func (h *Handler) FlexInferProxyModels(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "flexinfer proxy disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "fip:models", 15*time.Second, func() (any, error) {
-			return h.fetchFlexInferProxy("/v1/models")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("flexinfer proxy models cache error", "error", err)
-	}
-
-	data, err := h.fetchFlexInferProxy("/v1/models")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "fip:models", 15*time.Second, "flexinfer proxy models", func() (any, error) {
+		return h.fetchFlexInferProxy(r.Context(), "/v1/models")
+	})
 }
 
 // FlexInferProxyMetrics proxies the FlexInfer proxy /metrics endpoint
@@ -73,21 +43,26 @@ func (h *Handler) FlexInferProxyMetrics(w http.ResponseWriter, r *http.Request) 
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "flexinfer proxy disabled"})
 		return
 	}
+	h.cachedProxyJSON(w, r, "fip:metrics", 15*time.Second, "flexinfer proxy metrics", func() (any, error) {
+		return h.fetchFlexInferProxyMetrics(r.Context())
+	})
+}
 
+// cachedProxyJSON handles the cache-aside pattern for proxy JSON endpoints.
+// Used by FlexInfer proxy, HUD proxy, and LoRA handlers to avoid duplication.
+func (h *Handler) cachedProxyJSON(w http.ResponseWriter, r *http.Request, cacheKey string, ttl time.Duration, label string, fetchFn func() (any, error)) {
 	ctx := r.Context()
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "fip:metrics", 15*time.Second, func() (any, error) {
-			return h.fetchFlexInferProxyMetrics()
-		})
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, ttl, fetchFn)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(cached)
 			return
 		}
-		slog.Warn("flexinfer proxy metrics cache error", "error", err)
+		slog.Warn(label+" cache error", "error", err)
 	}
 
-	data, err := h.fetchFlexInferProxyMetrics()
+	data, err := fetchFn()
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -96,11 +71,15 @@ func (h *Handler) FlexInferProxyMetrics(w http.ResponseWriter, r *http.Request) 
 }
 
 // fetchFlexInferProxy makes a request to the FlexInfer proxy and returns the response as JSON.
-func (h *Handler) fetchFlexInferProxy(path string) (any, error) {
-	url := strings.TrimSuffix(h.cfg.FlexInferProxy.URL, "/") + path
+func (h *Handler) fetchFlexInferProxy(ctx context.Context, path string) (any, error) {
+	reqURL := strings.TrimSuffix(h.cfg.FlexInferProxy.URL, "/") + path
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create flexinfer proxy request: %w", err)
+	}
+
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("flexinfer proxy request failed: %w", err)
 	}
@@ -126,11 +105,15 @@ func (h *Handler) fetchFlexInferProxy(path string) (any, error) {
 
 // fetchFlexInferProxyMetrics fetches the Prometheus-format /metrics endpoint
 // and extracts key flexinfer_proxy_* metrics into structured JSON.
-func (h *Handler) fetchFlexInferProxyMetrics() (any, error) {
-	url := strings.TrimSuffix(h.cfg.FlexInferProxy.URL, "/") + "/metrics"
+func (h *Handler) fetchFlexInferProxyMetrics(ctx context.Context) (any, error) {
+	reqURL := strings.TrimSuffix(h.cfg.FlexInferProxy.URL, "/") + "/metrics"
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create flexinfer proxy metrics request: %w", err)
+	}
+
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("flexinfer proxy metrics request failed: %w", err)
 	}
@@ -161,11 +144,11 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 	}
 
 	prefixes := map[string]string{
-		"flexinfer_proxy_requests_total":            "requests",
-		"flexinfer_proxy_request_duration_seconds":  "latency",
-		"flexinfer_proxy_queue_depth":               "queue_depth",
-		"flexinfer_proxy_active_connections":         "active_conn",
-		"flexinfer_proxy_scale_ups_total":           "scale_ups",
+		"flexinfer_proxy_requests_total":           "requests",
+		"flexinfer_proxy_request_duration_seconds": "latency",
+		"flexinfer_proxy_queue_depth":              "queue_depth",
+		"flexinfer_proxy_active_connections":        "active_conn",
+		"flexinfer_proxy_scale_ups_total":          "scale_ups",
 	}
 
 	for _, line := range lines {
@@ -213,7 +196,9 @@ func extractMetricValue(line string) float64 {
 	if len(parts) < 2 {
 		return 0
 	}
-	var v float64
-	fmt.Sscanf(parts[len(parts)-1], "%f", &v)
+	v, err := strconv.ParseFloat(parts[len(parts)-1], 64)
+	if err != nil {
+		return 0
+	}
 	return v
 }

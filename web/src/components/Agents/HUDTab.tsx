@@ -38,8 +38,8 @@ const HUDTab: Component = () => {
     try {
       await hudApi.approveWorkflow(id);
       await fetchAll();
-    } catch {
-      // Silently handle
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve workflow');
     } finally {
       setApproving(null);
     }
@@ -50,8 +50,8 @@ const HUDTab: Component = () => {
     try {
       await hudApi.rejectWorkflow(id);
       await fetchAll();
-    } catch {
-      // Silently handle
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject workflow');
     } finally {
       setApproving(null);
     }

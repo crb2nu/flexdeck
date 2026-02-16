@@ -1,16 +1,24 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 	"github.com/go-chi/chi/v5"
 )
+
+// safeModelName validates that a model name contains only safe characters.
+var safeModelName = regexp.MustCompile(`^[a-zA-Z0-9._\-/]+$`)
 
 // ModelsInferenceMetrics returns per-model inference metrics from Prometheus.
 func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request) {
@@ -22,12 +30,17 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !safeModelName.MatchString(name) {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid model name"})
+		return
+	}
+
 	ctx := r.Context()
 	cacheKey := fmt.Sprintf("models:inference:%s:%s", ns, name)
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 15*time.Second, func() (any, error) {
-			return h.fetchInferenceMetrics(name)
+			return h.fetchInferenceMetrics(ctx, name)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -37,7 +50,7 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 		slog.Warn("inference metrics cache error", "error", err, "model", name)
 	}
 
-	data, err := h.fetchInferenceMetrics(name)
+	data, err := h.fetchInferenceMetrics(ctx, name)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -45,12 +58,7 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 	respondJSON(w, http.StatusOK, data)
 }
 
-func (h *Handler) fetchInferenceMetrics(model string) (any, error) {
-	type queryResult struct {
-		key   string
-		value float64
-	}
-
+func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any, error) {
 	queries := map[string]string{
 		"tps":         fmt.Sprintf(`rate(flexinfer_proxy_requests_total{model="%s"}[5m])`, model),
 		"p95_latency": fmt.Sprintf(`histogram_quantile(0.95, rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m]))`, model),
@@ -66,7 +74,7 @@ func (h *Handler) fetchInferenceMetrics(model string) (any, error) {
 		wg.Add(1)
 		go func(k, q string) {
 			defer wg.Done()
-			val, err := h.promInstantQuery(q)
+			val, err := h.promInstantQuery(ctx, q)
 			if err != nil {
 				slog.Debug("inference metric query failed", "key", k, "error", err)
 				return
@@ -80,20 +88,24 @@ func (h *Handler) fetchInferenceMetrics(model string) (any, error) {
 	wg.Wait()
 
 	return map[string]any{
-		"model":              model,
-		"tps":                results["tps"],
-		"p95LatencyMs":       results["p95_latency"] * 1000,
-		"queueDepth":         results["queue_depth"],
-		"activeConnections":  results["active_conn"],
+		"model":             model,
+		"tps":               results["tps"],
+		"p95LatencyMs":      results["p95_latency"] * 1000,
+		"queueDepth":        results["queue_depth"],
+		"activeConnections": results["active_conn"],
 	}, nil
 }
 
 // promInstantQuery executes a Prometheus instant query and returns the first result value.
-func (h *Handler) promInstantQuery(query string) (float64, error) {
-	url := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, query)
+func (h *Handler) promInstantQuery(ctx context.Context, query string) (float64, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(query))
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -129,7 +141,9 @@ func (h *Handler) promInstantQuery(query string) (float64, error) {
 		return 0, err
 	}
 
-	var v float64
-	fmt.Sscanf(valStr, "%f", &v)
+	v, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse prometheus value %q: %w", valStr, err)
+	}
 	return v, nil
 }

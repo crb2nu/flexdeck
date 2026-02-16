@@ -2,16 +2,20 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 	"github.com/go-chi/chi/v5"
 )
+
+// maxHUDRequestBody limits POST request bodies to 1MB.
+const maxHUDRequestBody = 1 << 20
 
 // HUDFleet returns the full fleet view from the Loom HUD API.
 func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
@@ -19,26 +23,9 @@ func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "hud:fleet", 15*time.Second, func() (any, error) {
-			return h.fetchHUD("/api/fleet")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("hud fleet cache error", "error", err)
-	}
-
-	data, err := h.fetchHUD("/api/fleet")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "hud:fleet", 15*time.Second, "hud fleet", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/fleet")
+	})
 }
 
 // HUDPresence returns agent presence data from the Loom HUD API.
@@ -47,26 +34,9 @@ func (h *Handler) HUDPresence(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "hud:presence", 10*time.Second, func() (any, error) {
-			return h.fetchHUD("/api/presence")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("hud presence cache error", "error", err)
-	}
-
-	data, err := h.fetchHUD("/api/presence")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "hud:presence", 10*time.Second, "hud presence", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/presence")
+	})
 }
 
 // HUDTasks returns task data from the Loom HUD API.
@@ -75,26 +45,9 @@ func (h *Handler) HUDTasks(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "hud:tasks", 15*time.Second, func() (any, error) {
-			return h.fetchHUD("/api/tasks")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("hud tasks cache error", "error", err)
-	}
-
-	data, err := h.fetchHUD("/api/tasks")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "hud:tasks", 15*time.Second, "hud tasks", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/tasks")
+	})
 }
 
 // HUDWorkflows returns workflow data from the Loom HUD API.
@@ -103,26 +56,9 @@ func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "hud:workflows", 10*time.Second, func() (any, error) {
-			return h.fetchHUD("/api/workflows")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("hud workflows cache error", "error", err)
-	}
-
-	data, err := h.fetchHUD("/api/workflows")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "hud:workflows", 10*time.Second, "hud workflows", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/workflows")
+	})
 }
 
 // HUDTimeline returns timeline events from the Loom HUD API.
@@ -131,26 +67,9 @@ func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
-
-	ctx := r.Context()
-	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "hud:timeline", 5*time.Second, func() (any, error) {
-			return h.fetchHUD("/api/timeline")
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
-			return
-		}
-		slog.Warn("hud timeline cache error", "error", err)
-	}
-
-	data, err := h.fetchHUD("/api/timeline")
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-		return
-	}
-	respondJSON(w, http.StatusOK, data)
+	h.cachedProxyJSON(w, r, "hud:timeline", 5*time.Second, "hud timeline", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/timeline")
+	})
 }
 
 // HUDWorkflowApprove approves a workflow step that requires human approval.
@@ -163,14 +82,18 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	path := fmt.Sprintf("/api/workflows/%s/approve", id)
 
-	body, _ := io.ReadAll(r.Body)
-	result, err := h.postHUD(path, body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read request body"})
+		return
+	}
+
+	result, err := h.postHUD(r.Context(), path, body)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
 
-	// Invalidate workflows cache
 	if h.cache != nil {
 		h.cache.Invalidate(r.Context(), "hud:workflows")
 	}
@@ -189,14 +112,18 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	path := fmt.Sprintf("/api/workflows/%s/reject", id)
 
-	body, _ := io.ReadAll(r.Body)
-	result, err := h.postHUD(path, body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read request body"})
+		return
+	}
+
+	result, err := h.postHUD(r.Context(), path, body)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
 
-	// Invalidate workflows cache
 	if h.cache != nil {
 		h.cache.Invalidate(r.Context(), "hud:workflows")
 	}
@@ -206,11 +133,15 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchHUD makes a GET request to the Loom HUD REST API.
-func (h *Handler) fetchHUD(path string) (json.RawMessage, error) {
-	url := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
+func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, error) {
+	reqURL := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create hud request: %w", err)
+	}
+
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("hud request failed: %w", err)
 	}
@@ -229,17 +160,16 @@ func (h *Handler) fetchHUD(path string) (json.RawMessage, error) {
 }
 
 // postHUD makes a POST request to the Loom HUD REST API.
-func (h *Handler) postHUD(path string, body []byte) ([]byte, error) {
-	url := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
+func (h *Handler) postHUD(ctx context.Context, path string, body []byte) ([]byte, error) {
+	reqURL := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create hud request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("hud post request failed: %w", err)
 	}
