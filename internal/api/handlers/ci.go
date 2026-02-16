@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/flexinfer/flexdeck/internal/metrics"
 )
 
 type RepoInfo struct {
@@ -655,4 +658,357 @@ func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 		"runner":     job.Runner,
 		"artifacts":  job.Artifacts,
 	})
+}
+
+// --- Pipeline Trends & History ---
+
+// GetAllPipelineTrends returns trend data for all projects with pipeline data.
+func (h *Handler) GetAllPipelineTrends(w http.ResponseWriter, r *http.Request) {
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	ctx := r.Context()
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, "ci:trends:all", 60*time.Second, func() (any, error) {
+			return h.fetchAllTrends(ctx)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	data, err := h.fetchAllTrends(ctx)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) fetchAllTrends(ctx context.Context) (any, error) {
+	ids, err := h.metricsStore.GetAllPipelineProjectIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var trends []any
+	for _, id := range ids {
+		t, err := h.metricsStore.GetPipelineTrends(ctx, id, 7*24*time.Hour)
+		if err != nil {
+			continue
+		}
+		if t.TotalRuns > 0 {
+			trends = append(trends, t)
+		}
+	}
+
+	if trends == nil {
+		trends = []any{}
+	}
+	return trends, nil
+}
+
+// GetPipelineTrends returns trend data for a specific project.
+func (h *Handler) GetPipelineTrends(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
+		return
+	}
+
+	ctx := r.Context()
+	cacheKey := fmt.Sprintf("ci:trends:%d", id)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 60*time.Second, func() (any, error) {
+			return h.metricsStore.GetPipelineTrends(ctx, id, 7*24*time.Hour)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	data, err := h.metricsStore.GetPipelineTrends(ctx, id, 7*24*time.Hour)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+// GetPipelineHistory returns recent pipeline runs for a project.
+func (h *Handler) GetPipelineHistory(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
+		return
+	}
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+		if limit <= 0 || limit > 100 {
+			limit = 20
+		}
+	}
+
+	ctx := r.Context()
+	cacheKey := fmt.Sprintf("ci:history:%d:%d", id, limit)
+	if h.cache != nil {
+		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+			return h.metricsStore.GetPipelineHistory(ctx, id, limit)
+		})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached)
+			return
+		}
+	}
+
+	data, err := h.metricsStore.GetPipelineHistory(ctx, id, limit)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	if data == nil {
+		data = []metrics.PipelineRun{}
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+// --- Pipeline-Level Actions ---
+
+// RetryPipeline retries an entire pipeline.
+func (h *Handler) RetryPipeline(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "id")
+	pipelineID := chi.URLParam(r, "pid")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "GitLab token not configured"})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/retry", gitlabURL, projectID, pipelineID)
+	req, err := http.NewRequest("POST", retryURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab pipeline retry returned non-OK", "status", resp.StatusCode, "body", string(body))
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
+		return
+	}
+
+	var pipeline struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&pipeline)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success":    true,
+		"pipelineId": fmt.Sprintf("%d", pipeline.ID),
+		"status":     pipeline.Status,
+	})
+}
+
+// CancelPipeline cancels a running pipeline.
+func (h *Handler) CancelPipeline(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "id")
+	pipelineID := chi.URLParam(r, "pid")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "GitLab token not configured"})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/cancel", gitlabURL, projectID, pipelineID)
+	req, err := http.NewRequest("POST", cancelURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab pipeline cancel returned non-OK", "status", resp.StatusCode, "body", string(body))
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
+		return
+	}
+
+	var pipeline struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&pipeline)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success":    true,
+		"pipelineId": fmt.Sprintf("%d", pipeline.ID),
+		"status":     pipeline.Status,
+	})
+}
+
+// TriggerPipeline triggers a new pipeline on a given ref.
+func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "id")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "GitLab token not configured"})
+		return
+	}
+
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Ref == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "ref is required"})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	triggerURL := fmt.Sprintf("%s/api/v4/projects/%s/pipeline?ref=%s", gitlabURL, projectID, body.Ref)
+	req, err := http.NewRequest("POST", triggerURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("GitLab trigger pipeline returned non-OK", "status", resp.StatusCode, "body", string(respBody))
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
+		return
+	}
+
+	var pipeline struct {
+		ID     int    `json:"id"`
+		Status string `json:"status"`
+		Ref    string `json:"ref"`
+	}
+	json.NewDecoder(resp.Body).Decode(&pipeline)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"success":    true,
+		"pipelineId": fmt.Sprintf("%d", pipeline.ID),
+		"status":     pipeline.Status,
+		"ref":        pipeline.Ref,
+	})
+}
+
+// ListProjectPipelines lists recent pipelines for a project.
+func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "id")
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+
+	if token == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "GitLab token not configured"})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	pipelinesURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=20", gitlabURL, projectID)
+	req, err := http.NewRequest("GET", pipelinesURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
+		return
+	}
+
+	var pipelines []struct {
+		ID        int       `json:"id"`
+		Status    string    `json:"status"`
+		Ref       string    `json:"ref"`
+		Duration  *float64  `json:"duration"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		WebURL    string    `json:"web_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to decode response"})
+		return
+	}
+
+	result := make([]map[string]any, 0, len(pipelines))
+	for _, p := range pipelines {
+		entry := map[string]any{
+			"id":        fmt.Sprintf("%d", p.ID),
+			"status":    p.Status,
+			"ref":       p.Ref,
+			"createdAt": p.CreatedAt.Format(time.RFC3339),
+			"updatedAt": p.UpdatedAt.Format(time.RFC3339),
+			"webUrl":    p.WebURL,
+		}
+		if p.Duration != nil {
+			entry["duration"] = *p.Duration
+		}
+		result = append(result, entry)
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }

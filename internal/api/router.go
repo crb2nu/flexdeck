@@ -90,6 +90,23 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.With(apimiddleware.LogFunc("ci.cancel")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
 		r.With(apimiddleware.LogFunc("ci.play")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
 
+		// Pipeline trends & history
+		r.Get("/api/ci/trends", h.GetAllPipelineTrends)
+		r.Get("/api/ci/projects/{id}/trends", h.GetPipelineTrends)
+		r.Get("/api/ci/projects/{id}/history", h.GetPipelineHistory)
+
+		// Pipeline-level actions
+		r.Get("/api/ci/projects/{id}/pipelines", h.ListProjectPipelines)
+		r.With(apimiddleware.LogFunc("ci.pipeline.retry")).Post("/api/ci/projects/{id}/pipelines/{pid}/retry", h.RetryPipeline)
+		r.With(apimiddleware.LogFunc("ci.pipeline.cancel")).Post("/api/ci/projects/{id}/pipelines/{pid}/cancel", h.CancelPipeline)
+		r.With(apimiddleware.LogFunc("ci.pipeline.trigger")).Post("/api/ci/projects/{id}/pipelines", h.TriggerPipeline)
+
+		r.Route("/api/grafana", func(r chi.Router) {
+			r.Get("/dashboards", h.GrafanaDashboards)
+			r.Get("/dashboards/{uid}", h.GrafanaDashboardDetail)
+			r.Get("/datasources", h.GrafanaDatasources)
+		})
+
 		r.Route("/api/k8s", func(r chi.Router) {
 			r.Get("/services", h.K8sServices)
 			r.Get("/nodes", h.K8sNodes)

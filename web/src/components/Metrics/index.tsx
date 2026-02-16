@@ -1,5 +1,7 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo, lazy, Suspense } from 'solid-js';
 import { createStore } from 'solid-js/store';
+
+const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
 
 interface MetricValue {
   time: number;
@@ -15,6 +17,8 @@ interface MetricPanel {
 }
 
 const Metrics: Component = () => {
+  const [metricsTab, setMetricsTab] = createSignal<'prometheus' | 'grafana'>('prometheus');
+
   const [panels, setPanels] = createStore<MetricPanel[]>([
     {
       title: 'Cluster CPU Usage',
@@ -144,61 +148,98 @@ const Metrics: Component = () => {
       {/* Header */}
       <div class="glass-panel flex items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
-          <h2 class="text-lg font-medium text-text-main">Cluster Metrics</h2>
-          <Show when={lastUpdated()}>
+          {/* Tab bar */}
+          <div class="flex rounded-lg bg-surface-raised p-0.5">
+            <button
+              onClick={() => setMetricsTab('prometheus')}
+              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                metricsTab() === 'prometheus'
+                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
+                  : 'text-text-muted hover:text-text-main'
+              }`}
+            >
+              Prometheus
+            </button>
+            <button
+              onClick={() => setMetricsTab('grafana')}
+              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                metricsTab() === 'grafana'
+                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
+                  : 'text-text-muted hover:text-text-main'
+              }`}
+            >
+              Grafana
+            </button>
+          </div>
+          <Show when={metricsTab() === 'prometheus' && lastUpdated()}>
             <span class="text-xs text-text-dim">
               Updated {lastUpdated()?.toLocaleTimeString()}
             </span>
           </Show>
         </div>
 
-        <div class="flex items-center gap-3">
-          <div class="flex rounded-lg bg-surface-raised p-0.5">
-            <For each={timeRanges}>
-              {(range) => (
-                <button
-                  onClick={() => setTimeRange(range.value)}
-                  class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                    timeRange() === range.value
-                      ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
-                      : 'text-text-muted hover:text-text-main'
-                  }`}
-                >
-                  {range.label}
-                </button>
-              )}
-            </For>
-          </div>
+        <Show when={metricsTab() === 'prometheus'}>
+          <div class="flex items-center gap-3">
+            <div class="flex rounded-lg bg-surface-raised p-0.5">
+              <For each={timeRanges}>
+                {(range) => (
+                  <button
+                    onClick={() => setTimeRange(range.value)}
+                    class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      timeRange() === range.value
+                        ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
+                        : 'text-text-muted hover:text-text-main'
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                )}
+              </For>
+            </div>
 
-          <button
-            onClick={fetchMetrics}
-            disabled={loading()}
-            class="flex items-center gap-2 rounded-lg bg-neon-cyan/10 px-4 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50 border border-neon-cyan/20"
-          >
-            <span class={loading() ? 'animate-spin' : ''}>↻</span>
-            Refresh
-          </button>
-        </div>
+            <button
+              onClick={fetchMetrics}
+              disabled={loading()}
+              class="flex items-center gap-2 rounded-lg bg-neon-cyan/10 px-4 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50 border border-neon-cyan/20"
+            >
+              <span class={loading() ? 'animate-spin' : ''}>↻</span>
+              Refresh
+            </button>
+          </div>
+        </Show>
       </div>
 
-      <Show when={error()}>
-        <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-          <span class="text-lg">⚠</span>
-          {error()}
+      {/* Prometheus tab content */}
+      <Show when={metricsTab() === 'prometheus'}>
+        <Show when={error()}>
+          <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
+            <span class="text-lg">!</span>
+            {error()}
+          </div>
+        </Show>
+
+        <div class="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <For each={panels}>
+            {(panel) => (
+              <MetricCard
+                panel={panel}
+                loading={loading()}
+              />
+            )}
+          </For>
         </div>
       </Show>
 
-      {/* Metrics Grid */}
-      <div class="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <For each={panels}>
-          {(panel) => (
-            <MetricCard
-              panel={panel}
-              loading={loading()}
-            />
-          )}
-        </For>
-      </div>
+      {/* Grafana tab content */}
+      <Show when={metricsTab() === 'grafana'}>
+        <Suspense fallback={
+          <div class="flex items-center justify-center py-12">
+            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+          </div>
+        }>
+          <GrafanaDashboards />
+        </Suspense>
+      </Show>
     </div>
   );
 };

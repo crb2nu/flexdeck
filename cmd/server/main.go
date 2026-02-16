@@ -71,6 +71,14 @@ func main() {
 		slog.Info("litellm client disabled")
 	}
 
+	// Initialize pipeline scraper if GitLab token is configured and Redis is available
+	var pipelineScraper *metrics.PipelineScraper
+	if cfg.GitLab.Token != "" && metricsStore != nil {
+		pipelineScraper = metrics.NewPipelineScraper(cfg.GitLab, metricsStore)
+		go pipelineScraper.Start(context.Background())
+		slog.Info("pipeline scraper started")
+	}
+
 	// Initialize models subsystem
 	var handlerDeps *handlers.HandlerDeps
 	if !cfg.Models.Disabled {
@@ -174,6 +182,12 @@ func main() {
 	if metricsScraper != nil {
 		slog.Info("stopping metrics scraper")
 		metricsScraper.Stop()
+	}
+
+	// Stop the pipeline scraper
+	if pipelineScraper != nil {
+		slog.Info("stopping pipeline scraper")
+		pipelineScraper.Stop()
 	}
 
 	// Close the metrics store

@@ -61,6 +61,9 @@ type Config struct {
 
 	// GitLab
 	GitLab GitLabConfig
+
+	// Grafana
+	Grafana GrafanaConfig
 }
 
 type K8sConfig struct {
@@ -142,6 +145,12 @@ type AgentsConfig struct {
 type LoomHUDConfig struct {
 	Disabled bool
 	URL      string // env: LOOM_HUD_URL, default: http://localhost:3333
+}
+
+type GrafanaConfig struct {
+	Disabled bool
+	URL      string // env: GRAFANA_URL
+	Token    string // env: GRAFANA_TOKEN (service account token with Viewer role)
 }
 
 type LangfuseConfig struct {
@@ -242,6 +251,12 @@ func Load() (*Config, error) {
 			URL:       getEnv("LANGFUSE_URL", "http://langfuse-web.ai.svc.cluster.local:3000"),
 			PublicKey: getEnv("LANGFUSE_PUBLIC_KEY", ""),
 			SecretKey: getEnv("LANGFUSE_SECRET_KEY", ""),
+		},
+
+		Grafana: GrafanaConfig{
+			Disabled: parseBool(getEnv("GRAFANA_DISABLED", "false")),
+			URL:      getEnv("GRAFANA_URL", "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"),
+			Token:    getEnv("GRAFANA_TOKEN", ""),
 		},
 
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),

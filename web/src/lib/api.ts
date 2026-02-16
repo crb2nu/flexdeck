@@ -313,6 +313,13 @@ export const agentsApi = {
     }),
 };
 
+export const grafanaApi = {
+  dashboards: () => api<any[]>("/grafana/dashboards"),
+  dashboard: (uid: string) =>
+    api<any>(`/grafana/dashboards/${encodeURIComponent(uid)}`),
+  datasources: () => api<any[]>("/grafana/datasources"),
+};
+
 export const healthApi = {
   check: () =>
     api<{ status: string; components?: Record<string, any> }>("/health"),
@@ -355,6 +362,29 @@ export const ciApi = {
       `/ci/projects/${projectId}/jobs/${jobId}/play`,
       { method: "POST" },
     ),
+  // Pipeline trends & history
+  getTrends: () => api<any[]>("/ci/trends"),
+  getProjectTrends: (id: number) => api<any>(`/ci/projects/${id}/trends`),
+  getProjectHistory: (id: number, limit?: number) =>
+    api<any[]>(
+      `/ci/projects/${id}/history${limit ? `?limit=${limit}` : ""}`,
+    ),
+  // Pipeline-level actions
+  listPipelines: (projectId: number) =>
+    api<any[]>(`/ci/projects/${projectId}/pipelines`),
+  retryPipeline: (projectId: number, pipelineId: string) =>
+    api<any>(`/ci/projects/${projectId}/pipelines/${pipelineId}/retry`, {
+      method: "POST",
+    }),
+  cancelPipeline: (projectId: number, pipelineId: string) =>
+    api<any>(`/ci/projects/${projectId}/pipelines/${pipelineId}/cancel`, {
+      method: "POST",
+    }),
+  triggerPipeline: (projectId: number, ref: string) =>
+    api<any>(`/ci/projects/${projectId}/pipelines`, {
+      method: "POST",
+      body: JSON.stringify({ ref }),
+    }),
 };
 
 export interface FluxCondition {

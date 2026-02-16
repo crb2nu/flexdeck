@@ -1,9 +1,12 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo, lazy, Suspense } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
 import { ciApi, RepoInfo } from '../../lib/api';
 import type { PipelineSortConfig } from './utils';
+
+const PipelineTrends = lazy(() => import('./PipelineTrends'));
+const PipelineHistory = lazy(() => import('./PipelineHistory'));
 
 const POLL_INTERVAL = 10000; // 10 seconds
 
@@ -32,6 +35,13 @@ const Pipeline: Component = () => {
   });
   const [pipelinesCache, setPipelinesCache] = createSignal<Map<number, VizPipeline>>(new Map());
   const [overviewLoading, setOverviewLoading] = createSignal(false);
+
+  // Page-level tabs
+  const [pageTab, setPageTab] = createSignal<'pipelines' | 'trends' | 'history'>('pipelines');
+
+  // Pipeline-level action state
+  const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
+  const [triggerRef, setTriggerRef] = createSignal('main');
 
   onMount(async () => {
     try {
@@ -200,6 +210,50 @@ const Pipeline: Component = () => {
     }
   };
 
+  const handleRetryPipeline = async () => {
+    const repo = selectedRepo();
+    const pipeline = pipelineData();
+    if (!repo?.id || !pipeline?.id) return;
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.retryPipeline(repo.id, pipeline.id);
+      setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+    } catch (e) {
+      console.error('Failed to retry pipeline', e);
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
+  const handleCancelPipeline = async () => {
+    const repo = selectedRepo();
+    const pipeline = pipelineData();
+    if (!repo?.id || !pipeline?.id) return;
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.cancelPipeline(repo.id, pipeline.id);
+      setTimeout(() => fetchPipelineStatus(repo.id), 1000);
+    } catch (e) {
+      console.error('Failed to cancel pipeline', e);
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
+  const handleTriggerPipeline = async () => {
+    const repo = selectedRepo();
+    if (!repo?.id || !triggerRef()) return;
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.triggerPipeline(repo.id, triggerRef());
+      setTimeout(() => fetchPipelineStatus(repo.id), 2000);
+    } catch (e) {
+      console.error('Failed to trigger pipeline', e);
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
   const filteredRepos = () => {
     return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
   };
@@ -293,72 +347,135 @@ const Pipeline: Component = () => {
         {/* Sidebar */}
         <div class="w-64 border-r border-white/10 bg-black/20 flex flex-col">
             <div class="p-4 border-b border-white/5 space-y-3">
-                {/* View toggle */}
+                {/* Page tabs */}
                 <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
                     <button
-                        onClick={() => setViewMode('overview')}
+                        onClick={() => setPageTab('pipelines')}
                         class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                            viewMode() === 'overview'
+                            pageTab() === 'pipelines'
                                 ? 'bg-neon-cyan/20 text-neon-cyan'
                                 : 'text-text-dim hover:text-text-main hover:bg-white/5'
                         }`}
                     >
-                        Overview
+                        Pipelines
                     </button>
                     <button
-                        onClick={() => setViewMode('detail')}
+                        onClick={() => setPageTab('trends')}
                         class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                            viewMode() === 'detail'
+                            pageTab() === 'trends'
                                 ? 'bg-neon-cyan/20 text-neon-cyan'
                                 : 'text-text-dim hover:text-text-main hover:bg-white/5'
                         }`}
                     >
-                        Detail
+                        Trends
+                    </button>
+                    <button
+                        onClick={() => setPageTab('history')}
+                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
+                            pageTab() === 'history'
+                                ? 'bg-neon-cyan/20 text-neon-cyan'
+                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        History
                     </button>
                 </div>
-                <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
-                <input
-                    type="text"
-                    placeholder="Filter..."
-                    class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-neon-cyan focus:outline-none"
-                    value={repoFilter()}
-                    onInput={(e) => setRepoFilter(e.currentTarget.value)}
-                />
-            </div>
-            <div class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
-                <Show when={loading()}>
-                    <div class="px-3 py-2 text-xs text-text-dim">Loading...</div>
-                </Show>
-                <For each={filteredRepos()}>
-                    {(repo) => (
+
+                {/* Show sidebar controls only in Pipelines tab */}
+                <Show when={pageTab() === 'pipelines'}>
+                    {/* View toggle */}
+                    <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
                         <button
-                            class={`text-left px-3 py-2 rounded text-sm font-medium transition-colors group relative ${
-                                selectedRepo()?.path === repo.path 
-                                    ? 'bg-neon-cyan/20 text-neon-cyan' 
-                                    : 'text-text-dim hover:bg-white/5'
+                            onClick={() => setViewMode('overview')}
+                            class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
+                                viewMode() === 'overview'
+                                    ? 'bg-neon-cyan/20 text-neon-cyan'
+                                    : 'text-text-dim hover:text-text-main hover:bg-white/5'
                             }`}
-                            onClick={() => {
-                                selectRepo(repo);
-                                setSelectedJob(null);
-                            }}
                         >
-                            <div class="truncate">{repo.name}</div>
-                            <div class="text-[10px] opacity-50 font-mono mt-0.5 flex items-center justify-between">
-                                <span>{repo.type}</span>
-                                <Show when={repo.hasConfig}>
-                                    <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found"></span>
-                                </Show>
-                            </div>
+                            Overview
                         </button>
-                    )}
-                </For>
+                        <button
+                            onClick={() => setViewMode('detail')}
+                            class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
+                                viewMode() === 'detail'
+                                    ? 'bg-neon-cyan/20 text-neon-cyan'
+                                    : 'text-text-dim hover:text-text-main hover:bg-white/5'
+                            }`}
+                        >
+                            Detail
+                        </button>
+                    </div>
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
+                    <input
+                        type="text"
+                        placeholder="Filter..."
+                        class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-neon-cyan focus:outline-none"
+                        value={repoFilter()}
+                        onInput={(e) => setRepoFilter(e.currentTarget.value)}
+                    />
+                </Show>
             </div>
+
+            {/* Repo list only in Pipelines tab */}
+            <Show when={pageTab() === 'pipelines'}>
+                <div class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
+                    <Show when={loading()}>
+                        <div class="px-3 py-2 text-xs text-text-dim">Loading...</div>
+                    </Show>
+                    <For each={filteredRepos()}>
+                        {(repo) => (
+                            <button
+                                class={`text-left px-3 py-2 rounded text-sm font-medium transition-colors group relative ${
+                                    selectedRepo()?.path === repo.path
+                                        ? 'bg-neon-cyan/20 text-neon-cyan'
+                                        : 'text-text-dim hover:bg-white/5'
+                                }`}
+                                onClick={() => {
+                                    selectRepo(repo);
+                                    setSelectedJob(null);
+                                }}
+                            >
+                                <div class="truncate">{repo.name}</div>
+                                <div class="text-[10px] opacity-50 font-mono mt-0.5 flex items-center justify-between">
+                                    <span>{repo.type}</span>
+                                    <Show when={repo.hasConfig}>
+                                        <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found"></span>
+                                    </Show>
+                                </div>
+                            </button>
+                        )}
+                    </For>
+                </div>
+            </Show>
         </div>
-        
+
         {/* Main Content */}
         <div class="flex-1 overflow-hidden relative bg-[#050a14] flex flex-col">
-            {/* Overview Mode */}
-            <Show when={viewMode() === 'overview'}>
+            {/* Trends Tab */}
+            <Show when={pageTab() === 'trends'}>
+                <Suspense fallback={
+                    <div class="flex items-center justify-center py-12">
+                        <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                    </div>
+                }>
+                    <PipelineTrends />
+                </Suspense>
+            </Show>
+
+            {/* History Tab */}
+            <Show when={pageTab() === 'history'}>
+                <Suspense fallback={
+                    <div class="flex items-center justify-center py-12">
+                        <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+                    </div>
+                }>
+                    <PipelineHistory repos={repos()} />
+                </Suspense>
+            </Show>
+
+            {/* Pipelines Tab - Overview Mode */}
+            <Show when={pageTab() === 'pipelines' && viewMode() === 'overview'}>
                 <PipelineListView
                     repos={filteredRepos()}
                     pipelinesCache={pipelinesCache()}
@@ -369,8 +486,8 @@ const Pipeline: Component = () => {
                 />
             </Show>
 
-            {/* Detail Mode */}
-            <Show when={viewMode() === 'detail'}>
+            {/* Pipelines Tab - Detail Mode */}
+            <Show when={pageTab() === 'pipelines' && viewMode() === 'detail'}>
                 <Show when={selectedRepo()} fallback={
                     <div class="flex h-full items-center justify-center text-text-muted flex-col gap-2">
                         <div class="text-xl">Select a repository</div>
@@ -429,6 +546,44 @@ const Pipeline: Component = () => {
                             >
                                 ↻ Refresh
                             </button>
+
+                            {/* Pipeline-level actions */}
+                            <div class="flex items-center gap-1 ml-2 pl-2 border-l border-white/10">
+                                <Show when={pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled'}>
+                                    <button
+                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
+                                        onClick={handleRetryPipeline}
+                                        disabled={pipelineActionLoading()}
+                                    >
+                                        Retry Pipeline
+                                    </button>
+                                </Show>
+                                <Show when={pipelineData()?.status === 'running' || pipelineData()?.status === 'pending'}>
+                                    <button
+                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20 transition-all disabled:opacity-50"
+                                        onClick={handleCancelPipeline}
+                                        disabled={pipelineActionLoading()}
+                                    >
+                                        Cancel Pipeline
+                                    </button>
+                                </Show>
+                                <div class="flex items-center gap-1">
+                                    <input
+                                        type="text"
+                                        class="w-20 px-1.5 py-1 rounded text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-neon-cyan focus:outline-none"
+                                        value={triggerRef()}
+                                        onInput={(e) => setTriggerRef(e.currentTarget.value)}
+                                        placeholder="ref"
+                                    />
+                                    <button
+                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-neon-purple/10 text-neon-purple border border-neon-purple/20 hover:bg-neon-purple/20 transition-all disabled:opacity-50"
+                                        onClick={handleTriggerPipeline}
+                                        disabled={pipelineActionLoading() || !triggerRef()}
+                                    >
+                                        Trigger
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="flex-1 relative p-4">
