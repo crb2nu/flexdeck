@@ -3,7 +3,7 @@ import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
-import { api, modelsApi } from '../../lib/api';
+import { api, modelsApi, flexinferProxyApi, hudApi } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
@@ -83,7 +83,60 @@ const Dashboard: Component = () => {
     }
   };
 
+  // Inference Health state (feature-gated: flexinfer_proxy)
+  const [inferenceHealth, setInferenceHealth] = createSignal({
+    totalTps: 0, modelCount: 0, queueDepth: 0, loading: true, error: '',
+  });
+  const [tpsHistory, setTpsHistory] = createSignal<number[]>([]);
+
+  const fetchInferenceHealth = async () => {
+    if (!healthStore.features.flexinfer_proxy?.enabled) return;
+    try {
+      const data = await flexinferProxyApi.metrics();
+      const models = data?.models || {};
+      const modelNames = Object.keys(models);
+      let totalTps = 0;
+      let totalQueue = 0;
+      for (const name of modelNames) {
+        totalTps += models[name]?.requests_total || 0;
+        totalQueue += models[name]?.queue_depth || 0;
+      }
+      setInferenceHealth({ totalTps, modelCount: modelNames.length, queueDepth: totalQueue, loading: false, error: '' });
+      if (totalTps > 0) setTpsHistory(prev => [...prev.slice(-19), totalTps]);
+    } catch {
+      setInferenceHealth(prev => ({ ...prev, loading: false, error: 'offline' }));
+    }
+  };
+
+  // Agent Activity state (feature-gated: loom_hud)
+  const [agentActivity, setAgentActivity] = createSignal({
+    activeAgents: 0, totalTasks: 0, pendingApprovals: 0, loading: true, error: '',
+  });
+
+  const fetchAgentActivity = async () => {
+    if (!healthStore.features.loom_hud?.enabled) return;
+    try {
+      const data = await hudApi.fleet();
+      const agents = data?.agents || [];
+      const tasks = data?.tasks || [];
+      const activeAgents = agents.filter((a: any) => a.status === 'active').length;
+      const completedTasks = tasks.filter((t: any) => t.status === 'completed').length;
+      const pendingApprovals = data?.kpis?.pending_approvals || 0;
+      setAgentActivity({
+        activeAgents,
+        totalTasks: completedTasks,
+        pendingApprovals,
+        loading: false,
+        error: '',
+      });
+    } catch {
+      setAgentActivity(prev => ({ ...prev, loading: false, error: 'offline' }));
+    }
+  };
+
   let metricsInterval: ReturnType<typeof setInterval>;
+  let inferenceInterval: ReturnType<typeof setInterval>;
+  let agentInterval: ReturnType<typeof setInterval>;
 
   // Computed values from K8s store
   const podReady = createMemo(() =>
@@ -165,12 +218,20 @@ const Dashboard: Component = () => {
     // Fetch model count
     fetchModelCount();
     metricsInterval = setInterval(fetchModelCount, METRICS_REFRESH_INTERVAL);
+
+    // Fetch inference health + agent activity (feature-gated)
+    fetchInferenceHealth();
+    fetchAgentActivity();
+    inferenceInterval = setInterval(fetchInferenceHealth, METRICS_REFRESH_INTERVAL);
+    agentInterval = setInterval(fetchAgentActivity, METRICS_REFRESH_INTERVAL);
   });
 
   onCleanup(() => {
     disconnectK8sStream();
     stopMetricsPolling();
     clearInterval(metricsInterval);
+    clearInterval(inferenceInterval);
+    clearInterval(agentInterval);
   });
 
   return (
@@ -224,6 +285,32 @@ const Dashboard: Component = () => {
           error={modelCount().error}
           icon="◆"
         />
+
+        <Show when={healthStore.features.flexinfer_proxy?.enabled}>
+          <PulseCard
+            title="Inference"
+            value={inferenceHealth().totalTps > 0 ? `${inferenceHealth().totalTps.toFixed(1)}` : '0'}
+            sub={`${inferenceHealth().modelCount} models · queue ${inferenceHealth().queueDepth}`}
+            loading={inferenceHealth().loading}
+            error={inferenceHealth().error}
+            icon="⚡"
+            color="purple"
+            sparkData={tpsHistory()}
+            trend={tpsHistory().length >= 2 ? (tpsHistory()[tpsHistory().length - 1] > tpsHistory()[tpsHistory().length - 2] ? 'up' : 'down') : undefined}
+          />
+        </Show>
+
+        <Show when={healthStore.features.loom_hud?.enabled}>
+          <PulseCard
+            title="Agents"
+            value={`${agentActivity().activeAgents}`}
+            sub={`${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`}
+            loading={agentActivity().loading}
+            error={agentActivity().error}
+            icon="◎"
+            color="green"
+          />
+        </Show>
       </div>
 
       {/* Main Content: Visualization + Events */}
