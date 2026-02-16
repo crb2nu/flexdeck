@@ -101,6 +101,9 @@ spec:
                   name: flexdeck-secrets
                   key: hud-push-token
                   optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: 50m
@@ -128,6 +131,9 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: data
+          emptyDir: {}
       securityContext:
         fsGroup: 1000
         seccompProfile:
