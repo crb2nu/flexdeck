@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/config"
@@ -64,7 +66,7 @@ func (ps *PipelineScraper) Stop() {
 }
 
 func (ps *PipelineScraper) scrape(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	scrapeCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	projects, err := ps.fetchProjects(scrapeCtx)
@@ -73,42 +75,64 @@ func (ps *PipelineScraper) scrape(ctx context.Context) {
 		return
 	}
 
-	stored := 0
+	slog.Info("pipeline scraper: fetched projects", "count", len(projects))
+
+	var stored atomic.Int64
+	sem := make(chan struct{}, 5) // max 5 concurrent project scrapes
+	var wg sync.WaitGroup
+
 	for _, p := range projects {
-		pipelines, err := ps.fetchPipelines(scrapeCtx, p.ID)
-		if err != nil {
-			slog.Debug("pipeline scraper: failed to fetch pipelines", "project", p.ID, "error", err)
-			continue
+		if scrapeCtx.Err() != nil {
+			break
 		}
 
-		for _, pl := range pipelines {
-			stages, err := ps.fetchPipelineJobs(scrapeCtx, p.ID, pl.ID)
+		wg.Add(1)
+		sem <- struct{}{} // acquire semaphore slot
+
+		go func(projectID int) {
+			defer wg.Done()
+			defer func() { <-sem }() // release semaphore slot
+
+			pipelines, err := ps.fetchPipelines(scrapeCtx, projectID)
 			if err != nil {
-				slog.Debug("pipeline scraper: failed to fetch jobs", "pipeline", pl.ID, "error", err)
+				slog.Debug("pipeline scraper: failed to fetch pipelines", "project", projectID, "error", err)
+				return
 			}
 
-			run := PipelineRun{
-				PipelineID: pl.ID,
-				ProjectID:  p.ID,
-				Ref:        pl.Ref,
-				Status:     pl.Status,
-				Duration:   pl.Duration,
-				CreatedAt:  pl.CreatedAt,
-				FinishedAt: pl.UpdatedAt,
-				Stages:     stages,
-			}
+			for _, pl := range pipelines {
+				if scrapeCtx.Err() != nil {
+					return
+				}
 
-			if err := ps.store.StorePipelineRun(scrapeCtx, run); err != nil {
-				slog.Warn("pipeline scraper: failed to store run", "pipeline", pl.ID, "error", err)
-				continue
+				stages, err := ps.fetchPipelineJobs(scrapeCtx, projectID, pl.ID)
+				if err != nil {
+					slog.Debug("pipeline scraper: failed to fetch jobs", "pipeline", pl.ID, "error", err)
+				}
+
+				run := PipelineRun{
+					PipelineID: pl.ID,
+					ProjectID:  projectID,
+					Ref:        pl.Ref,
+					Status:     pl.Status,
+					Duration:   pl.Duration,
+					CreatedAt:  pl.CreatedAt,
+					FinishedAt: pl.UpdatedAt,
+					Stages:     stages,
+				}
+
+				if err := ps.store.StorePipelineRun(scrapeCtx, run); err != nil {
+					slog.Warn("pipeline scraper: failed to store run", "pipeline", pl.ID, "error", err)
+					continue
+				}
+				stored.Add(1)
 			}
-			stored++
-		}
+		}(p.ID)
 	}
 
-	if stored > 0 {
-		slog.Debug("pipeline scraper: stored runs", "count", stored)
-	}
+	wg.Wait()
+
+	count := stored.Load()
+	slog.Info("pipeline scraper: scrape complete", "projects", len(projects), "stored", count)
 }
 
 type gitlabProject struct {
