@@ -46,7 +46,7 @@ spec:
               value: "http://loki-gateway.logging.svc.cluster.local:80"
             # LiteLLM
             - name: LITELLM_URL
-              value: "http://litellm.ai.svc.cluster.local:4000"
+              value: "http://litellm.ai.svc.cluster.local:8000"
             - name: LITELLM_API_KEY
               valueFrom:
                 secretKeyRef:
