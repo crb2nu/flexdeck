@@ -14,6 +14,8 @@ import ModelGPUTable from './ModelGPUTable';
 import {
   getReliabilityClasses,
   getReliabilityStatus,
+  type IntegrationFetchState,
+  summarizeIntegrationCoverage,
   summarizeLoRA,
 } from './controllerIntegration';
 
@@ -38,6 +40,7 @@ const Models: Component = () => {
   const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
   const [inferenceByModel, setInferenceByModel] = createSignal<Record<string, InferenceMetrics>>({});
   const [loraByModel, setLoraByModel] = createSignal<Record<string, LoRAAdapter[]>>({});
+  const [integrationByModel, setIntegrationByModel] = createSignal<Record<string, IntegrationFetchState>>({});
 
   // Registry models (flexdeck's internal model registry)
   const [registryModels, setRegistryModels] = createStore<RegisteredModel[]>([]);
@@ -57,6 +60,7 @@ const Models: Component = () => {
     if (models.length === 0) {
       setInferenceByModel({});
       setLoraByModel({});
+      setIntegrationByModel({});
       setControllerDataLoading(false);
       return;
     }
@@ -64,6 +68,7 @@ const Models: Component = () => {
     setControllerDataLoading(true);
     const nextInference: Record<string, InferenceMetrics> = {};
     const nextLoRA: Record<string, LoRAAdapter[]> = {};
+    const nextIntegration: Record<string, IntegrationFetchState> = {};
 
     await Promise.all(
       models.map(async (model) => {
@@ -72,6 +77,10 @@ const Models: Component = () => {
           modelsApi.crdInference(model.namespace, model.name),
           modelsApi.lora(model.namespace, model.name),
         ]);
+        nextIntegration[key] = {
+          inferenceAvailable: inferenceResult.status === 'fulfilled',
+          loraAvailable: loraResult.status === 'fulfilled',
+        };
 
         if (inferenceResult.status === 'fulfilled') {
           nextInference[key] = inferenceResult.value;
@@ -88,6 +97,7 @@ const Models: Component = () => {
     if (token !== controllerRefreshToken) return;
     setInferenceByModel(nextInference);
     setLoraByModel(nextLoRA);
+    setIntegrationByModel(nextIntegration);
     setControllerDataLoading(false);
   };
 
@@ -296,6 +306,16 @@ const Models: Component = () => {
     return { loaded, total };
   });
 
+  const integrationSummary = createMemo(() => {
+    if (controllerDataLoading() && Object.keys(integrationByModel()).length === 0) {
+      return { inferenceUnavailable: 0, loraUnavailable: 0 };
+    }
+    const states = crdModels
+      .map((model) => integrationByModel()[modelKey(model.namespace, model.name)])
+      .filter((state): state is IntegrationFetchState => state != null);
+    return summarizeIntegrationCoverage(states);
+  });
+
   return (
     <div class="flex h-full flex-col gap-4">
       {/* Header */}
@@ -341,6 +361,16 @@ const Models: Component = () => {
                   <span class="rounded-full bg-neon-purple/20 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
                     LoRA {loraSummary().loaded}/{loraSummary().total}
                   </span>
+                  <Show when={integrationSummary().inferenceUnavailable > 0}>
+                    <span class="rounded-full bg-status-warn/20 px-2 py-0.5 text-[10px] font-medium text-status-warn">
+                      {integrationSummary().inferenceUnavailable} inference unavailable
+                    </span>
+                  </Show>
+                  <Show when={integrationSummary().loraUnavailable > 0}>
+                    <span class="rounded-full bg-status-warn/20 px-2 py-0.5 text-[10px] font-medium text-status-warn">
+                      {integrationSummary().loraUnavailable} LoRA unavailable
+                    </span>
+                  </Show>
                 </div>
               </div>
             </Show>
@@ -390,6 +420,7 @@ const Models: Component = () => {
                       model={model}
                       inference={inferenceByModel()[modelKey(model.namespace, model.name)]}
                       adapters={loraByModel()[modelKey(model.namespace, model.name)]}
+                      integrationState={integrationByModel()[modelKey(model.namespace, model.name)]}
                       integrationLoading={controllerDataLoading()}
                       actionLoading={crdActionLoading()}
                       onActivate={() => handleCRDAction('activate', model)}
@@ -580,6 +611,7 @@ const CRDModelCard: Component<{
   model: FlexInferModel;
   inference?: InferenceMetrics;
   adapters?: LoRAAdapter[];
+  integrationState?: IntegrationFetchState;
   integrationLoading: boolean;
   actionLoading: string | null;
   onActivate: () => void;
@@ -744,6 +776,11 @@ const CRDModelCard: Component<{
 
         <Show when={props.integrationLoading && !props.inference}>
           <div class="text-[10px] text-text-dim animate-pulse">Loading inference metrics...</div>
+        </Show>
+        <Show when={!props.integrationLoading && props.integrationState && !props.integrationState.inferenceAvailable}>
+          <div class="text-[10px] text-status-warn">
+            Inference telemetry unavailable for this model.
+          </div>
         </Show>
 
         {/* GPU Spec (from spec, not status) */}
@@ -912,6 +949,9 @@ const CRDModelCard: Component<{
 
         <Show when={props.integrationLoading && (!props.adapters || props.adapters.length === 0)}>
           <div class="text-[10px] text-text-dim animate-pulse">Loading LoRA adapters...</div>
+        </Show>
+        <Show when={!props.integrationLoading && props.integrationState && !props.integrationState.loraAvailable}>
+          <div class="text-[10px] text-status-warn">LoRA adapter status unavailable for this model.</div>
         </Show>
 
         {/* Service Labels */}

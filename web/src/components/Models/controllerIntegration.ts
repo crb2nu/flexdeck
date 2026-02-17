@@ -14,6 +14,16 @@ export interface LoRASummary {
   unloading: number;
 }
 
+export interface IntegrationFetchState {
+  inferenceAvailable: boolean;
+  loraAvailable: boolean;
+}
+
+export interface IntegrationCoverageSummary {
+  inferenceUnavailable: number;
+  loraUnavailable: number;
+}
+
 export function getReliabilityStatus(metrics: InferenceMetrics | null | undefined): ReliabilityStatus {
   if (!metrics) return { level: 'unknown', label: 'Unknown' };
   if (metrics.partial) return { level: 'partial', label: 'Partial' };
@@ -64,4 +74,19 @@ export function summarizeLoRA(adapters: LoRAAdapter[] | null | undefined): LoRAS
   }
 
   return summary;
+}
+
+export function summarizeIntegrationCoverage(
+  states: IntegrationFetchState[] | null | undefined
+): IntegrationCoverageSummary {
+  const items = states || [];
+  let inferenceUnavailable = 0;
+  let loraUnavailable = 0;
+
+  for (const state of items) {
+    if (!state.inferenceAvailable) inferenceUnavailable += 1;
+    if (!state.loraAvailable) loraUnavailable += 1;
+  }
+
+  return { inferenceUnavailable, loraUnavailable };
 }

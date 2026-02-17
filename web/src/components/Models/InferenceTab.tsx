@@ -5,6 +5,13 @@ import type {
   InferenceMetrics,
   LoRAAdapter,
 } from '../../lib/types';
+import {
+  activeConnectionsForModel,
+  errorRateForModel as proxyErrorRateForModel,
+  listInferenceModels,
+  queueDepthForModel,
+  requestsForModel,
+} from './inferenceMetrics';
 
 type ReliabilityState = {
   label: 'Healthy' | 'Degraded' | 'Partial' | 'Unknown';
@@ -19,6 +26,7 @@ const InferenceTab: Component = () => {
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
   const [modelMetrics, setModelMetrics] = createSignal<Record<string, InferenceMetrics>>({});
   const [modelAdapters, setModelAdapters] = createSignal<Record<string, LoRAAdapter[]>>({});
+  const [knownModels, setKnownModels] = createSignal<string[]>([]);
   const [modelMetricsLoading, setModelMetricsLoading] = createSignal(false);
   const [aiNamespace, setAiNamespace] = createSignal('flexinfer-system');
 
@@ -41,7 +49,11 @@ const InferenceTab: Component = () => {
     return detail;
   };
 
-  const fetchAllModelDetails = async (namespace: string, models: string[]) => {
+  const fetchAllModelDetails = async (
+    namespace: string,
+    models: string[],
+    namespaceByModel: Record<string, string>
+  ) => {
     if (models.length === 0) {
       setModelMetrics({});
       setModelAdapters({});
@@ -51,7 +63,10 @@ const InferenceTab: Component = () => {
     setModelMetricsLoading(true);
     try {
       const pairs = await Promise.all(
-        models.map(async (model) => ({ model, detail: await fetchModelDetail(namespace, model) })),
+        models.map(async (model) => {
+          const modelNamespace = namespaceByModel[model] || namespace;
+          return { model, detail: await fetchModelDetail(modelNamespace, model) };
+        }),
       );
 
       const nextMetrics: Record<string, InferenceMetrics> = {};
@@ -80,16 +95,30 @@ const InferenceTab: Component = () => {
       if (health.status === 'fulfilled') setProxyHealth(health.value);
 
       let namespace = aiNamespace();
+      let crdModels: Array<{ namespace: string; name: string }> = [];
       if (crdData.status === 'fulfilled' && crdData.value?.namespace) {
         namespace = crdData.value.namespace;
         setAiNamespace(namespace);
+        crdModels = Array.isArray(crdData.value.models) ? crdData.value.models : [];
       }
 
+      let metricsData: FlexInferProxyMetricsResponse | null = null;
       if (metrics.status === 'fulfilled') {
+        metricsData = metrics.value;
         setProxyMetrics(metrics.value);
-        const models = Object.keys(metrics.value.requests || {}).filter((key) => key !== '_total');
-        await fetchAllModelDetails(namespace, models);
+      } else {
+        setProxyMetrics(null);
       }
+
+      const namespaceByModel: Record<string, string> = {};
+      const crdModelNames = crdModels.map((model) => {
+        namespaceByModel[model.name] = model.namespace || namespace;
+        return model.name;
+      });
+      const proxyModels = listInferenceModels(metricsData);
+      const models = Array.from(new Set([...crdModelNames, ...proxyModels])).sort((a, b) => a.localeCompare(b));
+      setKnownModels(models);
+      await fetchAllModelDetails(namespace, models, namespaceByModel);
 
       setError('');
     } catch (err) {
@@ -106,31 +135,15 @@ const InferenceTab: Component = () => {
   });
 
   const modelNames = () => {
-    const req = proxyMetrics()?.requests;
-    if (!req) return [];
-    return Object.keys(req).filter((key) => key !== '_total');
+    return knownModels();
   };
 
-  const requestsFor = (model: string) => proxyMetrics()?.requests?.[model] ?? 0;
-  const queueDepthFor = (model: string) => proxyMetrics()?.queue_depth?.[model] ?? 0;
-  const activeConnFor = (model: string) => proxyMetrics()?.active_conn?.[model] ?? 0;
+  const requestsFor = (model: string) => requestsForModel(proxyMetrics(), model);
+  const queueDepthFor = (model: string) => queueDepthForModel(proxyMetrics(), model);
+  const activeConnFor = (model: string) => activeConnectionsForModel(proxyMetrics(), model);
   const detailFor = (model: string) => modelMetrics()[model];
   const adaptersFor = (model: string) => modelAdapters()[model] || [];
-
-  const errorRateFromStatus = (model: string) => {
-    const statuses = proxyMetrics()?.requestsByStatus?.[model] || {};
-    let total = 0;
-    let failed = 0;
-    for (const [status, value] of Object.entries(statuses)) {
-      total += value;
-      if (status.startsWith('4') || status.startsWith('5')) {
-        failed += value;
-      }
-    }
-    return total > 0 ? failed / total : 0;
-  };
-
-  const errorRateFor = (model: string) => detailFor(model)?.errorRate ?? errorRateFromStatus(model);
+  const errorRateFor = (model: string) => detailFor(model)?.errorRate ?? proxyErrorRateForModel(proxyMetrics(), model);
 
   const reliabilityFor = (model: string): ReliabilityState => {
     const detail = detailFor(model);
@@ -273,6 +286,16 @@ const InferenceTab: Component = () => {
                 <Metric label="Queue Wait p95" value={`${(selectedDetail()?.queueWaitP95Ms ?? 0).toFixed(0)} ms`} />
                 <Metric label="Scale Ups (5m)" value={`${(selectedDetail()?.scaleUps5m ?? 0).toFixed(2)}`} />
               </div>
+              <Show when={selectedDetail()?.partial}>
+                <div class="mt-3 rounded border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-[11px] text-status-warn">
+                  Partial model metrics.
+                  <Show when={(selectedDetail()?.missingMetrics?.length || 0) > 0}>
+                    <span class="ml-1 text-text-dim">
+                      Missing: {(selectedDetail()?.missingMetrics || []).join(', ')}
+                    </span>
+                  </Show>
+                </div>
+              </Show>
             </Show>
 
             <div class="mt-4 border-t border-white/5 pt-3">

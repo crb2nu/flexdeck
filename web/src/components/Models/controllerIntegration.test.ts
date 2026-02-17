@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getReliabilityStatus, summarizeLoRA } from './controllerIntegration';
+import {
+  getReliabilityStatus,
+  summarizeIntegrationCoverage,
+  summarizeLoRA,
+} from './controllerIntegration';
 import type { InferenceMetrics, LoRAAdapter } from '../../lib/types';
 
 const baseMetrics: InferenceMetrics = {
@@ -50,6 +54,19 @@ describe('controllerIntegration', () => {
       loaded: 2,
       pending: 1,
       unloading: 1,
+    });
+  });
+
+  it('summarizes integration availability coverage', () => {
+    expect(
+      summarizeIntegrationCoverage([
+        { inferenceAvailable: true, loraAvailable: true },
+        { inferenceAvailable: false, loraAvailable: true },
+        { inferenceAvailable: false, loraAvailable: false },
+      ])
+    ).toEqual({
+      inferenceUnavailable: 2,
+      loraUnavailable: 1,
     });
   });
 });
