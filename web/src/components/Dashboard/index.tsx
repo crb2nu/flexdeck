@@ -12,6 +12,7 @@ import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
 import AlertsPanel from './AlertsPanel';
 import LangfuseWidget from './LangfuseWidget';
+import { buildInferenceHealthSummary } from './inferenceHealth';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 
@@ -93,21 +94,16 @@ const Dashboard: Component = () => {
     if (!healthStore.features.flexinfer_proxy?.enabled) return;
     try {
       const data: FlexInferProxyMetricsResponse = await flexinferProxyApi.metrics();
-      const totals = data?.totals;
-      const byModel = data?.byModel || {};
-      const modelCount = totals?.modelCount ?? Object.keys(byModel).filter((name) => name !== '_total').length;
-      const totalRequests = totals?.requestsTotal ?? 0;
-      const totalQueue = totals?.queueDepth ?? 0;
-      const error = data?.partial ? 'partial data' : '';
+      const summary = buildInferenceHealthSummary(data);
 
       setInferenceHealth({
-        totalTps: totalRequests,
-        modelCount,
-        queueDepth: totalQueue,
+        totalTps: summary.totalTps,
+        modelCount: summary.modelCount,
+        queueDepth: summary.queueDepth,
         loading: false,
-        error,
+        error: summary.error,
       });
-      if (totalRequests > 0) setTpsHistory(prev => [...prev.slice(-19), totalRequests]);
+      if (summary.totalTps > 0) setTpsHistory(prev => [...prev.slice(-19), summary.totalTps]);
     } catch {
       setInferenceHealth(prev => ({ ...prev, loading: false, error: 'offline' }));
     }

@@ -3,6 +3,15 @@ import { agentsApi, hudApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
+import {
+  applyWorkflowCancel,
+  countClaimConflicts,
+  extractItems,
+  getClaimField,
+  groupClaimsByAgent,
+  normalizePresenceFromPush,
+  toErrorMessage,
+} from './hudUtils';
 
 type FeedConnectionState = 'connecting' | 'live' | 'stale';
 
@@ -28,37 +37,6 @@ const HUDTab: Component = () => {
     return 'Disabled';
   });
 
-  const normalizePresenceFromPush = (rawAgents: Array<Record<string, unknown>>): HUDAgentPresence[] =>
-    rawAgents
-      .filter((agent) => {
-        const metadata = (agent.metadata as Record<string, unknown>) || {};
-        return metadata.source === 'hud' || agent.type === 'cli-agent';
-      })
-      .map((agent) => {
-        const metadata = (agent.metadata as Record<string, unknown>) || {};
-        const activeFiles = Array.isArray(metadata.active_files) ? metadata.active_files : [];
-        const conflicts = Array.isArray(metadata.conflicts) ? metadata.conflicts : [];
-        const status = (metadata.presence_status as string) || ((agent.status as string) === 'healthy' ? 'active' : 'offline');
-        return {
-          agentId: String(agent.id || metadata.agent_id || 'unknown'),
-          agentType: String(metadata.agent_type || agent.type || 'cli-agent'),
-          status: status as HUDAgentPresence['status'],
-          activeFiles: activeFiles.map((item) => String(item)),
-          conflicts: conflicts.map((item) => String(item)),
-          lastHeartbeat: String(metadata.last_heartbeat || ''),
-        };
-      });
-
-  const extractItems = <T,>(value: unknown, key: string): T[] => {
-    if (Array.isArray(value)) return value as T[];
-    if (value && typeof value === 'object') {
-      const wrapped = value as Record<string, unknown>;
-      if (Array.isArray(wrapped[key])) return wrapped[key] as T[];
-      if (Array.isArray(wrapped.items)) return wrapped.items as T[];
-    }
-    return [];
-  };
-
   const fetchAllPull = async () => {
     const [presenceResult, claimsResult, tasksResult, workflowsResult, timelineResult] = await Promise.allSettled([
       hudApi.presence(),
@@ -79,7 +57,7 @@ const HUDTab: Component = () => {
 
     if (failed.length === 5) {
       const reason = failed[0] as PromiseRejectedResult;
-      throw new Error(reason.reason instanceof Error ? reason.reason.message : 'Failed to fetch HUD pull data');
+      throw new Error(toErrorMessage(reason.reason, 'Failed to fetch HUD pull data'));
     }
 
     setLastSuccessfulPull(Date.now());
@@ -107,7 +85,7 @@ const HUDTab: Component = () => {
         setError('Loom HUD is disabled');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch HUD data');
+      setError(toErrorMessage(err, 'Failed to fetch HUD data'));
     } finally {
       setLoading(false);
     }
@@ -119,7 +97,7 @@ const HUDTab: Component = () => {
       await hudApi.approveWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to approve workflow');
+      setError(toErrorMessage(err, 'Failed to approve workflow'));
     } finally {
       setWorkflowAction(null);
     }
@@ -131,7 +109,7 @@ const HUDTab: Component = () => {
       await hudApi.rejectWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject workflow');
+      setError(toErrorMessage(err, 'Failed to reject workflow'));
     } finally {
       setWorkflowAction(null);
     }
@@ -141,9 +119,10 @@ const HUDTab: Component = () => {
     setWorkflowAction(`cancel:${id}`);
     try {
       await hudApi.cancelWorkflow(id, 'Cancelled from FlexDeck HUD panel');
+      setWorkflows((current) => applyWorkflowCancel(current, id));
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel workflow');
+      setError(toErrorMessage(err, 'Failed to cancel workflow'));
     } finally {
       setWorkflowAction(null);
     }
@@ -183,14 +162,9 @@ const HUDTab: Component = () => {
   const completedTasks = () => tasks().filter((task) => task.status === 'completed').slice(0, 10);
 
   const claimsByAgent = () => {
-    const grouped: Record<string, HUDClaim[]> = {};
-    for (const claim of claims()) {
-      const agent = getClaimField(claim, ['agentId', 'agent_id'], 'unknown-agent');
-      if (!grouped[agent]) grouped[agent] = [];
-      grouped[agent].push(claim);
-    }
-    return grouped;
+    return groupClaimsByAgent(claims());
   };
+  const claimConflictCount = () => countClaimConflicts(claims());
 
   const workflowDataStale = () =>
     pullEnabled() && lastSuccessfulPull() > 0 && now() - lastSuccessfulPull() > 45000;
@@ -258,26 +232,36 @@ const HUDTab: Component = () => {
         </div>
       </Show>
 
-      <Show when={pullEnabled() && claims().length > 0}>
+      <Show when={pullEnabled()}>
         <div class="glass-panel p-4">
           <h3 class="text-sm font-medium text-status-warn mb-3">File Claims</h3>
+          <Show when={claimConflictCount() > 0}>
+            <div class="mb-3 rounded border border-status-error/40 bg-status-error/10 px-2 py-1 text-[11px] text-status-error">
+              Conflict detected on {claimConflictCount()} file{claimConflictCount() === 1 ? '' : 's'}.
+            </div>
+          </Show>
+          <Show when={claims().length === 0}>
+            <div class="text-xs text-text-dim">No active file claims.</div>
+          </Show>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <For each={Object.entries(claimsByAgent())}>
-              {([agentId, agentClaims]) => (
-                <div class="rounded-lg bg-white/5 p-3 border border-white/5">
-                  <div class="text-xs text-text-main font-mono mb-2">{agentId}</div>
-                  <div class="flex flex-col gap-1 max-h-32 overflow-y-auto">
-                    <For each={agentClaims}>
-                      {(claim) => (
-                        <div class="text-[10px] text-text-dim font-mono truncate">
-                          {getClaimField(claim, ['filePath', 'file_path'], 'unknown-file')}
-                        </div>
-                      )}
-                    </For>
+            <Show when={claims().length > 0}>
+              <For each={Object.entries(claimsByAgent())}>
+                {([agentId, agentClaims]) => (
+                  <div class="rounded-lg bg-white/5 p-3 border border-white/5">
+                    <div class="text-xs text-text-main font-mono mb-2">{agentId}</div>
+                    <div class="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                      <For each={agentClaims}>
+                        {(claim) => (
+                          <div class="text-[10px] text-text-dim font-mono truncate">
+                            {getClaimField(claim, ['filePath', 'file_path'], 'unknown-file')}
+                          </div>
+                        )}
+                      </For>
+                    </div>
                   </div>
-                </div>
-              )}
-            </For>
+                )}
+              </For>
+            </Show>
           </div>
         </div>
       </Show>
@@ -427,16 +411,5 @@ const TaskCard: Component<{
     </Show>
   </div>
 );
-
-function getClaimField(claim: HUDClaim, keys: string[], fallback: string): string {
-  const raw = claim as Record<string, unknown>;
-  for (const key of keys) {
-    const value = raw[key];
-    if (typeof value === 'string' && value.trim() !== '') {
-      return value;
-    }
-  }
-  return fallback;
-}
 
 export default HUDTab;
