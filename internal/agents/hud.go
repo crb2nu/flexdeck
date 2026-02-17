@@ -140,6 +140,9 @@ func (c *HUDClient) GetPresence(ctx context.Context) (*PresenceResponse, error) 
 			return resp, nil
 		}
 	}
+	if c.url == "" {
+		return nil, fmt.Errorf("HUD pull URL not configured")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/api/presence", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -170,6 +173,9 @@ func (c *HUDClient) GetSessions(ctx context.Context) (*SessionsResponse, error) 
 		if resp, ok := c.pushStore.GetSessions(); ok {
 			return resp, nil
 		}
+	}
+	if c.url == "" {
+		return nil, fmt.Errorf("HUD pull URL not configured")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/api/sessions", nil)
 	if err != nil {

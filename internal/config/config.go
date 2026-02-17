@@ -285,7 +285,7 @@ func Load() (*Config, error) {
 
 		LoomHUD: LoomHUDConfig{
 			Disabled:  parseBool(getEnv("LOOM_HUD_DISABLED", "false")),
-			URL:       getEnv("LOOM_HUD_URL", "http://localhost:3333"),
+			URL:       getEnvAllowEmpty("LOOM_HUD_URL", "http://localhost:3333"),
 			PushToken: getEnv("LOOM_HUD_PUSH_TOKEN", ""),
 		},
 
@@ -336,6 +336,15 @@ func Load() (*Config, error) {
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvAllowEmpty returns defaultValue only when the key is unset.
+// If the key exists and is an empty string, the empty value is preserved.
+func getEnvAllowEmpty(key, defaultValue string) string {
+	if value, ok := os.LookupEnv(key); ok {
 		return value
 	}
 	return defaultValue

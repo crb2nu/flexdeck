@@ -188,14 +188,13 @@ func main() {
 
 		pushStore := agents.NewHUDPushStore(60 * time.Second)
 		handlerDeps.HUDPushStore = pushStore
-
+		hudClient := agents.NewHUDClient(cfg.LoomHUD.URL)
+		hudClient.SetPushStore(pushStore)
+		handlerDeps.HUDClient = hudClient
 		if cfg.LoomHUD.URL != "" {
-			hudClient := agents.NewHUDClient(cfg.LoomHUD.URL)
-			hudClient.SetPushStore(pushStore)
-			handlerDeps.HUDClient = hudClient
 			slog.Info("loom HUD client initialized", "url", cfg.LoomHUD.URL, "push_store", true)
 		} else {
-			slog.Info("loom HUD push store initialized (no pull URL)")
+			slog.Info("loom HUD push mode initialized (no pull URL)")
 		}
 	}
 

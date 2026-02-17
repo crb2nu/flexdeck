@@ -68,7 +68,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				URL:     h.cfg.FlexInferProxy.URL,
 			},
 			"loom_hud": {
-				Enabled: !h.cfg.LoomHUD.Disabled,
+				Enabled: !h.cfg.LoomHUD.Disabled && h.cfg.LoomHUD.URL != "",
 				URL:     h.cfg.LoomHUD.URL,
 			},
 			"rbac": {
