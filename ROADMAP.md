@@ -4,7 +4,7 @@
 
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
 
-> Last Updated: February 2026
+> Last Updated: February 17, 2026
 
 ## Current Status
 
@@ -62,6 +62,12 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 ## Upcoming Work
 
+### Status Legend
+
+- ✅ Shipped and enabled in standard deployments
+- ◐ Partial (implemented behind feature flag and/or reduced surface)
+- ☐ Planned (not yet implemented)
+
 ### Phase 1: AI Workload Management
 
 - [x] **Model Browser UI**: Rich interface for browsing the model registry and triggering downloads.
@@ -90,8 +96,8 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 #### Track 1: FlexInfer Inference Metrics
 - [x] **Inference Metrics Tab**: Per-model TPS, p95 latency, error rate, queue depth, active connections from FlexInfer proxy Prometheus metrics.
-- [x] **Scale-to-Zero Visibility**: Cold start activations, idle timeout state, queue wait time.
-- [x] **GPU Sharing State**: Active model, queue position, swap history from GPUGroup metrics.
+- ◐ **Scale-to-Zero Visibility**: Cold start activations and queue wait metrics are surfaced; richer idle-timeout state remains to expand.
+- ◐ **GPU Sharing State**: Active/shared state is surfaced; dedicated swap-history visualization remains limited.
 - [x] **KV-Cache Pressure**: Utilization gauge, pressure events, eviction policy for vLLM models.
 - [x] **LoRA Adapter Status**: Per-model loaded adapters with lifecycle state (Pending/Loaded/Unloading).
 - [x] **Model Catalog Browser**: Registry entries from ModelCatalog CRDs (HuggingFace, OCI, Ollama sources).
@@ -99,7 +105,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 #### Track 2: Loom Agent HUD
 - [x] **Agent Presence Grid**: Active agent cards with type, status (active/idle/offline), session duration, current file.
 - [x] **Task Board**: Kanban view of agent tasks (pending/in_progress/completed) with priority, agent assignment, file location.
-- [x] **Workflow Monitor**: Active workflows with step indicators, approval gates, approve/reject controls.
+- [x] **Workflow Monitor**: Active workflows with step indicators, approval gates, approve/reject/cancel controls.
 - [x] **Activity Timeline**: Real-time event feed from Loom HUD SSE stream.
 - [x] **File Claims & Conflicts**: Advisory lock display with conflict warnings.
 
@@ -109,9 +115,15 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 ### Phase 4: Enterprise Features
 
-- [ ] **RBAC UI**: User management and role assignment. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5))
-- [ ] **Audit Logs**: Visual audit trail of all mutations performed via the dashboard. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6))
-- [ ] **Multi-Cluster Support**: Switching context between different K8s clusters. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/7))
+- ◐ **RBAC UI (Partial)**: Backend routes and admin UI tab are implemented behind `RBAC_*` flags; rollout/default enablement is pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5))
+- ◐ **Audit Logs (Partial)**: Audit API and UI tab exist behind `AUDIT_*` flags; deployment-level enablement and operational policy remain pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6))
+- ◐ **Multi-Cluster Support (Partial)**: Cluster registry APIs and selector/admin surfaces exist behind `MULTICLUSTER_*` flags; production readiness and rollout validation are pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/7))
+
+### Phase 3.5: Reliability And Contract Hardening (March 2026)
+
+- ☐ **Inference Contract Hardening**: Normalize `/api/flexinfer/proxy/metrics` contract and keep compatibility keys.
+- ☐ **Reliability Metrics Expansion**: Extend `/api/models/crd/{namespace}/{name}/inference` with error/queue/retry reliability fields.
+- ☐ **HUD Degraded-Mode UX**: Explicit stale/fallback indicators for SSE disconnect and polling delay.
 
 ## References
 

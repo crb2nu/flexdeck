@@ -64,14 +64,29 @@ Environment variables:
 | `K8S_BEARER_TOKEN` | | K8s auth token |
 | `K8S_DISABLED` | `false` | Disable K8s integration |
 | `K8S_READONLY` | `false` | Disable mutation operations |
-| `PROM_URL` | | Prometheus URL |
-| `LOKI_URL` | | Loki URL |
+| `PROM_URL` | `http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090` | Prometheus URL |
+| `PROM_DISABLED` | `false` | Disable Prometheus integration |
+| `LOKI_URL` | `http://loki.logging.svc.cluster.local:3100` | Loki URL |
+| `LOKI_DISABLED` | `false` | Disable Loki integration |
 | `VLLM_URL` | | vLLM inference proxy URL (one of flexinfer's backends) |
-| `LITELLM_URL` | | LiteLLM gateway URL |
+| `FLEXINFER_PROXY_URL` | | FlexInfer proxy base URL |
+| `FLEXINFER_PROXY_DISABLED` | `false` | Disable FlexInfer proxy integration |
+| `LITELLM_URL` | `http://litellm.ai.svc.cluster.local:8000` | LiteLLM gateway URL |
+| `LITELLM_DISABLED` | `false` | Disable LiteLLM integration |
 | `REDIS_URL` | | Redis connection for caching/metrics |
 | `LANGFUSE_URL` | | Langfuse observability URL |
 | `LANGFUSE_PUBLIC_KEY` | | Langfuse public API key |
 | `LANGFUSE_SECRET_KEY` | | Langfuse secret API key |
+| `LOOM_HUD_URL` | `http://localhost:3333` | Loom HUD pull API base URL |
+| `LOOM_HUD_DISABLED` | `false` | Disable Loom HUD integration |
+| `LOOM_HUD_PUSH_TOKEN` | | Shared secret for HUD push webhook auth |
+| `RBAC_DISABLED` | `true` | Disable RBAC subsystem |
+| `RBAC_USERS_PATH` | `/data/rbac-users.json` | RBAC user store path |
+| `RBAC_ADMIN_TOKEN` | | Bootstrap admin token |
+| `AUDIT_DISABLED` | `true` | Disable audit subsystem |
+| `AUDIT_TTL_DAYS` | `90` | Audit retention window |
+| `MULTICLUSTER_DISABLED` | `true` | Disable multi-cluster subsystem |
+| `CLUSTERS_REGISTRY_PATH` | `/data/clusters.json` | Cluster registry store path |
 
 ## Docker
 
