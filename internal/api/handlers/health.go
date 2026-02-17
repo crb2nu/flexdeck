@@ -71,6 +71,9 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Enabled: !h.cfg.LoomHUD.Disabled && h.cfg.LoomHUD.URL != "",
 				URL:     h.cfg.LoomHUD.URL,
 			},
+			"loom_hud_push": {
+				Enabled: !h.cfg.LoomHUD.Disabled && h.hudPushStore != nil,
+			},
 			"rbac": {
 				Enabled: !h.cfg.RBAC.Disabled,
 			},

@@ -3,7 +3,7 @@ import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
-import { modelsApi, flexinferProxyApi, hudApi } from '../../lib/api';
+import { modelsApi, flexinferProxyApi, hudApi, agentsApi } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
@@ -112,20 +112,47 @@ const Dashboard: Component = () => {
   const [agentActivity, setAgentActivity] = createSignal({
     activeAgents: 0, totalTasks: 0, pendingApprovals: 0, loading: true, error: '',
   });
+  const loomHUDPullEnabled = () => healthStore.features.loom_hud?.enabled ?? false;
+  const loomHUDPushEnabled = () => healthStore.features.loom_hud_push?.enabled ?? false;
+  const loomHUDAvailable = () => loomHUDPullEnabled() || loomHUDPushEnabled();
 
   const fetchAgentActivity = async () => {
-    if (!healthStore.features.loom_hud?.enabled) return;
+    if (!loomHUDAvailable()) return;
     try {
-      const data = await hudApi.fleet();
-      const agents = data?.agents || [];
-      const tasks = data?.tasks || [];
-      const activeAgents = agents.filter((a: any) => a.status === 'active').length;
-      const completedTasks = tasks.filter((t: any) => t.status === 'completed').length;
-      const pendingApprovals = data?.kpis?.pending_approvals || 0;
+      if (loomHUDPullEnabled()) {
+        const data = await hudApi.fleet();
+        const agents = data?.agents || [];
+        const tasks = data?.tasks || [];
+        const activeAgents = agents.filter((a: any) => a.status === 'active').length;
+        const completedTasks = tasks.filter((t: any) => t.status === 'completed').length;
+        const pendingApprovals = data?.kpis?.pending_approvals || 0;
+        setAgentActivity({
+          activeAgents,
+          totalTasks: completedTasks,
+          pendingApprovals,
+          loading: false,
+          error: '',
+        });
+        return;
+      }
+
+      const list = await agentsApi.list();
+      const allAgents = list?.agents || [];
+      const hudAgents = allAgents.filter((a: any) => a?.metadata?.source === 'hud' || a?.type === 'cli-agent');
+      const activeAgents = hudAgents.filter((a: any) => {
+        const presenceStatus = a?.metadata?.presence_status;
+        if (presenceStatus === 'active') return true;
+        if (presenceStatus === 'idle' || presenceStatus === 'offline') return false;
+        return a?.status === 'healthy';
+      }).length;
+      const sessionsSeen = hudAgents.reduce((sum: number, a: any) => {
+        const count = Number(a?.metadata?.session_count || 0);
+        return Number.isFinite(count) ? sum + count : sum;
+      }, 0);
       setAgentActivity({
         activeAgents,
-        totalTasks: completedTasks,
-        pendingApprovals,
+        totalTasks: sessionsSeen,
+        pendingApprovals: 0,
         loading: false,
         error: '',
       });
@@ -133,6 +160,12 @@ const Dashboard: Component = () => {
       setAgentActivity(prev => ({ ...prev, loading: false, error: 'offline' }));
     }
   };
+
+  createEffect(() => {
+    if (loomHUDAvailable()) {
+      fetchAgentActivity();
+    }
+  });
 
   let metricsInterval: ReturnType<typeof setInterval>;
   let inferenceInterval: ReturnType<typeof setInterval>;
@@ -300,11 +333,15 @@ const Dashboard: Component = () => {
           />
         </Show>
 
-        <Show when={healthStore.features.loom_hud?.enabled}>
+        <Show when={loomHUDAvailable()}>
           <PulseCard
             title="Agents"
             value={`${agentActivity().activeAgents}`}
-            sub={`${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`}
+            sub={
+              loomHUDPullEnabled()
+                ? `${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`
+                : `${agentActivity().totalTasks} sessions observed · push mode`
+            }
             loading={agentActivity().loading}
             error={agentActivity().error}
             icon="◎"

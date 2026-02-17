@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/config"
 )
 
@@ -41,6 +43,14 @@ func TestHealthLoomHUDDisabledWhenPullURLEmpty(t *testing.T) {
 	if loom.Enabled {
 		t.Fatal("expected loom_hud.enabled=false when pull URL is empty")
 	}
+
+	loomPush, ok := resp.Features["loom_hud_push"]
+	if !ok {
+		t.Fatal("expected loom_hud_push feature in health response")
+	}
+	if loomPush.Enabled {
+		t.Fatal("expected loom_hud_push.enabled=false when push store is not configured")
+	}
 }
 
 func TestHealthLoomHUDEnabledWhenPullURLSet(t *testing.T) {
@@ -53,6 +63,7 @@ func TestHealthLoomHUDEnabledWhenPullURLSet(t *testing.T) {
 				URL:      "http://loom-hud.ai.svc.cluster.local:3333",
 			},
 		},
+		hudPushStore: agents.NewHUDPushStore(60 * time.Second),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
@@ -74,5 +85,13 @@ func TestHealthLoomHUDEnabledWhenPullURLSet(t *testing.T) {
 	}
 	if !loom.Enabled {
 		t.Fatal("expected loom_hud.enabled=true when pull URL is set")
+	}
+
+	loomPush, ok := resp.Features["loom_hud_push"]
+	if !ok {
+		t.Fatal("expected loom_hud_push feature in health response")
+	}
+	if !loomPush.Enabled {
+		t.Fatal("expected loom_hud_push.enabled=true when push store is configured")
 	}
 }
