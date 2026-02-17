@@ -1,9 +1,21 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { RegisteredModel, ModelSearchResult, FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
+import type {
+  RegisteredModel,
+  ModelSearchResult,
+  FlexInferModel,
+  FlexInferModelListResponse,
+  InferenceMetrics,
+  LoRAAdapter,
+} from '../../lib/types';
 import { modelsApi } from '../../lib/api';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
+import {
+  getReliabilityClasses,
+  getReliabilityStatus,
+  summarizeLoRA,
+} from './controllerIntegration';
 
 const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
@@ -20,9 +32,12 @@ const Models: Component = () => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
   const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
+  const [controllerDataLoading, setControllerDataLoading] = createSignal(false);
 
   // CRD models from the backend-configured AI namespace (the real controller state)
   const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
+  const [inferenceByModel, setInferenceByModel] = createSignal<Record<string, InferenceMetrics>>({});
+  const [loraByModel, setLoraByModel] = createSignal<Record<string, LoRAAdapter[]>>({});
 
   // Registry models (flexdeck's internal model registry)
   const [registryModels, setRegistryModels] = createStore<RegisteredModel[]>([]);
@@ -32,6 +47,49 @@ const Models: Component = () => {
   const [searchSource, setSearchSource] = createSignal<'huggingface' | 'civitai'>('huggingface');
   const [searchResults, setSearchResults] = createStore<RegisteredModel[]>([]);
   const [searching, setSearching] = createSignal(false);
+
+  let controllerRefreshToken = 0;
+
+  const modelKey = (namespace: string, name: string) => `${namespace}/${name}`;
+
+  const refreshControllerIntegrations = async (models: FlexInferModel[]) => {
+    const token = ++controllerRefreshToken;
+    if (models.length === 0) {
+      setInferenceByModel({});
+      setLoraByModel({});
+      setControllerDataLoading(false);
+      return;
+    }
+
+    setControllerDataLoading(true);
+    const nextInference: Record<string, InferenceMetrics> = {};
+    const nextLoRA: Record<string, LoRAAdapter[]> = {};
+
+    await Promise.all(
+      models.map(async (model) => {
+        const key = modelKey(model.namespace, model.name);
+        const [inferenceResult, loraResult] = await Promise.allSettled([
+          modelsApi.crdInference(model.namespace, model.name),
+          modelsApi.lora(model.namespace, model.name),
+        ]);
+
+        if (inferenceResult.status === 'fulfilled') {
+          nextInference[key] = inferenceResult.value;
+        }
+
+        if (loraResult.status === 'fulfilled') {
+          nextLoRA[key] = loraResult.value.adapters || [];
+        } else {
+          nextLoRA[key] = [];
+        }
+      })
+    );
+
+    if (token !== controllerRefreshToken) return;
+    setInferenceByModel(nextInference);
+    setLoraByModel(nextLoRA);
+    setControllerDataLoading(false);
+  };
 
   // Fetch CRD models from the backend's configured AI namespace
   const [crdNamespace, setCrdNamespace] = createSignal('');
@@ -193,6 +251,19 @@ const Models: Component = () => {
     onCleanup(() => es?.close());
   });
 
+  // Refresh per-model inference + LoRA integration data for controller cards.
+  createEffect(() => {
+    if (activeTab() !== 'controller') return;
+    const snapshot = [...crdModels];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    timer = setTimeout(() => {
+      refreshControllerIntegrations(snapshot);
+    }, 250);
+    onCleanup(() => {
+      if (timer) clearTimeout(timer);
+    });
+  });
+
   // Phase summary for header
   const phaseSummary = createMemo(() => {
     const counts: Record<string, number> = {};
@@ -201,6 +272,28 @@ const Models: Component = () => {
       counts[phase] = (counts[phase] || 0) + 1;
     });
     return counts;
+  });
+
+  const reliabilitySummary = createMemo(() => {
+    const counts: Record<string, number> = { healthy: 0, degraded: 0, partial: 0, unknown: 0 };
+    crdModels.forEach((model) => {
+      const key = modelKey(model.namespace, model.name);
+      const status = getReliabilityStatus(inferenceByModel()[key]);
+      counts[status.level] += 1;
+    });
+    return counts;
+  });
+
+  const loraSummary = createMemo(() => {
+    let loaded = 0;
+    let total = 0;
+    crdModels.forEach((model) => {
+      const key = modelKey(model.namespace, model.name);
+      const summary = summarizeLoRA(loraByModel()[key]);
+      loaded += summary.loaded;
+      total += summary.total;
+    });
+    return { loaded, total };
   });
 
   return (
@@ -223,14 +316,32 @@ const Models: Component = () => {
           <div class="flex items-center gap-3">
             {/* Phase summary pills */}
             <Show when={activeTab() === 'controller' && crdModels.length > 0}>
-              <div class="hidden items-center gap-1.5 sm:flex">
-                <For each={Object.entries(phaseSummary())}>
-                  {([phase, count]) => (
-                    <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getPhaseClasses(phase)}`}>
-                      {count} {phase}
+              <div class="hidden flex-col gap-1 sm:flex">
+                <div class="flex items-center gap-1.5">
+                  <For each={Object.entries(phaseSummary())}>
+                    {([phase, count]) => (
+                      <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getPhaseClasses(phase)}`}>
+                        {count} {phase}
+                      </span>
+                    )}
+                  </For>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses('healthy')}`}>
+                    {reliabilitySummary().healthy} healthy
+                  </span>
+                  <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses('degraded')}`}>
+                    {reliabilitySummary().degraded} degraded
+                  </span>
+                  <Show when={reliabilitySummary().partial > 0}>
+                    <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses('partial')}`}>
+                      {reliabilitySummary().partial} partial
                     </span>
-                  )}
-                </For>
+                  </Show>
+                  <span class="rounded-full bg-neon-purple/20 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
+                    LoRA {loraSummary().loaded}/{loraSummary().total}
+                  </span>
+                </div>
               </div>
             </Show>
             <button
@@ -277,6 +388,9 @@ const Models: Component = () => {
                   {(model) => (
                     <CRDModelCard
                       model={model}
+                      inference={inferenceByModel()[modelKey(model.namespace, model.name)]}
+                      adapters={loraByModel()[modelKey(model.namespace, model.name)]}
+                      integrationLoading={controllerDataLoading()}
                       actionLoading={crdActionLoading()}
                       onActivate={() => handleCRDAction('activate', model)}
                       onScaleToZero={() => handleCRDAction('scale0', model)}
@@ -464,6 +578,9 @@ function getPhaseIcon(phase?: string): string {
 
 const CRDModelCard: Component<{
   model: FlexInferModel;
+  inference?: InferenceMetrics;
+  adapters?: LoRAAdapter[];
+  integrationLoading: boolean;
   actionLoading: string | null;
   onActivate: () => void;
   onScaleToZero: () => void;
@@ -479,6 +596,8 @@ const CRDModelCard: Component<{
   const serverless = () => props.model.spec?.serverless;
   const litellm = () => props.model.spec?.litellm;
   const gpuSpec = () => props.model.spec?.gpu;
+  const reliability = createMemo(() => getReliabilityStatus(props.inference));
+  const lora = createMemo(() => summarizeLoRA(props.adapters));
 
   const isReady = () => phase() === 'Ready';
   const isLoading = () => phase() === 'Loading' || phase() === 'Pending';
@@ -508,9 +627,14 @@ const CRDModelCard: Component<{
             <span class="text-[10px] font-mono text-text-dim opacity-50">{props.model.spec.backend}</span>
           </div>
         </div>
-        <div class={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${getPhaseClasses(phase())}`}>
-          <span class={isLoading() ? 'animate-pulse' : ''}>{getPhaseIcon(phase())}</span>
-          {phase()}
+        <div class="flex flex-col items-end gap-1">
+          <div class={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${getPhaseClasses(phase())}`}>
+            <span class={isLoading() ? 'animate-pulse' : ''}>{getPhaseIcon(phase())}</span>
+            {phase()}
+          </div>
+          <div class={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${getReliabilityClasses(reliability().level)}`}>
+            {reliability().label}
+          </div>
         </div>
       </div>
 
@@ -580,6 +704,48 @@ const CRDModelCard: Component<{
           </div>
         </Show>
 
+        {/* Inference Reliability Metrics (Prometheus-derived) */}
+        <Show when={props.inference}>
+          <div class={`rounded-md p-2 space-y-1 ${
+            reliability().level === 'degraded'
+              ? 'bg-status-error/10'
+              : reliability().level === 'partial'
+                ? 'bg-status-warn/10'
+                : 'bg-white/5'
+          }`}>
+            <div class="flex items-center justify-between">
+              <div class="text-[10px] font-medium text-text-dim uppercase tracking-wider">Inference Reliability</div>
+              <Show when={props.inference?.partial}>
+                <span class="rounded-full bg-status-warn/20 px-2 py-0.5 text-[10px] font-medium text-status-warn">
+                  partial
+                </span>
+              </Show>
+            </div>
+            <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <div class="flex justify-between gap-2">
+                <span class="text-text-dim">Error %</span>
+                <span class="font-mono text-text-muted">{((props.inference?.errorRate ?? 0) * 100).toFixed(2)}%</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="text-text-dim">Queue p95</span>
+                <span class="font-mono text-text-muted">{(props.inference?.queueWaitP95Ms ?? 0).toFixed(0)} ms</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="text-text-dim">Rejected/s</span>
+                <span class="font-mono text-text-muted">{(props.inference?.rejectedRequestsPerSec ?? 0).toFixed(3)}</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="text-text-dim">Retries 5m</span>
+                <span class="font-mono text-text-muted">{(props.inference?.activationRetries5m ?? 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={props.integrationLoading && !props.inference}>
+          <div class="text-[10px] text-text-dim animate-pulse">Loading inference metrics...</div>
+        </Show>
+
         {/* GPU Spec (from spec, not status) */}
         <Show when={!gpu() && gpuSpec()}>
           <div class="flex justify-between text-xs">
@@ -616,6 +782,12 @@ const CRDModelCard: Component<{
                   shared()!.state === 'Queued' ? 'text-status-warn' :
                   'text-neon-purple'
                 }`}>{shared()!.state}</span>
+              </div>
+            </Show>
+            <Show when={shared()?.queuePosition != null && shared()!.queuePosition! > 0}>
+              <div class="flex justify-between text-xs">
+                <span class="text-text-dim">Queue Pos</span>
+                <span class="text-text-muted font-mono">{shared()!.queuePosition}</span>
               </div>
             </Show>
             <Show when={shared()?.preemptedBy}>
@@ -701,6 +873,45 @@ const CRDModelCard: Component<{
               </span>
             </div>
           </Show>
+        </Show>
+
+        {/* LoRA Adapter Integration */}
+        <Show when={props.adapters && props.adapters.length > 0}>
+          <div class="rounded-md bg-neon-purple/5 p-2 space-y-1">
+            <div class="flex items-center justify-between">
+              <div class="text-[10px] font-medium text-neon-purple uppercase tracking-wider">LoRA Adapters</div>
+              <div class="text-[10px] text-text-dim">
+                {lora().loaded}/{lora().total} loaded
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <For each={(props.adapters || []).slice(0, 4)}>
+                {(adapter) => (
+                  <span
+                    class={`rounded-full px-2 py-0.5 text-[10px] ${
+                      adapter.state === 'Loaded'
+                        ? 'bg-status-ok/20 text-status-ok'
+                        : adapter.state === 'Pending'
+                          ? 'bg-status-warn/20 text-status-warn'
+                          : 'bg-neon-purple/20 text-neon-purple'
+                    }`}
+                    title={adapter.adapterSource}
+                  >
+                    {adapter.name}
+                  </span>
+                )}
+              </For>
+              <Show when={(props.adapters || []).length > 4}>
+                <span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-text-dim">
+                  +{(props.adapters || []).length - 4}
+                </span>
+              </Show>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={props.integrationLoading && (!props.adapters || props.adapters.length === 0)}>
+          <div class="text-[10px] text-text-dim animate-pulse">Loading LoRA adapters...</div>
         </Show>
 
         {/* Service Labels */}

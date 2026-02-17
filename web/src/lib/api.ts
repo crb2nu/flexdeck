@@ -286,14 +286,14 @@ export const modelsApi = {
       `/models/crd${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
     ),
   crdScale: (namespace: string, name: string, minReplicas: number) =>
-    api<any>(`/models/crd/${namespace}/${name}/scale`, {
+    api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/scale`, {
       method: "POST",
       body: JSON.stringify({ minReplicas }),
     }),
   crdActivate: (namespace: string, name: string) =>
-    api<any>(`/models/crd/${namespace}/${name}/activate`, { method: "POST" }),
+    api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/activate`, { method: "POST" }),
   crdRestart: (namespace: string, name: string) =>
-    api<any>(`/models/crd/${namespace}/${name}/restart`, { method: "POST" }),
+    api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/restart`, { method: "POST" }),
   crdWatchSSEUrl: (namespace?: string) => {
     const isPublicView =
       typeof window !== "undefined" &&
@@ -302,11 +302,17 @@ export const modelsApi = {
     return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
   },
   crdEvents: (ns: string, name: string) =>
-    api<{ events: import("./types").ModelEvent[]; model: string; namespace: string }>(`/models/crd/${ns}/${name}/events`),
+    api<{ events: import("./types").ModelEvent[]; model: string; namespace: string }>(
+      `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/events`
+    ),
   crdInference: (ns: string, name: string) =>
-    api<import("./types").InferenceMetrics>(`/models/crd/${ns}/${name}/inference`),
+    api<import("./types").InferenceMetrics>(
+      `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/inference`
+    ),
   lora: (ns: string, name: string) =>
-    api<{ adapters: import("./types").LoRAAdapter[]; model: string; namespace: string }>(`/models/lora/${ns}/${name}`),
+    api<{ adapters: import("./types").LoRAAdapter[]; model: string; namespace: string }>(
+      `/models/lora/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`
+    ),
   catalogs: () =>
     api<{ catalogs: import("./types").ModelCatalogEntry[]; namespace: string }>("/models/catalogs"),
 };
