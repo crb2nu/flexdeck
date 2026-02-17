@@ -1,4 +1,11 @@
-import { Component, createSignal, createResource, Show, For } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createSignal,
+  createResource,
+  Show,
+  For,
+} from "solid-js";
 import { clustersApi, activeClusterId, switchCluster } from "../../lib/api";
 import { healthStore } from "../../stores/health";
 import type { ClusterInfo } from "../../lib/types";
@@ -21,9 +28,29 @@ const ClusterSelector: Component = () => {
 
   const currentCluster = (): ClusterInfo | undefined => {
     const id = activeClusterId();
-    if (!id) return clusters()?.find((c) => c.isDefault);
-    return clusters()?.find((c) => c.id === id);
+    const list = clusters() || [];
+    if (!id) return list.find((c) => c.isDefault);
+    return list.find((c) => c.id === id) || list.find((c) => c.isDefault);
   };
+
+  createEffect(() => {
+    if (!enabled()) {
+      setOpen(false);
+      return;
+    }
+
+    const selectedID = activeClusterId();
+    if (!selectedID) return;
+
+    const list = clusters() || [];
+    if (list.length === 0) return;
+
+    const stillExists = list.some((c) => c.id === selectedID);
+    if (!stillExists) {
+      const fallback = list.find((c) => c.isDefault);
+      switchCluster(fallback?.id || "");
+    }
+  });
 
   const statusColor = (status: string) => {
     if (status === "connected") return "bg-neon-green";
@@ -75,7 +102,14 @@ const ClusterSelector: Component = () => {
               </div>
             </div>
             <div class="max-h-48 overflow-y-auto p-1">
-              <For each={clusters() || []}>
+              <For
+                each={clusters() || []}
+                fallback={
+                  <div class="px-3 py-2 text-[11px] font-mono text-text-dim">
+                    No clusters available
+                  </div>
+                }
+              >
                 {(cluster) => (
                   <button
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs hover:bg-white/5 transition-colors"

@@ -22,14 +22,23 @@ const ClustersTab: Component = () => {
   const [newToken, setNewToken] = createSignal("");
   const [newNamespace, setNewNamespace] = createSignal("default");
   const [testing, setTesting] = createSignal<string | null>(null);
+  const [adding, setAdding] = createSignal(false);
+
+  const errorMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof Error && error.message.trim() !== "") {
+      return error.message;
+    }
+    return fallback;
+  };
 
   const handleAdd = async () => {
+    setAdding(true);
     try {
       await clustersApi.create({
-        name: newName(),
-        host: newHost(),
-        token: newToken(),
-        namespace: newNamespace(),
+        name: newName().trim(),
+        host: newHost().trim(),
+        token: newToken().trim(),
+        namespace: newNamespace().trim(),
       });
       setShowAdd(false);
       setNewName("");
@@ -37,9 +46,10 @@ const ClustersTab: Component = () => {
       setNewToken("");
       setNewNamespace("default");
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to add cluster");
+    } catch (error) {
+      alert(errorMessage(error, "Failed to add cluster"));
     }
+    setAdding(false);
   };
 
   const handleTest = async (id: string) => {
@@ -52,8 +62,8 @@ const ClustersTab: Component = () => {
         alert(`Connection failed: ${result.error}`);
       }
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Test failed");
+    } catch (error) {
+      alert(errorMessage(error, "Test failed"));
     }
     setTesting(null);
   };
@@ -62,8 +72,8 @@ const ClustersTab: Component = () => {
     try {
       await clustersApi.setDefault(id);
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to set default");
+    } catch (error) {
+      alert(errorMessage(error, "Failed to set default"));
     }
   };
 
@@ -72,8 +82,8 @@ const ClustersTab: Component = () => {
     try {
       await clustersApi.delete(id);
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to delete cluster");
+    } catch (error) {
+      alert(errorMessage(error, "Failed to delete cluster"));
     }
   };
 
@@ -150,9 +160,9 @@ const ClustersTab: Component = () => {
             <button
               class="rounded bg-neon-cyan/20 border border-neon-cyan/30 px-4 py-1.5 text-xs text-neon-cyan font-mono hover:bg-neon-cyan/30 disabled:opacity-50"
               onClick={handleAdd}
-              disabled={!newName() || !newHost()}
+              disabled={!newName().trim() || !newHost().trim() || adding()}
             >
-              Add Cluster
+              {adding() ? "Adding..." : "Add Cluster"}
             </button>
             <button
               class="text-xs text-text-dim hover:text-white px-2 py-1.5"

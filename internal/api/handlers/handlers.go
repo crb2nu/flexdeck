@@ -120,8 +120,13 @@ func (h *Handler) k8sForRequest(r *http.Request) *k8s.Client {
 		return h.k8s
 	}
 	client, err := h.clusterManager.GetClient(clusterID)
-	if err != nil {
-		return h.k8s
+	if err == nil && client != nil {
+		return client
 	}
-	return client
+
+	// Fall back to the configured default managed cluster before the legacy single-cluster client.
+	if defaultClient, defaultErr := h.clusterManager.GetDefaultClient(); defaultErr == nil && defaultClient != nil {
+		return defaultClient
+	}
+	return h.k8s
 }

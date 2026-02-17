@@ -42,36 +42,62 @@ export async function api<T>(
     window.location.hostname === "www.flexinfer.ai";
   const apiBase = isPublicView ? "/flexdeck/api" : "/api";
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers = new Headers(options.headers);
 
   // Attach multi-cluster header if a cluster is selected
   const clusterId = activeClusterId();
   if (clusterId) {
-    headers["X-Cluster-ID"] = clusterId;
+    headers.set("X-Cluster-ID", clusterId);
+  }
+
+  // Default JSON content-type when sending structured body payloads.
+  if (
+    !headers.has("Content-Type") &&
+    options.body != null &&
+    !(typeof FormData !== "undefined" && options.body instanceof FormData)
+  ) {
+    headers.set("Content-Type", "application/json");
   }
 
   const response = await authenticatedFetch(`${apiBase}${endpoint}`, {
     ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
     let message = `Request failed: ${response.status}`;
+    const contentType = response.headers.get("content-type") || "";
     try {
-      const data: ApiError = await response.json();
-      message = data.error || data.message || message;
+      if (contentType.includes("application/json")) {
+        const data: ApiError = await response.json();
+        message = data.error || data.message || message;
+      } else {
+        const text = await response.text();
+        if (text.trim() !== "") {
+          message = text;
+        }
+      }
     } catch {
-      // Ignore JSON parse errors
+      // Keep default status message when response cannot be parsed.
     }
     throw new ApiRequestError(response.status, message);
   }
 
-  return response.json();
+  if (response.status === 204 || response.status === 205) {
+    return undefined as T;
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  if (text.trim() === "") {
+    return undefined as T;
+  }
+
+  return text as T;
 }
 
 export const k8s = {

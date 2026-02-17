@@ -1,4 +1,4 @@
-import { Component, createSignal, Show } from "solid-js";
+import { Component, createEffect, createSignal, Show } from "solid-js";
 import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
@@ -33,6 +33,15 @@ const Admin: Component = () => {
     });
     return t.filter((tab) => tab.enabled);
   };
+
+  createEffect(() => {
+    const enabledTabs = tabs();
+    if (enabledTabs.length === 0) return;
+    const isActiveEnabled = enabledTabs.some((tab) => tab.id === activeTab());
+    if (!isActiveEnabled) {
+      setActiveTab(enabledTabs[0].id);
+    }
+  });
 
   return (
     <div class="h-full overflow-y-auto space-y-4">
