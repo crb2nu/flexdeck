@@ -7,6 +7,7 @@ import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
 import SystemCore from './components/Navigation/SystemCore';
 import ClusterSelector from './components/Navigation/ClusterSelector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { buildNavItems } from './lib/featureFlags';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
@@ -31,26 +32,8 @@ const AppLayout: Component<ParentProps> = (props) => {
     await Promise.all([fetchHealth(), fetchUIConfig()]);
   });
   
-  const adminEnabled = createMemo(() => {
-    const f = healthStore.features || {};
-    return f.rbac?.enabled || f.audit?.enabled || f.multi_cluster?.enabled;
-  });
-
   const navItems = createMemo(() => {
-    const items = [
-      { label: 'Dashboard', path: '/' },
-      { label: 'Services', path: '/services' },
-      { label: 'Flux', path: '/flux' },
-      { label: 'Pipeline', path: '/pipeline' },
-      { label: 'Logs', path: '/logs' },
-      { label: 'Metrics', path: '/metrics' },
-      { label: 'Models', path: '/models' },
-      { label: 'Agents', path: '/agents' },
-    ];
-    if (adminEnabled()) {
-      items.push({ label: 'Admin', path: '/admin' });
-    }
-    return items;
+    return buildNavItems(healthStore.features || {});
   });
 
   return (

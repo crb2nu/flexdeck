@@ -3,6 +3,7 @@ import { agentsApi, hudApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
+import { getHudModeState } from '../../lib/featureFlags';
 import {
   applyWorkflowCancel,
   countClaimConflicts,
@@ -28,14 +29,9 @@ const HUDTab: Component = () => {
   const [lastSuccessfulPull, setLastSuccessfulPull] = createSignal<number>(0);
   const [now, setNow] = createSignal(Date.now());
 
-  const pullEnabled = () => healthStore.features?.loom_hud?.enabled ?? false;
-  const pushEnabled = () => healthStore.features?.loom_hud_push?.enabled ?? false;
-
-  const modeLabel = createMemo(() => {
-    if (pullEnabled()) return 'Pull mode (HUD REST)';
-    if (pushEnabled()) return 'Push mode (agent snapshots)';
-    return 'Disabled';
-  });
+  const hudMode = createMemo(() => getHudModeState(healthStore.features || {}));
+  const pullEnabled = () => hudMode().pullEnabled;
+  const pushEnabled = () => hudMode().pushEnabled;
 
   const fetchAllPull = async () => {
     const [presenceResult, claimsResult, tasksResult, workflowsResult, timelineResult] = await Promise.allSettled([
@@ -82,7 +78,7 @@ const HUDTab: Component = () => {
       } else if (pushEnabled()) {
         await fetchAllPush();
       } else {
-        setError('Loom HUD is disabled');
+        setError(hudMode().disabledReason || 'Loom HUD is disabled');
       }
     } catch (err) {
       setError(toErrorMessage(err, 'Failed to fetch HUD data'));
@@ -175,10 +171,10 @@ const HUDTab: Component = () => {
     <div class="flex flex-col gap-4">
       <div class="glass-panel p-3 flex items-center justify-between">
         <div class="text-xs text-text-dim">
-          HUD mode: <span class="text-text-main font-mono">{modeLabel()}</span>
+          HUD mode: <span class="text-text-main font-mono">{hudMode().modeLabel}</span>
         </div>
         <div class="text-[10px] text-text-dim">
-          {pullEnabled() ? 'Full data (presence/tasks/workflows/claims/timeline)' : pushEnabled() ? 'Presence snapshots only' : 'No HUD data'}
+          {hudMode().modeDescription}
         </div>
       </div>
 

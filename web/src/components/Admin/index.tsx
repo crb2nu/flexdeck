@@ -3,36 +3,21 @@ import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
 import ClustersTab from "./ClustersTab";
+import { getAdminTabs, getDefaultAdminTab } from "../../lib/featureFlags";
 
 type Tab = "users" | "audit" | "clusters";
 
 const Admin: Component = () => {
   const rbacEnabled = () => healthStore.features?.rbac?.enabled ?? false;
   const auditEnabled = () => healthStore.features?.audit?.enabled ?? false;
-  const clustersEnabled = () =>
-    healthStore.features?.multi_cluster?.enabled ?? false;
+  const clustersEnabled = () => healthStore.features?.multi_cluster?.enabled ?? false;
 
   // Default to the first enabled tab
-  const defaultTab = (): Tab => {
-    if (rbacEnabled()) return "users";
-    if (auditEnabled()) return "audit";
-    if (clustersEnabled()) return "clusters";
-    return "users";
-  };
+  const defaultTab = (): Tab => getDefaultAdminTab(healthStore.features || {});
 
   const [activeTab, setActiveTab] = createSignal<Tab>(defaultTab());
 
-  const tabs = () => {
-    const t: { id: Tab; label: string; enabled: boolean }[] = [];
-    t.push({ id: "users", label: "Users", enabled: rbacEnabled() });
-    t.push({ id: "audit", label: "Audit Log", enabled: auditEnabled() });
-    t.push({
-      id: "clusters",
-      label: "Clusters",
-      enabled: clustersEnabled(),
-    });
-    return t.filter((tab) => tab.enabled);
-  };
+  const tabs = () => getAdminTabs(healthStore.features || {});
 
   createEffect(() => {
     const enabledTabs = tabs();
