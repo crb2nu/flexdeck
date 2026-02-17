@@ -5,9 +5,14 @@ import { hudApi } from '../../lib/api';
 const MAX_RECONNECT_DELAY = 30000;
 const BASE_RECONNECT_DELAY = 2000;
 
-const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (props) => {
+type FeedConnectionState = 'connecting' | 'live' | 'stale';
+
+const HUDActivityFeed: Component<{
+  initialEvents?: HUDTimelineEvent[];
+  onConnectionStateChange?: (state: FeedConnectionState) => void;
+}> = (props) => {
   const [events, setEvents] = createSignal<HUDTimelineEvent[]>(props.initialEvents || []);
-  const [connected, setConnected] = createSignal(false);
+  const [connectionState, setConnectionState] = createSignal<FeedConnectionState>('connecting');
 
   // Merge initial events without replacing SSE events
   createEffect(() => {
@@ -30,11 +35,12 @@ const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (prop
     let reconnectAttempts = 0;
 
     const connect = () => {
+      setConnectionState(reconnectAttempts > 0 ? 'stale' : 'connecting');
       const url = hudApi.eventsSSEUrl();
       eventSource = new EventSource(url);
 
       eventSource.onopen = () => {
-        setConnected(true);
+        setConnectionState('live');
         reconnectAttempts = 0;
       };
 
@@ -48,7 +54,7 @@ const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (prop
       };
 
       eventSource.onerror = () => {
-        setConnected(false);
+        setConnectionState('stale');
         eventSource?.close();
         // Exponential backoff with jitter, capped at MAX_RECONNECT_DELAY
         const delay = Math.min(
@@ -65,7 +71,12 @@ const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (prop
     onCleanup(() => {
       eventSource?.close();
       clearTimeout(reconnectTimer);
+      setConnectionState('stale');
     });
+  });
+
+  createEffect(() => {
+    props.onConnectionStateChange?.(connectionState());
   });
 
   const eventTypeColor = (type: string) => {
@@ -94,8 +105,16 @@ const HUDActivityFeed: Component<{ initialEvents?: HUDTimelineEvent[] }> = (prop
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-medium text-text-main">Activity Feed</h3>
         <div class="flex items-center gap-2">
-          <div class={`w-1.5 h-1.5 rounded-full ${connected() ? 'bg-status-ok animate-pulse' : 'bg-white/30'}`} />
-          <span class="text-[10px] text-text-dim">{connected() ? 'Live' : 'Connecting...'}</span>
+          <div class={`w-1.5 h-1.5 rounded-full ${
+            connectionState() === 'live'
+              ? 'bg-status-ok animate-pulse'
+              : connectionState() === 'stale'
+                ? 'bg-status-warn'
+                : 'bg-white/30'
+          }`} />
+          <span class="text-[10px] text-text-dim">
+            {connectionState() === 'live' ? 'Live' : connectionState() === 'stale' ? 'Poll fallback' : 'Connecting...'}
+          </span>
         </div>
       </div>
 

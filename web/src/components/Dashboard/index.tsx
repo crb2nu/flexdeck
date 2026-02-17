@@ -5,7 +5,7 @@ import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNo
 import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { modelsApi, flexinferProxyApi, hudApi, agentsApi } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
-import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import type { FlexInferProxyMetricsResponse, K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
 import HoloDeck, { type HoloDeckFilter } from './HoloDeck';
 import PodLogPanel from './PodLogPanel';
@@ -92,17 +92,22 @@ const Dashboard: Component = () => {
   const fetchInferenceHealth = async () => {
     if (!healthStore.features.flexinfer_proxy?.enabled) return;
     try {
-      const data = await flexinferProxyApi.metrics();
-      const models = data?.models || {};
-      const modelNames = Object.keys(models);
-      let totalTps = 0;
-      let totalQueue = 0;
-      for (const name of modelNames) {
-        totalTps += models[name]?.requests_total || 0;
-        totalQueue += models[name]?.queue_depth || 0;
-      }
-      setInferenceHealth({ totalTps, modelCount: modelNames.length, queueDepth: totalQueue, loading: false, error: '' });
-      if (totalTps > 0) setTpsHistory(prev => [...prev.slice(-19), totalTps]);
+      const data: FlexInferProxyMetricsResponse = await flexinferProxyApi.metrics();
+      const totals = data?.totals;
+      const byModel = data?.byModel || {};
+      const modelCount = totals?.modelCount ?? Object.keys(byModel).filter((name) => name !== '_total').length;
+      const totalRequests = totals?.requestsTotal ?? 0;
+      const totalQueue = totals?.queueDepth ?? 0;
+      const error = data?.partial ? 'partial data' : '';
+
+      setInferenceHealth({
+        totalTps: totalRequests,
+        modelCount,
+        queueDepth: totalQueue,
+        loading: false,
+        error,
+      });
+      if (totalRequests > 0) setTpsHistory(prev => [...prev.slice(-19), totalRequests]);
     } catch {
       setInferenceHealth(prev => ({ ...prev, loading: false, error: 'offline' }));
     }

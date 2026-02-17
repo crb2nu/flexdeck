@@ -136,20 +136,28 @@ func (h *Handler) fetchFlexInferProxyMetrics(ctx context.Context) (any, error) {
 func parsePrometheusMetrics(body []byte) map[string]any {
 	lines := strings.Split(string(body), "\n")
 	metrics := map[string]any{
+		// Legacy keys retained for compatibility.
 		"requests":    map[string]float64{},
 		"latency":     map[string]float64{},
 		"queue_depth": map[string]float64{},
 		"active_conn": map[string]float64{},
 		"scale_ups":   map[string]float64{},
+		// Normalized fields (additive).
+		"byModel":          map[string]map[string]float64{},
+		"totals":           map[string]any{},
+		"requestsByStatus": map[string]map[string]float64{},
+		"partial":          false,
 	}
 
-	prefixes := map[string]string{
-		"flexinfer_proxy_requests_total":           "requests",
-		"flexinfer_proxy_request_duration_seconds": "latency",
-		"flexinfer_proxy_queue_depth":              "queue_depth",
-		"flexinfer_proxy_active_connections":        "active_conn",
-		"flexinfer_proxy_scale_ups_total":          "scale_ups",
-	}
+	legacyRequests := metrics["requests"].(map[string]float64)
+	legacyLatency := metrics["latency"].(map[string]float64)
+	legacyQueueDepth := metrics["queue_depth"].(map[string]float64)
+	legacyActiveConn := metrics["active_conn"].(map[string]float64)
+	legacyScaleUps := metrics["scale_ups"].(map[string]float64)
+	byModel := metrics["byModel"].(map[string]map[string]float64)
+	requestsByStatus := metrics["requestsByStatus"].(map[string]map[string]float64)
+
+	parseErrors := 0
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -157,48 +165,146 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 			continue
 		}
 
-		for prefix, category := range prefixes {
-			if strings.HasPrefix(line, prefix) {
-				model := extractLabel(line, "model")
-				if model == "" {
-					model = "_total"
-				}
-				value := extractMetricValue(line)
-				if m, ok := metrics[category].(map[string]float64); ok {
-					m[model] = value
-				}
-				break
+		name, labels, value, ok := parsePrometheusLine(line)
+		if !ok {
+			parseErrors++
+			continue
+		}
+
+		model := labels["model"]
+		if model == "" {
+			model = "_total"
+		}
+
+		switch name {
+		case "flexinfer_proxy_requests_total":
+			ensureModelMetrics(byModel, model)["requestsTotal"] += value
+			legacyRequests[model] += value
+			status := labels["status"]
+			if status == "" {
+				status = "unknown"
+			}
+			if _, ok := requestsByStatus[model]; !ok {
+				requestsByStatus[model] = map[string]float64{}
+			}
+			requestsByStatus[model][status] += value
+		case "flexinfer_proxy_request_duration_seconds_sum":
+			legacyLatency[model] += value
+		case "flexinfer_proxy_queue_depth":
+			ensureModelMetrics(byModel, model)["queueDepth"] = value
+			legacyQueueDepth[model] = value
+		case "flexinfer_proxy_active_connections":
+			ensureModelMetrics(byModel, model)["activeConnections"] = value
+			legacyActiveConn[model] = value
+		case "flexinfer_proxy_scale_ups_total":
+			ensureModelMetrics(byModel, model)["scaleUps"] += value
+			legacyScaleUps[model] += value
+		case "flexinfer_proxy_queue_rejected_total":
+			ensureModelMetrics(byModel, model)["queueRejectedTotal"] += value
+		case "flexinfer_proxy_queued_requests_total":
+			ensureModelMetrics(byModel, model)["queuedRequestsTotal"] += value
+		case "flexinfer_proxy_request_duration_seconds":
+			// Some exporters may emit this as a gauge-style metric.
+			legacyLatency[model] = value
+		}
+	}
+
+	totals := map[string]any{
+		"modelCount":          0,
+		"requestsTotal":       0.0,
+		"errorsTotal":         0.0,
+		"queueDepth":          0.0,
+		"activeConnections":   0.0,
+		"scaleUps":            0.0,
+		"queueRejectedTotal":  0.0,
+		"queuedRequestsTotal": 0.0,
+		"errorRate":           0.0,
+		"parseErrors":         parseErrors,
+	}
+
+	for model, bucket := range byModel {
+		if model != "_total" {
+			totals["modelCount"] = totals["modelCount"].(int) + 1
+		}
+		totals["requestsTotal"] = totals["requestsTotal"].(float64) + bucket["requestsTotal"]
+		totals["queueDepth"] = totals["queueDepth"].(float64) + bucket["queueDepth"]
+		totals["activeConnections"] = totals["activeConnections"].(float64) + bucket["activeConnections"]
+		totals["scaleUps"] = totals["scaleUps"].(float64) + bucket["scaleUps"]
+		totals["queueRejectedTotal"] = totals["queueRejectedTotal"].(float64) + bucket["queueRejectedTotal"]
+		totals["queuedRequestsTotal"] = totals["queuedRequestsTotal"].(float64) + bucket["queuedRequestsTotal"]
+	}
+
+	for model, statuses := range requestsByStatus {
+		for status, value := range statuses {
+			if strings.HasPrefix(status, "4") || strings.HasPrefix(status, "5") {
+				ensureModelMetrics(byModel, model)["errorsTotal"] += value
+				totals["errorsTotal"] = totals["errorsTotal"].(float64) + value
 			}
 		}
 	}
 
+	requestsTotal := totals["requestsTotal"].(float64)
+	if requestsTotal > 0 {
+		totals["errorRate"] = totals["errorsTotal"].(float64) / requestsTotal
+	}
+
+	legacyRequests["_total"] = totals["requestsTotal"].(float64)
+	legacyQueueDepth["_total"] = totals["queueDepth"].(float64)
+	legacyActiveConn["_total"] = totals["activeConnections"].(float64)
+	legacyScaleUps["_total"] = totals["scaleUps"].(float64)
+
+	metrics["totals"] = totals
+	metrics["partial"] = parseErrors > 0
 	return metrics
 }
 
-// extractLabel pulls a label value from a Prometheus metric line.
-func extractLabel(line, label string) string {
-	key := label + `="`
-	idx := strings.Index(line, key)
-	if idx < 0 {
-		return ""
+func ensureModelMetrics(byModel map[string]map[string]float64, model string) map[string]float64 {
+	if _, ok := byModel[model]; !ok {
+		byModel[model] = map[string]float64{
+			"requestsTotal":       0,
+			"errorsTotal":         0,
+			"queueDepth":          0,
+			"activeConnections":   0,
+			"scaleUps":            0,
+			"queueRejectedTotal":  0,
+			"queuedRequestsTotal": 0,
+		}
 	}
-	start := idx + len(key)
-	end := strings.Index(line[start:], `"`)
-	if end < 0 {
-		return ""
-	}
-	return line[start : start+end]
+	return byModel[model]
 }
 
-// extractMetricValue pulls the numeric value from the end of a Prometheus metric line.
-func extractMetricValue(line string) float64 {
+func parsePrometheusLine(line string) (string, map[string]string, float64, bool) {
 	parts := strings.Fields(line)
 	if len(parts) < 2 {
-		return 0
+		return "", nil, 0, false
 	}
+
+	metricToken := parts[0]
 	v, err := strconv.ParseFloat(parts[len(parts)-1], 64)
 	if err != nil {
-		return 0
+		return "", nil, 0, false
 	}
-	return v
+
+	name := metricToken
+	labels := map[string]string{}
+	if open := strings.Index(metricToken, "{"); open >= 0 {
+		close := strings.LastIndex(metricToken, "}")
+		if close <= open {
+			return "", nil, 0, false
+		}
+		name = metricToken[:open]
+		labelPart := metricToken[open+1 : close]
+		for _, pair := range strings.Split(labelPart, ",") {
+			pair = strings.TrimSpace(pair)
+			if pair == "" {
+				continue
+			}
+			key, raw, ok := strings.Cut(pair, "=")
+			if !ok {
+				continue
+			}
+			labels[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(raw), `"`)
+		}
+	}
+	return name, labels, v, true
 }

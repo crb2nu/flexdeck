@@ -227,12 +227,14 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Route("/api/hud", func(r chi.Router) {
 			r.Get("/fleet", h.HUDFleet)
 			r.Get("/presence", h.HUDPresence)
+			r.Get("/claims", h.HUDClaims)
 			r.Get("/tasks", h.HUDTasks)
 			r.Get("/workflows", h.HUDWorkflows)
 			r.Get("/timeline", h.HUDTimeline)
 			r.Get("/events", h.HUDEventsSSE)
 			r.With(logFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
 			r.With(logFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)
+			r.With(logFunc("hud.workflow.cancel")).Post("/workflows/{id}/cancel", h.HUDWorkflowCancel)
 		})
 
 		r.Route("/api/langfuse", func(r chi.Router) {

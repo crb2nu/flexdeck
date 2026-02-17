@@ -600,6 +600,50 @@ export interface InferenceMetrics {
   p95LatencyMs: number | null;
   queueDepth: number | null;
   activeConnections: number | null;
+  errorRate: number | null;
+  queueWaitP95Ms: number | null;
+  rejectedRequestsPerSec: number | null;
+  scaleUps5m: number | null;
+  activationRetries5m: number | null;
+  partial?: boolean;
+  missingMetrics?: string[];
+}
+
+export interface FlexInferProxyModelMetrics {
+  requestsTotal: number;
+  errorsTotal: number;
+  queueDepth: number;
+  activeConnections: number;
+  scaleUps: number;
+  queueRejectedTotal: number;
+  queuedRequestsTotal: number;
+}
+
+export interface FlexInferProxyTotals {
+  modelCount: number;
+  requestsTotal: number;
+  errorsTotal: number;
+  queueDepth: number;
+  activeConnections: number;
+  scaleUps: number;
+  queueRejectedTotal: number;
+  queuedRequestsTotal: number;
+  errorRate: number;
+  parseErrors: number;
+}
+
+export interface FlexInferProxyMetricsResponse {
+  // Legacy response keys retained for compatibility.
+  requests: Record<string, number>;
+  latency: Record<string, number>;
+  queue_depth: Record<string, number>;
+  active_conn: Record<string, number>;
+  scale_ups: Record<string, number>;
+  // Normalized keys.
+  byModel: Record<string, FlexInferProxyModelMetrics>;
+  totals: FlexInferProxyTotals;
+  requestsByStatus: Record<string, Record<string, number>>;
+  partial: boolean;
 }
 
 export interface LoRAAdapter {
@@ -675,6 +719,17 @@ export interface HUDTimelineEvent {
   agentId: string;
   summary: string;
   data?: Record<string, any>;
+}
+
+export interface HUDClaim {
+  agentId?: string;
+  filePath?: string;
+  claimType?: string;
+  reason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  ttlSeconds?: number;
+  stale?: boolean;
 }
 
 // Alertmanager (Step 4)

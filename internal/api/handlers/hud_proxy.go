@@ -72,6 +72,17 @@ func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HUDClaims returns file claim data from the Loom HUD API.
+func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+	h.cachedProxyJSON(w, r, "hud:claims", 10*time.Second, "hud claims", func() (any, error) {
+		return h.fetchHUD(r.Context(), "/api/claims")
+	})
+}
+
 // HUDWorkflowApprove approves a workflow step that requires human approval.
 func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
@@ -126,6 +137,37 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		h.cache.Invalidate(r.Context(), "hud:workflows")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(result)
+}
+
+// HUDWorkflowCancel cancels a workflow.
+func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	path := fmt.Sprintf("/api/workflows/%s/cancel", id)
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read request body"})
+		return
+	}
+
+	result, err := h.postHUD(r.Context(), path, body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if h.cache != nil {
+		h.cache.Invalidate(r.Context(), "hud:workflows")
+		h.cache.Invalidate(r.Context(), "hud:timeline")
 	}
 
 	w.Header().Set("Content-Type", "application/json")

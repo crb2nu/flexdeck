@@ -1,15 +1,73 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { flexinferProxyApi, modelsApi } from '../../lib/api';
+import type {
+  FlexInferProxyMetricsResponse,
+  InferenceMetrics,
+  LoRAAdapter,
+} from '../../lib/types';
+
+type ReliabilityState = {
+  label: 'Healthy' | 'Degraded' | 'Partial' | 'Unknown';
+  tone: string;
+};
 
 const InferenceTab: Component = () => {
-  const [proxyMetrics, setProxyMetrics] = createSignal<any>(null);
-  const [proxyHealth, setProxyHealth] = createSignal<any>(null);
+  const [proxyMetrics, setProxyMetrics] = createSignal<FlexInferProxyMetricsResponse | null>(null);
+  const [proxyHealth, setProxyHealth] = createSignal<Record<string, unknown> | null>(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
-  const [modelMetrics, setModelMetrics] = createSignal<any>(null);
+  const [modelMetrics, setModelMetrics] = createSignal<Record<string, InferenceMetrics>>({});
+  const [modelAdapters, setModelAdapters] = createSignal<Record<string, LoRAAdapter[]>>({});
   const [modelMetricsLoading, setModelMetricsLoading] = createSignal(false);
   const [aiNamespace, setAiNamespace] = createSignal('flexinfer-system');
+
+  const fetchModelDetail = async (namespace: string, model: string): Promise<{ metrics?: InferenceMetrics; adapters?: LoRAAdapter[] }> => {
+    const detail: { metrics?: InferenceMetrics; adapters?: LoRAAdapter[] } = {};
+
+    try {
+      detail.metrics = await modelsApi.crdInference(namespace, model);
+    } catch {
+      // model may exist at proxy level but not as CRD in selected namespace
+    }
+
+    try {
+      const loraResp = await modelsApi.lora(namespace, model);
+      detail.adapters = loraResp.adapters || [];
+    } catch {
+      detail.adapters = [];
+    }
+
+    return detail;
+  };
+
+  const fetchAllModelDetails = async (namespace: string, models: string[]) => {
+    if (models.length === 0) {
+      setModelMetrics({});
+      setModelAdapters({});
+      return;
+    }
+
+    setModelMetricsLoading(true);
+    try {
+      const pairs = await Promise.all(
+        models.map(async (model) => ({ model, detail: await fetchModelDetail(namespace, model) })),
+      );
+
+      const nextMetrics: Record<string, InferenceMetrics> = {};
+      const nextAdapters: Record<string, LoRAAdapter[]> = {};
+      for (const { model, detail } of pairs) {
+        if (detail.metrics) {
+          nextMetrics[model] = detail.metrics;
+        }
+        nextAdapters[model] = detail.adapters || [];
+      }
+      setModelMetrics(nextMetrics);
+      setModelAdapters(nextAdapters);
+    } finally {
+      setModelMetricsLoading(false);
+    }
+  };
 
   const fetchAll = async () => {
     try {
@@ -20,25 +78,24 @@ const InferenceTab: Component = () => {
       ]);
 
       if (health.status === 'fulfilled') setProxyHealth(health.value);
-      if (metrics.status === 'fulfilled') setProxyMetrics(metrics.value);
-      if (crdData.status === 'fulfilled' && crdData.value?.namespace) setAiNamespace(crdData.value.namespace);
+
+      let namespace = aiNamespace();
+      if (crdData.status === 'fulfilled' && crdData.value?.namespace) {
+        namespace = crdData.value.namespace;
+        setAiNamespace(namespace);
+      }
+
+      if (metrics.status === 'fulfilled') {
+        setProxyMetrics(metrics.value);
+        const models = Object.keys(metrics.value.requests || {}).filter((key) => key !== '_total');
+        await fetchAllModelDetails(namespace, models);
+      }
+
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch inference data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchModelDetail = async (model: string) => {
-    setModelMetricsLoading(true);
-    try {
-      const data = await modelsApi.crdInference(aiNamespace(), model);
-      setModelMetrics(data);
-    } catch {
-      setModelMetrics(null);
-    } finally {
-      setModelMetricsLoading(false);
     }
   };
 
@@ -48,30 +105,72 @@ const InferenceTab: Component = () => {
     onCleanup(() => clearInterval(interval));
   });
 
-  createEffect(() => {
-    const model = selectedModel();
-    if (model) fetchModelDetail(model);
-  });
-
-  const requests = () => proxyMetrics()?.requests as Record<string, number> | undefined;
-  const queueDepth = () => proxyMetrics()?.queue_depth as Record<string, number> | undefined;
-  const activeConn = () => proxyMetrics()?.active_conn as Record<string, number> | undefined;
-
   const modelNames = () => {
-    const r = requests();
-    if (!r) return [];
-    return Object.keys(r).filter(k => k !== '_total');
+    const req = proxyMetrics()?.requests;
+    if (!req) return [];
+    return Object.keys(req).filter((key) => key !== '_total');
   };
 
-  const totalRequests = () => {
-    const r = requests();
-    return r?._total ?? Object.values(r || {}).reduce((a: number, b: number) => a + b, 0);
+  const requestsFor = (model: string) => proxyMetrics()?.requests?.[model] ?? 0;
+  const queueDepthFor = (model: string) => proxyMetrics()?.queue_depth?.[model] ?? 0;
+  const activeConnFor = (model: string) => proxyMetrics()?.active_conn?.[model] ?? 0;
+  const detailFor = (model: string) => modelMetrics()[model];
+  const adaptersFor = (model: string) => modelAdapters()[model] || [];
+
+  const errorRateFromStatus = (model: string) => {
+    const statuses = proxyMetrics()?.requestsByStatus?.[model] || {};
+    let total = 0;
+    let failed = 0;
+    for (const [status, value] of Object.entries(statuses)) {
+      total += value;
+      if (status.startsWith('4') || status.startsWith('5')) {
+        failed += value;
+      }
+    }
+    return total > 0 ? failed / total : 0;
   };
+
+  const errorRateFor = (model: string) => detailFor(model)?.errorRate ?? errorRateFromStatus(model);
+
+  const reliabilityFor = (model: string): ReliabilityState => {
+    const detail = detailFor(model);
+    if (!detail) {
+      return { label: 'Unknown', tone: 'bg-white/10 text-text-dim' };
+    }
+    if (detail.partial) {
+      return { label: 'Partial', tone: 'bg-status-warn/20 text-status-warn' };
+    }
+    const err = detail.errorRate ?? 0;
+    const rejected = detail.rejectedRequestsPerSec ?? 0;
+    const queueDepth = detail.queueDepth ?? queueDepthFor(model);
+    if (err > 0.02 || rejected > 0.01 || queueDepth > 0) {
+      return { label: 'Degraded', tone: 'bg-status-error/20 text-status-error' };
+    }
+    return { label: 'Healthy', tone: 'bg-status-ok/20 text-status-ok' };
+  };
+
+  const selectedDetail = () => {
+    const model = selectedModel();
+    return model ? detailFor(model) : undefined;
+  };
+  const selectedAdapters = () => {
+    const model = selectedModel();
+    return model ? adaptersFor(model) : [];
+  };
+
+  const totalRequests = () => proxyMetrics()?.totals?.requestsTotal ?? 0;
+  const totalQueueDepth = () => proxyMetrics()?.totals?.queueDepth ?? 0;
 
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
         <div class="glass-panel p-3 text-sm text-status-error">{error()}</div>
+      </Show>
+
+      <Show when={proxyMetrics()?.partial}>
+        <div class="glass-panel p-3 text-xs text-status-warn">
+          Partial proxy metrics: one or more lines could not be parsed completely.
+        </div>
       </Show>
 
       <Show when={loading() && !proxyHealth()}>
@@ -81,7 +180,6 @@ const InferenceTab: Component = () => {
       </Show>
 
       <Show when={proxyHealth()}>
-        {/* Summary strip */}
         <div class="glass-panel px-4 py-3 flex items-center gap-6">
           <div class="flex items-center gap-2">
             <div class="w-2 h-2 rounded-full bg-status-ok" />
@@ -90,13 +188,16 @@ const InferenceTab: Component = () => {
           <div class="flex gap-6 text-xs text-text-dim">
             <span>Total Requests: <span class="text-text-muted font-mono">{totalRequests().toFixed(0)}</span></span>
             <span>Models: <span class="text-text-muted font-mono">{modelNames().length}</span></span>
+            <span>Total Queue: <span class="text-text-muted font-mono">{totalQueueDepth().toFixed(0)}</span></span>
           </div>
         </div>
 
-        {/* Per-model table */}
         <div class="glass-panel overflow-hidden">
-          <div class="px-4 py-2 border-b border-white/5">
+          <div class="px-4 py-2 border-b border-white/5 flex items-center justify-between">
             <span class="text-xs font-mono text-text-main uppercase tracking-wider">Per-Model Inference Metrics</span>
+            <Show when={modelMetricsLoading()}>
+              <span class="text-[10px] text-text-dim animate-pulse">Refreshing model detail...</span>
+            </Show>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-xs">
@@ -106,38 +207,55 @@ const InferenceTab: Component = () => {
                   <th class="px-4 py-2 text-right font-normal">Requests</th>
                   <th class="px-4 py-2 text-right font-normal">Queue</th>
                   <th class="px-4 py-2 text-right font-normal">Active Conn</th>
+                  <th class="px-4 py-2 text-right font-normal">Error %</th>
+                  <th class="px-4 py-2 text-right font-normal">Queue Wait p95</th>
+                  <th class="px-4 py-2 text-right font-normal">Rejected/s</th>
+                  <th class="px-4 py-2 text-right font-normal">Retries 5m</th>
+                  <th class="px-4 py-2 text-center font-normal">Reliability</th>
                 </tr>
               </thead>
               <tbody>
                 <For each={modelNames()} fallback={
-                  <tr><td colspan="4" class="px-4 py-4 text-center text-text-dim">No model metrics available</td></tr>
+                  <tr><td colspan="9" class="px-4 py-4 text-center text-text-dim">No model metrics available</td></tr>
                 }>
-                  {(model) => (
-                    <tr
-                      class={`border-b border-white/5 cursor-pointer transition-colors ${
-                        selectedModel() === model ? 'bg-neon-cyan/5' : 'hover:bg-white/5'
-                      }`}
-                      onClick={() => setSelectedModel(selectedModel() === model ? null : model)}
-                    >
-                      <td class="px-4 py-2 font-mono text-text-main">{model}</td>
-                      <td class="px-4 py-2 text-right font-mono text-text-muted">
-                        {(requests()?.[model] ?? 0).toFixed(0)}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono text-text-muted">
-                        {(queueDepth()?.[model] ?? 0).toFixed(0)}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono text-text-muted">
-                        {(activeConn()?.[model] ?? 0).toFixed(0)}
-                      </td>
-                    </tr>
-                  )}
+                  {(model) => {
+                    const detail = () => detailFor(model);
+                    const reliability = () => reliabilityFor(model);
+                    return (
+                      <tr
+                        class={`border-b border-white/5 cursor-pointer transition-colors ${
+                          selectedModel() === model ? 'bg-neon-cyan/5' : 'hover:bg-white/5'
+                        }`}
+                        onClick={() => setSelectedModel(selectedModel() === model ? null : model)}
+                      >
+                        <td class="px-4 py-2 font-mono text-text-main">{model}</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">{requestsFor(model).toFixed(0)}</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">{queueDepthFor(model).toFixed(0)}</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">{activeConnFor(model).toFixed(0)}</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">{(errorRateFor(model) * 100).toFixed(2)}%</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {detail()?.queueWaitP95Ms != null ? `${detail()!.queueWaitP95Ms!.toFixed(0)} ms` : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {detail()?.rejectedRequestsPerSec != null ? detail()!.rejectedRequestsPerSec!.toFixed(3) : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {detail()?.activationRetries5m != null ? detail()!.activationRetries5m!.toFixed(2) : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${reliability().tone}`}>
+                            {reliability().label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  }}
                 </For>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Model detail panel */}
         <Show when={selectedModel()}>
           <div class="glass-panel p-4">
             <div class="flex items-center justify-between mb-3">
@@ -146,33 +264,55 @@ const InferenceTab: Component = () => {
                 <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
               </Show>
             </div>
-            <Show when={modelMetrics()} fallback={
-              <div class="text-xs text-text-dim">No Prometheus metrics available for this model</div>
-            }>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <div class="text-[10px] text-text-dim uppercase">TPS</div>
-                  <div class="text-sm font-mono text-text-main">{(modelMetrics()?.tps ?? 0).toFixed(2)}</div>
-                </div>
-                <div>
-                  <div class="text-[10px] text-text-dim uppercase">p95 Latency</div>
-                  <div class="text-sm font-mono text-text-main">{(modelMetrics()?.p95LatencyMs ?? 0).toFixed(1)} ms</div>
-                </div>
-                <div>
-                  <div class="text-[10px] text-text-dim uppercase">Queue Depth</div>
-                  <div class="text-sm font-mono text-text-main">{(modelMetrics()?.queueDepth ?? 0).toFixed(0)}</div>
-                </div>
-                <div>
-                  <div class="text-[10px] text-text-dim uppercase">Active Connections</div>
-                  <div class="text-sm font-mono text-text-main">{(modelMetrics()?.activeConnections ?? 0).toFixed(0)}</div>
-                </div>
+
+            <Show when={selectedDetail()} fallback={<div class="text-xs text-text-dim">No Prometheus metrics available for this model</div>}>
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Metric label="TPS" value={`${(selectedDetail()?.tps ?? 0).toFixed(2)}`} />
+                <Metric label="p95 Latency" value={`${(selectedDetail()?.p95LatencyMs ?? 0).toFixed(1)} ms`} />
+                <Metric label="Error Rate" value={`${((selectedDetail()?.errorRate ?? 0) * 100).toFixed(2)}%`} />
+                <Metric label="Queue Wait p95" value={`${(selectedDetail()?.queueWaitP95Ms ?? 0).toFixed(0)} ms`} />
+                <Metric label="Scale Ups (5m)" value={`${(selectedDetail()?.scaleUps5m ?? 0).toFixed(2)}`} />
               </div>
             </Show>
+
+            <div class="mt-4 border-t border-white/5 pt-3">
+              <div class="text-[10px] text-text-dim uppercase tracking-wider mb-2">LoRA Adapters</div>
+              <Show when={selectedAdapters().length > 0} fallback={<div class="text-xs text-text-dim">No adapters loaded for this model</div>}>
+                <div class="flex flex-col gap-2">
+                  <For each={selectedAdapters()}>
+                    {(adapter) => (
+                      <div class="rounded bg-white/5 border border-white/5 px-3 py-2 flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                          <div class="text-xs font-mono text-text-main truncate">{adapter.name}</div>
+                          <div class="text-[10px] text-text-dim truncate">{adapter.adapterSource}</div>
+                        </div>
+                        <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          adapter.state === 'Loaded'
+                            ? 'bg-status-ok/20 text-status-ok'
+                            : adapter.state === 'Pending'
+                              ? 'bg-status-warn/20 text-status-warn'
+                              : 'bg-neon-purple/20 text-neon-purple'
+                        }`}>
+                          {adapter.state}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
           </div>
         </Show>
       </Show>
     </div>
   );
 };
+
+const Metric: Component<{ label: string; value: string }> = (props) => (
+  <div>
+    <div class="text-[10px] text-text-dim uppercase">{props.label}</div>
+    <div class="text-sm font-mono text-text-main">{props.value}</div>
+  </div>
+);
 
 export default InferenceTab;

@@ -530,12 +530,13 @@ export const fluxApi = {
 export const flexinferProxyApi = {
   health: () => api<any>("/flexinfer/proxy/health"),
   models: () => api<any>("/flexinfer/proxy/models"),
-  metrics: () => api<any>("/flexinfer/proxy/metrics"),
+  metrics: () => api<import("./types").FlexInferProxyMetricsResponse>("/flexinfer/proxy/metrics"),
 };
 
 export const hudApi = {
   fleet: () => api<import("./types").HUDFleetResponse>("/hud/fleet"),
   presence: () => api<import("./types").HUDAgentPresence[]>("/hud/presence"),
+  claims: () => api<import("./types").HUDClaim[]>("/hud/claims"),
   tasks: () => api<import("./types").HUDTask[]>("/hud/tasks"),
   workflows: () => api<import("./types").HUDWorkflow[]>("/hud/workflows"),
   timeline: () => api<import("./types").HUDTimelineEvent[]>("/hud/timeline"),
@@ -543,6 +544,11 @@ export const hudApi = {
     api<any>(`/hud/workflows/${id}/approve`, { method: "POST" }),
   rejectWorkflow: (id: string) =>
     api<any>(`/hud/workflows/${id}/reject`, { method: "POST" }),
+  cancelWorkflow: (id: string, comment = "Cancelled from FlexDeck HUD") =>
+    api<any>(`/hud/workflows/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ comment }),
+    }),
   eventsSSEUrl: () => {
     const isPublicView =
       typeof window !== "undefined" &&

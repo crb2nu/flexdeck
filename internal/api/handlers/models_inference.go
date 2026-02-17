@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -60,13 +61,19 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any, error) {
 	queries := map[string]string{
-		"tps":         fmt.Sprintf(`rate(flexinfer_proxy_requests_total{model="%s"}[5m])`, model),
-		"p95_latency": fmt.Sprintf(`histogram_quantile(0.95, rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m]))`, model),
-		"queue_depth": fmt.Sprintf(`flexinfer_proxy_queue_depth{model="%s"}`, model),
-		"active_conn": fmt.Sprintf(`flexinfer_proxy_active_connections{model="%s"}`, model),
+		"tps":                   fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m]))`, model),
+		"p95_latency":           fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m])))`, model),
+		"queue_depth":           fmt.Sprintf(`sum(flexinfer_proxy_queue_depth{model="%s"})`, model),
+		"active_conn":           fmt.Sprintf(`sum(flexinfer_proxy_active_connections{model="%s"})`, model),
+		"error_rate":            fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s",status=~"4..|5.."}[5m])) / clamp_min(sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m])), 1e-9)`, model, model),
+		"queue_wait_p95":        fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_queue_wait_duration_seconds_bucket{model="%s"}[5m])))`, model),
+		"rejected_rps":          fmt.Sprintf(`sum(rate(flexinfer_proxy_queue_rejected_total{model="%s"}[5m]))`, model),
+		"scale_ups_5m":          fmt.Sprintf(`sum(increase(flexinfer_proxy_scale_ups_total{model="%s"}[5m]))`, model),
+		"activation_retries_5m": fmt.Sprintf(`sum(increase(flexinfer_proxy_activation_retries_total{model="%s"}[5m]))`, model),
 	}
 
 	results := make(map[string]float64)
+	missing := make([]string, 0, len(queries))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -77,6 +84,9 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any,
 			val, err := h.promInstantQuery(ctx, q)
 			if err != nil {
 				slog.Debug("inference metric query failed", "key", k, "error", err)
+				mu.Lock()
+				missing = append(missing, k)
+				mu.Unlock()
 				return
 			}
 			mu.Lock()
@@ -86,13 +96,21 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any,
 	}
 
 	wg.Wait()
+	sort.Strings(missing)
 
 	return map[string]any{
-		"model":             model,
-		"tps":               results["tps"],
-		"p95LatencyMs":      results["p95_latency"] * 1000,
-		"queueDepth":        results["queue_depth"],
-		"activeConnections": results["active_conn"],
+		"model":                  model,
+		"tps":                    results["tps"],
+		"p95LatencyMs":           results["p95_latency"] * 1000,
+		"queueDepth":             results["queue_depth"],
+		"activeConnections":      results["active_conn"],
+		"errorRate":              results["error_rate"],
+		"queueWaitP95Ms":         results["queue_wait_p95"] * 1000,
+		"rejectedRequestsPerSec": results["rejected_rps"],
+		"scaleUps5m":             results["scale_ups_5m"],
+		"activationRetries5m":    results["activation_retries_5m"],
+		"partial":                len(missing) > 0,
+		"missingMetrics":         missing,
 	}, nil
 }
 
