@@ -1,16 +1,12 @@
 import { Component, createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
 import { api } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
-
-interface ModelGPUEntry {
-  modelId: string;
-  modelName: string;
-  node: string;
-  gpuUtilization: number | null;
-  vramUsedPercent: number | null;
-  temperature: number | null;
-  power: number | null;
-}
+import {
+  aggregateModelGPUEntries,
+  hasAnyGPUData,
+  type AggregatedModelGPUEntry,
+  type ModelGPUEntry,
+} from './modelGpuTableUtils';
 
 interface ModelGPUHistory {
   utilization: number[];
@@ -33,7 +29,7 @@ function utilColor(val: number): string {
 }
 
 const ModelGPUTable: Component = () => {
-  const [models, setModels] = createSignal<ModelGPUEntry[]>([]);
+  const [models, setModels] = createSignal<AggregatedModelGPUEntry[]>([]);
   const [historyMap, setHistoryMap] = createSignal<Record<string, ModelGPUHistory>>({});
   const [error, setError] = createSignal(false);
 
@@ -41,13 +37,14 @@ const ModelGPUTable: Component = () => {
     try {
       const data = await api<{ models: ModelGPUEntry[] }>('/k8s/metrics/gpu/models');
       const entries = data.models || [];
-      setModels(entries);
+      const aggregated = aggregateModelGPUEntries(entries);
+      setModels(aggregated);
       setError(false);
 
       setHistoryMap(prev => {
         const next = { ...prev };
-        for (const m of entries) {
-          const key = m.modelName;
+        for (const m of aggregated) {
+          const key = `${m.modelName}@${m.node}`;
           const existing = next[key] || { utilization: [], vram: [] };
           next[key] = {
             utilization: pushHistory(existing.utilization, m.gpuUtilization),
@@ -80,6 +77,7 @@ const ModelGPUTable: Component = () => {
               <tr class="text-text-dim border-b border-white/5">
                 <th class="text-left py-1.5 pr-3 font-medium">Model</th>
                 <th class="text-left py-1.5 pr-3 font-medium">Node</th>
+                <th class="text-right py-1.5 pr-3 font-medium">Pods</th>
                 <th class="text-right py-1.5 pr-3 font-medium">GPU Util</th>
                 <th class="text-right py-1.5 pr-3 font-medium">VRAM</th>
                 <th class="text-right py-1.5 pr-3 font-medium">Temp</th>
@@ -90,7 +88,7 @@ const ModelGPUTable: Component = () => {
             <tbody>
               <For each={models()}>
                 {(m) => {
-                  const hist = () => historyMap()[m.modelName];
+                  const hist = () => historyMap()[`${m.modelName}@${m.node}`];
                   return (
                     <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                       <td class="py-1.5 pr-3 font-mono text-text-main truncate max-w-[160px]">
@@ -98,6 +96,9 @@ const ModelGPUTable: Component = () => {
                       </td>
                       <td class="py-1.5 pr-3 font-mono text-text-dim truncate max-w-[120px]">
                         {m.node}
+                      </td>
+                      <td class="py-1.5 pr-3 text-right font-mono text-text-muted">
+                        {m.replicas}
                       </td>
                       <td class="py-1.5 pr-3 text-right font-mono">
                         <Show when={m.gpuUtilization != null} fallback={<span class="text-text-dim">-</span>}>
@@ -135,6 +136,11 @@ const ModelGPUTable: Component = () => {
             </tbody>
           </table>
         </div>
+        <Show when={!hasAnyGPUData(models())}>
+          <div class="mt-2 text-[11px] text-status-warn">
+            GPU telemetry is unavailable for current model nodes. Check DCGM/ROCm exporters and Prometheus scrape targets.
+          </div>
+        </Show>
       </div>
     </Show>
   );
