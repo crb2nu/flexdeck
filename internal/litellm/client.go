@@ -20,6 +20,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const healthProbeTimeout = 3 * time.Second
+
 type openAIModelsResponse struct {
 	Data []struct {
 		ID string `json:"id"`
@@ -57,19 +59,29 @@ func (c *Client) addAuthHeader(req *http.Request) {
 
 // Health checks if LiteLLM is healthy
 func (c *Client) Health(ctx context.Context) (bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
-	if err != nil {
-		return false, fmt.Errorf("create request: %w", err)
+	paths := []string{
+		"/health",
+		"/health/readiness",
+		"/health/liveliness",
+		"/v1/models",
 	}
-	c.addAuthHeader(req)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("request failed: %w", err)
+	var lastErr error
+	for _, path := range paths {
+		status, err := c.probe(ctx, path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if status == http.StatusOK {
+			return true, nil
+		}
 	}
-	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK, nil
+	if lastErr != nil {
+		return false, fmt.Errorf("health probes failed: %w", lastErr)
+	}
+	return false, nil
 }
 
 // ScrapeMetrics fetches and parses Prometheus metrics from LiteLLM
@@ -158,6 +170,25 @@ func (c *Client) ModelInfo(ctx context.Context) ([]LiteLLMModelInfo, error) {
 	}
 
 	return result.Data, nil
+}
+
+func (c *Client) probe(ctx context.Context, path string) (int, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, healthProbeTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create request: %w", err)
+	}
+	c.addAuthHeader(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
 }
 
 // parsePrometheusMetrics parses Prometheus text format into ModelMetrics
