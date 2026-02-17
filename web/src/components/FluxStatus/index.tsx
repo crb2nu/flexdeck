@@ -1,5 +1,5 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
-import { fluxApi, type FluxResource, type FluxSource, type FluxCondition } from '../../lib/api';
+import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 
 const POLL_INTERVAL = 15_000;

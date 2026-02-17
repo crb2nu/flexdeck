@@ -331,7 +331,7 @@ const HoloDeck: Component<Props> = (props) => {
   }));
   let trafficInstancedMesh: THREE.InstancedMesh;
   let trafficColors: THREE.InstancedBufferAttribute;
-  let trafficDummy = new THREE.Object3D();
+  const trafficDummy = new THREE.Object3D();
   let curves: THREE.QuadraticBezierCurve3[] = [];
   let activeTrafficCount = 0;
 
@@ -976,7 +976,7 @@ const HoloDeck: Component<Props> = (props) => {
         }
     };
 
-    let isMounted = true;
+    const isMounted = true;
     const animate = () => {
         if (!isMounted || !containerRef) return;
         
@@ -1639,11 +1639,11 @@ const HoloDeck: Component<Props> = (props) => {
                 >
                     <div class="relative ml-4 mt-4">
                         {/* Connecting Line */}
-                        <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-neon-cyan/50"></div>
+                        <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-neon-cyan/50" />
 
                         <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs backdrop-blur-md shadow-[0_0_15px_rgba(0,240,255,0.2)] min-w-[140px]">
                             <div class="flex items-center gap-2 mb-1 border-b border-white/10 pb-1">
-                                <div class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse"></div>
+                                <div class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
                                 <div class="font-bold text-neon-cyan uppercase tracking-wider">{info().type}</div>
                             </div>
                             <div class="font-mono text-white/90 mb-1">{info().title}</div>
@@ -1756,9 +1756,9 @@ const HoloDeck: Component<Props> = (props) => {
             <h2 class="text-[10px] font-mono tracking-[0.4em] text-neon-cyan/60 uppercase mb-1 animate-pulse">Realtime Cluster Topology</h2>
             <div class="text-2xl font-bold font-display text-white tracking-widest drop-shadow-[0_0_15px_rgba(0,217,255,0.6)]">HOLO-DECK</div>
             <div class="flex justify-center gap-1 mt-2">
-                <div class="h-1 w-8 bg-neon-cyan/50"></div>
-                <div class="h-1 w-2 bg-neon-purple/50"></div>
-                <div class="h-1 w-2 bg-neon-cyan/50"></div>
+                <div class="h-1 w-8 bg-neon-cyan/50" />
+                <div class="h-1 w-2 bg-neon-purple/50" />
+                <div class="h-1 w-2 bg-neon-cyan/50" />
             </div>
         </div>
 
@@ -1768,20 +1768,20 @@ const HoloDeck: Component<Props> = (props) => {
             <div class="flex items-center gap-3 text-[9px] font-mono text-text-dim border border-white/10 rounded px-3 py-1.5 bg-black/40 backdrop-blur-sm">
                 <span class="text-white/50 uppercase tracking-wider">Resources</span>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#0aff68]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#0aff68]" />
                     <span>CPU</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]" />
                     <span>Mem</span>
                 </div>
-                <div class="w-px h-3 bg-white/20"></div>
+                <div class="w-px h-3 bg-white/20" />
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]" />
                     <span>&gt;50%</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#ff003c]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#ff003c]" />
                     <span>&gt;80%</span>
                 </div>
             </div>
@@ -1790,19 +1790,19 @@ const HoloDeck: Component<Props> = (props) => {
             <div class="flex items-center gap-3 text-[9px] font-mono text-text-dim border border-white/10 rounded px-3 py-1.5 bg-black/40 backdrop-blur-sm">
                 <span class="text-white/50 uppercase tracking-wider">Traffic</span>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#00f0ff]" />
                     <span>Healthy</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#fcee0a]" />
                     <span>Slow</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#ff003c]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#ff003c]" />
                     <span>Error</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <div class="w-2 h-2 rounded-full bg-[#0aff68]"></div>
+                    <div class="w-2 h-2 rounded-full bg-[#0aff68]" />
                     <span>Internal</span>
                 </div>
             </div>

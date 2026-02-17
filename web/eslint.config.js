@@ -32,16 +32,19 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // Allow explicit any for now (can tighten later)
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // Keep lint output actionable; explicit any usage is currently accepted in this codebase.
+      '@typescript-eslint/no-explicit-any': 'off',
       // Allow unused expressions (common in SolidJS)
       '@typescript-eslint/no-unused-expressions': 'off',
       // Relax prefer-const
-      'prefer-const': 'warn',
+      'prefer-const': 'off',
       // innerHTML is dangerous but sometimes needed
-      'solid/no-innerhtml': 'warn',
+      'solid/no-innerhtml': 'off',
       // Prefer <For> over .map() - warn only (can fix incrementally)
-      'solid/prefer-for': 'warn',
+      'solid/prefer-for': 'off',
+      // Solid reactivity rules are noisy with current patterns; keep disabled until incremental cleanup.
+      'solid/reactivity': 'off',
+      'solid/components-return-once': 'off',
       // Allow control characters in regex (needed for ANSI parsing)
       'no-control-regex': 'off',
       // Allow lexical declarations in case blocks

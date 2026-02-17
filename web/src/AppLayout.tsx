@@ -1,6 +1,6 @@
-import { Component, ParentProps, Show, createSignal, createMemo, onMount, createEffect, Suspense } from 'solid-js';
+import { Component, ParentProps, Show, createMemo, onMount, Suspense, For } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
-import { healthApi, uiApi } from './lib/api';
+import { uiApi } from './lib/api';
 import { healthStore, fetchHealth } from './stores/health';
 import CommandPalette from './components/QuickLaunch/CommandPalette';
 import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
@@ -10,7 +10,6 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
-  const [loading, setLoading] = createSignal(true);
   useKeyboardShortcuts();
 
   // Check if we are in public read-only view
@@ -20,12 +19,9 @@ const AppLayout: Component<ParentProps> = (props) => {
     return publicDomains.includes(window.location.hostname);
   };
   
-  const [uiConfig, setUiConfig] = createSignal<any>(null);
-
   const fetchUIConfig = async () => {
     try {
-      const config = await uiApi.getConfig();
-      setUiConfig(config);
+      await uiApi.getConfig();
     } catch (e) {
       console.error('Failed to load UI config', e);
     }
@@ -33,7 +29,6 @@ const AppLayout: Component<ParentProps> = (props) => {
 
   onMount(async () => {
     await Promise.all([fetchHealth(), fetchUIConfig()]);
-    setLoading(false);
   });
   
   const adminEnabled = createMemo(() => {
@@ -62,7 +57,7 @@ const AppLayout: Component<ParentProps> = (props) => {
     <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
       {/* Scanline Overlay */}
       <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden opacity-[0.03]">
-        <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
+        <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]" />
       </div>
       
       {/* Header — Sentient HUD */}
@@ -83,7 +78,7 @@ const AppLayout: Component<ParentProps> = (props) => {
 
           {/* Navigation */}
           <nav class="hidden md:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
-            {navItems().map((item) => (
+            <For each={navItems()}>{(item) => (
               <A
                 href={item.path}
                 class="rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 hover:text-white"
@@ -94,7 +89,7 @@ const AppLayout: Component<ParentProps> = (props) => {
               >
                 {item.label}
               </A>
-            ))}
+            )}</For>
           </nav>
 
           {/* Status & Settings */}
@@ -139,7 +134,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Suspense fallback={
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
-                    <div class="h-12 w-12 border-4 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin"></div>
+                    <div class="h-12 w-12 border-4 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
                     <div class="text-neon-cyan/50 font-mono text-sm tracking-widest animate-pulse">INITIALIZING...</div>
                 </div>
             </div>

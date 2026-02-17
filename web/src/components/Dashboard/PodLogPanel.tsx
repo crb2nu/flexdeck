@@ -1,5 +1,4 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
-import { authenticatedFetch } from '../../stores/auth';
 import { loki } from '../../lib/api';
 
 interface LogEntry {

@@ -9,6 +9,10 @@ import AgentSessionPanel from './AgentSessionPanel';
 const HUDTab = lazy(() => import('./HUDTab'));
 
 type ViewMode = 'grid' | 'flow' | 'hud';
+type EditableAgentType = 'langgraph' | 'custom';
+
+const toEditableAgentType = (type: Agent['type']): EditableAgentType =>
+  type === 'langgraph' ? 'langgraph' : 'custom';
 
 const Agents: Component = () => {
   const [agents, setAgents] = createStore<Agent[]>([]);
@@ -28,7 +32,7 @@ const Agents: Component = () => {
     id: '',
     name: '',
     description: '',
-    type: 'langgraph' as 'langgraph' | 'custom',
+    type: 'langgraph' as EditableAgentType,
     url: '',
     api_key: '',
     model: '',
@@ -126,7 +130,7 @@ const Agents: Component = () => {
       id: agent.id,
       name: agent.name,
       description: agent.description,
-      type: agent.type,
+      type: toEditableAgentType(agent.type),
       url: agent.url,
       api_key: agent.api_key || '',
       model: agent.model || '',
@@ -618,7 +622,7 @@ const Agents: Component = () => {
                 <label class="mb-1 block text-xs text-text-dim">Type</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData('type', e.target.value as 'langgraph' | 'custom')}
+                  onChange={(e) => setFormData('type', e.target.value as EditableAgentType)}
                   class="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-text-main"
                 >
                   <option value="langgraph">LangGraph</option>

@@ -132,7 +132,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
           
           metadata = { latencyMs: result.latency_ms };
           setConnectionStatus('connected');
-        } catch (e) {
+        } catch {
           // Fallback to demo response
           responseContent = generateDemoResponse(userMsg, props.agent);
           setConnectionStatus('idle');
@@ -311,15 +311,15 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                     <div class={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-[#060a14] ${
                       connectionStatus() === 'connected' ? 'bg-status-success' : 
                       connectionStatus() === 'error' ? 'bg-status-error' : 'bg-status-warning'
-                    }`}></div>
+                    }`} />
                 </div>
                 <div>
                     <h3 class="font-bold text-neon-cyan text-lg tracking-wide">{props.agent.name}</h3>
                     <div class="flex items-center gap-3 text-xs text-neon-cyan/60 font-mono">
                         <span class="flex items-center gap-1.5">
                           <span class="relative flex h-2 w-2">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-cyan opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2 w-2 bg-neon-cyan"></span>
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-cyan opacity-75" />
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-neon-cyan" />
                           </span>
                           CONNECTED
                         </span>
@@ -372,9 +372,9 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                             <Show when={msg.widgets}>
                                 <div class="mt-4 border-t border-white/10 pt-3 space-y-3">
                                     <div class="text-[10px] text-text-dim uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <div class="h-px flex-1 bg-gradient-to-r from-neon-cyan/30 to-transparent"></div>
+                                        <div class="h-px flex-1 bg-gradient-to-r from-neon-cyan/30 to-transparent" />
                                         Generated Interface
-                                        <div class="h-px flex-1 bg-gradient-to-l from-neon-cyan/30 to-transparent"></div>
+                                        <div class="h-px flex-1 bg-gradient-to-l from-neon-cyan/30 to-transparent" />
                                     </div>
                                     <ErrorBoundary fallback={(err) => (
                                         <div class="text-xs text-status-error bg-status-error/10 rounded p-2">
@@ -424,9 +424,9 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                 <div class="flex justify-start">
                     <div class="bg-[#0c1220] border border-white/10 rounded-lg p-4 flex items-center gap-3">
                         <div class="flex items-center gap-1">
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "0ms"}}></div>
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "150ms"}}></div>
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "300ms"}}></div>
+                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "0ms"}} />
+                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "150ms"}} />
+                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "300ms"}} />
                         </div>
                         <span class="text-xs text-text-dim">Processing...</span>
                     </div>

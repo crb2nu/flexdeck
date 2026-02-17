@@ -22,7 +22,7 @@ export interface PipelineStage {
 export interface Pipeline {
   id: string;
   ref: string;
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
   stages: PipelineStage[];
   createdAt: string;
 }
@@ -138,13 +138,11 @@ const CIPipelineViz: Component<{
 
   // Performance: Fixed particle pool (no reactive updates during animation)
   const particlePool: Particle[] = Array.from({ length: MAX_PARTICLES }, createEmptyParticle);
-  let activeParticleCount = 0;
   let lastSpawnTime = 0;
   const MIN_SPAWN_INTERVAL = 80; // ms
 
   // Node positions for particle animation (cached)
   const nodePositionsCache = new Map<string, { x: number; y: number }>();
-  const [positionsReady, setPositionsReady] = createSignal(false);
 
   // Compute stage progress
   const getStageProgress = (stage: PipelineStage): { completed: number; total: number; percent: number } => {
@@ -386,7 +384,6 @@ const CIPipelineViz: Component<{
           p.size = 3 + Math.random() * 3;
           p.trailLength = 0;
 
-          activeParticleCount++;
           lastSpawnTime = now;
         }
       }
@@ -406,7 +403,6 @@ const CIPipelineViz: Component<{
 
       if (p.progress >= 1) {
         p.active = false;
-        activeParticleCount--;
         continue;
       }
 
@@ -565,7 +561,6 @@ const CIPipelineViz: Component<{
         const id = el.getAttribute('data-job-id');
         if (id) registerNode(id, el as HTMLDivElement);
       });
-      setPositionsReady(true);
     }, 100);
   });
 

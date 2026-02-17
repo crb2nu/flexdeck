@@ -1,4 +1,4 @@
-import { Component, createSignal, Show, onCleanup } from 'solid-js';
+import { Component, createSignal, Show, onCleanup, For } from 'solid-js';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -88,13 +88,13 @@ export const ToastContainer: Component = () => {
   return (
     <div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       <Show when={toasts().length > 0}>
-        {toasts().map(toast => (
+        <For each={toasts()}>{toast => (
           <Toast
             message={toast.message}
             type={toast.type}
             onDismiss={() => dismissToast(toast.id)}
           />
-        ))}
+        )}</For>
       </Show>
     </div>
   );

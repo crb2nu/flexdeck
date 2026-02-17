@@ -79,7 +79,7 @@ const ComingSoon: Component = () => {
           <div class="mb-6 flex justify-center">
              <div class="relative h-20 w-20 flex items-center justify-center rounded-full border-2 border-neon-cyan/50 bg-neon-cyan/10 animate-pulse">
                 <span class="text-4xl text-neon-cyan">◈</span>
-                <div class="absolute inset-0 rounded-full border border-neon-cyan/30 animate-ping opacity-20"></div>
+                <div class="absolute inset-0 rounded-full border border-neon-cyan/30 animate-ping opacity-20" />
              </div>
           </div>
           
@@ -87,7 +87,7 @@ const ComingSoon: Component = () => {
             {pageName()}
           </h2>
           
-          <div class="h-px w-full bg-gradient-to-r from-transparent via-neon-cyan/50 to-transparent my-4"></div>
+          <div class="h-px w-full bg-gradient-to-r from-transparent via-neon-cyan/50 to-transparent my-4" />
           
           <p class="text-neon-cyan/70 font-mono text-sm tracking-wider uppercase">
             System Module Offline

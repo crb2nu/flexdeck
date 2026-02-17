@@ -3,7 +3,6 @@ import { flexinferProxyApi, modelsApi } from '../../lib/api';
 
 const InferenceTab: Component = () => {
   const [proxyMetrics, setProxyMetrics] = createSignal<any>(null);
-  const [proxyModels, setProxyModels] = createSignal<any>(null);
   const [proxyHealth, setProxyHealth] = createSignal<any>(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
@@ -14,15 +13,13 @@ const InferenceTab: Component = () => {
 
   const fetchAll = async () => {
     try {
-      const [health, models, metrics, crdData] = await Promise.allSettled([
+      const [health, metrics, crdData] = await Promise.allSettled([
         flexinferProxyApi.health(),
-        flexinferProxyApi.models(),
         flexinferProxyApi.metrics(),
         modelsApi.crd(),
       ]);
 
       if (health.status === 'fulfilled') setProxyHealth(health.value);
-      if (models.status === 'fulfilled') setProxyModels(models.value);
       if (metrics.status === 'fulfilled') setProxyMetrics(metrics.value);
       if (crdData.status === 'fulfilled' && crdData.value?.namespace) setAiNamespace(crdData.value.namespace);
       setError('');

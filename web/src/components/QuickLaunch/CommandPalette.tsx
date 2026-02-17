@@ -1,5 +1,7 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
+import { modelsApi } from '../../lib/api';
+import { fetchHealth } from '../../stores/health';
 
 interface Command {
   id: string;
@@ -81,7 +83,6 @@ const CommandPalette: Component = () => {
       keywords: ['sync', 'k8s', 'flexinfer', 'discover', 'refresh models'],
       action: async () => {
         try {
-          const { modelsApi } = await import('../../lib/api');
           await modelsApi.discover();
         } catch { /* silent */ }
       },
@@ -91,10 +92,7 @@ const CommandPalette: Component = () => {
       name: 'Refresh Health',
       description: 'Re-check all subsystem health status',
       keywords: ['health', 'check', 'status', 'system'],
-      action: async () => {
-        const { fetchHealth } = await import('../../stores/health');
-        fetchHealth();
-      },
+      action: () => fetchHealth(),
     },
     {
       id: 'sys-reload',

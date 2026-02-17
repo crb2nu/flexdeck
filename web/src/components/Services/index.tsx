@@ -8,24 +8,6 @@ import type { Status } from '../shared/StatusDot';
 
 const REFRESH_INTERVAL = 30000; // 30 seconds
 
-interface DeploymentRow {
-  name: string;
-  namespace: string;
-  ready: number;
-  desired: number;
-  image: string;
-  age: string;
-}
-
-interface ServiceRow {
-  name: string;
-  namespace: string;
-  type: string;
-  clusterIP: string;
-  ports: string;
-  endpoints: string[];
-}
-
 type TabType = 'deployments' | 'services' | 'ingresses' | 'statefulsets' | 'daemonsets' | 'jobs' | 'storage' | 'configmaps' | 'secrets';
 
 const Services: Component = () => {
@@ -403,7 +385,7 @@ const DeploymentsTable: Component<DeploymentsTableProps> = (props) => (
     <table class="w-full text-sm">
       <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
         <tr>
-          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3 w-8" />
           <th class="px-4 py-3">Name</th>
           <th class="px-4 py-3">Namespace</th>
           <th class="px-4 py-3">Ready</th>
@@ -505,7 +487,7 @@ const StatefulSetsTable: Component<{ statefulsets: K8sStatefulSet[] }> = (props)
     <table class="w-full text-sm">
       <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
         <tr>
-          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3 w-8" />
           <th class="px-4 py-3">Name</th>
           <th class="px-4 py-3">Namespace</th>
           <th class="px-4 py-3">Ready</th>
@@ -567,7 +549,7 @@ const DaemonSetsTable: Component<{ daemonsets: K8sDaemonSet[] }> = (props) => (
     <table class="w-full text-sm">
       <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
         <tr>
-          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3 w-8" />
           <th class="px-4 py-3">Name</th>
           <th class="px-4 py-3">Namespace</th>
           <th class="px-4 py-3">Ready</th>
@@ -637,7 +619,7 @@ const JobsTable: Component<{ jobs: K8sJob[] }> = (props) => {
       <table class="w-full text-sm">
         <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
           <tr>
-            <th class="px-4 py-3 w-8"></th>
+            <th class="px-4 py-3 w-8" />
             <th class="px-4 py-3">Name</th>
             <th class="px-4 py-3">Namespace</th>
             <th class="px-4 py-3">Status</th>
@@ -844,7 +826,7 @@ const PVCTable: Component<{ pvcs: any[] }> = (props) => (
     <table class="w-full text-sm">
       <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
         <tr>
-          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3 w-8" />
           <th class="px-4 py-3">Name</th>
           <th class="px-4 py-3">Namespace</th>
           <th class="px-4 py-3">Status</th>

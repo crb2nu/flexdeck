@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup } from "solid-js";
+import { createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { authenticatedFetch } from "./auth";
 

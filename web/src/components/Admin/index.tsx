@@ -1,4 +1,4 @@
-import { Component, createEffect, createSignal, Show } from "solid-js";
+import { Component, For, createEffect, createSignal, Show } from "solid-js";
 import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
@@ -54,19 +54,21 @@ const Admin: Component = () => {
 
       {/* Tab bar */}
       <div class="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5 w-fit">
-        {tabs().map((tab) => (
-          <button
-            class="rounded-md px-4 py-1.5 text-xs font-mono transition-all duration-200"
-            classList={{
-              "bg-white/10 text-white shadow-sm": activeTab() === tab.id,
-              "text-text-muted hover:text-white hover:bg-white/5":
-                activeTab() !== tab.id,
-            }}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <For each={tabs()}>
+          {(tab) => (
+            <button
+              class="rounded-md px-4 py-1.5 text-xs font-mono transition-all duration-200"
+              classList={{
+                "bg-white/10 text-white shadow-sm": activeTab() === tab.id,
+                "text-text-muted hover:text-white hover:bg-white/5":
+                  activeTab() !== tab.id,
+              }}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          )}
+        </For>
       </div>
 
       {/* Tab content */}

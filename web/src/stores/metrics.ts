@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal } from "solid-js";
 import { prom } from "../lib/api";
 
 // Resource metrics for nodes and pods

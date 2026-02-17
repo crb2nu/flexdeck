@@ -3,7 +3,7 @@ import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
-import { api, modelsApi, flexinferProxyApi, hudApi } from '../../lib/api';
+import { modelsApi, flexinferProxyApi, hudApi } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';

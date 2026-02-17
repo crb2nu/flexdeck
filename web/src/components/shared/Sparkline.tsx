@@ -1,4 +1,4 @@
-import { Component, createMemo, For } from 'solid-js';
+import { Component, createMemo } from 'solid-js';
 
 interface SparklineProps {
   data: number[];

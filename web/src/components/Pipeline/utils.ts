@@ -14,8 +14,9 @@ export const JOB_STATUS_PRIORITY: Record<PipelineJob['status'], number> = {
 export const PIPELINE_STATUS_PRIORITY: Record<Pipeline['status'], number> = {
   running: 0,
   failed: 1,
-  pending: 2,
-  success: 3,
+  canceled: 2,
+  pending: 3,
+  success: 4,
 };
 
 /**

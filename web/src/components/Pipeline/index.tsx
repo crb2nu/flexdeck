@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
@@ -451,7 +451,7 @@ const Pipeline: Component = () => {
                                 <div class="text-[10px] opacity-50 font-mono mt-0.5 flex items-center justify-between">
                                     <span>{repo.type}</span>
                                     <Show when={repo.hasConfig}>
-                                        <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found"></span>
+                                        <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found" />
                                     </Show>
                                 </div>
                             </button>

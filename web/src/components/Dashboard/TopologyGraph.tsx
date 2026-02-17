@@ -94,7 +94,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let hostsLinks: D3Link[] = [];
   let selectsLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
-  let nodeIndexMap = new Map<string, number>(); // O(1) lookup for particle spawning
+  const nodeIndexMap = new Map<string, number>(); // O(1) lookup for particle spawning
 
   // Object pool for particles - zero allocations during animation
   const particlePool: ParticleSlot[] = Array.from({ length: MAX_PARTICLES }, () => ({
@@ -123,18 +123,18 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
-  let nodeStylesCache = new Map<string, { r: number; color: string; truncLabel: string }>();
+  const nodeStylesCache = new Map<string, { r: number; color: string; truncLabel: string }>();
   let nodeStylesCacheValid = false;
 
   // Frustum bounds cache - recomputed only when transform/dimensions change
-  let cachedFrustum = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  const cachedFrustum = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   let lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
   let lastFrustumDims = { width: -1, height: -1 };
 
   // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
   const GRID_CELL_SIZE = 50; // Pixels per cell
   const GRID_KEY_MULTIPLIER = 100000; // Supports grid coords from -50000 to +50000
-  let spatialGrid = new Map<number, D3Node[]>();
+  const spatialGrid = new Map<number, D3Node[]>();
   let spatialGridValid = false;
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
@@ -273,7 +273,7 @@ const TopologyGraph: Component<Props> = (props) => {
     
     // Helper to merge state
     const createOrUpdateNode = (id: string, type: 'node' | 'pod' | 'service', label: string, data: any, status: 'ok' | 'warn' | 'error', namespace?: string) => {
-        let node: D3Node = {
+        const node: D3Node = {
             id, type, label, data, status, namespace
         };
         
@@ -1197,7 +1197,7 @@ const TopologyGraph: Component<Props> = (props) => {
                 </div>
                 <div class="mt-1 border-t border-white/5 pt-2">
                      <span class="text-[10px] text-text-dim flex items-center gap-1">
-                        <span class="inline-block w-2 h-2 rounded-full bg-neon-cyan animate-pulse"></span>
+                        <span class="inline-block w-2 h-2 rounded-full bg-neon-cyan animate-pulse" />
                         Traffic
                      </span>
                 </div>

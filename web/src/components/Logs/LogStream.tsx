@@ -70,7 +70,6 @@ const LogStream: Component<Props> = (props) => {
 
   // Pause state for hover-to-pause feature
   const [isPaused, setIsPaused] = createSignal(false);
-  const [hoverPos, setHoverPos] = createSignal<{ x: number; y: number } | null>(null);
 
   // Visual polish state
   const [errorFlash, setErrorFlash] = createSignal(0); // 0-1 intensity for error flash overlay
@@ -410,17 +409,10 @@ const LogStream: Component<Props> = (props) => {
     const handleMouseEnter = () => setIsPaused(true);
     const handleMouseLeave = () => {
       setIsPaused(false);
-      setHoverPos(null);
-    };
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!canvasRef) return;
-      const rect = canvasRef.getBoundingClientRect();
-      setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     };
 
     canvasRef.addEventListener('mouseenter', handleMouseEnter);
     canvasRef.addEventListener('mouseleave', handleMouseLeave);
-    canvasRef.addEventListener('mousemove', handleMouseMove);
 
     const loop = () => {
       if (!canvasRef) return;
@@ -451,7 +443,6 @@ const LogStream: Component<Props> = (props) => {
       window.removeEventListener('resize', resize);
       canvasRef?.removeEventListener('mouseenter', handleMouseEnter);
       canvasRef?.removeEventListener('mouseleave', handleMouseLeave);
-      canvasRef?.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(animationId);
     });
   });
