@@ -9,6 +9,11 @@ import type {
   LoRAAdapter,
 } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
+import {
+  clearModelIntegrationsCache,
+  fetchModelIntegrationsBatch,
+  invalidateModelIntegration,
+} from '../../lib/modelIntegration';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
 import PageScrollBody from '../shared/PageScrollBody';
@@ -71,29 +76,24 @@ const Models: Component = () => {
     const nextLoRA: Record<string, LoRAAdapter[]> = {};
     const nextIntegration: Record<string, IntegrationFetchState> = {};
 
-    await Promise.all(
-      models.map(async (model) => {
-        const key = modelKey(model.namespace, model.name);
-        const [inferenceResult, loraResult] = await Promise.allSettled([
-          modelsApi.crdInference(model.namespace, model.name),
-          modelsApi.lora(model.namespace, model.name),
-        ]);
-        nextIntegration[key] = {
-          inferenceAvailable: inferenceResult.status === 'fulfilled',
-          loraAvailable: loraResult.status === 'fulfilled',
-        };
-
-        if (inferenceResult.status === 'fulfilled') {
-          nextInference[key] = inferenceResult.value;
-        }
-
-        if (loraResult.status === 'fulfilled') {
-          nextLoRA[key] = loraResult.value.adapters || [];
-        } else {
-          nextLoRA[key] = [];
-        }
-      })
+    const integrationData = await fetchModelIntegrationsBatch(
+      models.map((model) => ({ namespace: model.namespace, name: model.name })),
+      { concurrency: 4 }
     );
+
+    for (const model of models) {
+      const key = modelKey(model.namespace, model.name);
+      const integration = integrationData[key];
+      if (!integration) continue;
+      nextIntegration[key] = {
+        inferenceAvailable: integration.inferenceAvailable,
+        loraAvailable: integration.loraAvailable,
+      };
+      if (integration.metrics) {
+        nextInference[key] = integration.metrics;
+      }
+      nextLoRA[key] = integration.adapters;
+    }
 
     if (token !== controllerRefreshToken) return;
     setInferenceByModel(nextInference);
@@ -137,6 +137,7 @@ const Models: Component = () => {
     setDiscoverLoading(true);
     try {
       await modelsApi.discover(crdNamespace() || undefined);
+      clearModelIntegrationsCache();
       await refreshModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Discovery failed');
@@ -211,6 +212,7 @@ const Models: Component = () => {
       } else {
         await modelsApi.crdRestart(model.namespace, model.name);
       }
+      invalidateModelIntegration(model.namespace, model.name);
       await fetchCRDModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : `${action} failed`);

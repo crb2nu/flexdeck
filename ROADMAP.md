@@ -4,7 +4,7 @@
 
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
 
-> Last Updated: February 17, 2026
+> Last Updated: February 18, 2026
 
 ## Current Status
 
@@ -121,9 +121,10 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 ### Phase 3.5: Reliability And Contract Hardening (March 2026)
 
-- ☐ **Inference Contract Hardening**: Normalize `/api/flexinfer/proxy/metrics` contract and keep compatibility keys.
-- ☐ **Reliability Metrics Expansion**: Extend `/api/models/crd/{namespace}/{name}/inference` with error/queue/retry reliability fields.
-- ☐ **HUD Degraded-Mode UX**: Explicit stale/fallback indicators for SSE disconnect and polling delay.
+- [x] **Inference Contract Hardening**: Normalized `/api/flexinfer/proxy/metrics` with additive `byModel`, `totals`, `requestsByStatus`, `partial` while preserving compatibility keys. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/8))
+- [x] **Reliability Metrics Expansion**: Extended `/api/models/crd/{namespace}/{name}/inference` with additive error/queue/reject/retry fields and partial metadata. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/9))
+- [x] **HUD Degraded-Mode UX**: Added explicit stale/poll-fallback indicators for stream disconnects and delayed pull freshness. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/10))
+- [x] **Controller Integration Resilience**: Shared bounded-concurrency model integration fetch path with short TTL cache + in-flight dedupe across Controller and Inference views.
 
 ## References
 

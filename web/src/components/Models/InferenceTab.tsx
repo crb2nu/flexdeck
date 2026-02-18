@@ -5,6 +5,7 @@ import type {
   InferenceMetrics,
   LoRAAdapter,
 } from '../../lib/types';
+import { fetchModelIntegrationsBatch } from '../../lib/modelIntegration';
 import {
   activeConnectionsForModel,
   errorRateForModel as proxyErrorRateForModel,
@@ -30,25 +31,6 @@ const InferenceTab: Component = () => {
   const [modelMetricsLoading, setModelMetricsLoading] = createSignal(false);
   const [aiNamespace, setAiNamespace] = createSignal('flexinfer-system');
 
-  const fetchModelDetail = async (namespace: string, model: string): Promise<{ metrics?: InferenceMetrics; adapters?: LoRAAdapter[] }> => {
-    const detail: { metrics?: InferenceMetrics; adapters?: LoRAAdapter[] } = {};
-
-    try {
-      detail.metrics = await modelsApi.crdInference(namespace, model);
-    } catch {
-      // model may exist at proxy level but not as CRD in selected namespace
-    }
-
-    try {
-      const loraResp = await modelsApi.lora(namespace, model);
-      detail.adapters = loraResp.adapters || [];
-    } catch {
-      detail.adapters = [];
-    }
-
-    return detail;
-  };
-
   const fetchAllModelDetails = async (
     namespace: string,
     models: string[],
@@ -62,20 +44,19 @@ const InferenceTab: Component = () => {
 
     setModelMetricsLoading(true);
     try {
-      const pairs = await Promise.all(
-        models.map(async (model) => {
-          const modelNamespace = namespaceByModel[model] || namespace;
-          return { model, detail: await fetchModelDetail(modelNamespace, model) };
-        }),
-      );
-
       const nextMetrics: Record<string, InferenceMetrics> = {};
       const nextAdapters: Record<string, LoRAAdapter[]> = {};
-      for (const { model, detail } of pairs) {
-        if (detail.metrics) {
-          nextMetrics[model] = detail.metrics;
+      const integrations = await fetchModelIntegrationsBatch(
+        models.map((model) => ({ namespace: namespaceByModel[model] || namespace, name: model })),
+        { concurrency: 4 }
+      );
+      for (const model of models) {
+        const integration = integrations[`${namespaceByModel[model] || namespace}/${model}`];
+        if (!integration) continue;
+        if (integration.metrics) {
+          nextMetrics[model] = integration.metrics;
         }
-        nextAdapters[model] = detail.adapters || [];
+        nextAdapters[model] = integration.adapters;
       }
       setModelMetrics(nextMetrics);
       setModelAdapters(nextAdapters);
