@@ -269,7 +269,7 @@ const Dashboard: Component = () => {
   });
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Pulse Cards Grid */}
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <PulseCard

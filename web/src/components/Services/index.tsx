@@ -166,7 +166,7 @@ const Services: Component = () => {
   ];
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Controls */}
       <div class="glass-panel corner-accents flex flex-col gap-3 px-4 py-3">
         {/* Tabs row */}

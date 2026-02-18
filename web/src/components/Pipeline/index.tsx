@@ -354,7 +354,7 @@ const Pipeline: Component = () => {
   };
 
   return (
-    <div class="flex h-full w-full overflow-hidden">
+    <div class="flex h-full min-h-0 w-full overflow-hidden">
         {/* Sidebar */}
         <div class="w-64 border-r border-white/10 bg-black/20 flex flex-col">
             <div class="p-4 border-b border-white/5 space-y-3">

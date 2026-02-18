@@ -216,7 +216,7 @@ const Logs: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Query Bar */}
       <div class="glass-panel p-4">
         <div class="flex flex-wrap items-center gap-4">

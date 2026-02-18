@@ -29,7 +29,7 @@ const Admin: Component = () => {
   });
 
   return (
-    <div class="h-full overflow-y-auto space-y-4">
+    <div class="h-full min-h-0 overflow-y-auto space-y-4">
       {/* Page header */}
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-bold tracking-tight text-white">
