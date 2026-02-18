@@ -1,5 +1,6 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, onMount, on, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import PageScrollBody from '../shared/PageScrollBody';
 
 const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
 const Alerts = lazy(() => import('../Alerts'));
@@ -133,19 +134,20 @@ const Metrics: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000);
+  onMount(() => {
+    void fetchMetrics();
+    const interval = setInterval(() => {
+      void fetchMetrics();
+    }, 30000);
     onCleanup(() => clearInterval(interval));
   });
 
-  createEffect(() => {
-    timeRange();
-    fetchMetrics();
-  });
+  createEffect(on(timeRange, () => {
+    void fetchMetrics();
+  }, { defer: true }));
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel flex items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
@@ -220,58 +222,60 @@ const Metrics: Component = () => {
         </Show>
       </div>
 
-      {/* Prometheus tab content */}
-      <Show when={metricsTab() === 'prometheus'}>
-        <Show when={error()}>
-          <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-            <span class="text-lg">!</span>
-            {error()}
+      <PageScrollBody contentClass="gap-4">
+        {/* Prometheus tab content */}
+        <Show when={metricsTab() === 'prometheus'}>
+          <Show when={error()}>
+            <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
+              <span class="text-lg">!</span>
+              {error()}
+            </div>
+          </Show>
+
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <For each={panels}>
+              {(panel) => (
+                <MetricCard
+                  panel={panel}
+                  loading={loading()}
+                />
+              )}
+            </For>
           </div>
         </Show>
 
-        <div class="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <For each={panels}>
-            {(panel) => (
-              <MetricCard
-                panel={panel}
-                loading={loading()}
-              />
-            )}
-          </For>
-        </div>
-      </Show>
-
-      {/* Grafana tab content */}
-      <Show when={metricsTab() === 'grafana'}>
-        <ErrorBoundary fallback={(err) => (
-          <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-            Failed to load Grafana dashboards: {err.message}
-          </div>
-        )}>
-          <Suspense fallback={
-            <div class="flex items-center justify-center py-12">
-              <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+        {/* Grafana tab content */}
+        <Show when={metricsTab() === 'grafana'}>
+          <ErrorBoundary fallback={(err) => (
+            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+              Failed to load Grafana dashboards: {err.message}
             </div>
-          }>
-            <GrafanaDashboards />
-          </Suspense>
-        </ErrorBoundary>
-      </Show>
+          )}>
+            <Suspense fallback={
+              <div class="flex items-center justify-center py-12">
+                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+              </div>
+            }>
+              <GrafanaDashboards />
+            </Suspense>
+          </ErrorBoundary>
+        </Show>
 
-      {/* Alerts tab content */}
-      <Show when={metricsTab() === 'alerts'}>
-        <ErrorBoundary fallback={(err) => (
-          <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-            {err.message}
-          </div>
-        )}>
-          <Suspense fallback={
-            <div class="glass-panel p-4 text-text-dim animate-pulse">Loading alerts...</div>
-          }>
-            <Alerts />
-          </Suspense>
-        </ErrorBoundary>
-      </Show>
+        {/* Alerts tab content */}
+        <Show when={metricsTab() === 'alerts'}>
+          <ErrorBoundary fallback={(err) => (
+            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+              {err.message}
+            </div>
+          )}>
+            <Suspense fallback={
+              <div class="glass-panel p-4 text-text-dim animate-pulse">Loading alerts...</div>
+            }>
+              <Alerts />
+            </Suspense>
+          </ErrorBoundary>
+        </Show>
+      </PageScrollBody>
     </div>
   );
 };

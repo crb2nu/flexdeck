@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
+import { Component, createSignal, createEffect, onCleanup, onMount, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type {
   RegisteredModel,
@@ -11,6 +11,7 @@ import type {
 import { modelsApi } from '../../lib/api';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
+import PageScrollBody from '../shared/PageScrollBody';
 import {
   getReliabilityClasses,
   getReliabilityStatus,
@@ -127,12 +128,16 @@ const Models: Component = () => {
     }
   };
 
+  const refreshModels = async () => {
+    await Promise.all([fetchCRDModels(), fetchRegistryModels()]);
+  };
+
   // Trigger K8s discovery from the configured AI namespace
   const discoverModels = async () => {
     setDiscoverLoading(true);
     try {
       await modelsApi.discover(crdNamespace() || undefined);
-      await Promise.all([fetchCRDModels(), fetchRegistryModels()]);
+      await refreshModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Discovery failed');
     } finally {
@@ -214,14 +219,12 @@ const Models: Component = () => {
     }
   };
 
-  createEffect(() => {
-    // Initial load — fetch both CRDs and registry
-    Promise.all([fetchCRDModels(), fetchRegistryModels()]).finally(() => setLoading(false));
-    // Also trigger discovery to sync registry
-    discoverModels();
+  onMount(() => {
+    void refreshModels().finally(() => setLoading(false));
+    // Also trigger discovery to sync registry.
+    void discoverModels();
     const interval = setInterval(() => {
-      fetchCRDModels();
-      fetchRegistryModels();
+      void refreshModels();
     }, 15000);
     onCleanup(() => clearInterval(interval));
   });
@@ -317,7 +320,7 @@ const Models: Component = () => {
   });
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel px-4 py-3">
         <div class="flex items-center justify-between">
@@ -396,146 +399,152 @@ const Models: Component = () => {
         <div class="glass-panel p-4 text-sm text-status-error">{error()}</div>
       </Show>
 
-      <ErrorBoundary fallback={(err) => (
-        <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-          Rendering error: {err.message}
-        </div>
-      )}>
-      <Switch>
-        {/* Controller (CRD) Tab */}
-        <Match when={activeTab() === 'controller'}>
-          <Show
-            when={!loading() || crdModels.length > 0}
-            fallback={<LoadingState message="Querying Model CRDs..." />}
-          >
-            <Show
-              when={crdModels.length > 0}
-              fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to your AI namespace, then click Sync." />}
-            >
-              <ModelGPUTable />
-              <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                <For each={crdModels}>
-                  {(model) => (
-                    <CRDModelCard
-                      model={model}
-                      inference={inferenceByModel()[modelKey(model.namespace, model.name)]}
-                      adapters={loraByModel()[modelKey(model.namespace, model.name)]}
-                      integrationState={integrationByModel()[modelKey(model.namespace, model.name)]}
-                      integrationLoading={controllerDataLoading()}
-                      actionLoading={crdActionLoading()}
-                      onActivate={() => handleCRDAction('activate', model)}
-                      onScaleToZero={() => handleCRDAction('scale0', model)}
-                      onRestart={() => handleCRDAction('restart', model)}
-                    />
-                  )}
-                </For>
-              </div>
-            </Show>
-          </Show>
-        </Match>
-
-        {/* Registry Tab */}
-        <Match when={activeTab() === 'registry'}>
-          <Show
-            when={registryModels.length > 0}
-            fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from K8s or search HuggingFace/CivitAI." />}
-          >
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <For each={registryModels}>
-                {(model) => (
-                  <RegistryModelCard
-                    model={model}
-                    actionLoading={actionLoading()}
-                    onDownload={() => handleStartDownload(model.id)}
-                    onDelete={() => handleDelete(model.id)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-        </Match>
-
-        {/* Search Tab */}
-        <Match when={activeTab() === 'search'}>
-          <div class="glass-panel p-4">
-            <div class="flex gap-3">
-              <select
-                value={searchSource()}
-                onChange={(e) => setSearchSource(e.target.value as 'huggingface' | 'civitai')}
-                class="rounded-md bg-white/10 px-3 py-2 text-sm text-text-main"
-              >
-                <option value="huggingface">HuggingFace</option>
-                <option value="civitai">CivitAI</option>
-              </select>
-              <input
-                type="text"
-                value={searchQuery()}
-                onInput={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search models..."
-                class="flex-1 rounded-md bg-white/10 px-4 py-2 text-sm text-text-main placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-neon-cyan"
-              />
-              <button
-                onClick={() => handleSearch()}
-                disabled={searching() || !searchQuery().trim()}
-                class="rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
-              >
-                {searching() ? 'Searching...' : 'Search'}
-              </button>
-            </div>
+      <PageScrollBody contentClass="gap-4">
+        <ErrorBoundary fallback={(err) => (
+          <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+            Rendering error: {err.message}
           </div>
-          <Show when={searchResults.length > 0}>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <For each={searchResults}>
-                {(model) => (
-                  <SearchResultCard
-                    model={model}
-                    actionLoading={actionLoading()}
-                    onRegister={() => handleRegister(model.source, model.source_id)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-        </Match>
+        )}>
+          <Switch>
+            {/* Controller (CRD) Tab */}
+            <Match when={activeTab() === 'controller'}>
+              <Show
+                when={!loading() || crdModels.length > 0}
+                fallback={<LoadingState message="Querying Model CRDs..." />}
+              >
+                <Show
+                  when={crdModels.length > 0}
+                  fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to your AI namespace, then click Sync." />}
+                >
+                  <div class="flex flex-col gap-4">
+                    <ModelGPUTable />
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <For each={crdModels}>
+                        {(model) => (
+                          <CRDModelCard
+                            model={model}
+                            inference={inferenceByModel()[modelKey(model.namespace, model.name)]}
+                            adapters={loraByModel()[modelKey(model.namespace, model.name)]}
+                            integrationState={integrationByModel()[modelKey(model.namespace, model.name)]}
+                            integrationLoading={controllerDataLoading()}
+                            actionLoading={crdActionLoading()}
+                            onActivate={() => handleCRDAction('activate', model)}
+                            onScaleToZero={() => handleCRDAction('scale0', model)}
+                            onRestart={() => handleCRDAction('restart', model)}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+              </Show>
+            </Match>
 
-        {/* Router Tab */}
-        <Match when={activeTab() === 'router'}>
-          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Router panel error: {err.message}</div>}>
-            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading router...</div>}>
-              <LiteLLMRouterPanel />
-            </Suspense>
-          </ErrorBoundary>
-        </Match>
+            {/* Registry Tab */}
+            <Match when={activeTab() === 'registry'}>
+              <Show
+                when={registryModels.length > 0}
+                fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from K8s or search HuggingFace/CivitAI." />}
+              >
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <For each={registryModels}>
+                    {(model) => (
+                      <RegistryModelCard
+                        model={model}
+                        actionLoading={actionLoading()}
+                        onDownload={() => handleStartDownload(model.id)}
+                        onDelete={() => handleDelete(model.id)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </Match>
 
-        {/* Compare Tab */}
-        <Match when={activeTab() === 'compare'}>
-          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Compare error: {err.message}</div>}>
-            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading comparison...</div>}>
-              <ModelComparison />
-            </Suspense>
-          </ErrorBoundary>
-        </Match>
+            {/* Search Tab */}
+            <Match when={activeTab() === 'search'}>
+              <div class="flex flex-col gap-4">
+                <div class="glass-panel p-4">
+                  <div class="flex gap-3">
+                    <select
+                      value={searchSource()}
+                      onChange={(e) => setSearchSource(e.target.value as 'huggingface' | 'civitai')}
+                      class="rounded-md bg-white/10 px-3 py-2 text-sm text-text-main"
+                    >
+                      <option value="huggingface">HuggingFace</option>
+                      <option value="civitai">CivitAI</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={searchQuery()}
+                      onInput={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                      placeholder="Search models..."
+                      class="flex-1 rounded-md bg-white/10 px-4 py-2 text-sm text-text-main placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-neon-cyan"
+                    />
+                    <button
+                      onClick={() => handleSearch()}
+                      disabled={searching() || !searchQuery().trim()}
+                      class="rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+                    >
+                      {searching() ? 'Searching...' : 'Search'}
+                    </button>
+                  </div>
+                </div>
+                <Show when={searchResults.length > 0}>
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <For each={searchResults}>
+                      {(model) => (
+                        <SearchResultCard
+                          model={model}
+                          actionLoading={actionLoading()}
+                          onRegister={() => handleRegister(model.source, model.source_id)}
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+            </Match>
 
-        {/* Inference Tab */}
-        <Match when={activeTab() === 'inference'}>
-          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Inference error: {err.message}</div>}>
-            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading inference metrics...</div>}>
-              <InferenceTab />
-            </Suspense>
-          </ErrorBoundary>
-        </Match>
+            {/* Router Tab */}
+            <Match when={activeTab() === 'router'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Router panel error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading router...</div>}>
+                  <LiteLLMRouterPanel />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
 
-        {/* Catalog Tab */}
-        <Match when={activeTab() === 'catalog'}>
-          <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Catalog error: {err.message}</div>}>
-            <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading catalogs...</div>}>
-              <CatalogTab />
-            </Suspense>
-          </ErrorBoundary>
-        </Match>
-      </Switch>
-      </ErrorBoundary>
+            {/* Compare Tab */}
+            <Match when={activeTab() === 'compare'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Compare error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading comparison...</div>}>
+                  <ModelComparison />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
+
+            {/* Inference Tab */}
+            <Match when={activeTab() === 'inference'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Inference error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading inference metrics...</div>}>
+                  <InferenceTab />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
+
+            {/* Catalog Tab */}
+            <Match when={activeTab() === 'catalog'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Catalog error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading catalogs...</div>}>
+                  <CatalogTab />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
+          </Switch>
+        </ErrorBoundary>
+      </PageScrollBody>
     </div>
   );
 };

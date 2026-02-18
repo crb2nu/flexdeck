@@ -5,6 +5,7 @@ import { agentsApi } from '../../lib/api';
 import AgentChat from './AgentChat';
 import AgentFlowGraph from './AgentFlowGraph';
 import AgentSessionPanel from './AgentSessionPanel';
+import PageScrollBody from '../shared/PageScrollBody';
 
 const HUDTab = lazy(() => import('./HUDTab'));
 
@@ -218,7 +219,7 @@ const Agents: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel flex items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
@@ -282,6 +283,7 @@ const Agents: Component = () => {
         <div class="glass-panel p-4 text-sm text-status-error">{error()}</div>
       </Show>
 
+      <PageScrollBody class={viewMode() === 'grid' ? '' : 'overflow-hidden'}>
       {/* Content area */}
       <Show
         when={!loading() || agents.length > 0}
@@ -574,6 +576,7 @@ const Agents: Component = () => {
           </Show>
         </Show>
       </Show>
+      </PageScrollBody>
 
       {/* Create/Edit Form Modal */}
       <Show when={showForm()}>

@@ -5,6 +5,7 @@ export { default as Sparkline } from './Sparkline';
 export { default as DetailPanel } from './DetailPanel';
 export { default as EnhancedTooltip } from './EnhancedTooltip';
 export { default as QualitySettings, getQualityConfig, getQualityLevel, qualityPresets } from './QualitySettings';
+export { default as PageScrollBody } from './PageScrollBody';
 export type { DetailPanelTab, DetailPanelAction, DetailPanelProps } from './DetailPanel';
 export type { TooltipItem, EnhancedTooltipProps } from './EnhancedTooltip';
 export type { QualityLevel, QualityConfig } from './QualitySettings';

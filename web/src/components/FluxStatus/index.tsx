@@ -82,7 +82,7 @@ const FluxStatus: Component = () => {
   const totalCount = createMemo(() => kustomizations().length + helmReleases().length);
 
   return (
-    <div class="flex h-full flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel flex items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
@@ -129,7 +129,7 @@ const FluxStatus: Component = () => {
             </div>
           }
         >
-          <div class="flex flex-col gap-4 overflow-y-auto flex-1">
+          <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
             {/* Sources */}
             <Show when={sources().length > 0}>
               <div class="glass-panel overflow-hidden">
