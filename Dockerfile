@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=registry.harbor.lan/dockerhub-cache/docker/dockerfile:1.7
 
 # ==============================================================================
 # FRONTEND BUILD STAGE
