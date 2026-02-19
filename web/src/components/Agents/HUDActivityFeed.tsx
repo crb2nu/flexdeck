@@ -1,11 +1,11 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import type { HUDTimelineEvent } from '../../lib/types';
 import { hudApi } from '../../lib/api';
-
-const MAX_RECONNECT_DELAY = 30000;
-const BASE_RECONNECT_DELAY = 2000;
-
-type FeedConnectionState = 'connecting' | 'live' | 'stale';
+import {
+  computeReconnectDelayMs,
+  feedConnectionLabel,
+  type FeedConnectionState,
+} from './hudDegradedMode';
 
 const HUDActivityFeed: Component<{
   initialEvents?: HUDTimelineEvent[];
@@ -56,11 +56,8 @@ const HUDActivityFeed: Component<{
       eventSource.onerror = () => {
         setConnectionState('stale');
         eventSource?.close();
-        // Exponential backoff with jitter, capped at MAX_RECONNECT_DELAY
-        const delay = Math.min(
-          BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts) + Math.random() * 1000,
-          MAX_RECONNECT_DELAY
-        );
+        // Exponential backoff with jitter: 2s base, capped at 30s.
+        const delay = computeReconnectDelayMs(reconnectAttempts);
         reconnectAttempts++;
         reconnectTimer = setTimeout(connect, delay);
       };
@@ -113,7 +110,7 @@ const HUDActivityFeed: Component<{
                 : 'bg-white/30'
           }`} />
           <span class="text-[10px] text-text-dim">
-            {connectionState() === 'live' ? 'Live' : connectionState() === 'stale' ? 'Poll fallback' : 'Connecting...'}
+            {feedConnectionLabel(connectionState())}
           </span>
         </div>
       </div>

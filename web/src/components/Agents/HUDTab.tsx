@@ -4,6 +4,7 @@ import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
+import { HUD_PULL_STALE_THRESHOLD_MS, isWorkflowDataStale, type FeedConnectionState } from './hudDegradedMode';
 import {
   applyWorkflowCancel,
   countClaimConflicts,
@@ -13,8 +14,6 @@ import {
   normalizePresenceFromPush,
   toErrorMessage,
 } from './hudUtils';
-
-type FeedConnectionState = 'connecting' | 'live' | 'stale';
 
 const HUDTab: Component = () => {
   const [presence, setPresence] = createSignal<HUDAgentPresence[]>([]);
@@ -163,7 +162,7 @@ const HUDTab: Component = () => {
   const claimConflictCount = () => countClaimConflicts(claims());
 
   const workflowDataStale = () =>
-    pullEnabled() && lastSuccessfulPull() > 0 && now() - lastSuccessfulPull() > 45000;
+    isWorkflowDataStale(pullEnabled(), lastSuccessfulPull(), now());
 
   const hasStaleWarning = () => eventsConnection() === 'stale' || workflowDataStale();
 
@@ -180,7 +179,7 @@ const HUDTab: Component = () => {
 
       <Show when={hasStaleWarning()}>
         <div class="glass-panel p-3 text-xs text-status-warn">
-          Stale data warning: live HUD stream is not connected or polling is delayed. Displayed data may lag.
+          Stale data warning: live HUD stream is not connected or polling is delayed beyond {Math.floor(HUD_PULL_STALE_THRESHOLD_MS / 1000)}s. Displayed data may lag.
         </div>
       </Show>
 

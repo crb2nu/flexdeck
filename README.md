@@ -215,6 +215,11 @@ FlexDeck assumes these upstream API/metric families are available for full funct
 | Loom HUD webhook payload (push mode) | Authenticated `POST /api/agents/hud/push` with presence/session snapshot payload and shared token | `internal/api/handlers/agents.go` (`HUDPresencePush`) + push-store fallback |
 | Kubernetes API access | Cluster API reachable with configured auth (`K8S_*`) and CRD access for FlexInfer resources | K8s services views, controller/model operations, events, storage/config viewers |
 
+### HUD Degraded-Mode Thresholds
+
+- Activity feed switches to poll fallback on SSE disconnect and retries with exponential backoff (`2s` base, `30s` max).
+- Pull-mode stale warning is shown when successful HUD pull data is older than `45s`.
+
 ## Docker
 
 ```bash
