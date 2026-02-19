@@ -29,7 +29,10 @@
   - `make lint` failed due pre-existing repository-wide lint issues unrelated to this change.
   - CI file parses successfully (`YAML_OK` via `python3` + `yaml.safe_load`).
 - CI pipeline/run:
-  - Pending post-push verification via `verify_ci_loop.sh`.
+  - `verify_ci_loop.sh` was executed but blocked:
+    - auto provider detection failed for IP-based origin URL.
+    - explicit GitLab mode failed due GitLab MCP websocket handshake errors.
+    - direct GitLab API polling by commit SHA found no pipeline for this branch commit (MR/main scoped job rules and no MR created in this loop).
 - Extra validation (perf, load, ops):
   - Not applicable for this CI configuration-only change.
 
