@@ -75,4 +75,83 @@ describe('modelIntegration', () => {
     expect(item?.metrics).toBeUndefined();
     expect(item?.adapters).toEqual([]);
   });
+
+  it('reuses the same in-flight fetch across concurrent callers for one model key', async () => {
+    let resolveInference: ((value: { model: string; tps: number }) => void) | undefined;
+    let resolveLora: ((value: { adapters: { name: string; state: string }[] }) => void) | undefined;
+
+    crdInferenceMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInference = resolve;
+        })
+    );
+    loraMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLora = resolve;
+        })
+    );
+
+    const refs = [{ namespace: 'ns', name: 'alpha' }];
+    const first = fetchModelIntegrationsBatch(refs, { force: true });
+    const second = fetchModelIntegrationsBatch(refs, { force: true });
+
+    await Promise.resolve();
+
+    expect(crdInferenceMock).toHaveBeenCalledTimes(1);
+    expect(loraMock).toHaveBeenCalledTimes(1);
+    expect(resolveInference).toBeTypeOf('function');
+    expect(resolveLora).toBeTypeOf('function');
+
+    resolveInference?.({ model: 'alpha', tps: 1 });
+    resolveLora?.({ adapters: [{ name: 'adapter-a', state: 'Loaded' }] });
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult['ns/alpha']).toEqual(secondResult['ns/alpha']);
+    expect(firstResult['ns/alpha']?.inferenceAvailable).toBe(true);
+    expect(firstResult['ns/alpha']?.loraAvailable).toBe(true);
+  });
+
+  it('limits concurrent integration fetches to the configured worker count', async () => {
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maxActive = 0;
+
+    crdInferenceMock.mockImplementation(
+      (_namespace: string, name: string) =>
+        new Promise((resolve) => {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          releases.push(() => {
+            active--;
+            resolve({ model: name, tps: 1 });
+          });
+        })
+    );
+    loraMock.mockResolvedValue({ adapters: [] });
+
+    const models = [
+      { namespace: 'ns', name: 'alpha' },
+      { namespace: 'ns', name: 'beta' },
+      { namespace: 'ns', name: 'gamma' },
+      { namespace: 'ns', name: 'delta' },
+    ];
+
+    const batchPromise = fetchModelIntegrationsBatch(models, { force: true, concurrency: 2 });
+
+    await Promise.resolve();
+    expect(crdInferenceMock).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(2);
+
+    releases.splice(0, releases.length).forEach((release) => release());
+    await vi.waitFor(() => {
+      expect(crdInferenceMock).toHaveBeenCalledTimes(4);
+    });
+    expect(maxActive).toBe(2);
+
+    releases.splice(0, releases.length).forEach((release) => release());
+    await batchPromise;
+  });
 });
