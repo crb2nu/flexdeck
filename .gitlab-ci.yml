@@ -248,7 +248,9 @@ build:
         return 1
       }
 
-      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+      REF_NAME="${CI_COMMIT_BRANCH:-${CI_COMMIT_REF_NAME:-}}"
+
+      if [ "$REF_NAME" = "main" ]; then
         # Main branch: push SHA + latest tags
         build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
       else
