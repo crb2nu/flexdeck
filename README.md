@@ -88,6 +88,11 @@ Environment variables:
 | `MULTICLUSTER_DISABLED` | `true` | Disable multi-cluster subsystem |
 | `CLUSTERS_REGISTRY_PATH` | `/data/clusters.json` | Cluster registry store path |
 
+### HUD Degraded-Mode Thresholds
+
+- Activity feed switches to poll fallback on SSE disconnect and retries with exponential backoff (`2s` base, `30s` max).
+- Pull-mode stale warning is shown when successful HUD pull data is older than `45s`.
+
 ## Docker
 
 ```bash
