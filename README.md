@@ -163,6 +163,30 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `audit` | `AUDIT_DISABLED=false` | Admin Audit tab and audit endpoints available |
 | `multi_cluster` | `MULTICLUSTER_DISABLED=false` | Cluster selector and Admin Clusters tab available |
 
+### `/api/models/crd/{namespace}/{name}/inference` contract
+
+`GET /api/models/crd/{namespace}/{name}/inference` returns a compatibility-safe payload with additive reliability fields.
+
+Core compatibility keys (retained):
+- `model`
+- `tps`
+- `p95LatencyMs`
+- `queueDepth`
+- `activeConnections`
+
+Additive reliability keys:
+- `errorRate`
+- `queueWaitP95Ms`
+- `rejectedRequestsPerSec`
+- `scaleUps5m`
+- `activationRetries5m`
+- `partial`
+- `missingMetrics`
+
+Notes:
+- `partial=true` indicates one or more Prometheus queries failed and some fields are defaulted.
+- `missingMetrics` lists the internal metric keys that failed to resolve.
+
 ### Operator Rollout Checklist (Staging/Prod)
 
 Use this checklist when enabling feature-gated subsystems in non-dev environments.
