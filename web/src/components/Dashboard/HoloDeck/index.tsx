@@ -27,13 +27,14 @@ import {
     trafficFragmentShader
 } from './shaders';
 import { disposeObject, markShared } from './utils';
+import {
+  computeClusterHealth,
+  nodeMatchesFilter,
+  podMatchesFilter,
+  type HoloDeckFilter
+} from './derivedState';
 
-export interface HoloDeckFilter {
-  namespace?: string;
-  status?: string[];
-  nodeName?: string;
-  searchTerm?: string;
-}
+export type { HoloDeckFilter } from './derivedState';
 
 interface Props {
   nodes: K8sNode[];
@@ -122,71 +123,9 @@ const HoloDeck: Component<Props> = (props) => {
   let prevPodIds = new Set<string>();
   let prevServiceIds = new Set<string>();
 
-  // Filter matching helpers
-  const podMatchesFilter = (pod: K8sPod, filter?: HoloDeckFilter): boolean => {
-    if (!filter) return true;
-    if (filter.namespace && pod.metadata.namespace !== filter.namespace) return false;
-    if (filter.status && filter.status.length > 0 && !filter.status.includes(pod.status.phase)) return false;
-    if (filter.nodeName && pod.spec.nodeName !== filter.nodeName) return false;
-    if (filter.searchTerm) {
-      const term = filter.searchTerm.toLowerCase();
-      const nameMatch = pod.metadata.name.toLowerCase().includes(term);
-      const nsMatch = pod.metadata.namespace?.toLowerCase().includes(term);
-      if (!nameMatch && !nsMatch) return false;
-    }
-    return true;
-  };
-
-  const nodeMatchesFilter = (node: K8sNode, filter?: HoloDeckFilter): boolean => {
-    if (!filter) return true;
-    if (filter.nodeName && node.metadata.name !== filter.nodeName) return false;
-    // If filtering by namespace, show nodes that have matching pods
-    if (filter.namespace) {
-      const hasMatchingPod = props.pods.some(p =>
-        p.spec.nodeName === node.metadata.name && p.metadata.namespace === filter.namespace
-      );
-      if (!hasMatchingPod) return false;
-    }
-    if (filter.searchTerm) {
-      const term = filter.searchTerm.toLowerCase();
-      const nameMatch = node.metadata.name.toLowerCase().includes(term);
-      // Also match if any pods on this node match
-      const hasPodMatch = props.pods.some(p =>
-        p.spec.nodeName === node.metadata.name &&
-        (p.metadata.name.toLowerCase().includes(term) || p.metadata.namespace?.toLowerCase().includes(term))
-      );
-      if (!nameMatch && !hasPodMatch) return false;
-    }
-    return true;
-  };
-
-  // Compute cluster health from current nodes and pods
-  const computeClusterHealth = (): ClusterHealthData => {
-    const nodesTotal = props.nodes.length;
-    const nodesReady = props.nodes.filter(n =>
-      n.status?.conditions?.some(c => c.type === 'Ready' && c.status === 'True')
-    ).length;
-
-    const podsTotal = props.pods.length;
-    const podsRunning = props.pods.filter(p => p.status?.phase === 'Running').length;
-
-    // Calculate overall health percentage
-    const nodeHealth = nodesTotal > 0 ? nodesReady / nodesTotal : 1;
-    const podHealth = podsTotal > 0 ? podsRunning / podsTotal : 1;
-    const healthPercent = (nodeHealth * 0.4 + podHealth * 0.6); // Weight pods more
-
-    return {
-      apiServerHealthy: nodesTotal > 0, // If we have nodes, API server is reachable
-      controlPlaneHealthy: nodesReady > 0,
-      healthPercent,
-      nodesReady,
-      nodesTotal,
-      podsRunning,
-      podsTotal
-    };
-  };
-
-  const clusterHealth = createMemo<ClusterHealthData>(() => computeClusterHealth());
+  const clusterHealth = createMemo<ClusterHealthData>(() =>
+    computeClusterHealth(props.nodes, props.pods)
+  );
 
   const hasClusterData = createMemo(() => {
     const health = clusterHealth();
@@ -292,7 +231,7 @@ const HoloDeck: Component<Props> = (props) => {
 
       const isNode = id.startsWith('node-');
       const matches = isNode
-        ? nodeMatchesFilter(data as K8sNode, filter)
+        ? nodeMatchesFilter(data as K8sNode, props.pods, filter)
         : podMatchesFilter(data as K8sPod, filter);
 
       matchesFilterMap.set(id, matches);
