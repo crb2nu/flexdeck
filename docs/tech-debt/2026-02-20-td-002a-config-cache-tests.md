@@ -3,7 +3,7 @@
 ## Item
 
 - Debt ID: TD-002A
-- Branch/PR: `codex/td-002a-config-cache-tests` (PR pending)
+- Branch/PR: `codex/td-002a-config-cache-tests` / MR `!9`
 - Owner: codex-gpt5
 
 ## Problem
@@ -29,7 +29,13 @@
   - `golangci-lint run ./internal/config ./internal/cache` passed (`0 issues`).
   - `bash /Users/cblevins/.codex/skills/tech-debt-backlog-dev-loop/scripts/verify_local_loop.sh` ran; `make test` passed, `make lint` failed in broader repo checks due existing/global lint environment issues outside this slice.
 - CI pipeline/run:
-  - Pending (to be executed after opening MR for this branch).
+  - MR pipeline `1795` passed for MR `!9`:
+    - `lint:backend` success
+    - `lint:frontend` success
+    - `test:backend` success
+    - `test:frontend` success
+    - `perf:topology` success
+    - `build` success
 - Extra validation (perf, load, ops):
   - Not applicable for tests-only slice.
 
