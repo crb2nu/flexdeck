@@ -3,7 +3,7 @@
 ## Item
 
 - Debt ID: TD-003 (Slice: derived-state extraction)
-- Branch/PR: `codex/td-003-derived-state-slice` (PR pending)
+- Branch/PR: `codex/td-003-derived-state-slice` / MR `!7`
 - Owner: codex-gpt5
 
 ## Problem
@@ -30,7 +30,13 @@
   - `npm run perf:topology` executed (small 29.1ms, medium 136.3ms, large 392.9ms layout).
   - `bash /Users/cblevins/.codex/skills/tech-debt-backlog-dev-loop/scripts/verify_local_loop.sh` failed at `make lint` due pre-existing backend lint baseline issues unrelated to this slice.
 - CI pipeline/run:
-  - Pending.
+  - Initial MR pipeline `1711` failed in `build` due `CI_COMMIT_BRANCH` unbound variable in `.gitlab-ci.yml`.
+  - Applied minimal CI fix by cherry-picking `ci(build): guard ref name under set -u`.
+  - Replacement MR pipeline `1717` succeeded:
+    - `lint:frontend` success
+    - `test:frontend` success
+    - `perf:topology` success
+    - `build` success
 - Extra validation (perf, load, ops):
   - Not applicable beyond `perf:topology` sanity run for this extraction-only slice.
 
@@ -43,3 +49,4 @@
 - Residual debt / follow-ups:
   - Continue TD-003 by extracting layout/render interaction loops in additional slices.
   - Resolve repo-wide backend lint baseline so loop-level `make lint` can pass locally.
+  - Rebase this branch onto latest `main` before merge to absorb already-landed CI guard changes cleanly.
