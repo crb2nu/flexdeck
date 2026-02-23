@@ -2,6 +2,7 @@ package apiutil
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -49,7 +50,7 @@ func (b *URLBuilder) Param(key, value string) *URLBuilder {
 // ParamInt adds an integer query parameter. Zero values are skipped.
 func (b *URLBuilder) ParamInt(key string, value int) *URLBuilder {
 	if value != 0 {
-		b.params.Set(key, url.QueryEscape(string(rune(value))))
+		b.params.Set(key, strconv.Itoa(value))
 	}
 	return b
 }
