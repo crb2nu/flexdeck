@@ -94,7 +94,7 @@ func (c *HuggingFaceClient) Search(ctx context.Context, query string, filter str
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -124,7 +124,7 @@ func (c *HuggingFaceClient) GetModel(ctx context.Context, modelID string) (*HFMo
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("model not found: %s", modelID)
@@ -157,7 +157,7 @@ func (c *HuggingFaceClient) ListFiles(ctx context.Context, modelID string) ([]HF
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

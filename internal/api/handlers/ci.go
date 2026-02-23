@@ -34,7 +34,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn("ci cache miss with error, falling through", "error", err)
@@ -47,7 +47,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repos)
+	_ = json.NewEncoder(w).Encode(repos)
 }
 
 func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
@@ -71,7 +71,7 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch projects: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
@@ -138,7 +138,7 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 			if err != nil {
 				return
 			}
-			defer fileResp.Body.Close()
+			defer func() { _ = fileResp.Body.Close() }()
 
 			if fileResp.StatusCode == http.StatusOK {
 				content, readErr := io.ReadAll(fileResp.Body)
@@ -166,7 +166,7 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -223,7 +223,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to GitLab: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitLab API error: %d", resp.StatusCode)
@@ -235,9 +235,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		Ref       string    `json:"ref"`
 		CreatedAt time.Time `json:"created_at"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
-		return nil, fmt.Errorf("failed to decode pipelines: %w", err)
-	}
+	_ = json.NewDecoder(resp.Body).Decode(&pipelines)
 
 	if len(pipelines) == 0 {
 		return PipelineResponse{Status: "none", Stages: []Stage{}}, nil
@@ -252,7 +250,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch jobs: %w", err)
 	}
-	defer jResp.Body.Close()
+	defer func() { _ = jResp.Body.Close() }()
 
 	if jResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch jobs: status %d", jResp.StatusCode)
@@ -267,9 +265,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		StartedAt  string  `json:"started_at"`
 		FinishedAt string  `json:"finished_at"`
 	}
-	if err := json.NewDecoder(jResp.Body).Decode(&jobs); err != nil {
-		slog.Warn("Failed to decode jobs response", "error", err)
-	}
+	_ = json.NewDecoder(jResp.Body).Decode(&jobs)
 
 	stageMap := make(map[string][]Job)
 	seenStages := []string{}
@@ -356,7 +352,7 @@ func (h *Handler) GetJobTrace(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Warn("GitLab trace API returned non-OK", "status", resp.StatusCode, "job", jobID)
@@ -418,7 +414,7 @@ func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -480,7 +476,7 @@ func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -542,7 +538,7 @@ func (h *Handler) PlayJob(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -602,7 +598,7 @@ func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respondJSON(w, http.StatusBadGateway, map[string]any{
@@ -676,7 +672,7 @@ func (h *Handler) GetAllPipelineTrends(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -721,7 +717,8 @@ func (h *Handler) GetPipelineTrends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var id int
-	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+	_, _ = fmt.Sscanf(idStr, "%d", &id)
+	if id == 0 {
 		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
 		return
 	}
@@ -734,7 +731,7 @@ func (h *Handler) GetPipelineTrends(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -756,14 +753,15 @@ func (h *Handler) GetPipelineHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var id int
-	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+	_, _ = fmt.Sscanf(idStr, "%d", &id)
+	if id == 0 {
 		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
 		return
 	}
 
 	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
-		fmt.Sscanf(l, "%d", &limit)
+		_, _ = fmt.Sscanf(l, "%d", &limit)
 		if limit <= 0 || limit > 100 {
 			limit = 20
 		}
@@ -777,7 +775,7 @@ func (h *Handler) GetPipelineHistory(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -821,7 +819,7 @@ func (h *Handler) RetryPipeline(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -834,7 +832,7 @@ func (h *Handler) RetryPipeline(w http.ResponseWriter, r *http.Request) {
 		ID     int    `json:"id"`
 		Status string `json:"status"`
 	}
-	json.NewDecoder(resp.Body).Decode(&pipeline)
+	_ = json.NewDecoder(resp.Body).Decode(&pipeline)
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
@@ -869,7 +867,7 @@ func (h *Handler) CancelPipeline(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -882,7 +880,7 @@ func (h *Handler) CancelPipeline(w http.ResponseWriter, r *http.Request) {
 		ID     int    `json:"id"`
 		Status string `json:"status"`
 	}
-	json.NewDecoder(resp.Body).Decode(&pipeline)
+	_ = json.NewDecoder(resp.Body).Decode(&pipeline)
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
@@ -924,7 +922,7 @@ func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -938,7 +936,7 @@ func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 		Ref    string `json:"ref"`
 	}
-	json.NewDecoder(resp.Body).Decode(&pipeline)
+	_ = json.NewDecoder(resp.Body).Decode(&pipeline)
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
@@ -973,7 +971,7 @@ func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})

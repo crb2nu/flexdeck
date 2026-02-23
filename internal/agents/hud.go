@@ -152,7 +152,7 @@ func (c *HUDClient) GetPresence(ctx context.Context) (*PresenceResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HUD returned status %d", resp.StatusCode)
@@ -186,7 +186,7 @@ func (c *HUDClient) GetSessions(ctx context.Context) (*SessionsResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HUD returned status %d", resp.StatusCode)

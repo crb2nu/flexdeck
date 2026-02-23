@@ -89,7 +89,7 @@ func (d *Downloader) StartDownload(ctx context.Context, model *Model, callback P
 	d.mu.Unlock()
 
 	// Update registry status
-	d.registry.UpdateDownloadStatus(model.ID, StatusDownloading, 0, "")
+	_ = d.registry.UpdateDownloadStatus(model.ID, StatusDownloading, 0, "")
 
 	go d.runDownload(downloadCtx, model, task)
 
@@ -109,7 +109,7 @@ func (d *Downloader) CancelDownload(modelID string) error {
 	task.cancel()
 	delete(d.downloads, modelID)
 
-	d.registry.UpdateDownloadStatus(modelID, StatusFailed, 0, "download cancelled")
+	_ = d.registry.UpdateDownloadStatus(modelID, StatusFailed, 0, "download cancelled")
 
 	return nil
 }
@@ -234,7 +234,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		// Read error body for more details
@@ -263,7 +263,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	// Track progress
 	startTime := time.Now()
@@ -274,7 +274,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 	for {
 		select {
 		case <-ctx.Done():
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			return ctx.Err()
 		default:
 		}
@@ -282,7 +282,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
-				os.Remove(tempPath)
+				_ = os.Remove(tempPath)
 				return fmt.Errorf("write file: %w", writeErr)
 			}
 			downloaded += int64(n)
@@ -304,7 +304,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 				task.progress.BytesPerSec = bytesPerSec
 
 				d.notifyProgress(task)
-				d.registry.UpdateDownloadStatus(task.modelID, StatusDownloading, percent, "")
+				_ = d.registry.UpdateDownloadStatus(task.modelID, StatusDownloading, percent, "")
 
 				lastUpdate = time.Now()
 			}
@@ -314,7 +314,7 @@ func (d *Downloader) downloadFile(ctx context.Context, url, destPath string, sou
 			break
 		}
 		if err != nil {
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			return fmt.Errorf("read response: %w", err)
 		}
 	}
@@ -385,7 +385,7 @@ func (d *Downloader) getCivitDownloadInfo(model *Model) (string, string, error) 
 		// Fetch fresh info
 		civitClient := NewCivitAIClient(d.civitKey)
 		var modelID int
-		fmt.Sscanf(model.SourceID, "%d", &modelID)
+		_, _ = fmt.Sscanf(model.SourceID, "%d", &modelID)
 
 		civitModel, err := civitClient.GetModel(context.Background(), modelID)
 		if err != nil {
@@ -413,7 +413,7 @@ func (d *Downloader) completeWithError(task *downloadTask, modelID, errMsg strin
 	task.progress.Status = "failed"
 	task.progress.Error = errMsg
 	d.notifyProgress(task)
-	d.registry.UpdateDownloadStatus(modelID, StatusFailed, 0, errMsg)
+	_ = d.registry.UpdateDownloadStatus(modelID, StatusFailed, 0, errMsg)
 }
 
 func (d *Downloader) notifyProgress(task *downloadTask) {

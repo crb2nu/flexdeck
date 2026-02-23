@@ -26,7 +26,7 @@ func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn("grafana dashboards cache error", "error", err)
@@ -56,7 +56,7 @@ func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn("grafana dashboard detail cache error", "error", err)
@@ -84,7 +84,7 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn("grafana datasources cache error", "error", err)
@@ -116,7 +116,7 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("grafana request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

@@ -39,7 +39,7 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "failed to connect to HUD events stream"})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "HUD events stream returned non-OK"})
@@ -61,7 +61,7 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		default:
 			line := scanner.Text()
-			w.Write([]byte(line + "\n"))
+			_, _ = w.Write([]byte(line + "\n"))
 			// Flush on empty line (end of SSE event) or data lines
 			if line == "" || strings.HasPrefix(line, "data:") {
 				flusher.Flush()

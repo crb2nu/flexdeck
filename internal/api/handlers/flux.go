@@ -123,7 +123,7 @@ func (h *Handler) FluxListKustomizations(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(statuses)
+	_ = json.NewEncoder(w).Encode(statuses)
 }
 
 // FluxListHelmReleases lists Flux HelmRelease resources
@@ -156,7 +156,7 @@ func (h *Handler) FluxListHelmReleases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(statuses)
+	_ = json.NewEncoder(w).Encode(statuses)
 }
 
 // FluxReconcile triggers reconciliation of a Flux resource
@@ -178,7 +178,7 @@ func (h *Handler) FluxReconcile(w http.ResponseWriter, r *http.Request) {
 
 	var req FluxReconcileRequest
 	if r.Body != nil {
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
 
 	// Determine GVR based on kind
@@ -228,7 +228,7 @@ func (h *Handler) FluxReconcile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
 		"message": fmt.Sprintf("Reconciliation triggered for %s/%s", namespace, name),
 	})
@@ -293,7 +293,7 @@ func (h *Handler) reconcileSource(ctx context.Context, client dynamic.Interface,
 	annotations["reconcile.fluxcd.io/requestedAt"] = time.Now().Format(time.RFC3339)
 	source.SetAnnotations(annotations)
 
-	client.Resource(gvr).Namespace(sourceNS).Update(ctx, source, metav1.UpdateOptions{})
+	_, _ = client.Resource(gvr).Namespace(sourceNS).Update(ctx, source, metav1.UpdateOptions{})
 }
 
 func extractFluxStatus(obj *unstructured.Unstructured, kind string) FluxStatus {
@@ -383,7 +383,7 @@ func (h *Handler) FluxSuspend(w http.ResponseWriter, r *http.Request) {
 
 	var req FluxSuspendRequest
 	if r.Body != nil {
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
 
 	gvr, ok := resolveFluxGVR(kind)
@@ -494,7 +494,7 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -506,7 +506,7 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h *Handler) fetchHelmReleaseValues(ctx context.Context, kc *k8s.Client, namespace, name string) (map[string]any, error) {
@@ -551,7 +551,7 @@ func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -563,7 +563,7 @@ func (h *Handler) FluxHelmReleaseHistory(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h *Handler) fetchHelmReleaseHistory(ctx context.Context, kc *k8s.Client, namespace, name string) ([]map[string]any, error) {

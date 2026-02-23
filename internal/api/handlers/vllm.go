@@ -43,7 +43,7 @@ func (h *Handler) VLLMGetModel(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) VLLMHealth(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.VLLM.Disabled || h.cfg.VLLM.URL == "" {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"healthy":  false,
 			"disabled": true,
 		})
@@ -55,16 +55,16 @@ func (h *Handler) VLLMHealth(w http.ResponseWriter, r *http.Request) {
 	resp, err := http.Get(healthURL)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"healthy": false,
 			"error":   err.Error(),
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"healthy": resp.StatusCode == http.StatusOK,
 		"status":  resp.StatusCode,
 	})
@@ -119,7 +119,7 @@ func (h *Handler) VLLMChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Copy response headers
 	for k, vv := range resp.Header {
@@ -140,7 +140,7 @@ func (h *Handler) VLLMChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if isStreaming {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			io.Copy(w, resp.Body)
+			_, _ = io.Copy(w, resp.Body)
 			return
 		}
 
@@ -148,7 +148,7 @@ func (h *Handler) VLLMChatCompletions(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
-				w.Write(buf[:n])
+				_, _ = w.Write(buf[:n])
 				flusher.Flush()
 			}
 			if err != nil {
@@ -156,7 +156,7 @@ func (h *Handler) VLLMChatCompletions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		io.Copy(w, resp.Body)
+		_, _ = io.Copy(w, resp.Body)
 	}
 }
 
@@ -183,7 +183,7 @@ func (h *Handler) VLLMCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	for k, vv := range resp.Header {
 		for _, v := range vv {
@@ -191,5 +191,5 @@ func (h *Handler) VLLMCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }

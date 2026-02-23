@@ -59,7 +59,7 @@ func (h *Handler) LiteLLMMetrics(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -116,7 +116,7 @@ func (h *Handler) LiteLLMModels(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -143,7 +143,7 @@ func (h *Handler) LiteLLMRouter(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}

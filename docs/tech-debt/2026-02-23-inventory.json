@@ -1,0 +1,67 @@
+{
+  "items": [
+    {
+      "id": "TD-002B",
+      "title": "Expand tests for internal/k8s, internal/metrics, internal/models",
+      "component": "backend",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 3,
+      "effort": 3
+    },
+    {
+      "id": "TD-003B",
+      "title": "Visualization decomposition (layout/renderInteraction loops)",
+      "component": "frontend",
+      "impact": 4,
+      "risk_reduction": 3,
+      "drag_reduction": 5,
+      "effort": 4
+    },
+    {
+      "id": "TD-004",
+      "title": "Shared polling scheduler",
+      "component": "frontend",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 4,
+      "effort": 3
+    },
+    {
+      "id": "TD-005",
+      "title": "API client split and contract tightening",
+      "component": "web-api",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 4,
+      "effort": 3
+    },
+    {
+      "id": "TD-006",
+      "title": "Router modularization",
+      "component": "backend-api",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 3,
+      "effort": 3
+    },
+    {
+      "id": "TD-008",
+      "title": "Core package test coverage (apiutil, middleware, audit, auth, cluster, rbac)",
+      "component": "backend-core",
+      "impact": 5,
+      "risk_reduction": 5,
+      "drag_reduction": 3,
+      "effort": 3
+    },
+    {
+      "id": "TD-009",
+      "title": "Repository-wide lint baseline remediation",
+      "component": "repo-infrastructure",
+      "impact": 3,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 2
+    }
+  ]
+}

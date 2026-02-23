@@ -34,7 +34,7 @@ func (s *SSEWriter) SendEvent(event string, data any) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", event, jsonData)
+	_, _ = fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", event, jsonData)
 	s.flusher.Flush()
 	return nil
 }
@@ -45,25 +45,25 @@ func (s *SSEWriter) SendData(data any) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
+	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
 	s.flusher.Flush()
 	return nil
 }
 
 // SendRaw sends raw string data without JSON encoding.
 func (s *SSEWriter) SendRaw(data string) {
-	fmt.Fprintf(s.w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", data)
 	s.flusher.Flush()
 }
 
 // SendReady sends a ready event to indicate connection is established.
 func (s *SSEWriter) SendReady() {
-	s.SendEvent("ready", map[string]bool{"ok": true})
+	_ = s.SendEvent("ready", map[string]bool{"ok": true})
 }
 
 // SendError sends an error event.
 func (s *SSEWriter) SendError(message string) {
-	s.SendEvent("error", map[string]string{"error": message})
+	_ = s.SendEvent("error", map[string]string{"error": message})
 }
 
 // Flush forces a flush of any buffered data.

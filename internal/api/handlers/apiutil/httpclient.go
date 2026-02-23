@@ -45,9 +45,9 @@ func ProxyRequest(w http.ResponseWriter, targetURL string) {
 		RespondError(w, http.StatusBadGateway, "PROXY_ERROR", err.Error())
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }

@@ -146,7 +146,7 @@ func (r *Registry) save() error {
 	// Ensure directory exists
 	dir := filepath.Dir(r.filePath)
 	if dir != "" && dir != "." {
-		os.MkdirAll(dir, 0755)
+		_ = os.MkdirAll(dir, 0755)
 	}
 
 	return os.WriteFile(r.filePath, data, 0644)

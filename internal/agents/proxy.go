@@ -72,7 +72,7 @@ func (p *Proxy) Invoke(ctx context.Context, agentID string, req *InvokeRequest) 
 	if err != nil {
 		return nil, latencyMs, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -121,7 +121,7 @@ func (p *Proxy) Stream(ctx context.Context, agentID string, req *InvokeRequest, 
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -145,7 +145,7 @@ func (p *Proxy) Stream(ctx context.Context, agentID string, req *InvokeRequest, 
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			totalBytes += int64(n)
-			w.Write(buf[:n])
+			_, _ = w.Write(buf[:n])
 			flusher.Flush()
 		}
 		if err == io.EOF {

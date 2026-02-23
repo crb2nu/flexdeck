@@ -56,7 +56,7 @@ func (h *Handler) cachedProxyJSON(w http.ResponseWriter, r *http.Request, cacheK
 		cached, err := h.cache.GetOrFetch(ctx, cacheKey, ttl, fetchFn)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn(label+" cache error", "error", err)
@@ -83,7 +83,7 @@ func (h *Handler) fetchFlexInferProxy(ctx context.Context, path string) (any, er
 	if err != nil {
 		return nil, fmt.Errorf("flexinfer proxy request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -117,7 +117,7 @@ func (h *Handler) fetchFlexInferProxyMetrics(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("flexinfer proxy metrics request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("flexinfer proxy metrics error %d", resp.StatusCode)

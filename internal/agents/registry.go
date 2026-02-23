@@ -227,7 +227,7 @@ func (r *Registry) CheckHealth(ctx context.Context, id string) (AgentStatus, err
 		r.updateStatus(id, AgentStatusUnhealthy)
 		return AgentStatusUnhealthy, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := AgentStatusUnhealthy
 	if resp.StatusCode == http.StatusOK {

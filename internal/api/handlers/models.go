@@ -388,7 +388,7 @@ func (h *Handler) ModelsDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update model deployment status
-	h.modelsRegistry.UpdateDeploymentStatus(
+	_ = h.modelsRegistry.UpdateDeploymentStatus(
 		id,
 		models.DeploymentPending,
 		config.Name,
@@ -447,7 +447,7 @@ func (h *Handler) ModelsScale(w http.ResponseWriter, r *http.Request) {
 	if req.Replicas == 0 {
 		status = models.DeploymentStopped
 	}
-	h.modelsRegistry.UpdateDeploymentStatus(id, status, model.DeploymentName, model.DeploymentNS, req.Replicas)
+	_ = h.modelsRegistry.UpdateDeploymentStatus(id, status, model.DeploymentName, model.DeploymentNS, req.Replicas)
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"scaled":   id,
@@ -461,7 +461,7 @@ func sendSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any
 		slog.Warn("sendSSE: failed to marshal data", "error", err)
 		return
 	}
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
 	flusher.Flush()
 }
 
@@ -718,9 +718,10 @@ func inferParamsFromName(name string) string {
 		}
 		suffix := strToLower(m[2])
 		mult := 1.0
-		if suffix == "b" {
+		switch suffix {
+		case "b":
 			mult = 1_000_000_000
-		} else if suffix == "m" {
+		case "m":
 			mult = 1_000_000
 		}
 		score := v * mult
@@ -917,7 +918,7 @@ func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}

@@ -110,7 +110,7 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(result)
+	_, _ = w.Write(result)
 }
 
 // HUDWorkflowReject rejects a workflow step.
@@ -140,7 +140,7 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(result)
+	_, _ = w.Write(result)
 }
 
 // HUDWorkflowCancel cancels a workflow.
@@ -171,7 +171,7 @@ func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(result)
+	_, _ = w.Write(result)
 }
 
 // fetchHUD makes a GET request to the Loom HUD REST API.
@@ -187,7 +187,7 @@ func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, e
 	if err != nil {
 		return nil, fmt.Errorf("hud request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("hud returned %d", resp.StatusCode)
@@ -215,7 +215,7 @@ func (h *Handler) postHUD(ctx context.Context, path string, body []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("hud post request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	result, err := io.ReadAll(resp.Body)
 	if err != nil {

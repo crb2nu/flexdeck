@@ -16,7 +16,7 @@ func (h *Handler) ClustersList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(h.clusterRegistry.List())
+	_ = json.NewEncoder(w).Encode(h.clusterRegistry.List())
 }
 
 // ClustersGet returns a single cluster by ID.
@@ -31,7 +31,7 @@ func (h *Handler) ClustersGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(c)
+	_ = json.NewEncoder(w).Encode(c)
 }
 
 // ClustersCreate adds a new cluster.
@@ -59,7 +59,7 @@ func (h *Handler) ClustersCreate(w http.ResponseWriter, r *http.Request) {
 	redacted := c.Redacted()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(&redacted)
+	_ = json.NewEncoder(w).Encode(&redacted)
 }
 
 // ClustersUpdate modifies a cluster.
@@ -88,7 +88,7 @@ func (h *Handler) ClustersUpdate(w http.ResponseWriter, r *http.Request) {
 
 	redacted := c.Redacted()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&redacted)
+	_ = json.NewEncoder(w).Encode(&redacted)
 }
 
 // ClustersDelete removes a cluster.
@@ -128,12 +128,12 @@ func (h *Handler) ClustersTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := h.clusterManager.TestConnection(r.Context(), info); err != nil {
 		h.clusterRegistry.UpdateStatus(id, "disconnected")
-		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 
 	h.clusterRegistry.UpdateStatus(id, "connected")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 // ClustersSetDefault sets a cluster as the default.

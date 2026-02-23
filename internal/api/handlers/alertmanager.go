@@ -23,7 +23,7 @@ func (h *Handler) AlertmanagerAlerts(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -35,7 +35,7 @@ func (h *Handler) AlertmanagerAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // AlertmanagerSilences returns silences from Alertmanager
@@ -51,7 +51,7 @@ func (h *Handler) AlertmanagerSilences(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -63,7 +63,7 @@ func (h *Handler) AlertmanagerSilences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // AlertmanagerStatus returns Alertmanager status
@@ -79,7 +79,7 @@ func (h *Handler) AlertmanagerStatus(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -91,7 +91,7 @@ func (h *Handler) AlertmanagerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // AlertmanagerCreateSilence creates a new silence
@@ -116,7 +116,7 @@ func (h *Handler) AlertmanagerCreateSilence(w http.ResponseWriter, r *http.Reque
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Invalidate caches
 	if h.cache != nil {
@@ -126,7 +126,7 @@ func (h *Handler) AlertmanagerCreateSilence(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 // AlertmanagerDeleteSilence deletes a silence by ID
@@ -151,7 +151,7 @@ func (h *Handler) AlertmanagerDeleteSilence(w http.ResponseWriter, r *http.Reque
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Invalidate caches
 	if h.cache != nil {
@@ -164,7 +164,7 @@ func (h *Handler) AlertmanagerDeleteSilence(w http.ResponseWriter, r *http.Reque
 		respondJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": id})
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		io.Copy(w, resp.Body)
+		_, _ = io.Copy(w, resp.Body)
 	}
 }
 
@@ -174,7 +174,7 @@ func (h *Handler) fetchAlertmanager(path string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("alertmanager request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("alertmanager returned %d", resp.StatusCode)

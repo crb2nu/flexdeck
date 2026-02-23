@@ -16,7 +16,7 @@ func (h *Handler) RBACListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(h.rbacRegistry.List())
+	_ = json.NewEncoder(w).Encode(h.rbacRegistry.List())
 }
 
 // RBACGetUser returns a single user by ID (admin only).
@@ -31,7 +31,7 @@ func (h *Handler) RBACGetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 // RBACCreateUser creates a new user and returns the one-time plaintext token.
@@ -67,7 +67,7 @@ func (h *Handler) RBACCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id":        user.ID,
 		"username":  user.Username,
 		"role":      user.Role,
@@ -109,7 +109,7 @@ func (h *Handler) RBACUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 // RBACDeleteUser removes a user.
@@ -134,7 +134,7 @@ func (h *Handler) RBACCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 // RBACRoles returns all available roles and their permissions.
@@ -153,5 +153,5 @@ func (h *Handler) RBACRoles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(roles)
+	_ = json.NewEncoder(w).Encode(roles)
 }

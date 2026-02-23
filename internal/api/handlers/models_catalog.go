@@ -30,7 +30,7 @@ func (h *Handler) ModelsCatalog(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 		slog.Warn("catalogs cache error", "error", err)

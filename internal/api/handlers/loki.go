@@ -159,14 +159,14 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to connect to Loki WebSocket: %v", err)
 		// Send error as SSE event
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", "Failed to connect to Loki")
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", "Failed to connect to Loki")
 		flusher.Flush()
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send ready event
-	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
 	flusher.Flush()
 
 	// Create done channel for cleanup
@@ -176,7 +176,7 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		<-r.Context().Done()
 		close(done)
-		conn.Close()
+		_ = conn.Close()
 	}()
 
 	// Read from WebSocket and write to SSE
@@ -186,7 +186,7 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		default:
 			// Set read deadline
-			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -200,7 +200,7 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 				default:
 				}
 				log.Printf("Loki WebSocket read error: %v", err)
-				fmt.Fprintf(w, "event: error\ndata: {\"error\":\"connection lost\"}\n\n")
+				_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"connection lost\"}\n\n")
 				flusher.Flush()
 				return
 			}
@@ -219,7 +219,7 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Failed to marshal Loki response: %v", err)
 					continue
 				}
-				fmt.Fprintf(w, "data: %s\n\n", data)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
 			}
 		}
@@ -279,7 +279,7 @@ func (h *Handler) LokiExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch logs", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Loki returned status %d", resp.StatusCode)
@@ -325,7 +325,7 @@ func (h *Handler) LokiExport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Content-Type", "text/csv")
 		// Write CSV header
-		fmt.Fprintln(w, "timestamp,level,namespace,pod,message")
+		_, _ = fmt.Fprintln(w, "timestamp,level,namespace,pod,message")
 		for _, entry := range entries {
 			level := entry.Labels["level"]
 			if level == "" {
@@ -335,7 +335,7 @@ func (h *Handler) LokiExport(w http.ResponseWriter, r *http.Request) {
 			pod := entry.Labels["pod"]
 			// Escape message for CSV (double quotes, escape internal quotes)
 			msg := strings.ReplaceAll(entry.Message, "\"", "\"\"")
-			fmt.Fprintf(w, "%s,%s,%s,%s,\"%s\"\n", entry.Timestamp, level, namespace, pod, msg)
+			_, _ = fmt.Fprintf(w, "%s,%s,%s,%s,\"%s\"\n", entry.Timestamp, level, namespace, pod, msg)
 		}
 	}
 }

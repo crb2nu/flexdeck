@@ -36,7 +36,7 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -48,7 +48,7 @@ func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(services)
+	_ = json.NewEncoder(w).Encode(services)
 }
 
 func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -76,7 +76,7 @@ func (h *Handler) K8sNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(nodes)
+	_ = json.NewEncoder(w).Encode(nodes)
 }
 
 func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +94,7 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -106,7 +106,7 @@ func (h *Handler) K8sDeployments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deployments)
+	_ = json.NewEncoder(w).Encode(deployments)
 }
 
 func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +124,7 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -136,7 +136,7 @@ func (h *Handler) K8sPods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pods)
+	_ = json.NewEncoder(w).Encode(pods)
 }
 
 func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +154,7 @@ func (h *Handler) K8sIngresses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ingresses)
+	_ = json.NewEncoder(w).Encode(ingresses)
 }
 
 func (h *Handler) K8sStatefulSets(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +172,7 @@ func (h *Handler) K8sStatefulSets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(statefulsets)
+	_ = json.NewEncoder(w).Encode(statefulsets)
 }
 
 func (h *Handler) K8sDaemonSets(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +190,7 @@ func (h *Handler) K8sDaemonSets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(daemonsets)
+	_ = json.NewEncoder(w).Encode(daemonsets)
 }
 
 func (h *Handler) K8sJobs(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +208,7 @@ func (h *Handler) K8sJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobs)
+	_ = json.NewEncoder(w).Encode(jobs)
 }
 
 func (h *Handler) K8sCronJobs(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +226,7 @@ func (h *Handler) K8sCronJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cronjobs)
+	_ = json.NewEncoder(w).Encode(cronjobs)
 }
 
 func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +245,7 @@ func (h *Handler) K8sEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	_ = json.NewEncoder(w).Encode(events)
 }
 
 // K8sPodLogs returns logs for a specific pod
@@ -277,10 +277,10 @@ func (h *Handler) K8sPodLogs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	io.Copy(w, stream)
+	_, _ = io.Copy(w, stream)
 }
 
 // K8sPodLogsSSE streams pod logs via Server-Sent Events
@@ -327,14 +327,14 @@ func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
 	stream, err := kc.GetPodLogs(ctx, ns, name, opts)
 	if err != nil {
 		log.Printf("Failed to get pod logs: %v", err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", err.Error())
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", err.Error())
 		flusher.Flush()
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// Send ready event
-	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
 	flusher.Flush()
 
 	// Handle client disconnect
@@ -355,7 +355,7 @@ func (h *Handler) K8sPodLogsSSE(w http.ResponseWriter, r *http.Request) {
 			line := scanner.Text()
 			// Escape any special characters for SSE
 			escapedLine := strings.ReplaceAll(line, "\n", "\\n")
-			fmt.Fprintf(w, "event: log\ndata: %s\n\n", escapedLine)
+			_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", escapedLine)
 			flusher.Flush()
 		}
 	}
@@ -388,7 +388,7 @@ func (h *Handler) K8sScale(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":       true,
 		"name":     name,
 		"replicas": replicas,
@@ -411,7 +411,7 @@ func (h *Handler) K8sRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":   true,
 		"name": name,
 	})
@@ -449,7 +449,7 @@ func (h *Handler) K8sNodeMetrics(w http.ResponseWriter, r *http.Request) {
 			cpuChan <- promResult{Err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		cpuChan <- promResult{Data: body}
 	}()
@@ -460,7 +460,7 @@ func (h *Handler) K8sNodeMetrics(w http.ResponseWriter, r *http.Request) {
 			memChan <- promResult{Err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		memChan <- promResult{Data: body}
 	}()
@@ -478,7 +478,7 @@ func (h *Handler) K8sNodeMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"cpu":    json.RawMessage(cpuResult.Data),
 		"memory": json.RawMessage(memResult.Data),
 	})
@@ -523,7 +523,7 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 			cpuChan <- promResult{Err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		cpuChan <- promResult{Data: body}
 	}()
@@ -534,7 +534,7 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 			memChan <- promResult{Err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		memChan <- promResult{Data: body}
 	}()
@@ -552,7 +552,7 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"cpu":    json.RawMessage(cpuResult.Data),
 		"memory": json.RawMessage(memResult.Data),
 	})
@@ -584,7 +584,7 @@ func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -596,7 +596,7 @@ func (h *Handler) K8sGPUByModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 type modelGPUEntry struct {
@@ -663,7 +663,7 @@ func (h *Handler) fetchGPUByModel(ctx context.Context, kc *k8s.Client, namespace
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 
 		var promResp struct {
@@ -795,13 +795,13 @@ func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
 	eventsChan, err := kc.WatchEvents(ctx, ns, fieldSelector)
 	if err != nil {
 		log.Printf("Failed to watch events: %v", err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch events\"}\n\n")
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch events\"}\n\n")
 		flusher.Flush()
 		return
 	}
 
 	// Send ready event
-	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
 	flusher.Flush()
 
 	// Handle client disconnect
@@ -828,7 +828,7 @@ func (h *Handler) K8sEventsSSE(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ObjectType, data)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ObjectType, data)
 			flusher.Flush()
 		}
 	}
@@ -866,7 +866,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 	nodeEvents, err := kc.WatchNodes(ctx)
 	if err != nil {
 		log.Printf("Failed to watch nodes: %v", err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch nodes\"}\n\n")
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch nodes\"}\n\n")
 		flusher.Flush()
 		return
 	}
@@ -874,7 +874,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 	podEvents, err := kc.WatchPods(ctx, ns)
 	if err != nil {
 		log.Printf("Failed to watch pods: %v", err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch pods\"}\n\n")
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch pods\"}\n\n")
 		flusher.Flush()
 		return
 	}
@@ -882,13 +882,13 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 	serviceEvents, err := kc.WatchServices(ctx, ns)
 	if err != nil {
 		log.Printf("Failed to watch services: %v", err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch services\"}\n\n")
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Failed to watch services\"}\n\n")
 		flusher.Flush()
 		return
 	}
 
 	// Send ready event
-	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
 	flusher.Flush()
 
 	// Merge all event channels
@@ -947,7 +947,7 @@ func (h *Handler) K8sWatchSSE(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ObjectType, data)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ObjectType, data)
 			flusher.Flush()
 		}
 	}
@@ -969,7 +969,7 @@ func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -981,7 +981,7 @@ func (h *Handler) K8sPVCs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pvcs)
+	_ = json.NewEncoder(w).Encode(pvcs)
 }
 
 // K8sPVs returns PersistentVolumes
@@ -998,7 +998,7 @@ func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -1010,7 +1010,7 @@ func (h *Handler) K8sPVs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pvs)
+	_ = json.NewEncoder(w).Encode(pvs)
 }
 
 // K8sStorageClasses returns StorageClasses
@@ -1027,7 +1027,7 @@ func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -1039,7 +1039,7 @@ func (h *Handler) K8sStorageClasses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(scs)
+	_ = json.NewEncoder(w).Encode(scs)
 }
 
 // K8sConfigMaps returns ConfigMaps (keys only, no data values)
@@ -1058,7 +1058,7 @@ func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -1070,7 +1070,7 @@ func (h *Handler) K8sConfigMaps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h *Handler) fetchConfigMapsList(ctx context.Context, kc *k8s.Client, ns string) ([]map[string]any, error) {
@@ -1137,7 +1137,7 @@ func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -1149,7 +1149,7 @@ func (h *Handler) K8sSecrets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h *Handler) fetchSecretsList(ctx context.Context, kc *k8s.Client, ns string) ([]map[string]any, error) {

@@ -29,7 +29,7 @@ func (h *Handler) langfuseRequest(endpoint string) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -58,7 +58,7 @@ func (h *Handler) LangfuseHealth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"healthy": resp.StatusCode == http.StatusOK,
@@ -108,7 +108,7 @@ func (h *Handler) LangfuseMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	_, _ = w.Write(body)
 }
 
 // LangfuseTraces returns recent traces from Langfuse.
@@ -143,7 +143,7 @@ func (h *Handler) LangfuseTraces(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	_, _ = w.Write(body)
 }
 
 // LangfuseScores returns evaluation scores from Langfuse.
@@ -176,7 +176,7 @@ func (h *Handler) LangfuseScores(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	_, _ = w.Write(body)
 }
 
 // LangfuseModels returns model usage statistics from Langfuse.
@@ -228,7 +228,7 @@ func (h *Handler) LangfuseModels(w http.ResponseWriter, r *http.Request) {
 		// Fall back to raw response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(body)
+		_, _ = w.Write(body)
 		return
 	}
 

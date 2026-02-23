@@ -24,7 +24,7 @@ func (h *Handler) PromHealth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"ok":     resp.StatusCode == http.StatusOK,

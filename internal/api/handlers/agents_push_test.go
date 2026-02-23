@@ -44,7 +44,7 @@ func TestHUDPresencePush_Success(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["ok"] != true {
 		t.Errorf("expected ok=true, got %v", resp["ok"])
 	}

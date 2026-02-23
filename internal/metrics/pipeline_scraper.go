@@ -172,16 +172,16 @@ func (ps *PipelineScraper) fetchProjects(ctx context.Context) ([]gitlabProject, 
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("projects API status %d", resp.StatusCode)
 		}
 
 		var projects []gitlabProject
 		if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, err
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		all = append(all, projects...)
 		if len(projects) < 100 {
@@ -203,7 +203,7 @@ func (ps *PipelineScraper) fetchPipelines(ctx context.Context, projectID int) ([
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("pipelines API status %d", resp.StatusCode)
@@ -228,7 +228,7 @@ func (ps *PipelineScraper) fetchPipelineJobs(ctx context.Context, projectID, pip
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

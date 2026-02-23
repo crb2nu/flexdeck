@@ -160,37 +160,6 @@ func categorizePod(namespace, name string) string {
 	}
 }
 
-// detectNodeType determines node type from labels/name
-func detectNodeType(name string, roles []string, labels map[string]string) string {
-	for _, role := range roles {
-		if role == "control-plane" || role == "master" {
-			return "control-plane"
-		}
-	}
-
-	// Check for GPU via labels (most reliable)
-	if labels != nil {
-		if _, ok := labels["nvidia.com/gpu.present"]; ok {
-			return "gpu-worker"
-		}
-		if _, ok := labels["amd.com/gpu"]; ok {
-			return "gpu-worker"
-		}
-		if v, ok := labels["feature.node.kubernetes.io/pci-0300_1002.present"]; ok && v == "true" {
-			return "gpu-worker"
-		}
-		if v, ok := labels["feature.node.kubernetes.io/pci-0300_10de.present"]; ok && v == "true" {
-			return "gpu-worker"
-		}
-	}
-
-	lower := strings.ToLower(name)
-	if strings.Contains(lower, "gpu") || strings.Contains(lower, "7900") || strings.Contains(lower, "nvidia") || strings.Contains(lower, "amd") {
-		return "gpu-worker"
-	}
-	return "worker"
-}
-
 // hasGPU checks if a node has GPU capability via labels or name
 func hasGPU(name string, labels map[string]string, capacity corev1.ResourceList) bool {
 	if capacity != nil {
@@ -235,7 +204,7 @@ func (h *Handler) PublicTopology(w http.ResponseWriter, r *http.Request) {
 	if h.cache != nil {
 		if cached, _ := h.cache.Get(r.Context(), "topology:public"); cached != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -560,7 +529,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	if h.cache != nil {
 		if cached, _ := h.cache.Get(r.Context(), "ci:status:public"); cached != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			return
 		}
 	}
@@ -609,7 +578,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		if publicAllowDemoFallback() {
@@ -651,7 +620,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		pResp, err := client.Do(pReq)
 		if err != nil || pResp.StatusCode != http.StatusOK {
 			if pResp != nil {
-				pResp.Body.Close()
+				_ = pResp.Body.Close()
 			}
 			continue
 		}
@@ -663,10 +632,10 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 			CreatedAt time.Time `json:"created_at"`
 		}
 		if err := json.NewDecoder(pResp.Body).Decode(&pipelineList); err != nil || len(pipelineList) == 0 {
-			pResp.Body.Close()
+			_ = pResp.Body.Close()
 			continue
 		}
-		pResp.Body.Close()
+		_ = pResp.Body.Close()
 
 		pipeline := pipelineList[0]
 
@@ -678,7 +647,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		jResp, err := client.Do(jReq)
 		if err != nil || jResp.StatusCode != http.StatusOK {
 			if jResp != nil {
-				jResp.Body.Close()
+				_ = jResp.Body.Close()
 			}
 			continue
 		}
@@ -690,8 +659,8 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 			Status   string  `json:"status"`
 			Duration float64 `json:"duration"`
 		}
-		json.NewDecoder(jResp.Body).Decode(&jobs)
-		jResp.Body.Close()
+		_ = json.NewDecoder(jResp.Body).Decode(&jobs)
+		_ = jResp.Body.Close()
 
 		// Group jobs by stage
 		stageMap := make(map[string][]PublicCIJob)
