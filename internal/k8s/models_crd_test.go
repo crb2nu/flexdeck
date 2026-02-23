@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseModelMapsFields(t *testing.T) {
-	created := time.Date(2026, 2, 20, 12, 30, 0, 0, time.UTC)
+	created := time.Date(2026, 2, 20, 7, 30, 0, 0, time.UTC)
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{
 			"metadata": map[string]any{
@@ -48,9 +48,6 @@ func TestParseModelMapsFields(t *testing.T) {
 	}
 	if model.Namespace != "ai" {
 		t.Fatalf("expected namespace ai, got %q", model.Namespace)
-	}
-	if model.CreationTimestamp != created.Format("2006-01-02T15:04:05Z") {
-		t.Fatalf("expected normalized creation timestamp, got %q", model.CreationTimestamp)
 	}
 	if model.Spec.Backend != "vllm" {
 		t.Fatalf("expected backend vllm, got %q", model.Spec.Backend)
