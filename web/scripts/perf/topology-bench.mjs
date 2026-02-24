@@ -5,9 +5,9 @@ import * as d3 from 'd3';
 const SEED = 1337;
 
 const scenarios = [
-  { name: 'small', nodes: 50, pods: 200, services: 20, namespaces: 4, ticks: 60 },
-  { name: 'medium', nodes: 150, pods: 600, services: 50, namespaces: 8, ticks: 90 },
-  { name: 'large', nodes: 300, pods: 1200, services: 80, namespaces: 12, ticks: 120 },
+  { name: 'small', nodes: 50, pods: 200, services: 20, namespaces: 4, maxTicks: 60 },
+  { name: 'medium', nodes: 150, pods: 600, services: 50, namespaces: 8, maxTicks: 90 },
+  { name: 'large', nodes: 300, pods: 1200, services: 80, namespaces: 12, maxTicks: 120 },
 ];
 
 const mulberry32 = (seed) => () => {
@@ -25,6 +25,103 @@ const hashString = (value) => {
   return hash >>> 0;
 };
 
+const getLayoutTuning = (nodeCount) => {
+  const normalizedNodeCount = Math.max(nodeCount, 1);
+  const isVeryLarge = normalizedNodeCount >= 1200;
+  const isLarge = !isVeryLarge && normalizedNodeCount >= 700;
+  const warmupTicks = isVeryLarge
+    ? 48
+    : isLarge
+      ? 64
+      : Math.min(100, Math.max(30, Math.round(Math.sqrt(normalizedNodeCount) * 3)));
+
+  return {
+    alphaStart: isVeryLarge ? 0.24 : 0.3,
+    alphaAfterWarmup: isVeryLarge ? 0.14 : isLarge ? 0.16 : 0.2,
+    alphaDecay: isVeryLarge ? 0.05 : isLarge ? 0.04 : 0.03,
+    alphaMin: isVeryLarge ? 0.002 : isLarge ? 0.0015 : 0.001,
+    velocityDecay: isVeryLarge ? 0.58 : isLarge ? 0.54 : 0.5,
+    chargeStrength: Math.max(-400, Math.min(-120, -2500 / Math.sqrt(normalizedNodeCount))),
+    distanceMax: isVeryLarge ? 200 : 250,
+    linkDistance: Math.max(80, Math.min(140, 2500 / Math.sqrt(normalizedNodeCount))),
+    linkStrength: isVeryLarge ? 0.24 : isLarge ? 0.27 : 0.3,
+    centerStrength: isVeryLarge ? 0.08 : 0.1,
+    warmupTicks,
+    collisionEnabled: normalizedNodeCount < 200,
+    collisionPadding: 8,
+    collisionStrength: 0.5,
+  };
+};
+
+const seedNodePositions = (nodes, width, height) => {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.min(width, height) * 0.3;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const radiusStep = radius / Math.sqrt(Math.max(nodes.length, 1));
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.x !== undefined && node.y !== undefined) continue;
+    const spiralRadius = radiusStep * Math.sqrt(i + 1);
+    const angle = i * goldenAngle;
+    node.x = centerX + Math.cos(angle) * spiralRadius;
+    node.y = centerY + Math.sin(angle) * spiralRadius;
+  }
+};
+
+const buildPodIndexesByNamespace = (pods) => {
+  const namespaceIndexes = new Map();
+  for (const pod of pods) {
+    const namespace = pod.metadata.namespace;
+    let namespaceIndex = namespaceIndexes.get(namespace);
+    if (!namespaceIndex) {
+      namespaceIndex = { pods: [], labelIndex: new Map() };
+      namespaceIndexes.set(namespace, namespaceIndex);
+    }
+    namespaceIndex.pods.push(pod);
+
+    for (const [labelKey, labelValue] of Object.entries(pod.metadata.labels || {})) {
+      let byValue = namespaceIndex.labelIndex.get(labelKey);
+      if (!byValue) {
+        byValue = new Map();
+        namespaceIndex.labelIndex.set(labelKey, byValue);
+      }
+      let labeledPods = byValue.get(labelValue);
+      if (!labeledPods) {
+        labeledPods = [];
+        byValue.set(labelValue, labeledPods);
+      }
+      labeledPods.push(pod);
+    }
+  }
+  return namespaceIndexes;
+};
+
+const getServiceCandidatePods = (namespaceIndex, selectorEntries) => {
+  if (selectorEntries.length === 0) return namespaceIndex.pods;
+
+  let narrowedCandidates = null;
+  for (const [labelKey, labelValue] of selectorEntries) {
+    const podsForLabelValue = namespaceIndex.labelIndex.get(labelKey)?.get(labelValue);
+    if (!podsForLabelValue || podsForLabelValue.length === 0) {
+      return [];
+    }
+    if (!narrowedCandidates || podsForLabelValue.length < narrowedCandidates.length) {
+      narrowedCandidates = podsForLabelValue;
+    }
+  }
+
+  return narrowedCandidates || namespaceIndex.pods;
+};
+
+const selectorsMatchPod = (selectorEntries, pod) => {
+  for (const [labelKey, labelValue] of selectorEntries) {
+    if (pod.metadata.labels?.[labelKey] !== labelValue) return false;
+  }
+  return true;
+};
+
 const buildGraph = (data) => {
   const nodeMap = new Map();
   const nodes = [];
@@ -37,12 +134,7 @@ const buildGraph = (data) => {
     nodeMap.set(id, d3Node);
   }
 
-  const podsByNamespace = new Map();
-  for (const pod of data.pods) {
-    const ns = pod.metadata.namespace;
-    if (!podsByNamespace.has(ns)) podsByNamespace.set(ns, []);
-    podsByNamespace.get(ns).push(pod);
-  }
+  const podsByNamespace = buildPodIndexesByNamespace(data.pods);
 
   for (const pod of data.pods) {
     const id = `pod-${pod.metadata.namespace}-${pod.metadata.name}`;
@@ -64,22 +156,16 @@ const buildGraph = (data) => {
     nodes.push(d3Node);
     nodeMap.set(id, d3Node);
 
-    const namespacePods = podsByNamespace.get(svc.metadata.namespace) || [];
     const selectorEntries = Object.entries(svc.spec.selector || {});
-    for (const pod of namespacePods) {
-      let matches = true;
-      for (const [k, v] of selectorEntries) {
-        if (pod.metadata.labels?.[k] !== v) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        links.push({
-          source: id,
-          target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
-        });
-      }
+    const namespaceIndex = podsByNamespace.get(svc.metadata.namespace);
+    if (!namespaceIndex) continue;
+    const candidates = getServiceCandidatePods(namespaceIndex, selectorEntries);
+    for (const pod of candidates) {
+      if (!selectorsMatchPod(selectorEntries, pod)) continue;
+      links.push({
+        source: id,
+        target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
+      });
     }
   }
 
@@ -127,22 +213,32 @@ const runScenario = (scenario) => {
   const buildMs = performance.now() - buildStart;
 
   const simStart = performance.now();
-  const nodeCount = graph.nodes.length || 1;
-  const linkDistance = Math.max(80, Math.min(140, 2500 / Math.sqrt(nodeCount)));
-  const chargeStrength = Math.max(-400, Math.min(-120, -2500 / Math.sqrt(nodeCount)));
+  const tuning = getLayoutTuning(graph.nodes.length || 1);
+  seedNodePositions(graph.nodes, 1600, 900);
 
   const simulation = d3.forceSimulation(graph.nodes)
-    .alpha(0.3)
-    .alphaDecay(0.03)
-    .alphaMin(0.001)
-    .velocityDecay(0.5)
-    .force('link', d3.forceLink(graph.links).id((d) => d.id).distance(linkDistance).strength(0.3))
-    .force('charge', d3.forceManyBody().strength(chargeStrength).distanceMax(250))
-    .force('center', d3.forceCenter(0, 0).strength(0.1))
+    .alpha(tuning.alphaStart)
+    .alphaDecay(tuning.alphaDecay)
+    .alphaMin(tuning.alphaMin)
+    .velocityDecay(tuning.velocityDecay)
+    .force('link', d3.forceLink(graph.links).id((d) => d.id).distance(tuning.linkDistance).strength(tuning.linkStrength))
+    .force('charge', d3.forceManyBody().strength(tuning.chargeStrength).distanceMax(tuning.distanceMax))
+    .force('center', d3.forceCenter(0, 0).strength(tuning.centerStrength))
+    .force('collision', tuning.collisionEnabled
+      ? d3.forceCollide().radius(() => 8 + tuning.collisionPadding).strength(tuning.collisionStrength)
+      : null)
     .stop();
 
-  for (let i = 0; i < scenario.ticks; i++) {
+  for (let i = 0; i < tuning.warmupTicks; i++) {
     simulation.tick();
+  }
+
+  simulation.alpha(tuning.alphaAfterWarmup);
+
+  let settleTicks = 0;
+  while (settleTicks < scenario.maxTicks && simulation.alpha() > 0.015) {
+    simulation.tick();
+    settleTicks++;
   }
   simulation.stop();
 
@@ -152,7 +248,9 @@ const runScenario = (scenario) => {
     name: scenario.name,
     nodes: graph.nodes.length,
     links: graph.links.length,
-    ticks: scenario.ticks,
+    ticks: settleTicks + tuning.warmupTicks,
+    warmupTicks: tuning.warmupTicks,
+    settleTicks,
     buildMs,
     simMs,
   };

@@ -3,12 +3,12 @@
   "metrics": [
     {
       "name": "topology_build_small",
-      "value": 0.40929199999999355,
+      "value": 0.4634590000000003,
       "unit": "ms"
     },
     {
       "name": "topology_layout_small",
-      "value": 39.103167,
+      "value": 52.823999999999984,
       "unit": "ms"
     },
     {
@@ -23,12 +23,12 @@
     },
     {
       "name": "topology_build_medium",
-      "value": 0.5960420000000113,
+      "value": 0.40295800000001236,
       "unit": "ms"
     },
     {
       "name": "topology_layout_medium",
-      "value": 141.04537499999998,
+      "value": 180.66983299999998,
       "unit": "ms"
     },
     {
@@ -43,12 +43,12 @@
     },
     {
       "name": "topology_build_large",
-      "value": 1.6895419999999604,
+      "value": 0.7467080000000124,
       "unit": "ms"
     },
     {
       "name": "topology_layout_large",
-      "value": 406.744417,
+      "value": 290.743083,
       "unit": "ms"
     },
     {
