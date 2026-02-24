@@ -122,10 +122,14 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Limit read to 1KB
-		errMsg := string(body)
-		if strings.Contains(errMsg, "<!DOCTYPE html>") || strings.Contains(errMsg, "<html>") {
-			errMsg = "received HTML error page (check Grafana URL/connectivity)"
+		errMsg := strings.TrimSpace(string(body))
+		
+		// Robust HTML detection
+		lowerMsg := strings.ToLower(errMsg)
+		if strings.Contains(lowerMsg, "<!doctype html>") || strings.Contains(lowerMsg, "<html") {
+			errMsg = "received HTML error page instead of JSON (check Grafana URL/connectivity)"
 		}
+		
 		if len(errMsg) > 256 {
 			errMsg = errMsg[:253] + "..."
 		}

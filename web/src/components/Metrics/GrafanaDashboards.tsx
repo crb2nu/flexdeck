@@ -25,6 +25,15 @@ const GrafanaDashboards: Component = () => {
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
 
+  const sanitizeError = (msg: string) => {
+    if (!msg) return '';
+    // Client-side safety: if it looks like HTML, don't show the raw tags
+    if (msg.toLowerCase().includes('<!doctype') || msg.toLowerCase().includes('<html')) {
+      return 'Received an invalid response from the server (HTML instead of JSON). Please check your Grafana configuration.';
+    }
+    return msg;
+  };
+
   onMount(async () => {
     try {
       const data = await grafanaApi.dashboards();
@@ -74,7 +83,7 @@ const GrafanaDashboards: Component = () => {
             <span class="font-bold uppercase tracking-widest">Connection Error</span>
           </div>
           <div class="font-mono text-xs opacity-80 break-all max-h-[100px] overflow-y-auto bg-black/20 p-2 rounded">
-            {error()}
+            {sanitizeError(error())}
           </div>
         </div>
       </Show>
