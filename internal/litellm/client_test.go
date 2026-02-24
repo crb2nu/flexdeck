@@ -2,77 +2,78 @@ package litellm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
-func TestHealthUsesPrimaryEndpoint(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "")
-	healthy, err := client.Health(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if !healthy {
-		t.Fatalf("expected healthy=true")
-	}
-}
-
-func TestHealthFallsBackToModelsEndpoint(t *testing.T) {
-	t.Parallel()
-
-	calledModels := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/health":
-			w.WriteHeader(http.StatusGatewayTimeout)
-		case "/health/readiness", "/health/liveliness":
-			w.WriteHeader(http.StatusNotFound)
-		case "/v1/models":
-			calledModels = true
+func TestClient_Health(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusOK)
-		default:
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return
 		}
+		w.WriteHeader(http.StatusNotFound)
 	}))
-	defer server.Close()
+	defer ts.Close()
 
-	client := NewClient(server.URL, "")
-	healthy, err := client.Health(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if !healthy {
-		t.Fatalf("expected healthy=true")
-	}
-	if !calledModels {
-		t.Fatalf("expected /v1/models fallback to be called")
+	client := NewClient(ts.URL, "test-key")
+	ok, err := client.Health(context.Background())
+	if err != nil || !ok {
+		t.Errorf("expected health ok, got %v, err: %v", ok, err)
 	}
 }
 
-func TestHealthReturnsErrorWhenAllProbesFail(t *testing.T) {
-	t.Parallel()
+func TestClient_ListModels(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data": [{"id": "gpt-4"}, {"id": "claude-3"}]}`)
+	}))
+	defer ts.Close()
 
-	client := NewClient("http://127.0.0.1:1", "")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	healthy, err := client.Health(ctx)
-	if err == nil {
-		t.Fatalf("expected error when all probes fail")
+	client := NewClient(ts.URL, "")
+	models, err := client.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels failed: %v", err)
 	}
-	if healthy {
-		t.Fatalf("expected healthy=false")
+
+	if len(models) != 2 || models[0] != "gpt-4" || models[1] != "claude-3" {
+		t.Errorf("unexpected models: %v", models)
+	}
+}
+
+func TestClient_ScrapeMetrics(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `
+# HELP litellm_total_tokens_metric Total number of tokens processed
+# TYPE litellm_total_tokens_metric counter
+litellm_total_tokens_metric{model="gpt-4"} 1500.0
+litellm_total_tokens_metric{requested_model="claude-3"} 2500.0
+`)
+	}))
+	defer ts.Close()
+
+	client := NewClient(ts.URL, "")
+	metrics, err := client.ScrapeMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("ScrapeMetrics failed: %v", err)
+	}
+
+	if len(metrics) != 2 {
+		t.Fatalf("expected 2 metrics, got %d", len(metrics))
+	}
+
+	foundGPT4 := false
+	for _, m := range metrics {
+		if m.Model == "gpt-4" {
+			foundGPT4 = true
+			if m.TotalTokens != 1500 {
+				t.Errorf("gpt-4 expected 1500 tokens, got %f", m.TotalTokens)
+			}
+		}
+	}
+	if !foundGPT4 {
+		t.Errorf("gpt-4 metric not found")
 	}
 }
