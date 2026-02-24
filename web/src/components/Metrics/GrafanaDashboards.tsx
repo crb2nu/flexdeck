@@ -82,10 +82,10 @@ const GrafanaDashboards: Component = () => {
 
       <Show when={!loading() && dashboards().length === 0 && !error()}>
         <div class="glass-panel p-8 text-center text-text-muted">
-          <div class="text-lg mb-2">No Grafana Dashboards</div>
-          <div class="text-sm text-text-dim">
-            Configure GRAFANA_URL and GRAFANA_TOKEN to enable dashboard integration.
-          </div>
+          <div class="text-lg mb-2 text-text-main">No Grafana Dashboards</div>
+          <p class="text-sm text-text-dim max-w-md mx-auto">
+            Ensure GRAFANA_URL is reachable and anonymous access or GRAFANA_TOKEN is correctly configured.
+          </p>
         </div>
       </Show>
 

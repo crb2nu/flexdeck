@@ -14,7 +14,7 @@ import (
 
 // GrafanaDashboards lists all Grafana dashboards.
 func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Grafana.Disabled || h.cfg.Grafana.Token == "" {
+	if h.cfg.Grafana.Disabled || h.cfg.Grafana.URL == "" {
 		respondJSON(w, http.StatusOK, []any{})
 		return
 	}
@@ -43,7 +43,7 @@ func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
 // GrafanaDashboardDetail returns detail for a specific dashboard by UID.
 func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
-	if h.cfg.Grafana.Disabled || h.cfg.Grafana.Token == "" {
+	if h.cfg.Grafana.Disabled || h.cfg.Grafana.URL == "" {
 		respondJSON(w, http.StatusOK, map[string]any{})
 		return
 	}
@@ -72,7 +72,7 @@ func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request)
 
 // GrafanaDatasources lists all Grafana datasources.
 func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Grafana.Disabled || h.cfg.Grafana.Token == "" {
+	if h.cfg.Grafana.Disabled || h.cfg.Grafana.URL == "" {
 		respondJSON(w, http.StatusOK, []any{})
 		return
 	}
@@ -108,7 +108,9 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create grafana request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+h.cfg.Grafana.Token)
+	if h.cfg.Grafana.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+h.cfg.Grafana.Token)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
