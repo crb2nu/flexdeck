@@ -121,8 +121,15 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("grafana API error %d: %s", resp.StatusCode, string(body))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Limit read to 1KB
+		errMsg := string(body)
+		if strings.Contains(errMsg, "<!DOCTYPE html>") || strings.Contains(errMsg, "<html>") {
+			errMsg = "received HTML error page (check Grafana URL/connectivity)"
+		}
+		if len(errMsg) > 256 {
+			errMsg = errMsg[:253] + "..."
+		}
+		return nil, fmt.Errorf("grafana API error %d: %s", resp.StatusCode, errMsg)
 	}
 
 	var raw any

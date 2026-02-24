@@ -68,9 +68,14 @@ const GrafanaDashboards: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-          <span class="text-lg">!</span>
-          {error()}
+        <div class="glass-panel flex flex-col gap-2 p-4 text-sm text-status-error border border-status-error/20">
+          <div class="flex items-center gap-3">
+            <span class="text-lg font-bold">!</span>
+            <span class="font-bold uppercase tracking-widest">Connection Error</span>
+          </div>
+          <div class="font-mono text-xs opacity-80 break-all max-h-[100px] overflow-y-auto bg-black/20 p-2 rounded">
+            {error()}
+          </div>
         </div>
       </Show>
 
