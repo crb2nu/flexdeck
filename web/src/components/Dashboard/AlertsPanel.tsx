@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
 
 interface PrometheusAlert {
@@ -31,12 +32,7 @@ const AlertsPanel: Component = () => {
     }
   };
 
-  let pollTimer: ReturnType<typeof setInterval>;
-  onMount(() => {
-    fetchAlerts();
-    pollTimer = setInterval(fetchAlerts, POLL_INTERVAL);
-  });
-  onCleanup(() => clearInterval(pollTimer));
+  createPolling('dash-alerts', fetchAlerts, POLL_INTERVAL);
 
   const firingAlerts = createMemo(() =>
     alerts().filter(a => a.state === 'firing')

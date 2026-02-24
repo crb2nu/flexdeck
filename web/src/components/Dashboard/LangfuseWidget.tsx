@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { langfuse } from '../../lib/api';
 
 interface LangfuseModelStats {
@@ -86,12 +87,7 @@ const LangfuseWidget: Component = () => {
     }
   };
 
-  let pollTimer: ReturnType<typeof setInterval>;
-  onMount(() => {
-    fetchAll();
-    pollTimer = setInterval(fetchAll, POLL_INTERVAL);
-  });
-  onCleanup(() => clearInterval(pollTimer));
+  createPolling('dash-langfuse', fetchAll, POLL_INTERVAL);
 
   // Computed
   const totalCost = createMemo(() =>

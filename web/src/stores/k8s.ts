@@ -1,6 +1,7 @@
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { authenticatedFetch } from "./auth";
+import { pollingScheduler } from "../lib/polling";
 
 // Types matching the Go backend
 export interface K8sNode {
@@ -92,7 +93,6 @@ const [connectionStatus, setConnectionStatus] = createSignal<
 >("disconnected");
 let eventSource: EventSource | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 // Apply a watch event to the store
 function applyWatchEvent(event: WatchEvent) {
@@ -335,21 +335,16 @@ function connectSSE(namespace?: string) {
 
 // Fallback polling
 function startPolling() {
-  if (pollInterval) return;
-
-  pollInterval = setInterval(async () => {
+  pollingScheduler.register("k8s-fallback", async () => {
     // Only poll if not connected via SSE
     if (connectionStatus() !== "connected") {
       await fetchInitialData();
     }
-  }, 15000); // Poll every 15 seconds
+  }, 15000, false); // Don't run immediately as fetchInitialData is usually called first
 }
 
 function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+  pollingScheduler.unregister("k8s-fallback");
 }
 
 // Public API

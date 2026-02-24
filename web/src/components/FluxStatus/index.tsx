@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 
@@ -35,12 +36,7 @@ const FluxStatus: Component = () => {
     }
   };
 
-  let pollTimer: ReturnType<typeof setInterval>;
-  createEffect(() => {
-    fetchAll();
-    pollTimer = setInterval(fetchAll, POLL_INTERVAL);
-  });
-  onCleanup(() => clearInterval(pollTimer));
+  createPolling('dash-flux', fetchAll, POLL_INTERVAL);
 
   const handleReconcile = async (kind: string, namespace: string, name: string) => {
     const key = `${kind}/${namespace}/${name}`;

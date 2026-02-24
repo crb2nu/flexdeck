@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { prom } from "../lib/api";
+import { pollingScheduler } from "../lib/polling";
 
 // Resource metrics for nodes and pods
 export interface ResourceMetrics {
@@ -35,7 +36,6 @@ const [metricsStore, setMetricsStore] = createSignal<MetricsStore>({
 
 // Polling interval (30 seconds)
 const POLL_INTERVAL = 30000;
-let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 // PromQL queries
 const QUERIES = {
@@ -225,21 +225,12 @@ async function fetchMetrics() {
 
 // Start polling metrics
 export function startMetricsPolling() {
-  if (pollInterval) return;
-
-  // Initial fetch
-  fetchMetrics();
-
-  // Start polling
-  pollInterval = setInterval(fetchMetrics, POLL_INTERVAL);
+  pollingScheduler.register("metrics-throughput", fetchMetrics, POLL_INTERVAL);
 }
 
 // Stop polling metrics
 export function stopMetricsPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+  pollingScheduler.unregister("metrics-throughput");
 }
 
 // Get metrics for a specific node

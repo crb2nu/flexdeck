@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, onCleanup, For, Show } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { k8s } from '../../lib/api';
 
 interface K8sEvent {
@@ -30,14 +31,7 @@ const EventsFeed: Component = () => {
     }
   };
 
-  let pollTimer: ReturnType<typeof setInterval>;
-
-  onMount(() => {
-    fetchEvents();
-    pollTimer = setInterval(fetchEvents, POLL_INTERVAL);
-  });
-
-  onCleanup(() => clearInterval(pollTimer));
+  createPolling('dash-events', fetchEvents, POLL_INTERVAL);
 
   const typeColor = (type: string) =>
     type === 'Warning' ? 'text-yellow-400' : 'text-text-dim';

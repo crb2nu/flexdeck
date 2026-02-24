@@ -1,4 +1,5 @@
 import { Component, createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { PulseCard } from '../shared';
 import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
@@ -168,9 +169,10 @@ const Dashboard: Component = () => {
     }
   });
 
-  let metricsInterval: ReturnType<typeof setInterval>;
-  let inferenceInterval: ReturnType<typeof setInterval>;
-  let agentInterval: ReturnType<typeof setInterval>;
+  // Register polling tasks
+  createPolling('dash-models', fetchModelCount, METRICS_REFRESH_INTERVAL);
+  createPolling('dash-inference', fetchInferenceHealth, METRICS_REFRESH_INTERVAL, () => healthStore.features.flexinfer_proxy?.enabled ?? false);
+  createPolling('dash-agents', fetchAgentActivity, METRICS_REFRESH_INTERVAL, loomHUDAvailable);
 
   // Computed values from K8s store
   const podReady = createMemo(() =>
@@ -248,24 +250,11 @@ const Dashboard: Component = () => {
 
     // Start metrics polling (for node/pod resource metrics)
     startMetricsPolling();
-
-    // Fetch model count
-    fetchModelCount();
-    metricsInterval = setInterval(fetchModelCount, METRICS_REFRESH_INTERVAL);
-
-    // Fetch inference health + agent activity (feature-gated)
-    fetchInferenceHealth();
-    fetchAgentActivity();
-    inferenceInterval = setInterval(fetchInferenceHealth, METRICS_REFRESH_INTERVAL);
-    agentInterval = setInterval(fetchAgentActivity, METRICS_REFRESH_INTERVAL);
   });
 
   onCleanup(() => {
     disconnectK8sStream();
     stopMetricsPolling();
-    clearInterval(metricsInterval);
-    clearInterval(inferenceInterval);
-    clearInterval(agentInterval);
   });
 
   return (

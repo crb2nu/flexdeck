@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { api } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
 import {
@@ -58,12 +59,7 @@ const ModelGPUTable: Component = () => {
     }
   };
 
-  let timer: ReturnType<typeof setInterval>;
-  createEffect(() => {
-    fetchData();
-    timer = setInterval(fetchData, POLL_INTERVAL);
-  });
-  onCleanup(() => clearInterval(timer));
+  createPolling('gpu-models', fetchData, POLL_INTERVAL);
 
   return (
     <Show when={!error() && models().length > 0}>
