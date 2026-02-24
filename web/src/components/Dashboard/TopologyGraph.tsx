@@ -1,7 +1,12 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
-import { isNodeReady } from '../../stores/k8s';
+import {
+  buildTopologyGraphData,
+  createTopologySimulation,
+  getNamespaceColor
+} from './topology/layoutEngine';
+import type { TopologyNode as D3Node, TopologyLink as D3Link } from './topology/types';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -12,30 +17,14 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T 
   }) as T;
 };
 
+const isNodeReady = (node: K8sNode): boolean =>
+  node.status.conditions.some((condition) => condition.type === 'Ready' && condition.status === 'True');
+
 interface Props {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
   onNodeClick?: (node: D3Node) => void;
-}
-
-interface D3Node extends d3.SimulationNodeDatum {
-  id: string;
-  type: 'node' | 'pod' | 'service';
-  label: string;
-  namespace?: string;
-  status: 'ok' | 'warn' | 'error';
-  data: K8sNode | K8sPod | K8sService;
-  x?: number;
-  y?: number;
-  fx?: number | null;
-  fy?: number | null;
-}
-
-interface D3Link extends d3.SimulationLinkDatum<D3Node> {
-  source: string | D3Node;
-  target: string | D3Node;
-  type: 'hosts' | 'selects';
 }
 
 // Particle pool for zero-allocation animation
@@ -53,19 +42,6 @@ interface ParticleSlot {
   speed: number;
   colorIdx: 0 | 1; // 0 = cyan, 1 = purple
 }
-
-// Namespace color palette
-const namespaceColors = [
-  '#00d9ff', '#a855f7', '#22c55e', '#f97316', '#ec4899',
-  '#3b82f6', '#eab308', '#06b6d4', '#8b5cf6', '#10b981'
-];
-
-const getNamespaceColor = (namespace: string, namespaceMap: Map<string, number>): string => {
-  if (!namespaceMap.has(namespace)) {
-    namespaceMap.set(namespace, namespaceMap.size);
-  }
-  return namespaceColors[namespaceMap.get(namespace)! % namespaceColors.length];
-};
 
 // Cached font strings to avoid per-frame string allocation
 const FONT_NODE = '500 11px Inter, system-ui';
@@ -215,7 +191,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const getStyleKey = (): number => {
     let hash = 0;
     for (const node of props.nodes) {
-      const ready = isNodeReady(node as any) ? '1' : '0';
+      const ready = isNodeReady(node) ? '1' : '0';
       hash = (hash + hashString(`n:${node.metadata.name}:${ready}`)) >>> 0;
     }
     for (const pod of props.pods) {
@@ -238,7 +214,7 @@ const TopologyGraph: Component<Props> = (props) => {
         const data = nodeMap.get(node.id);
         if (data) {
           node.data = data;
-          node.status = isNodeReady(data as any) ? 'ok' : 'error';
+          node.status = isNodeReady(data) ? 'ok' : 'error';
         }
       } else if (node.type === 'pod') {
         const data = podMap.get(node.id);
@@ -261,144 +237,29 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const buildGraph = () => {
-    // Build map of previous nodes to preserve physics state (x, y, vx, vy)
-    const prevNodeMap = new Map(graphNodes.map(n => [n.id, n]));
-    
-    const links: D3Link[] = [];
-    const hosts: D3Link[] = [];
-    const selects: D3Link[] = [];
-    const nodes: D3Node[] = [];
-    const nodeMap = new Map<string, D3Node>();
-    const nsMap = new Map<string, number>();
-    
-    // Helper to merge state
-    const createOrUpdateNode = (id: string, type: 'node' | 'pod' | 'service', label: string, data: any, status: 'ok' | 'warn' | 'error', namespace?: string) => {
-        const node: D3Node = {
-            id, type, label, data, status, namespace
-        };
-        
-        // Preserve physics state if node existed
-        const prev = prevNodeMap.get(id);
-        if (prev) {
-            node.x = prev.x;
-            node.y = prev.y;
-            node.vx = prev.vx;
-            node.vy = prev.vy;
-            node.fx = prev.fx;
-            node.fy = prev.fy;
-        }
-        return node;
-    };
+    const graphData = buildTopologyGraphData({
+      nodes: props.nodes,
+      pods: props.pods,
+      services: props.services,
+      prevNodes: graphNodes
+    });
 
-    // Add nodes
-    for (const k8sNode of props.nodes) {
-      const isReady = isNodeReady(k8sNode as any);
-      const d3Node = createOrUpdateNode(
-          `node-${k8sNode.metadata.name}`,
-          'node',
-          k8sNode.metadata.name,
-          k8sNode,
-          isReady ? 'ok' : 'error'
-      );
-      nodes.push(d3Node);
-      nodeMap.set(d3Node.id, d3Node);
-    }
-
-    // Index pods by namespace for faster service linking
-    const podsByNamespace = new Map<string, K8sPod[]>();
-    for (const pod of props.pods) {
-      const ns = pod.metadata.namespace || 'default';
-      if (!podsByNamespace.has(ns)) podsByNamespace.set(ns, []);
-      podsByNamespace.get(ns)!.push(pod);
-    }
-
-    // Add pods
-    for (const pod of props.pods) {
-      const status: 'ok' | 'warn' | 'error' =
-        pod.status.phase === 'Running' ? 'ok' :
-        pod.status.phase === 'Pending' ? 'warn' : 'error';
-
-      const ns = pod.metadata.namespace || 'default';
-      getNamespaceColor(ns, nsMap);
-
-      const d3Node = createOrUpdateNode(
-          `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
-          'pod',
-          pod.metadata.name,
-          pod,
-          status,
-          ns
-      );
-      nodes.push(d3Node);
-      nodeMap.set(d3Node.id, d3Node);
-
-      if (pod.spec.nodeName) {
-        const nodeId = `node-${pod.spec.nodeName}`;
-        if (nodeMap.has(nodeId)) {
-          const link: D3Link = {
-            source: d3Node.id,
-            target: nodeId,
-            type: 'hosts',
-          };
-          links.push(link);
-          hosts.push(link);
-        }
-      }
-    }
-
-    // Add services
-    for (const svc of props.services) {
-      const ns = svc.metadata.namespace || 'default';
-      getNamespaceColor(ns, nsMap);
-
-      const d3Node = createOrUpdateNode(
-          `svc-${svc.metadata.namespace}-${svc.metadata.name}`,
-          'service',
-          svc.metadata.name,
-          svc,
-          'ok',
-          ns
-      );
-      nodes.push(d3Node);
-      nodeMap.set(d3Node.id, d3Node);
-
-      if (svc.spec.selector) {
-        const namespacePods = podsByNamespace.get(ns) || [];
-        const selectorEntries = Object.entries(svc.spec.selector);
-
-        for (const pod of namespacePods) {
-          const matches = selectorEntries.every(
-            ([k, v]) => pod.metadata.labels?.[k] === v
-          );
-          if (matches) {
-            const link: D3Link = {
-              source: d3Node.id,
-              target: `pod-${pod.metadata.namespace}-${pod.metadata.name}`,
-              type: 'selects',
-            };
-            links.push(link);
-            selects.push(link);
-          }
-        }
-      }
-    }
-
-    graphNodes = nodes;
-    graphLinks = links;
-    hostsLinks = hosts;
-    selectsLinks = selects;
-    namespaceMap = nsMap;
+    graphNodes = graphData.nodes;
+    graphLinks = graphData.links;
+    hostsLinks = graphData.hostsLinks;
+    selectsLinks = graphData.selectsLinks;
+    namespaceMap = graphData.namespaceMap;
 
     // Build O(1) index map for particle spawning
     nodeIndexMap.clear();
-    nodes.forEach((node, idx) => nodeIndexMap.set(node.id, idx));
+    graphNodes.forEach((node, idx) => nodeIndexMap.set(node.id, idx));
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
     // Invalidate spatial grid - will be rebuilt on next hover check
     spatialGridValid = false;
 
-    setNodeCount(nodes.length);
+    setNodeCount(graphNodes.length);
   };
 
   const getNodeColor = (node: D3Node): string => {
@@ -975,54 +836,18 @@ const TopologyGraph: Component<Props> = (props) => {
 
     const { width, height } = dimensions();
 
-    // Adaptive forces based on node count - gentler for smoother animation
-    const nodeCount = graphNodes.length || 1;
-    const linkDistance = Math.max(80, Math.min(140, 2500 / Math.sqrt(nodeCount)));
-    const chargeStrength = Math.max(-400, Math.min(-120, -2500 / Math.sqrt(nodeCount)));
-
-    // Pre-position new nodes in a circle to avoid initial explosion
-    const cx = width / 2;
-    const cy = height / 2;
-    const initialRadius = Math.min(width, height) * 0.3;
-    graphNodes.forEach((node, i) => {
-      if (node.x !== undefined && node.y !== undefined) return;
-      const angle = (i / graphNodes.length) * Math.PI * 2;
-      node.x = cx + Math.cos(angle) * initialRadius * (0.5 + Math.random() * 0.5);
-      node.y = cy + Math.sin(angle) * initialRadius * (0.5 + Math.random() * 0.5);
-    });
-
-    // Create simulation with reduced force complexity
-    // Removed redundant x/y forces (center handles this)
-    simulation = d3.forceSimulation<D3Node>(graphNodes)
-      .alpha(0.3) // Lower initial alpha for gentler start
-      .alphaDecay(0.03) // Faster decay to settle quicker
-      .alphaMin(0.001)
-      .velocityDecay(0.5) // Higher damping for stability
-      .force('link', d3.forceLink<D3Node, D3Link>(graphLinks)
-        .id(d => d.id)
-        .distance(linkDistance)
-        .strength(0.3))
-      .force('charge', d3.forceManyBody().strength(chargeStrength).distanceMax(250))
-      .force('center', d3.forceCenter(cx, cy).strength(0.1))
-      // Collision is expensive - only enable for smaller graphs
-      .force('collision', graphNodes.length < 200
-        ? d3.forceCollide().radius((d) => getNodeRadius(d as D3Node) + 8).strength(0.5)
-        : null)
-      .on('end', () => {
+    const created = createTopologySimulation({
+      nodes: graphNodes,
+      links: graphLinks,
+      width,
+      height,
+      getNodeRadius,
+      onEnd: () => {
         isSimulationActive = false;
         simulationSettledAt = performance.now();
-      });
-
-    // Run warmup ticks synchronously to stabilize layout before first render
-    // This prevents the chaotic initial explosion
-    simulation.stop();
-    const warmupTicks = Math.min(100, Math.max(30, graphNodes.length));
-    for (let i = 0; i < warmupTicks; i++) {
-      simulation.tick();
-    }
-
-    // Continue with reduced alpha after warmup
-    simulation.alpha(0.2).restart();
+      }
+    });
+    simulation = created.simulation;
 
     // NOW start animation loop after warmup
     isSimulationActive = true;

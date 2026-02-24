@@ -1,29 +1,35 @@
 {
-  "generatedAt": "2026-02-24T14:19:53.170Z",
+  "generatedAt": "2026-02-24T19:17:48.612Z",
   "scenarios": [
     {
       "name": "small",
       "nodes": 270,
       "links": 292,
-      "ticks": 60,
-      "buildMs": 0.40929199999999355,
-      "simMs": 39.103167
+      "ticks": 109,
+      "warmupTicks": 49,
+      "settleTicks": 60,
+      "buildMs": 0.4634590000000003,
+      "simMs": 52.823999999999984
     },
     {
       "name": "medium",
       "nodes": 800,
       "links": 910,
-      "ticks": 90,
-      "buildMs": 0.5960420000000113,
-      "simMs": 141.04537499999998
+      "ticks": 122,
+      "warmupTicks": 64,
+      "settleTicks": 58,
+      "buildMs": 0.40295800000001236,
+      "simMs": 180.66983299999998
     },
     {
       "name": "large",
       "nodes": 1580,
       "links": 1815,
-      "ticks": 120,
-      "buildMs": 1.6895419999999604,
-      "simMs": 406.744417
+      "ticks": 92,
+      "warmupTicks": 48,
+      "settleTicks": 44,
+      "buildMs": 0.7467080000000124,
+      "simMs": 290.743083
     }
   ]
 }
