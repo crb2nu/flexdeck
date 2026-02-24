@@ -60,6 +60,35 @@ export const langfuse = {
   },
 };
 
+export const prom = {
+  health: () => api<any>("/api/prom/health"),
+  query: (query: string) => api<any>(`/api/prom/query?query=${encodeURIComponent(query)}`),
+  queryRange: (query: string, start: number, end: number, step: string) =>
+    api<any>(
+      `/api/prom/query_range?query=${encodeURIComponent(
+        query,
+      )}&start=${start}&end=${end}&step=${step}`,
+    ),
+  alerts: () => api<any>("/api/prom/alerts"),
+  rules: () => api<any>("/api/prom/rules"),
+};
+
+export const loki = {
+  labels: () => api<any>("/api/loki/labels"),
+  labelValues: (name: string) => api<any>(`/api/loki/label/${name}/values`),
+  query: (query: string, limit?: number) =>
+    api<any>(`/api/loki/query?query=${encodeURIComponent(query)}&limit=${limit || 100}`),
+  queryRange: (query: string, start: number, end: number, limit?: number) =>
+    api<any>(
+      `/api/loki/query_range?query=${encodeURIComponent(
+        query,
+      )}&start=${start}&end=${end}&limit=${limit || 100}`,
+    ),
+  tailSSEUrl: (query: string) => `/api/loki/tail-sse?query=${encodeURIComponent(query)}`,
+  export: (query: string, start: number, end: number) =>
+    `/api/loki/export?query=${encodeURIComponent(query)}&start=${start}&end=${end}`,
+};
+
 export const grafanaApi = {
   dashboards: () => api<any[]>("/api/grafana/dashboards"),
   dashboard: (uid: string) =>
