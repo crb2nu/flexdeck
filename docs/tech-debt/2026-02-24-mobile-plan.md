@@ -50,11 +50,11 @@
 
 | Debt ID | Backlog ID | Owner | Target Milestone | Status |
 |---|---|---|---|---|
-| MOB-001 | | | Q1 | Pending |
-| MOB-004 | | | Q1 | Pending |
-| MOB-003 | | | Q1 | Pending |
-| MOB-002 | | | Q2 | Pending |
-| MOB-005 | | | Q2 | Pending |
+| MOB-001 | | | Q1 | Completed |
+| MOB-004 | | | Q1 | Completed |
+| MOB-003 | | | Q1 | Completed |
+| MOB-002 | | | Q2 | Completed |
+| MOB-005 | | | Q2 | Completed |
 
 ## Deferred / Not In Scope
 

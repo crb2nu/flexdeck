@@ -1,4 +1,4 @@
-import { Component, ParentProps, Show, createMemo, onMount, Suspense, For } from 'solid-js';
+import { Component, ParentProps, Show, createMemo, onMount, Suspense, For, createSignal } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import { uiApi } from './lib/api';
 import { healthStore, fetchHealth } from './stores/health';

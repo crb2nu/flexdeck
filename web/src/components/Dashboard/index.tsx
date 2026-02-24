@@ -29,6 +29,7 @@ const Dashboard: Component = () => {
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
   const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);
   const [searchInput, setSearchInput] = createSignal('');
+  const [showObservability, setShowObservability] = createSignal(false);
 
   let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
@@ -392,6 +393,15 @@ const Dashboard: Component = () => {
                </button>
            </div>
         </div>
+
+        {/* Mobile Observability Toggle */}
+        <button
+          onClick={() => setShowObservability(true)}
+          class="lg:hidden absolute left-4 bottom-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-neon-purple/20 border border-neon-purple/40 text-neon-purple backdrop-blur-md shadow-lg shadow-neon-purple/20 animate-pulse-glow"
+        >
+          <span class="text-lg">◈</span>
+          <span class="text-[10px] font-mono font-bold tracking-widest uppercase">Inspect Events</span>
+        </button>
 
         {/* Filter Panel */}
         <Show when={viewMode() === '3d' && showFilters()}>
@@ -854,11 +864,37 @@ const Dashboard: Component = () => {
         </Show>
       </div>
 
-      {/* Observability Sidebar */}
-      <div class="hidden lg:flex w-80 flex-shrink-0 flex-col gap-3 overflow-y-auto">
-        <AlertsPanel />
-        <EventsFeed />
-        <LangfuseWidget />
+      {/* Observability Sidebar / Mobile Sheet */}
+      <div class={`
+        fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-0 flex flex-col lg:w-80 flex-shrink-0 transition-transform duration-300
+        ${showObservability() ? 'translate-y-0' : 'translate-y-full lg:translate-y-0'}
+      `}>
+        {/* Backdrop (mobile only) */}
+        <div 
+          class="absolute inset-0 bg-black/60 backdrop-blur-sm lg:hidden" 
+          onClick={() => setShowObservability(false)}
+        />
+        
+        {/* Sidebar Content */}
+        <div class="relative mt-auto lg:mt-0 h-[85vh] lg:h-full w-full bg-bg-panel/95 lg:bg-transparent backdrop-blur-xl lg:backdrop-blur-none border-t border-white/10 lg:border-t-0 flex flex-col gap-3 p-4 lg:p-0 overflow-y-auto shadow-2xl lg:shadow-none">
+          {/* Mobile Header */}
+          <div class="flex lg:hidden items-center justify-between mb-2 pb-2 border-b border-white/5">
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 rounded-full bg-neon-purple animate-pulse" />
+              <span class="text-xs font-mono text-neon-purple uppercase tracking-widest font-bold">Observability</span>
+            </div>
+            <button 
+              onClick={() => setShowObservability(false)}
+              class="h-8 w-8 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-text-dim"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <AlertsPanel />
+          <EventsFeed />
+          <LangfuseWidget />
+        </div>
       </div>
       </div> {/* End Main Content */}
 

@@ -43,6 +43,18 @@ const HoloDeck: Component<Props> = (props) => {
   let animationId: number;
   const clock = new THREE.Clock();
 
+  // Quality settings with auto-detection
+  const getInitialQuality = (): QualityLevel => {
+    if (props.quality) return props.quality;
+    
+    // Heuristic: Default to low on touch devices or small screens
+    const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+    const isSmall = typeof window !== 'undefined' && window.innerWidth < 1024;
+    
+    if (isTouch || isSmall) return 'low';
+    return 'high';
+  };
+
   const [hoverInfo, setHoverInfo] = createSignal<{
     title: string;
     type: string;
@@ -53,6 +65,7 @@ const HoloDeck: Component<Props> = (props) => {
     podCount?: number;
   } | null>(null);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
+  const [interactionType, setInteractionType] = createSignal<'mouse' | 'touch'>('mouse');
 
   const objectMap = new Map<string, THREE.Object3D>();
   const dataMap = new Map<string, K8sNode | K8sPod | K8sService>();
@@ -123,7 +136,7 @@ const HoloDeck: Component<Props> = (props) => {
 
   onMount(() => {
     if (!containerRef) return;
-    engine = new HoloEngine(containerRef, props.quality || 'high');
+    engine = new HoloEngine(containerRef, getInitialQuality());
     engine.scene.add(dataGroup);
 
     traffic = new TrafficManager();
@@ -177,7 +190,9 @@ const HoloDeck: Component<Props> = (props) => {
     sharedMats.glowRing = markShared(new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
 
     // Interactions
+    const onTouchStart = () => setInteractionType('touch');
     const onMouseMove = (e: MouseEvent) => {
+      setInteractionType('mouse');
       const rect = containerRef!.getBoundingClientRect();
       engine.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       engine.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -190,7 +205,10 @@ const HoloDeck: Component<Props> = (props) => {
       }
       if (hit && hit.userData.label && (matchesFilterMap.get(hit.userData.type === 'node' ? `node-${hit.userData.label}` : hit.userData.type === 'pod' ? `pod-${hit.userData.label}` : `service-${hit.userData.label}`) ?? true)) {
         containerRef!.style.cursor = 'pointer';
-        setHoverInfo({ title: hit.userData.label, type: hit.userData.type, x: e.clientX - rect.left + 15, y: e.clientY - rect.top });
+        // Only show hover tooltip for mouse interactions
+        if (interactionType() === 'mouse') {
+          setHoverInfo({ title: hit.userData.label, type: hit.userData.type, x: e.clientX - rect.left + 15, y: e.clientY - rect.top });
+        }
         engine.controls.autoRotate = false;
       } else {
         containerRef!.style.cursor = 'default'; setHoverInfo(null);
@@ -199,6 +217,9 @@ const HoloDeck: Component<Props> = (props) => {
     };
 
     const onClick = (e: MouseEvent) => {
+      const rect = containerRef!.getBoundingClientRect();
+      engine.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      engine.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       engine.raycaster.setFromCamera(engine.mouse, engine.camera);
       const intersects = engine.raycaster.intersectObject(dataGroup, true);
       let hit: any = null;
@@ -209,12 +230,15 @@ const HoloDeck: Component<Props> = (props) => {
       if (hit) {
         const id = `${hit.userData.type}-${hit.userData.label}`;
         setSelectedId(id);
+        // Clear hover info immediately on select (especially important for touch)
+        setHoverInfo(null);
         if (props.onSelect) props.onSelect({ type: hit.userData.type, data: dataMap.get(id)! });
       } else {
         setSelectedId(null); props.onSelect?.(null);
       }
     };
 
+    containerRef.addEventListener('touchstart', onTouchStart, { passive: true });
     containerRef.addEventListener('mousemove', onMouseMove);
     containerRef.addEventListener('click', onClick);
 
@@ -270,6 +294,7 @@ const HoloDeck: Component<Props> = (props) => {
 
     onCleanup(() => {
       window.removeEventListener('resize', handleResize);
+      containerRef?.removeEventListener('touchstart', onTouchStart);
       containerRef?.removeEventListener('mousemove', onMouseMove);
       containerRef?.removeEventListener('click', onClick);
       cancelAnimationFrame(animationId);
