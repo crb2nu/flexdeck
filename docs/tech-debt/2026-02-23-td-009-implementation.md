@@ -3,6 +3,7 @@
 ## Item
 
 - Debt ID: TD-009
+- Issue: [TD-009](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/23)
 - Branch/PR: `main` (Direct remediation of baseline)
 - Owner: gemini-cli
 

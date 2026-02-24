@@ -3,6 +3,7 @@
 ## Item
 
 - Debt ID: TD-002B
+- Issue: [TD-002B](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/12)
 - Branch/PR: `main`
 - Owner: gemini-cli
 

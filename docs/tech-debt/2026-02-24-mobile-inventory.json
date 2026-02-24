@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "id": "MOB-001",
+      "title": "Mobile Navigation / Hamburger Menu",
+      "component": "Navigation",
+      "impact": 5,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 2
+    },
+    {
+      "id": "MOB-002",
+      "title": "Responsive Sidebar / Drawer for Widgets",
+      "component": "Dashboard",
+      "impact": 4,
+      "risk_reduction": 2,
+      "drag_reduction": 3,
+      "effort": 3
+    },
+    {
+      "id": "MOB-003",
+      "title": "Touch Interaction Support for Visualizations",
+      "component": "HoloDeck",
+      "impact": 4,
+      "risk_reduction": 3,
+      "drag_reduction": 3,
+      "effort": 3
+    },
+    {
+      "id": "MOB-004",
+      "title": "Layout Refinement for Small Viewports (<375px)",
+      "component": "Shared UI",
+      "impact": 3,
+      "risk_reduction": 1,
+      "drag_reduction": 2,
+      "effort": 2
+    },
+    {
+      "id": "MOB-005",
+      "title": "Low-Power Device Auto-Detection / Quality Tuning",
+      "component": "HoloDeck",
+      "impact": 3,
+      "risk_reduction": 4,
+      "drag_reduction": 2,
+      "effort": 4
+    }
+  ]
+}

@@ -258,9 +258,9 @@ const Dashboard: Component = () => {
   });
 
   return (
-    <div class="flex h-full min-h-0 flex-col gap-4">
+    <div class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto md:overflow-hidden p-2 sm:p-4">
       {/* Pulse Cards Grid */}
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
         <PulseCard
           title="Pods"
           value={`${podReady()}/${podTotal()}`}
@@ -341,11 +341,11 @@ const Dashboard: Component = () => {
       </div>
 
       {/* Main Content: Visualization + Events */}
-      <div class="flex flex-1 gap-4 overflow-hidden min-h-0">
+      <div class="flex flex-1 flex-col lg:flex-row gap-4 overflow-visible lg:overflow-hidden min-h-0">
       {/* Visualization Panel */}
-      <div class="glass-panel flex-1 overflow-hidden relative flex flex-col">
+      <div class="glass-panel flex-1 min-h-[400px] lg:min-h-0 overflow-hidden relative flex flex-col">
         {/* Controls */}
-        <div class="absolute right-4 top-4 z-10 flex gap-2">
+        <div class="absolute right-4 top-4 z-10 flex flex-col sm:flex-row gap-2">
            {/* Connection status indicator */}
            <div class="flex items-center gap-2 px-3 py-1 rounded-lg bg-black/40 border border-white/10 backdrop-blur">
              <div class={`w-2 h-2 rounded-full ${
@@ -382,13 +382,13 @@ const Dashboard: Component = () => {
                 onClick={() => setViewMode('2d')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '2d' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
                >
-                   2D GRAPH
+                   2D
                </button>
                <button
                 onClick={() => setViewMode('3d')}
                 class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '3d' ? 'bg-neon-purple/20 text-neon-purple' : 'text-text-dim hover:text-text-main'}`}
                >
-                   HOLODECK
+                   3D
                </button>
            </div>
         </div>

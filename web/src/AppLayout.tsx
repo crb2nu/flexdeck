@@ -11,6 +11,7 @@ import { buildNavItems } from './lib/featureFlags';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = createSignal(false);
   useKeyboardShortcuts();
 
   // Check if we are in public read-only view
@@ -46,20 +47,35 @@ const AppLayout: Component<ParentProps> = (props) => {
       {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
         <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
-        <div class="flex h-16 items-center justify-between px-6">
-          {/* Logo */}
+        <div class="flex h-16 items-center justify-between px-4 md:px-6">
+          {/* Left: Logo & Mobile Toggle */}
           <div class="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen())}
+              class="flex md:hidden h-8 w-8 items-center justify-center rounded-md bg-white/5 border border-white/10 text-text-dim hover:text-white transition-colors"
+            >
+              <Show when={!mobileMenuOpen()} fallback={
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              }>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </Show>
+            </button>
+
             <div class="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
               <span class="font-mono text-xl font-bold text-white">F</span>
               {/* Breathing border */}
               <div class="absolute inset-0 rounded-lg border border-neon-cyan/40 animate-breathe" />
             </div>
-            <h1 class="text-xl font-bold tracking-tight text-white">
+            <h1 class="text-xl font-bold tracking-tight text-white hidden sm:block">
               Flex<span class="text-neon-cyan">Deck</span>
             </h1>
           </div>
 
-          {/* Navigation */}
+          {/* Center: Desktop Navigation */}
           <nav class="hidden md:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
             <For each={navItems()}>{(item) => (
               <A
@@ -75,8 +91,8 @@ const AppLayout: Component<ParentProps> = (props) => {
             )}</For>
           </nav>
 
-          {/* Status & Settings */}
-          <div class="flex items-center gap-4">
+          {/* Right: Status & Settings */}
+          <div class="flex items-center gap-2 md:gap-4">
              {/* Key Hint for Command Palette */}
              <div class="hidden lg:flex items-center gap-2 text-xs text-text-dim px-3 py-1.5 rounded-md border border-white/10 bg-white/5">
                 <span class="text-xs">⌘K</span>
@@ -87,6 +103,35 @@ const AppLayout: Component<ParentProps> = (props) => {
             <SystemCore />
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        <Show when={mobileMenuOpen()}>
+          <div class="md:hidden absolute top-16 left-0 right-0 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-fade-in-scale origin-top">
+            <nav class="flex flex-col p-4 gap-2">
+              <For each={navItems()}>{(item) => (
+                <A
+                  href={item.path}
+                  onClick={() => setMobileMenuOpen(false)}
+                  class="flex items-center justify-between rounded-lg px-4 py-3 text-base font-medium transition-all duration-200 border border-transparent"
+                  classList={{
+                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20': location.pathname === item.path,
+                    'text-text-muted hover:bg-white/5': location.pathname !== item.path,
+                  }}
+                >
+                  <span>{item.label}</span>
+                  <Show when={location.pathname === item.path}>
+                    <span class="text-xs">●</span>
+                  </Show>
+                </A>
+              )}</For>
+            </nav>
+          </div>
+          {/* Backdrop */}
+          <div 
+            class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden" 
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        </Show>
 
         {/* Sentient Health Glow Bar */}
         <div class="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden">

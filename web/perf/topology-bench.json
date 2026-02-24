@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-02-24T14:19:53.170Z",
+  "scenarios": [
+    {
+      "name": "small",
+      "nodes": 270,
+      "links": 292,
+      "ticks": 60,
+      "buildMs": 0.40929199999999355,
+      "simMs": 39.103167
+    },
+    {
+      "name": "medium",
+      "nodes": 800,
+      "links": 910,
+      "ticks": 90,
+      "buildMs": 0.5960420000000113,
+      "simMs": 141.04537499999998
+    },
+    {
+      "name": "large",
+      "nodes": 1580,
+      "links": 1815,
+      "ticks": 120,
+      "buildMs": 1.6895419999999604,
+      "simMs": 406.744417
+    }
+  ]
+}

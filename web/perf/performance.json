@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "metrics": [
+    {
+      "name": "topology_build_small",
+      "value": 0.40929199999999355,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_layout_small",
+      "value": 39.103167,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_nodes_small",
+      "value": 270,
+      "unit": "count"
+    },
+    {
+      "name": "topology_links_small",
+      "value": 292,
+      "unit": "count"
+    },
+    {
+      "name": "topology_build_medium",
+      "value": 0.5960420000000113,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_layout_medium",
+      "value": 141.04537499999998,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_nodes_medium",
+      "value": 800,
+      "unit": "count"
+    },
+    {
+      "name": "topology_links_medium",
+      "value": 910,
+      "unit": "count"
+    },
+    {
+      "name": "topology_build_large",
+      "value": 1.6895419999999604,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_layout_large",
+      "value": 406.744417,
+      "unit": "ms"
+    },
+    {
+      "name": "topology_nodes_large",
+      "value": 1580,
+      "unit": "count"
+    },
+    {
+      "name": "topology_links_large",
+      "value": 1815,
+      "unit": "count"
+    }
+  ]
+}

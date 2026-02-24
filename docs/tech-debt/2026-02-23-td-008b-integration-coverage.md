@@ -3,6 +3,7 @@
 ## Item
 
 - Debt ID: TD-008 (Slice B: Integration package coverage)
+- Issue: [TD-008](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/20)
 - Branch/PR: `main`
 - Owner: gemini-cli
 

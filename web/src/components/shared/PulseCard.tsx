@@ -65,17 +65,17 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   });
 
   return (
-    <div class={`glass-panel-hover group relative flex min-h-[120px] flex-col gap-2 p-4 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden ${colorClasses().glow} ${colorClasses().border}`}>
+    <div class={`glass-panel-hover group relative flex min-h-[100px] sm:min-h-[120px] flex-col gap-1 sm:gap-2 p-3 sm:p-4 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden ${colorClasses().glow} ${colorClasses().border}`}>
       {/* Subtle gradient overlay on hover */}
       <div class="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
       {/* Header */}
       <div class="relative flex items-center justify-between">
-        <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-text-muted">
           {props.title}
         </span>
         <Show when={props.icon}>
-          <span class={`text-xl opacity-40 group-hover:opacity-100 transition-all duration-300 ${colorClasses().icon}`}>
+          <span class={`text-lg sm:text-xl opacity-40 group-hover:opacity-100 transition-all duration-300 ${colorClasses().icon}`}>
             {props.icon}
           </span>
         </Show>
@@ -84,39 +84,39 @@ const PulseCard: Component<PulseCardProps> = (props) => {
       {/* Content */}
       <div class="relative flex flex-1 flex-col justify-center">
         <Show when={props.loading}>
-          <div class="flex items-center gap-3">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-            <span class="text-xs text-text-dim animate-pulse">Loading...</span>
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="h-4 w-4 sm:h-6 sm:w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+            <span class="text-[10px] sm:text-xs text-text-dim animate-pulse">Loading...</span>
           </div>
         </Show>
 
         <Show when={!props.loading && props.error}>
-          <div class="flex items-center gap-2 text-sm text-status-error">
+          <div class="flex items-center gap-2 text-[11px] sm:text-sm text-status-error">
             <span>⚠</span>
-            <span>{props.error}</span>
+            <span class="truncate">{props.error}</span>
           </div>
         </Show>
 
         <Show when={!props.loading && !props.error}>
-          <div class="flex items-baseline gap-2">
-            <div class={`font-mono text-[32px] font-bold tracking-tight text-text-main transition-all duration-300 ${colorClasses().textShadow}`}>
+          <div class="flex items-baseline gap-1 sm:gap-2">
+            <div class={`font-mono text-2xl sm:text-[32px] font-bold tracking-tight text-text-main transition-all duration-300 ${colorClasses().textShadow}`}>
               {props.value}
             </div>
             <Show when={trendIcon()}>
-              <span class={`text-lg font-bold ${trendColor()}`}>
+              <span class={`text-base sm:text-lg font-bold ${trendColor()}`}>
                 {trendIcon()}
               </span>
             </Show>
           </div>
           <Show when={props.sub}>
-            <div class="text-[13px] text-text-muted mt-0.5">{props.sub}</div>
+            <div class="text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate">{props.sub}</div>
           </Show>
           <Show when={props.sparkData && props.sparkData.length >= 2}>
-            <div class="mt-1">
+            <div class="mt-1 sm:mt-2 h-4 sm:h-5">
               <Sparkline
                 data={props.sparkData!}
-                width={120}
-                height={20}
+                width={typeof window !== 'undefined' && window.innerWidth < 640 ? 80 : 120}
+                height={typeof window !== 'undefined' && window.innerWidth < 640 ? 16 : 20}
                 color={props.color === 'purple' ? '#a855f7' : props.color === 'green' ? '#22c55e' : props.color === 'orange' ? '#f97316' : '#00d9ff'}
                 trend={props.trend}
               />
