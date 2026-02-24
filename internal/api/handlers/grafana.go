@@ -104,6 +104,8 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	url := strings.TrimSuffix(h.cfg.Grafana.URL, "/") + path
 
+	slog.Debug("fetching grafana api", "url", url)
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create grafana request: %w", err)
@@ -116,6 +118,7 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		slog.Error("grafana request failed", "url", url, "error", err)
 		return nil, fmt.Errorf("grafana request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -124,6 +127,8 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Limit read to 1KB
 		errMsg := strings.TrimSpace(string(body))
 		
+		slog.Warn("grafana api returned non-200", "url", url, "status", resp.StatusCode, "body_preview", errMsg)
+
 		// Robust HTML detection
 		lowerMsg := strings.ToLower(errMsg)
 		if strings.Contains(lowerMsg, "<!doctype html>") || strings.Contains(lowerMsg, "<html") {
@@ -144,8 +149,16 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 
 	// Parse to validate JSON, then return as-is for cache compatibility
 	if err := json.Unmarshal(body, &raw); err != nil {
+		slog.Error("failed to decode grafana json", "url", url, "body_preview", string(body[:min(len(body), 100)]))
 		return nil, fmt.Errorf("decode grafana response: %w", err)
 	}
 
 	return raw, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
