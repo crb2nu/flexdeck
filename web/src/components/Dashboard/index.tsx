@@ -13,6 +13,7 @@ import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
 import AlertsPanel from './AlertsPanel';
 import LangfuseWidget from './LangfuseWidget';
+import { DetailPanel } from '../shared';
 import { buildInferenceHealthSummary } from './inferenceHealth';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
@@ -542,325 +543,168 @@ const Dashboard: Component = () => {
           </div>
         </Show>
 
-        {/* Detail Panel - Slides up when item selected */}
+        {/* Detail Panel - Refactored to shared component */}
         <Show when={selectedItem()}>
-          {item => {
-            const isNode = () => item().type === 'node';
-            const node = () => isNode() ? item().data as K8sNode : null;
-            const pod = () => !isNode() ? item().data as K8sPod : null;
-
-            return (
-              <div class="absolute bottom-0 left-0 right-0 z-20 transform transition-transform duration-300 ease-out"
-                   style={{ transform: 'translateY(0)' }}>
-                <div class="bg-black/80 backdrop-blur-md border-t border-white/10 p-4">
-                  {/* Header */}
-                  <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-3">
-                      <div class={`h-2 w-2 rounded-full ${isNode() ? 'bg-neon-cyan' : 'bg-neon-green'}`} />
-                      <div>
-                        <h3 class="text-sm font-semibold text-text-main font-mono">
-                          {isNode() ? node()?.metadata.name : pod()?.metadata.name}
-                        </h3>
-                        <p class="text-[10px] text-text-dim uppercase tracking-wider">
-                          {isNode() ? 'Cluster Node' : `Pod in ${pod()?.metadata.namespace}`}
-                        </p>
-                      </div>
+          {item => (
+            <DetailPanel
+              title={item().type === 'node' ? (item().data as K8sNode).metadata.name : (item().data as K8sPod).metadata.name}
+              subtitle={item().type === 'node' ? 'Cluster Node' : `Pod in ${(item().data as K8sPod).metadata.namespace}`}
+              status={item().type === 'node' 
+                ? (isNodeReady(item().data as any) ? 'ok' : 'error')
+                : ((item().data as K8sPod).status.phase === 'Running' ? 'running' : (item().data as K8sPod).status.phase === 'Pending' ? 'warn' : 'error')
+              }
+              onClose={() => setSelectedItem(null)}
+              actions={[
+                ...(item().type === 'pod' ? [{
+                  label: 'View Logs',
+                  variant: 'primary' as const,
+                  onClick: () => setLogPanelPod(item().data as K8sPod)
+                }] : []),
+                {
+                  label: `Filter to ${item().type === 'node' ? 'Node' : 'Namespace'}`,
+                  onClick: () => {
+                    if (item().type === 'node') {
+                      setFilter({ ...filter(), nodeName: (item().data as K8sNode).metadata.name });
+                    } else {
+                      setFilter({ ...filter(), namespace: (item().data as K8sPod).metadata.namespace });
+                    }
+                    setShowFilters(true);
+                  }
+                }
+              ]}
+            >
+              {/* Specialized Content Grid based on type */}
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Show when={item().type === 'node'}>
+                  {/* Node Specifics */}
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Resource Usage</h4>
+                    <div class="space-y-4">
+                      {/* CPU Usage Bar */}
+                      {(() => {
+                        const metrics = getNodeMetrics((item().data as K8sNode).metadata.name);
+                        const cpuUsage = metrics?.cpuUsage || 0;
+                        return (
+                          <div>
+                            <div class="flex justify-between text-xs mb-1.5">
+                              <span class="text-text-muted">CPU</span>
+                              <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>{cpuUsage.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div class="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {/* Memory Usage Bar */}
+                      {(() => {
+                        const metrics = getNodeMetrics((item().data as K8sNode).metadata.name);
+                        const memPercent = metrics?.memoryPercent || 0;
+                        return (
+                          <div>
+                            <div class="flex justify-between text-xs mb-1.5">
+                              <span class="text-text-muted">Memory</span>
+                              <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>{formatBytes(metrics?.memoryUsed || 0)} / {formatBytes(metrics?.memoryLimit || 0)}</span>
+                            </div>
+                            <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div class="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
-                    <button
-                      onClick={() => setSelectedItem(null)}
-                      class="text-text-dim hover:text-text-main transition-colors p-1"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
                   </div>
-
-                  {/* Content Grid */}
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Node Details */}
-                    <Show when={isNode() && node()}>
-                      {n => (
-                        <>
-                          {/* Status Section */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Status</h4>
-                            <div class="space-y-1">
-                              <For each={n().status?.conditions || []}>
-                                {condition => (
-                                  <div class="flex items-center gap-2 text-xs">
-                                    <span class={`w-1.5 h-1.5 rounded-full ${
-                                      condition.status === 'True' ? 'bg-green-500' : 'bg-red-500'
-                                    }`} />
-                                    <span class="text-text-muted">{condition.type}</span>
-                                  </div>
-                                )}
-                              </For>
-                            </div>
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Conditions</h4>
+                    <div class="space-y-2">
+                      <For each={(item().data as K8sNode).status?.conditions || []}>
+                        {condition => (
+                          <div class="flex items-center gap-2 text-xs">
+                            <span class={`w-1.5 h-1.5 rounded-full ${condition.status === 'True' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span class="text-text-muted">{condition.type}</span>
                           </div>
-
-                          {/* Resources Section with Usage Meters */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Resource Usage</h4>
-                            <div class="space-y-3">
-                              {/* CPU Usage Bar */}
-                              {(() => {
-                                const metrics = getNodeMetrics(n().metadata.name);
-                                const cpuUsage = metrics?.cpuUsage || 0;
-                                return (
-                                  <div>
-                                    <div class="flex justify-between text-xs mb-1">
-                                      <span class="text-text-muted">CPU</span>
-                                      <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>
-                                        {cpuUsage.toFixed(1)}%
-                                      </span>
-                                    </div>
-                                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                      <div
-                                        class="h-full rounded-full transition-all duration-500"
-                                        style={{
-                                          width: `${Math.min(cpuUsage, 100)}%`,
-                                          background: getUsageGradient(cpuUsage)
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {/* Memory Usage Bar */}
-                              {(() => {
-                                const metrics = getNodeMetrics(n().metadata.name);
-                                const memPercent = metrics?.memoryPercent || 0;
-                                const memUsed = metrics?.memoryUsed || 0;
-                                const memLimit = metrics?.memoryLimit || 0;
-                                return (
-                                  <div>
-                                    <div class="flex justify-between text-xs mb-1">
-                                      <span class="text-text-muted">Memory</span>
-                                      <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>
-                                        {formatBytes(memUsed)} / {formatBytes(memLimit)}
-                                      </span>
-                                    </div>
-                                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                      <div
-                                        class="h-full rounded-full transition-all duration-500"
-                                        style={{
-                                          width: `${Math.min(memPercent, 100)}%`,
-                                          background: getUsageGradient(memPercent)
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {/* Capacity Info */}
-                              <div class="pt-2 border-t border-white/5 space-y-1 text-xs">
-                                <Show when={n().status?.capacity?.cpu}>
-                                  <div class="flex justify-between">
-                                    <span class="text-text-muted">CPU Capacity</span>
-                                    <span class="text-text-main font-mono">{n().status?.capacity?.cpu}</span>
-                                  </div>
-                                </Show>
-                                <Show when={n().status?.capacity?.pods}>
-                                  <div class="flex justify-between">
-                                    <span class="text-text-muted">Max Pods</span>
-                                    <span class="text-text-main font-mono">{n().status?.capacity?.pods}</span>
-                                  </div>
-                                </Show>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Pods on Node */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">
-                              Pods ({getPodsOnNode().length})
-                            </h4>
-                            <div class="max-h-24 overflow-y-auto space-y-1">
-                              <For each={getPodsOnNode().slice(0, 10)}>
-                                {p => (
-                                  <div class="flex items-center gap-2 text-xs">
-                                    <span class={`w-1.5 h-1.5 rounded-full ${
-                                      p.status.phase === 'Running' ? 'bg-green-500' :
-                                      p.status.phase === 'Pending' ? 'bg-yellow-500' : 'bg-red-500'
-                                    }`} />
-                                    <span class="text-text-muted truncate">{p.metadata.name}</span>
-                                  </div>
-                                )}
-                              </For>
-                              <Show when={getPodsOnNode().length > 10}>
-                                <div class="text-[10px] text-text-dim">
-                                  +{getPodsOnNode().length - 10} more
-                                </div>
-                              </Show>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </Show>
-
-                    {/* Pod Details */}
-                    <Show when={!isNode() && pod()}>
-                      {p => (
-                        <>
-                          {/* Status Section */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Status</h4>
-                            <div class="space-y-2">
-                              <div class="flex items-center gap-2">
-                                <span class={`px-2 py-0.5 rounded text-xs ${
-                                  p().status.phase === 'Running' ? 'bg-green-500/20 text-green-400' :
-                                  p().status.phase === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                                  'bg-red-500/20 text-red-400'
-                                }`}>
-                                  {p().status.phase}
-                                </span>
-                              </div>
-                              <div class="text-xs">
-                                <span class="text-text-muted">Node: </span>
-                                <span class="text-text-main font-mono">{p().spec.nodeName || 'Unassigned'}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Resource Usage Section */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Resource Usage</h4>
-                            {(() => {
-                              const metrics = getPodMetrics(p().metadata.namespace || 'default', p().metadata.name);
-                              const cpuUsage = metrics?.cpuUsage || 0;
-                              const memPercent = metrics?.memoryPercent || 0;
-                              const memUsed = metrics?.memoryUsed || 0;
-                              const memLimit = metrics?.memoryLimit || 0;
-
-                              return (
-                                <div class="space-y-2">
-                                  {/* CPU */}
-                                  <div>
-                                    <div class="flex justify-between text-xs mb-1">
-                                      <span class="text-text-muted">CPU</span>
-                                      <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>
-                                        {cpuUsage.toFixed(1)}%
-                                      </span>
-                                    </div>
-                                    <div class="h-1 bg-white/10 rounded-full overflow-hidden">
-                                      <div
-                                        class="h-full rounded-full transition-all duration-500"
-                                        style={{
-                                          width: `${Math.min(cpuUsage, 100)}%`,
-                                          background: getUsageGradient(cpuUsage)
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                  {/* Memory */}
-                                  <div>
-                                    <div class="flex justify-between text-xs mb-1">
-                                      <span class="text-text-muted">Memory</span>
-                                      <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>
-                                        {memLimit > 0 ? `${formatBytes(memUsed)} / ${formatBytes(memLimit)}` : formatBytes(memUsed)}
-                                      </span>
-                                    </div>
-                                    <Show when={memLimit > 0}>
-                                      <div class="h-1 bg-white/10 rounded-full overflow-hidden">
-                                        <div
-                                          class="h-full rounded-full transition-all duration-500"
-                                          style={{
-                                            width: `${Math.min(memPercent, 100)}%`,
-                                            background: getUsageGradient(memPercent)
-                                          }}
-                                        />
-                                      </div>
-                                    </Show>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Containers Section */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">
-                              Containers ({p().spec.containers?.length || 0})
-                            </h4>
-                            <div class="space-y-1">
-                              <For each={p().spec.containers || []}>
-                                {container => {
-                                  const status = () => p().status.containerStatuses?.find(
-                                    cs => cs.name === container.name
-                                  );
-                                  return (
-                                    <div class="flex items-center gap-2 text-xs">
-                                      <span class={`w-1.5 h-1.5 rounded-full ${
-                                        status()?.ready ? 'bg-green-500' : 'bg-yellow-500'
-                                      }`} />
-                                      <span class="text-text-muted truncate">{container.name}</span>
-                                      <Show when={status()?.restartCount}>
-                                        <span class="text-[10px] text-yellow-500">
-                                          ({status()?.restartCount} restarts)
-                                        </span>
-                                      </Show>
-                                    </div>
-                                  );
-                                }}
-                              </For>
-                            </div>
-                          </div>
-
-                          {/* Labels/Info Section */}
-                          <div>
-                            <h4 class="text-[10px] text-text-dim uppercase mb-2">Labels</h4>
-                            <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                              <For each={Object.entries(p().metadata.labels || {}).slice(0, 6)}>
-                                {([key, value]) => (
-                                  <span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-text-muted truncate max-w-[150px]">
-                                    {key}: {value}
-                                  </span>
-                                )}
-                              </For>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </Show>
+                        )}
+                      </For>
+                    </div>
                   </div>
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Pods ({getPodsOnNode().length})</h4>
+                    <div class="max-h-32 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
+                      <For each={getPodsOnNode().slice(0, 20)}>
+                        {p => (
+                          <div class="flex items-center gap-2 text-[11px]">
+                            <span class={`w-1.5 h-1.5 rounded-full ${p.status.phase === 'Running' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                            <span class="text-text-muted truncate font-mono">{p.metadata.name}</span>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
 
-                  {/* Actions */}
-                  <div class="flex gap-2 mt-4 pt-3 border-t border-white/10">
-                    <Show when={!isNode() && pod()}>
-                      <button
-                        onClick={() => {
-                          const currentPod = pod();
-                          if (currentPod) {
-                            setLogPanelPod(currentPod);
-                          }
+                <Show when={item().type === 'pod'}>
+                  {/* Pod Specifics */}
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Pod Metrics</h4>
+                    {(() => {
+                      const metrics = getPodMetrics((item().data as K8sPod).metadata.namespace || 'default', (item().data as K8sPod).metadata.name);
+                      const cpuUsage = metrics?.cpuUsage || 0;
+                      const memPercent = metrics?.memoryPercent || 0;
+                      return (
+                        <div class="space-y-4">
+                          <div>
+                            <div class="flex justify-between text-xs mb-1.5">
+                              <span class="text-text-muted">CPU Usage</span>
+                              <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>{cpuUsage.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+                              <div class="h-full transition-all duration-500" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
+                            </div>
+                          </div>
+                          <div>
+                            <div class="flex justify-between text-xs mb-1.5">
+                              <span class="text-text-muted">Memory</span>
+                              <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>{formatBytes(metrics?.memoryUsed || 0)}</span>
+                            </div>
+                            <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+                              <div class="h-full transition-all duration-500" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Containers</h4>
+                    <div class="space-y-2">
+                      <For each={(item().data as K8sPod).spec.containers || []}>
+                        {container => {
+                          const cs = () => (item().data as K8sPod).status.containerStatuses?.find(s => s.name === container.name);
+                          return (
+                            <div class="flex items-center gap-2 text-[11px]">
+                              <span class={`w-1.5 h-1.5 rounded-full ${cs()?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                              <span class="text-text-muted font-mono">{container.name}</span>
+                              <Show when={cs()?.restartCount}><span class="text-[10px] text-yellow-500">({cs()?.restartCount}R)</span></Show>
+                            </div>
+                          );
                         }}
-                        class="px-3 py-1.5 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
-                      >
-                        View Logs
-                      </button>
-                    </Show>
-                    <button
-                      onClick={() => {
-                        const item = selectedItem();
-                        if (item?.type === 'node') {
-                          setFilter({ ...filter(), nodeName: (item.data as K8sNode).metadata.name });
-                        } else if (item?.type === 'pod') {
-                          setFilter({ ...filter(), namespace: (item.data as K8sPod).metadata.namespace });
-                        }
-                        setShowFilters(true);
-                      }}
-                      class="px-3 py-1.5 text-xs font-mono rounded bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors"
-                    >
-                      Filter to {isNode() ? 'Node' : 'Namespace'}
-                    </button>
+                      </For>
+                    </div>
                   </div>
-                </div>
+                  <div>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Labels</h4>
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={Object.entries((item().data as K8sPod).metadata.labels || {}).slice(0, 8)}>
+                        {([k, v]) => (
+                          <span class="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[10px] text-text-muted font-mono truncate max-w-[120px]" title={`${k}=${v}`}>{k}</span>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
               </div>
-            );
-          }}
+            </DetailPanel>
+          )}
         </Show>
       </div>
 

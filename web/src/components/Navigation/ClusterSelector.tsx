@@ -67,7 +67,7 @@ const ClusterSelector: Component = () => {
     <Show when={enabled()}>
       <div class="relative">
         <button
-          class="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-text-muted hover:text-white hover:border-neon-cyan/30 transition-colors"
+          class="flex h-10 md:h-9 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-text-muted hover:text-white hover:border-neon-cyan/30 transition-colors"
           onClick={() => {
             refetch();
             setOpen(!open());
@@ -76,7 +76,7 @@ const ClusterSelector: Component = () => {
           <span
             class={`h-1.5 w-1.5 rounded-full ${statusColor(currentCluster()?.status || "unknown")}`}
           />
-          <span class="max-w-[120px] truncate">
+          <span class="max-w-[80px] sm:max-w-[120px] truncate">
             {currentCluster()?.name || "Select Cluster"}
           </span>
           <svg
@@ -95,50 +95,59 @@ const ClusterSelector: Component = () => {
         </button>
 
         <Show when={open()}>
-          <div class="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-white/10 bg-bg-panel/95 backdrop-blur-md shadow-xl">
-            <div class="p-2 border-b border-white/5">
-              <div class="text-[10px] text-neon-cyan/50 tracking-widest px-2">
-                CLUSTERS
+          {/* Responsive container: Dropdown on desktop, Sheet on mobile */}
+          <div 
+            class="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-full z-50 md:mt-1 flex flex-col w-full md:w-64 animate-slide-up md:animate-fade-in"
+          >
+            <div class="md:hidden absolute inset-0 bg-black/60 backdrop-blur-sm -z-10" onClick={() => setOpen(false)} />
+            
+            <div class="mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-bg-panel/95 backdrop-blur-xl md:backdrop-blur-md shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
+              <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
+                <div class="text-[10px] text-neon-cyan/50 tracking-widest px-2 font-bold">
+                  CLUSTERS
+                </div>
+                <button class="md:hidden p-2 text-text-dim" onClick={() => setOpen(false)}>✕</button>
+              </div>
+              <div class="max-h-64 md:max-h-48 overflow-y-auto p-2 md:p-1 flex flex-col gap-1">
+                <For
+                  each={clusters() || []}
+                  fallback={
+                    <div class="px-3 py-4 md:py-2 text-[11px] font-mono text-text-dim text-center">
+                      No clusters available
+                    </div>
+                  }
+                >
+                  {(cluster) => (
+                    <button
+                      class="flex w-full items-center gap-3 md:gap-2 rounded-lg md:rounded-md px-4 md:px-3 py-3 md:py-2 text-sm md:text-xs hover:bg-white/5 transition-all active:scale-[0.98]"
+                      classList={{
+                        "bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20":
+                          cluster.id === (activeClusterId() || currentCluster()?.id),
+                        "text-text-muted border border-transparent": cluster.id !== (activeClusterId() || currentCluster()?.id),
+                      }}
+                      onClick={() => handleSelect(cluster.id)}
+                    >
+                      <span
+                        class={`h-2 w-2 md:h-1.5 md:w-1.5 rounded-full flex-shrink-0 ${statusColor(cluster.status)}`}
+                      />
+                      <span class="flex-1 truncate text-left font-mono">
+                        {cluster.name}
+                      </span>
+                      <Show when={cluster.isDefault}>
+                        <span class="text-[9px] text-neon-cyan/50 border border-neon-cyan/20 rounded px-1">
+                          DEFAULT
+                        </span>
+                      </Show>
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
-            <div class="max-h-48 overflow-y-auto p-1">
-              <For
-                each={clusters() || []}
-                fallback={
-                  <div class="px-3 py-2 text-[11px] font-mono text-text-dim">
-                    No clusters available
-                  </div>
-                }
-              >
-                {(cluster) => (
-                  <button
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                    classList={{
-                      "bg-neon-cyan/10 text-neon-cyan":
-                        cluster.id === (activeClusterId() || currentCluster()?.id),
-                      "text-text-muted": cluster.id !== (activeClusterId() || currentCluster()?.id),
-                    }}
-                    onClick={() => handleSelect(cluster.id)}
-                  >
-                    <span
-                      class={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${statusColor(cluster.status)}`}
-                    />
-                    <span class="flex-1 truncate text-left font-mono">
-                      {cluster.name}
-                    </span>
-                    <Show when={cluster.isDefault}>
-                      <span class="text-[9px] text-neon-cyan/50 border border-neon-cyan/20 rounded px-1">
-                        DEFAULT
-                      </span>
-                    </Show>
-                  </button>
-                )}
-              </For>
-            </div>
           </div>
-          {/* Click outside to close */}
+          
+          {/* Desktop-only click outside to close */}
           <div
-            class="fixed inset-0 z-40"
+            class="hidden md:block fixed inset-0 z-40"
             onClick={() => setOpen(false)}
           />
         </Show>

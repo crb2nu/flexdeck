@@ -82,22 +82,15 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
   return (
     <div
-      class="absolute bottom-0 left-0 right-0 z-50 animate-slide-up"
-      style={{
-        background: 'linear-gradient(180deg, rgba(10, 16, 32, 0.98) 0%, rgba(5, 10, 20, 0.99) 100%)',
-        'border-top': '1px solid rgba(0, 240, 255, 0.2)',
-        'backdrop-filter': 'blur(20px)',
-        'max-height': '60vh',
-        'box-shadow': '0 -10px 40px rgba(0, 0, 0, 0.5)'
-      }}
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-panel/98 backdrop-blur-xl border-t border-neon-cyan/20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
     >
       {/* Header */}
-      <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
-        <div class="flex items-center gap-4">
+      <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">
+        <div class="flex items-center gap-3 sm:gap-4">
           {/* Status indicator */}
           <Show when={statusStyle()}>
             <div
-              class="w-3 h-3 rounded-full"
+              class="w-3 h-3 rounded-full flex-shrink-0"
               classList={{ 'animate-pulse': props.status === 'running' }}
               style={{
                 background: statusStyle()!.text,
@@ -108,26 +101,26 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
           {/* Icon */}
           <Show when={props.icon}>
-            <span class="text-xl">{props.icon}</span>
+            <span class="text-xl flex-shrink-0">{props.icon}</span>
           </Show>
 
           {/* Title & subtitle */}
-          <div>
-            <h3 class="text-lg font-bold text-white font-mono tracking-wide">
+          <div class="min-w-0">
+            <h3 class="text-base sm:text-lg font-bold text-white font-mono tracking-wide truncate">
               {props.title}
             </h3>
             <Show when={props.subtitle}>
-              <p class="text-xs text-text-muted font-mono">{props.subtitle}</p>
+              <p class="text-[10px] sm:text-xs text-text-muted font-mono truncate">{props.subtitle}</p>
             </Show>
           </div>
 
           {/* Status badge */}
           <Show when={props.status && statusStyle()}>
             <div
-              class="px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider"
+              class="hidden sm:block px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border"
               style={{
                 background: statusStyle()!.bg,
-                border: `1px solid ${statusStyle()!.border}`,
+                'border-color': statusStyle()!.border,
                 color: statusStyle()!.text
               }}
             >
@@ -139,33 +132,23 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
         {/* Close button */}
         <button
           onClick={props.onClose}
-          class="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-white/10"
-          style={{
-            border: '1px solid rgba(255, 255, 255, 0.1)'
-          }}
+          class="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-white/10 border border-white/10 text-text-muted hover:text-white"
         >
-          <span class="text-text-muted text-lg">×</span>
+          <span class="text-2xl sm:text-lg">×</span>
         </button>
       </div>
 
       {/* Tabs */}
       <Show when={props.tabs && props.tabs.length > 0}>
-        <div class="flex gap-1 px-6 py-2 border-b border-white/5 bg-white/2">
+        <div class="flex gap-1 px-4 sm:px-6 py-2 border-b border-white/5 bg-white/[0.02] overflow-x-auto no-scrollbar">
           <For each={props.tabs}>
             {(tab) => (
               <button
                 onClick={() => setActiveTab(tab.id)}
-                class="px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200"
-                style={{
-                  background: activeTab() === tab.id
-                    ? 'rgba(0, 240, 255, 0.15)'
-                    : 'transparent',
-                  border: activeTab() === tab.id
-                    ? '1px solid rgba(0, 240, 255, 0.3)'
-                    : '1px solid transparent',
-                  color: activeTab() === tab.id
-                    ? '#00f0ff'
-                    : 'rgba(255, 255, 255, 0.6)'
+                class="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 border"
+                classList={{
+                  'bg-neon-cyan/15 border-neon-cyan/30 text-neon-cyan': activeTab() === tab.id,
+                  'border-transparent text-white/60 hover:text-white': activeTab() !== tab.id
                 }}
               >
                 {tab.label}
@@ -176,7 +159,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
       </Show>
 
       {/* Content */}
-      <div class="p-6 overflow-y-auto" style={{ 'max-height': 'calc(60vh - 140px)' }}>
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1">
         <Show when={props.tabs && props.tabs.length > 0} fallback={props.children}>
           <For each={props.tabs}>
             {(tab) => (
@@ -190,26 +173,24 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
       {/* Actions footer */}
       <Show when={props.actions && props.actions.length > 0}>
-        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/10">
+        <div class="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-white/10 bg-black/20">
           <For each={props.actions}>
-            {(action) => {
-              const variant = actionVariants[action.variant || 'default'];
-              return (
-                <button
-                  onClick={action.onClick}
-                  class="px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 flex items-center gap-2 hover:scale-105"
-                  style={{
-                    background: variant.bg,
-                    border: `1px solid ${variant.border}`
-                  }}
-                >
-                  <Show when={action.icon}>
-                    <span>{action.icon}</span>
-                  </Show>
-                  {action.label}
-                </button>
-              );
-            }}
+            {(action) => (
+              <button
+                onClick={action.onClick}
+                class="flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 border active:scale-95"
+                classList={{
+                  'bg-white/5 border-white/20 hover:bg-white/10': !action.variant || action.variant === 'default',
+                  'bg-neon-cyan/15 border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/25': action.variant === 'primary',
+                  'bg-status-error/15 border-status-error/40 text-status-error hover:bg-status-error/25': action.variant === 'danger'
+                }}
+              >
+                <Show when={action.icon}>
+                  <span>{action.icon}</span>
+                </Show>
+                {action.label}
+              </button>
+            )}
           </For>
         </div>
       </Show>
@@ -217,23 +198,6 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
       {/* Corner accents */}
       <div class="absolute top-0 left-0 w-6 h-6 border-l-2 border-t-2 border-neon-cyan/40 pointer-events-none" />
       <div class="absolute top-0 right-0 w-6 h-6 border-r-2 border-t-2 border-neon-cyan/40 pointer-events-none" />
-
-      <style>{`
-        @keyframes slide-up {
-          from {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 };

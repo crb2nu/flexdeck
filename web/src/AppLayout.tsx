@@ -80,7 +80,7 @@ const AppLayout: Component<ParentProps> = (props) => {
             <For each={navItems()}>{(item) => (
               <A
                 href={item.path}
-                class="rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 hover:text-white"
+                class="rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 hover:text-white min-h-[36px] flex items-center"
                 classList={{
                   'bg-white/10 text-white shadow-sm': location.pathname === item.path,
                   'text-text-muted hover:bg-white/5': location.pathname !== item.path,
@@ -94,9 +94,9 @@ const AppLayout: Component<ParentProps> = (props) => {
           {/* Right: Status & Settings */}
           <div class="flex items-center gap-2 md:gap-4">
              {/* Key Hint for Command Palette */}
-             <div class="hidden lg:flex items-center gap-2 text-xs text-text-dim px-3 py-1.5 rounded-md border border-white/10 bg-white/5">
+             <div class="hidden lg:flex items-center gap-2 text-xs text-text-dim px-3 py-2 rounded-md border border-white/10 bg-white/5 min-h-[36px]">
                 <span class="text-xs">⌘K</span>
-                <span class="opacity-50">Command</span>
+                <span class="opacity-50 font-mono">CMD</span>
              </div>
 
             <ClusterSelector />
@@ -106,21 +106,21 @@ const AppLayout: Component<ParentProps> = (props) => {
 
         {/* Mobile Navigation Drawer */}
         <Show when={mobileMenuOpen()}>
-          <div class="md:hidden absolute top-16 left-0 right-0 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-fade-in-scale origin-top">
-            <nav class="flex flex-col p-4 gap-2">
+          <div class="md:hidden absolute top-16 left-0 right-0 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-slide-down origin-top shadow-2xl">
+            <nav class="flex flex-col p-4 gap-1">
               <For each={navItems()}>{(item) => (
                 <A
                   href={item.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  class="flex items-center justify-between rounded-lg px-4 py-3 text-base font-medium transition-all duration-200 border border-transparent"
+                  class="flex items-center justify-between rounded-xl px-5 py-4 text-lg font-medium transition-all duration-200 border active:scale-[0.98] min-h-[56px]"
                   classList={{
-                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20': location.pathname === item.path,
-                    'text-text-muted hover:bg-white/5': location.pathname !== item.path,
+                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': location.pathname === item.path,
+                    'text-text-muted border-transparent hover:bg-white/5': location.pathname !== item.path,
                   }}
                 >
-                  <span>{item.label}</span>
+                  <span class="tracking-wide">{item.label}</span>
                   <Show when={location.pathname === item.path}>
-                    <span class="text-xs">●</span>
+                    <div class="w-2 h-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
                   </Show>
                 </A>
               )}</For>
