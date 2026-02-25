@@ -1,4 +1,4 @@
-import { Component, ParentProps, Show, createMemo, onMount, Suspense, For, createSignal } from 'solid-js';
+import { Component, ParentProps, Show, createMemo, onMount, Suspense, For, createSignal, createEffect, onCleanup } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import { uiApi } from './lib/api';
 import { healthStore, fetchHealth } from './stores/health';
@@ -13,6 +13,8 @@ const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = createSignal(false);
   useKeyboardShortcuts();
+
+  const mobileNavId = 'mobile-primary-navigation';
 
   // Check if we are in public read-only view
   const isPublicView = () => {
@@ -31,6 +33,21 @@ const AppLayout: Component<ParentProps> = (props) => {
 
   onMount(async () => {
     await Promise.all([fetchHealth(), fetchUIConfig()]);
+  });
+
+  createEffect(() => {
+    location.pathname;
+    setMobileMenuOpen(false);
+  });
+
+  createEffect(() => {
+    if (typeof document === 'undefined' || !mobileMenuOpen()) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    onCleanup(() => {
+      document.body.style.overflow = previousOverflow;
+    });
   });
   
   const navItems = createMemo(() => {
@@ -51,7 +68,14 @@ const AppLayout: Component<ParentProps> = (props) => {
           {/* Left: Logo & Mobile Toggle */}
           <div class="flex items-center gap-3">
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen())}
+              type="button"
+              aria-label={mobileMenuOpen() ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={mobileMenuOpen()}
+              aria-controls={mobileNavId}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMobileMenuOpen(!mobileMenuOpen());
+              }}
               class="flex md:hidden h-8 w-8 items-center justify-center rounded-md bg-white/5 border border-white/10 text-text-dim hover:text-white transition-colors"
             >
               <Show when={!mobileMenuOpen()} fallback={
@@ -106,13 +130,18 @@ const AppLayout: Component<ParentProps> = (props) => {
 
         {/* Mobile Navigation Drawer */}
         <Show when={mobileMenuOpen()}>
-          <div class="md:hidden absolute top-16 left-0 right-0 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-slide-down origin-top shadow-2xl">
-            <nav class="flex flex-col p-4 gap-1">
+          <div
+            id={mobileNavId}
+            class="md:hidden fixed inset-x-0 top-16 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+            style={{ 'padding-bottom': 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <nav class="flex flex-col p-3 gap-1">
               <For each={navItems()}>{(item) => (
                 <A
                   href={item.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  class="flex items-center justify-between rounded-xl px-5 py-4 text-lg font-medium transition-all duration-200 border active:scale-[0.98] min-h-[56px]"
+                  class="flex items-center justify-between rounded-xl px-4 py-3 text-base font-medium transition-all duration-200 border active:scale-[0.98] min-h-[52px]"
                   classList={{
                     'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': location.pathname === item.path,
                     'text-text-muted border-transparent hover:bg-white/5': location.pathname !== item.path,
@@ -127,8 +156,8 @@ const AppLayout: Component<ParentProps> = (props) => {
             </nav>
           </div>
           {/* Backdrop */}
-          <div 
-            class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden" 
+          <div
+            class="fixed inset-x-0 top-16 bottom-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         </Show>
@@ -158,7 +187,7 @@ const AppLayout: Component<ParentProps> = (props) => {
       </Show>
 
       {/* Main Content */}
-      <main class="flex-1 min-h-0 overflow-hidden p-4 relative z-0">
+      <main class="flex-1 min-h-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3 md:p-4 relative z-0">
         <Suspense fallback={
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">

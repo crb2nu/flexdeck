@@ -489,6 +489,22 @@ body::after {
   animation: slide-down 0.3s ease-in forwards;
 }
 
+/* Dropdown enter animation for top navigation sheets */
+@keyframes dropdown-in {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-dropdown-in {
+  animation: dropdown-in 0.2s ease-out;
+}
+
 /* Fade in/out */
 @keyframes fade-in {
   from { opacity: 0; }
