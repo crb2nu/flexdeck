@@ -260,9 +260,9 @@ const Dashboard: Component = () => {
   });
 
   return (
-    <div class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto md:overflow-hidden p-2 sm:p-4">
+    <div class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto md:overflow-hidden p-2 sm:p-3 md:p-4">
       {/* Pulse Cards Grid */}
-      <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+      <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 min-w-0">
         <PulseCard
           title="Pods"
           value={`${podReady()}/${podTotal()}`}
@@ -347,16 +347,16 @@ const Dashboard: Component = () => {
       {/* Visualization Panel */}
       <div class="glass-panel flex-1 min-h-[400px] lg:min-h-0 overflow-hidden relative flex flex-col">
         {/* Controls */}
-        <div class="absolute right-4 top-4 z-10 flex flex-col sm:flex-row gap-2">
+        <div class="absolute left-2 right-2 top-2 z-10 flex flex-col items-end gap-2 sm:left-auto sm:right-4 sm:top-4 sm:flex-row sm:items-center">
            {/* Connection status indicator */}
-           <div class="flex items-center gap-2 px-3 py-1 rounded-lg bg-black/40 border border-white/10 backdrop-blur">
+           <div class="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur sm:px-3">
              <div class={`w-2 h-2 rounded-full ${
                connectionStatus() === 'connected' ? 'bg-neon-green animate-pulse' :
                connectionStatus() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
                connectionStatus() === 'error' ? 'bg-red-500' :
                'bg-gray-500'
              }`} />
-             <span class="text-[10px] font-mono uppercase text-text-dim">
+             <span class="text-[9px] sm:text-[10px] font-mono uppercase text-text-dim">
                {connectionStatus() === 'connected' ? 'LIVE' :
                 connectionStatus() === 'connecting' ? 'CONNECTING' :
                 connectionStatus() === 'error' ? 'OFFLINE' : 'DISCONNECTED'}
@@ -367,7 +367,7 @@ const Dashboard: Component = () => {
            <Show when={viewMode() === '3d'}>
              <button
                onClick={() => setShowFilters(!showFilters())}
-               class={`px-3 py-1 text-xs font-mono rounded-lg transition-colors backdrop-blur border ${
+               class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors backdrop-blur ${
                  hasActiveFilter()
                    ? 'bg-neon-purple/20 border-neon-purple/50 text-neon-purple'
                    : showFilters()
@@ -379,16 +379,16 @@ const Dashboard: Component = () => {
              </button>
            </Show>
 
-           <div class="p-1 rounded-lg bg-black/40 border border-white/10 backdrop-blur flex">
+           <div class="flex rounded-lg border border-white/10 bg-black/40 p-1 backdrop-blur">
                <button
                 onClick={() => setViewMode('2d')}
-                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '2d' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
+                class={`rounded px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-mono transition-colors ${viewMode() === '2d' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
                >
                    2D
                </button>
                <button
                 onClick={() => setViewMode('3d')}
-                class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === '3d' ? 'bg-neon-purple/20 text-neon-purple' : 'text-text-dim hover:text-text-main'}`}
+                class={`rounded px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-mono transition-colors ${viewMode() === '3d' ? 'bg-neon-purple/20 text-neon-purple' : 'text-text-dim hover:text-text-main'}`}
                >
                    3D
                </button>
@@ -407,7 +407,7 @@ const Dashboard: Component = () => {
 
         {/* Filter Panel */}
         <Show when={viewMode() === '3d' && showFilters()}>
-          <div class="absolute left-4 top-4 z-10 p-3 rounded-lg bg-black/60 border border-white/10 backdrop-blur min-w-[240px]">
+          <div class="absolute left-2 right-2 top-[92px] sm:left-4 sm:right-auto sm:top-4 z-10 rounded-lg border border-white/10 bg-black/60 p-3 backdrop-blur min-w-0 sm:min-w-[240px] sm:w-auto">
             <div class="flex items-center justify-between mb-3">
               <span class="text-xs font-mono text-text-main uppercase tracking-wider">Filters</span>
               <Show when={hasActiveFilter()}>

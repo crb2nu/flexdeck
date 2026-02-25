@@ -13,8 +13,25 @@ const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = createSignal(false);
   useKeyboardShortcuts();
+  let lastMenuToggleAt = 0;
 
   const mobileNavId = 'mobile-primary-navigation';
+  const mobileDismissGuardMs = 350;
+
+  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+  const toggleMobileMenu = () => {
+    lastMenuToggleAt = nowMs();
+    setMobileMenuOpen((open) => !open);
+  };
+  const closeMobileMenuFromBackdrop = (event: MouseEvent | PointerEvent) => {
+    // Guard against the opening tap also being interpreted as a backdrop dismiss tap on touch browsers.
+    if (event.timeStamp - lastMenuToggleAt < mobileDismissGuardMs) {
+      event.stopPropagation();
+      return;
+    }
+    closeMobileMenu();
+  };
 
   // Check if we are in public read-only view
   const isPublicView = () => {
@@ -37,7 +54,7 @@ const AppLayout: Component<ParentProps> = (props) => {
 
   createEffect(() => {
     location.pathname;
-    setMobileMenuOpen(false);
+    closeMobileMenu();
   });
 
   createEffect(() => {
@@ -73,9 +90,11 @@ const AppLayout: Component<ParentProps> = (props) => {
               aria-expanded={mobileMenuOpen()}
               aria-controls={mobileNavId}
               onClick={(event) => {
+                event.preventDefault();
                 event.stopPropagation();
-                setMobileMenuOpen(!mobileMenuOpen());
+                toggleMobileMenu();
               }}
+              onPointerDown={(event) => event.stopPropagation()}
               class="flex md:hidden h-8 w-8 items-center justify-center rounded-md bg-white/5 border border-white/10 text-text-dim hover:text-white transition-colors"
             >
               <Show when={!mobileMenuOpen()} fallback={
@@ -134,13 +153,14 @@ const AppLayout: Component<ParentProps> = (props) => {
             id={mobileNavId}
             class="md:hidden fixed inset-x-0 top-16 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
             onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
             style={{ 'padding-bottom': 'max(0.75rem, env(safe-area-inset-bottom))' }}
           >
             <nav class="flex flex-col p-3 gap-1">
               <For each={navItems()}>{(item) => (
                 <A
                   href={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={() => closeMobileMenu()}
                   class="flex items-center justify-between rounded-xl px-4 py-3 text-base font-medium transition-all duration-200 border active:scale-[0.98] min-h-[52px]"
                   classList={{
                     'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': location.pathname === item.path,
@@ -158,7 +178,7 @@ const AppLayout: Component<ParentProps> = (props) => {
           {/* Backdrop */}
           <div
             class="fixed inset-x-0 top-16 bottom-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={(event) => closeMobileMenuFromBackdrop(event)}
           />
         </Show>
 
