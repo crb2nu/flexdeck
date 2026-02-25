@@ -163,6 +163,40 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `audit` | `AUDIT_DISABLED=false` | Admin Audit tab and audit endpoints available |
 | `multi_cluster` | `MULTICLUSTER_DISABLED=false` | Cluster selector and Admin Clusters tab available |
 
+### `/api/flexinfer/proxy/metrics` contract
+
+`GET /api/flexinfer/proxy/metrics` returns Prometheus-derived proxy metrics as a compatibility-safe payload with additive normalized fields.
+
+Compatibility keys (retained):
+- `requests`
+- `latency`
+- `queue_depth`
+- `active_conn`
+- `scale_ups`
+
+Normalized additive keys:
+- `byModel`
+- `totals`
+- `requestsByStatus`
+- `partial`
+
+`totals` fields:
+- `modelCount`
+- `requestsTotal`
+- `errorsTotal`
+- `queueDepth`
+- `activeConnections`
+- `scaleUps`
+- `queueRejectedTotal`
+- `queuedRequestsTotal`
+- `errorRate`
+- `parseErrors`
+
+Notes:
+- `byModel` includes per-model `requestsTotal`, `errorsTotal`, `queueDepth`, `activeConnections`, `scaleUps`, `queueRejectedTotal`, and `queuedRequestsTotal`.
+- `requestsByStatus` is grouped by model and HTTP status code.
+- `partial=true` indicates one or more metrics lines failed to parse; `totals.parseErrors` reports the count.
+
 ### `/api/models/crd/{namespace}/{name}/inference` contract
 
 `GET /api/models/crd/{namespace}/{name}/inference` returns a compatibility-safe payload with additive reliability fields.
