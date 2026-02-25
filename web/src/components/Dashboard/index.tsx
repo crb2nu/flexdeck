@@ -398,7 +398,8 @@ const Dashboard: Component = () => {
         {/* Mobile Observability Toggle */}
         <button
           onClick={() => setShowObservability(true)}
-          class="lg:hidden absolute left-4 bottom-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-neon-purple/20 border border-neon-purple/40 text-neon-purple backdrop-blur-md shadow-lg shadow-neon-purple/20 animate-pulse-glow"
+          class="lg:hidden absolute left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-neon-purple/20 border border-neon-purple/40 text-neon-purple backdrop-blur-md shadow-lg shadow-neon-purple/20 animate-pulse-glow"
+          style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <span class="text-lg">◈</span>
           <span class="text-[10px] font-mono font-bold tracking-widest uppercase">Inspect Events</span>
