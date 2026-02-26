@@ -1,10 +1,9 @@
 import { Component, onMount, onCleanup, createEffect, createSignal, createMemo, Show, untrack } from 'solid-js';
 import * as THREE from 'three';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
-import { getNodeMetrics, metricsStore } from '../../../stores/metrics';
-import { formatBytes, formatPercent } from '../../../lib/format';
+import { getNodeMetrics } from '../../../stores/metrics';
+import { formatPercent } from '../../../lib/format';
 import {
-    QUALITY_PRESETS,
     HOLO_THEME,
     HEALTH_HUB_CONFIG,
     type QualityLevel,
@@ -34,6 +33,28 @@ interface Props {
   quality?: QualityLevel;
   filter?: HoloDeckFilter;
   onSelect?: (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => void;
+}
+
+type RingMesh = THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+
+interface NodeVisualRef {
+  scannerRef?: THREE.Mesh;
+  coreRef?: THREE.Object3D;
+  cpuRingRef?: RingMesh;
+  memRingRef?: RingMesh;
+  nodeName?: string;
+}
+
+interface PodVisualRef {
+  mesh: THREE.Object3D;
+  initialY: number;
+  waveOffset: number;
+}
+
+interface ServiceVisualRef {
+  mesh: THREE.Object3D;
+  initialY: number;
+  waveOffset: number;
 }
 
 const HoloDeck: Component<Props> = (props) => {
@@ -80,6 +101,9 @@ const HoloDeck: Component<Props> = (props) => {
   const edgeMatCache = new Map<number, THREE.LineBasicMaterial>();
   const podMatCache = new Map<string, THREE.MeshStandardMaterial>();
   const podLineMatCache = new Map<number, THREE.LineBasicMaterial>();
+  const nodeVisuals: NodeVisualRef[] = [];
+  const podVisuals: PodVisualRef[] = [];
+  const serviceVisuals: ServiceVisualRef[] = [];
 
   let curves: THREE.QuadraticBezierCurve3[] = [];
   let serviceCurves: THREE.QuadraticBezierCurve3[] = [];
@@ -103,6 +127,46 @@ const HoloDeck: Component<Props> = (props) => {
   let healthOrb: THREE.Mesh;
   let healthRingMaterials: THREE.ShaderMaterial[] = [];
   let coreRings: THREE.Mesh[] = [];
+
+  const rebuildVisualRefs = () => {
+    nodeVisuals.length = 0;
+    podVisuals.length = 0;
+    serviceVisuals.length = 0;
+
+    for (const obj of objectMap.values()) {
+      const userData = obj.userData as {
+        type?: 'node' | 'pod' | 'service';
+        scannerRef?: THREE.Mesh;
+        coreRef?: THREE.Object3D;
+        cpuRingRef?: RingMesh;
+        memRingRef?: RingMesh;
+        nodeName?: string;
+        initialY?: number;
+      };
+
+      if (userData.type === 'node') {
+        nodeVisuals.push({
+          scannerRef: userData.scannerRef,
+          coreRef: userData.coreRef,
+          cpuRingRef: userData.cpuRingRef,
+          memRingRef: userData.memRingRef,
+          nodeName: userData.nodeName,
+        });
+      } else if (userData.type === 'pod' && typeof userData.initialY === 'number') {
+        podVisuals.push({
+          mesh: obj,
+          initialY: userData.initialY,
+          waveOffset: obj.id % 20,
+        });
+      } else if (userData.type === 'service' && typeof userData.initialY === 'number') {
+        serviceVisuals.push({
+          mesh: obj,
+          initialY: userData.initialY,
+          waveOffset: obj.id % 10,
+        });
+      }
+    }
+  };
 
   const updateHealthHub = (health: ClusterHealthData) => {
     const state = healthState();
@@ -251,32 +315,45 @@ const HoloDeck: Component<Props> = (props) => {
       traffic.update(delta, curves, serviceCurves);
 
       const f = engine.renderer.info.render.frame;
-      for (const obj of objectMap.values()) {
-        if (obj.userData.type === 'node') {
-          if (f % 2 === 0 && obj.userData.scannerRef) {
-            const s = obj.userData.scannerRef;
-            const scale = 1 + Math.sin(time * 2) * 0.15;
-            s.scale.setScalar(scale);
-            s.material.opacity = 0.4 - Math.sin(time * 2) * 0.15;
-          }
-          if (obj.userData.coreRef) {
-            obj.userData.coreRef.rotation.y += delta * 0.8;
-            obj.userData.coreRef.rotation.x += delta * 0.4;
-          }
-          if (f % 60 === 0 && obj.userData.nodeName) {
-            const m = getNodeMetrics(obj.userData.nodeName);
-            if (m) {
-              if (obj.userData.cpuRingRef) obj.userData.cpuRingRef.material.uniforms.uProgress.value = m.cpuUsage / 100;
-              if (obj.userData.memRingRef) obj.userData.memRingRef.material.uniforms.uProgress.value = m.memoryPercent / 100;
-            }
-          }
-        } else if (obj.userData.type === 'pod') {
-          obj.rotation.x += delta * 0.3; obj.rotation.y += delta * 0.2;
-          if (obj.userData.initialY) obj.position.y = obj.userData.initialY + Math.sin(time * 0.8 + (obj.id % 20)) * 0.2;
-        } else if (obj.userData.type === 'service') {
-          obj.rotation.y += delta * 0.15;
-          if (obj.userData.initialY) obj.position.y = obj.userData.initialY + Math.sin(time * 0.6 + (obj.id % 10)) * 0.3;
+      if (f % 2 === 0) {
+        const scannerPulse = Math.sin(time * 2);
+        const scannerScale = 1 + scannerPulse * 0.15;
+        const scannerOpacity = 0.4 - scannerPulse * 0.15;
+        for (const node of nodeVisuals) {
+          const scanner = node.scannerRef;
+          if (!scanner) continue;
+          scanner.scale.setScalar(scannerScale);
+          (scanner.material as THREE.MeshBasicMaterial).opacity = scannerOpacity;
         }
+      }
+
+      const shouldRefreshMetrics = f % 60 === 0;
+      for (const node of nodeVisuals) {
+        const coreRef = node.coreRef;
+        if (coreRef) {
+          coreRef.rotation.y += delta * 0.8;
+          coreRef.rotation.x += delta * 0.4;
+        }
+
+        if (!shouldRefreshMetrics || !node.nodeName) continue;
+        const metrics = getNodeMetrics(node.nodeName);
+        if (!metrics) continue;
+
+        if (node.cpuRingRef) node.cpuRingRef.material.uniforms.uProgress.value = metrics.cpuUsage / 100;
+        if (node.memRingRef) node.memRingRef.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
+      }
+
+      for (const pod of podVisuals) {
+        const { mesh, initialY, waveOffset } = pod;
+        mesh.rotation.x += delta * 0.3;
+        mesh.rotation.y += delta * 0.2;
+        mesh.position.y = initialY + Math.sin(time * 0.8 + waveOffset) * 0.2;
+      }
+
+      for (const service of serviceVisuals) {
+        const { mesh, initialY, waveOffset } = service;
+        mesh.rotation.y += delta * 0.15;
+        mesh.position.y = initialY + Math.sin(time * 0.6 + waveOffset) * 0.3;
       }
 
       engine.dustParticles.rotation.y = time * 0.03;
@@ -311,13 +388,17 @@ const HoloDeck: Component<Props> = (props) => {
   });
 
   createEffect(() => {
-    const key = sceneDataKey();
+    const _sceneKey = sceneDataKey();
     untrack(() => {
       while(dataGroup.children.length > 0) { const c = dataGroup.children[0]; dataGroup.remove(c); disposeObject(c); }
       objectMap.clear(); dataMap.clear(); serviceToPodsMap.clear();
+      nodeVisuals.length = 0;
+      podVisuals.length = 0;
+      serviceVisuals.length = 0;
       const ctx: SceneContext = { dataGroup, objectMap, dataMap, serviceToPodsMap, sharedGeoms, sharedMats, coreMatCache, scannerMatCache, edgeMatCache, podMatCache, podLineMatCache };
       const res = buildScene(ctx, props.nodes, props.pods, props.services);
       curves = res.curves; serviceCurves = res.serviceCurves;
+      rebuildVisualRefs();
       applyFilterVisuals();
     });
   });
