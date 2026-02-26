@@ -96,12 +96,12 @@ const ClusterSelector: Component = () => {
 
         <Show when={open()}>
           {/* Responsive container: Dropdown on desktop, Sheet on mobile */}
-          <div 
-            class="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-full z-50 md:mt-1 flex flex-col w-full md:w-64 animate-slide-up md:animate-fade-in"
+          <div
+            class="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-full z-50 md:mt-1 flex w-full flex-col md:w-64 animate-slide-up md:animate-fade-in"
           >
-            <div class="md:hidden absolute inset-0 bg-black/60 backdrop-blur-sm -z-10" onClick={() => setOpen(false)} />
+            <div class="md:hidden absolute inset-0 z-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
             
-            <div class="mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-bg-panel/95 backdrop-blur-xl md:backdrop-blur-md shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
+            <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-xl md:backdrop-blur-md shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
               <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
                 <div class="text-[10px] text-neon-cyan/50 tracking-widest px-2 font-bold">
                   CLUSTERS

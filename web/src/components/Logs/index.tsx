@@ -220,7 +220,7 @@ const Logs: Component = () => {
       {/* Query Bar */}
       <div class="glass-panel p-4">
         <div class="flex flex-wrap items-center gap-4">
-          <div class="flex-1 min-w-[300px]">
+          <div class="flex-1 min-w-0 sm:min-w-[260px]">
             <input
               type="text"
               value={query()}
@@ -230,7 +230,7 @@ const Logs: Component = () => {
             />
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <select
               value={timeRange()}
               onChange={(e) => setTimeRange(e.currentTarget.value)}
@@ -280,7 +280,7 @@ const Logs: Component = () => {
             </Show>
 
             {/* Export buttons */}
-            <div class="flex items-center gap-1 border-l border-white/10 pl-2 ml-1">
+            <div class="flex items-center gap-1 sm:ml-1 sm:border-l border-white/10 sm:pl-2">
               <button
                 onClick={() => exportLogs('json')}
                 class="rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-white/10 hover:text-text-main"
@@ -298,12 +298,12 @@ const Logs: Component = () => {
             </div>
 
             {/* Query Builder Toggle */}
-            <button
-              onClick={() => setShowSidebar(!showSidebar())}
-              class={`rounded-md px-3 py-2 text-sm font-medium transition-colors border-l border-white/10 ml-1 pl-3 ${
-                showSidebar()
-                  ? 'bg-neon-purple/20 text-neon-purple'
-                  : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-text-main'
+              <button
+                onClick={() => setShowSidebar(!showSidebar())}
+                class={`rounded-md px-3 py-2 text-sm font-medium transition-colors sm:border-l border-white/10 sm:ml-1 sm:pl-3 ${
+                  showSidebar()
+                    ? 'bg-neon-purple/20 text-neon-purple'
+                    : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-text-main'
               }`}
               title="Query Builder & Stats"
             >
@@ -324,7 +324,7 @@ const Logs: Component = () => {
       <div class="flex flex-1 gap-4 overflow-hidden">
         {/* Sidebar - Query Builder & Stats */}
         <Show when={showSidebar()}>
-          <div class="glass-panel w-72 flex-shrink-0 overflow-y-auto p-4">
+          <div class="hidden lg:block glass-panel w-72 flex-shrink-0 overflow-y-auto p-4">
             <div class="space-y-6">
               {/* Query Builder Section */}
               <div>
@@ -349,14 +349,52 @@ const Logs: Component = () => {
               </div>
             </div>
           </div>
+          <div class="fixed inset-0 z-40 lg:hidden">
+            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSidebar(false)} />
+            <div class="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-xl border-t border-white/10 bg-[rgba(8,14,28,0.94)] p-4 shadow-2xl">
+              <div class="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
+                <h3 class="text-xs font-mono uppercase tracking-[0.18em] text-neon-purple/70">Log Tools</h3>
+                <button
+                  type="button"
+                  class="h-8 w-8 rounded-md border border-white/10 bg-white/5 text-text-dim"
+                  onClick={() => setShowSidebar(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div class="space-y-6">
+                {/* Query Builder Section */}
+                <div>
+                  <h3 class="text-xs font-mono text-text-main uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Query Builder
+                  </h3>
+                  <QueryBuilder onQueryChange={setQuery} initialQuery={query()} />
+                </div>
+
+                {/* Stats Section */}
+                <div class="border-t border-white/10 pt-4">
+                  <h3 class="text-xs font-mono text-text-main uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    Log Statistics
+                  </h3>
+                  <LogStats logs={logs} />
+                </div>
+              </div>
+            </div>
+          </div>
         </Show>
 
         {/* Main Log Panel */}
-        <div class="glass-panel flex-1 overflow-hidden flex flex-col">
+        <div class="glass-panel min-w-0 flex-1 overflow-hidden flex flex-col">
         <div class="flex h-full flex-col">
           {/* Header with Controls */}
-          <div class="flex items-center justify-between border-b border-white/5 px-4 py-2">
-            <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-start justify-between gap-2 border-b border-white/5 px-4 py-2 sm:items-center">
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
               <span class="text-sm font-medium text-text-main">Logs</span>
               <span class="text-xs text-text-dim">{logs.length} entries</span>
               <Show when={streaming()}>
@@ -368,7 +406,7 @@ const Logs: Component = () => {
             </div>
 
             {/* Right side controls */}
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center justify-end gap-2">
               {/* Search input for visualization modes */}
               <Show when={viewMode() !== 'list'}>
                 <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 px-2">
@@ -380,7 +418,7 @@ const Logs: Component = () => {
                     value={searchTerm()}
                     onInput={(e) => setSearchTerm(e.currentTarget.value)}
                     placeholder={searchRegex() ? 'Regex...' : 'Search...'}
-                    class={`w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
+                    class={`w-20 sm:w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
                   />
                   <Show when={searchTerm()}>
                     <button
@@ -405,22 +443,22 @@ const Logs: Component = () => {
               </Show>
 
               {/* View Mode Toggle */}
-              <div class="flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1">
+              <div class="flex flex-wrap items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1">
                 <button
                   onClick={() => setViewMode('list')}
-                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
+                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
                 >
                   TERMINAL
                 </button>
                 <button
                   onClick={() => setViewMode('flow')}
-                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
+                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
                 >
                   FLOW
                 </button>
                 <button
                   onClick={() => setViewMode('rain')}
-                  class={`px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
+                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
                 >
                   MATRIX
                 </button>
@@ -429,7 +467,7 @@ const Logs: Component = () => {
               {/* Clear button */}
               <button
                 onClick={() => setLogs([])}
-                class="text-xs text-text-dim hover:text-text-muted"
+                class="rounded px-2 py-1 text-xs text-text-dim hover:text-text-muted"
               >
                 Clear
               </button>

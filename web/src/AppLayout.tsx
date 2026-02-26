@@ -80,7 +80,7 @@ const AppLayout: Component<ParentProps> = (props) => {
       
       {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
-        <header class="border-b border-white/5 bg-bg-panel/50 backdrop-blur-md relative z-40">
+        <header class="border-b border-white/5 bg-[rgba(11,16,32,0.74)] backdrop-blur-md relative z-40">
         <div class="flex h-16 items-center justify-between px-4 md:px-6">
           {/* Left: Logo & Mobile Toggle */}
           <div class="flex items-center gap-3">
@@ -151,7 +151,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Show when={mobileMenuOpen()}>
           <div
             id={mobileNavId}
-            class="md:hidden fixed inset-x-0 top-16 z-50 bg-bg-panel/95 backdrop-blur-xl border-b border-white/10 animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            class="md:hidden fixed inset-x-0 top-16 z-[70] bg-[rgba(8,14,28,0.94)] backdrop-blur-xl border-b border-white/10 animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
             onClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             style={{ 'padding-bottom': 'max(0.75rem, env(safe-area-inset-bottom))' }}
@@ -177,7 +177,7 @@ const AppLayout: Component<ParentProps> = (props) => {
           </div>
           {/* Backdrop */}
           <div
-            class="fixed inset-x-0 top-16 bottom-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+            class="fixed inset-x-0 top-16 bottom-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
             onClick={(event) => closeMobileMenuFromBackdrop(event)}
           />
         </Show>

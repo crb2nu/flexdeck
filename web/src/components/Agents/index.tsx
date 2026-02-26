@@ -221,17 +221,17 @@ const Agents: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
-      <div class="glass-panel flex items-center justify-between px-4 py-3">
-        <div class="flex items-center gap-4">
+      <div class="glass-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex items-center gap-3 sm:gap-4">
           <h2 class="text-lg font-medium text-text-main">AI Agents</h2>
           <span class="text-sm text-text-dim">
             {agents.filter(a => a.status === 'healthy').length} healthy
           </span>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           {/* View toggle */}
-          <div class="flex rounded-md bg-white/5 p-0.5">
+          <div class="flex max-w-full overflow-x-auto rounded-md bg-white/5 p-0.5 no-scrollbar">
             <button
               onClick={() => setViewMode('grid')}
               class={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${

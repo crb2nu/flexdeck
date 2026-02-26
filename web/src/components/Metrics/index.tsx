@@ -149,10 +149,10 @@ const Metrics: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
-      <div class="glass-panel flex items-center justify-between px-4 py-3">
-        <div class="flex items-center gap-4">
+      <div class="glass-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Tab bar */}
-          <div class="flex rounded-lg bg-surface-raised p-0.5">
+          <div class="flex max-w-full overflow-x-auto rounded-lg bg-surface-raised p-0.5 no-scrollbar">
             <button
               onClick={() => setMetricsTab('prometheus')}
               class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
@@ -192,8 +192,8 @@ const Metrics: Component = () => {
         </div>
 
         <Show when={metricsTab() === 'prometheus'}>
-          <div class="flex items-center gap-3">
-            <div class="flex rounded-lg bg-surface-raised p-0.5">
+          <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div class="flex max-w-full overflow-x-auto rounded-lg bg-surface-raised p-0.5 no-scrollbar">
               <For each={timeRanges}>
                 {(range) => (
                   <button

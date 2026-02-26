@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, lazy, Suspense, ErrorBoundary, createMemo } from 'solid-js';
 import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
@@ -39,6 +39,7 @@ const Pipeline: Component = () => {
 
   // Page-level tabs
   const [pageTab, setPageTab] = createSignal<'pipelines' | 'trends' | 'history'>('pipelines');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = createSignal(false);
 
   // Pipeline-level action state
   const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
@@ -268,6 +269,17 @@ const Pipeline: Component = () => {
   const filteredRepos = () => {
     return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
   };
+
+  const closeSidebarOnMobile = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileSidebarOpen(false);
+    }
+  };
+
+  const mobileSectionLabel = createMemo(() => {
+    if (pageTab() !== 'pipelines') return pageTab().toUpperCase();
+    return viewMode() === 'overview' ? 'PIPELINES / OVERVIEW' : 'PIPELINES / DETAIL';
+  });
   
   // ...
 
@@ -354,14 +366,42 @@ const Pipeline: Component = () => {
   };
 
   return (
-    <div class="flex h-full min-h-0 w-full overflow-hidden">
+    <div class="relative flex h-full min-h-0 w-full overflow-hidden">
         {/* Sidebar */}
-        <div class="w-64 border-r border-white/10 bg-black/20 flex flex-col">
+        <div
+          class={`fixed inset-0 z-40 lg:relative lg:inset-auto lg:z-auto ${
+            mobileSidebarOpen() ? 'pointer-events-auto' : 'pointer-events-none lg:pointer-events-auto'
+          }`}
+        >
+            <div
+              class={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity lg:hidden ${
+                mobileSidebarOpen() ? 'opacity-100' : 'opacity-0'
+              }`}
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+            <div
+              class={`relative z-10 h-full w-72 max-w-[88vw] border-r border-white/10 bg-[rgba(8,14,28,0.94)] flex flex-col shadow-2xl transition-transform duration-300 lg:w-64 lg:max-w-none lg:bg-black/20 lg:shadow-none ${
+                mobileSidebarOpen() ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+              }`}
+            >
             <div class="p-4 border-b border-white/5 space-y-3">
+                <div class="flex items-center justify-between lg:hidden">
+                    <div class="text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan/70">Pipeline Controls</div>
+                    <button
+                      type="button"
+                      class="h-8 w-8 rounded-md border border-white/10 bg-white/5 text-text-dim"
+                      onClick={() => setMobileSidebarOpen(false)}
+                    >
+                      ✕
+                    </button>
+                </div>
                 {/* Page tabs */}
                 <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
                     <button
-                        onClick={() => setPageTab('pipelines')}
+                        onClick={() => {
+                            setPageTab('pipelines');
+                            closeSidebarOnMobile();
+                        }}
                         class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
                             pageTab() === 'pipelines'
                                 ? 'bg-neon-cyan/20 text-neon-cyan'
@@ -371,7 +411,10 @@ const Pipeline: Component = () => {
                         Pipelines
                     </button>
                     <button
-                        onClick={() => setPageTab('trends')}
+                        onClick={() => {
+                            setPageTab('trends');
+                            closeSidebarOnMobile();
+                        }}
                         class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
                             pageTab() === 'trends'
                                 ? 'bg-neon-cyan/20 text-neon-cyan'
@@ -381,7 +424,10 @@ const Pipeline: Component = () => {
                         Trends
                     </button>
                     <button
-                        onClick={() => setPageTab('history')}
+                        onClick={() => {
+                            setPageTab('history');
+                            closeSidebarOnMobile();
+                        }}
                         class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
                             pageTab() === 'history'
                                 ? 'bg-neon-cyan/20 text-neon-cyan'
@@ -445,6 +491,7 @@ const Pipeline: Component = () => {
                                 onClick={() => {
                                     selectRepo(repo);
                                     setSelectedJob(null);
+                                    closeSidebarOnMobile();
                                 }}
                             >
                                 <div class="truncate">{repo.name}</div>
@@ -460,9 +507,23 @@ const Pipeline: Component = () => {
                 </div>
             </Show>
         </div>
+        </div>
 
         {/* Main Content */}
-        <div class="flex-1 overflow-hidden relative bg-[#050a14] flex flex-col">
+        <div class="flex-1 min-w-0 overflow-hidden relative bg-[#050a14] flex flex-col">
+            <div class="lg:hidden flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 bg-black/30">
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted"
+                  onClick={() => setMobileSidebarOpen(true)}
+                >
+                  <span class="text-sm leading-none">☰</span>
+                  <span>Sidebar</span>
+                </button>
+                <div class="truncate text-[10px] font-mono uppercase tracking-widest text-neon-cyan/70">
+                  {mobileSectionLabel()}
+                </div>
+            </div>
             {/* Trends Tab */}
             <Show when={pageTab() === 'trends'}>
                 <ErrorBoundary fallback={(err) => (
@@ -526,9 +587,9 @@ const Pipeline: Component = () => {
                     </div>
                 }>
                     {/* Auto-refresh header bar */}
-                    <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-black/30">
-                        <div class="flex items-center gap-4">
-                            <div class="text-xs font-mono text-text-muted">
+                    <div class="flex flex-col gap-3 px-3 py-3 border-b border-white/5 bg-black/30 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-2">
+                        <div class="flex items-center justify-between gap-3 sm:justify-start sm:gap-4">
+                            <div class="text-xs font-mono text-text-muted truncate">
                                 {selectedRepo()?.name}
                             </div>
                             <Show when={isPipelineActive()}>
@@ -538,16 +599,16 @@ const Pipeline: Component = () => {
                                 </div>
                             </Show>
                         </div>
-                        <div class="flex items-center gap-4">
+                        <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-4">
                             {/* Last update time */}
                             <Show when={lastUpdate()}>
-                                <div class="text-[10px] text-text-dim font-mono">
+                                <div class="text-[9px] sm:text-[10px] text-text-dim font-mono">
                                     Updated: {formatTimeAgo(lastUpdate())}
                                 </div>
                             </Show>
                             {/* Auto-refresh toggle */}
                             <button
-                                class={`flex items-center gap-2 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider transition-all ${
+                                class={`flex items-center gap-2 px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all ${
                                     autoRefresh()
                                         ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
                                         : 'bg-white/5 text-text-muted border border-white/10 hover:bg-white/10'
@@ -561,7 +622,7 @@ const Pipeline: Component = () => {
                             </button>
                             {/* Manual refresh button */}
                             <button
-                                class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all"
+                                class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all"
                                 onClick={() => {
                                     const repo = selectedRepo();
                                     if (repo?.id) fetchPipelineStatus(repo.id);
@@ -571,10 +632,10 @@ const Pipeline: Component = () => {
                             </button>
 
                             {/* Pipeline-level actions */}
-                            <div class="flex items-center gap-1 ml-2 pl-2 border-l border-white/10">
+                            <div class="flex flex-wrap items-center gap-1 sm:ml-2 sm:pl-2 sm:border-l border-white/10">
                                 <Show when={pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled'}>
                                     <button
-                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
+                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
                                         onClick={handleRetryPipeline}
                                         disabled={pipelineActionLoading()}
                                     >
@@ -583,7 +644,7 @@ const Pipeline: Component = () => {
                                 </Show>
                                 <Show when={pipelineData()?.status === 'running' || pipelineData()?.status === 'pending'}>
                                     <button
-                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20 transition-all disabled:opacity-50"
+                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20 transition-all disabled:opacity-50"
                                         onClick={handleCancelPipeline}
                                         disabled={pipelineActionLoading()}
                                     >
@@ -593,13 +654,13 @@ const Pipeline: Component = () => {
                                 <div class="flex items-center gap-1">
                                     <input
                                         type="text"
-                                        class="w-20 px-1.5 py-1 rounded text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-neon-cyan focus:outline-none"
+                                        class="w-20 px-1.5 py-1 rounded text-[9px] sm:text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-neon-cyan focus:outline-none"
                                         value={triggerRef()}
                                         onInput={(e) => setTriggerRef(e.currentTarget.value)}
                                         placeholder="ref"
                                     />
                                     <button
-                                        class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-neon-purple/10 text-neon-purple border border-neon-purple/20 hover:bg-neon-purple/20 transition-all disabled:opacity-50"
+                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-purple/10 text-neon-purple border border-neon-purple/20 hover:bg-neon-purple/20 transition-all disabled:opacity-50"
                                         onClick={handleTriggerPipeline}
                                         disabled={pipelineActionLoading() || !triggerRef()}
                                     >
@@ -626,10 +687,10 @@ const Pipeline: Component = () => {
 
                     {/* Job Details Panel */}
                     <Show when={selectedJob()}>
-                        <div class="h-80 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-col animate-slide-up">
+                        <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-col animate-slide-up">
                             {/* Header */}
-                            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                                <div class="flex items-center gap-3">
+                            <div class="flex flex-col gap-3 p-4 border-b border-white/5 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="flex min-w-0 items-center gap-3">
                                     <div class={`w-2 h-2 rounded-full ${
                                         selectedJob().status === 'success' ? 'bg-neon-green' :
                                         selectedJob().status === 'failed' ? 'bg-red-500' :
@@ -637,7 +698,7 @@ const Pipeline: Component = () => {
                                         selectedJob().status === 'pending' ? 'bg-yellow-500' :
                                         'bg-gray-500'
                                     }`} />
-                                    <div class="text-lg font-mono font-bold text-white">{selectedJob().name}</div>
+                                    <div class="text-base sm:text-lg font-mono font-bold text-white truncate">{selectedJob().name}</div>
                                     <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{selectedJob().stage}</span>
                                     <Show when={selectedJob().duration}>
                                         <span class="text-xs text-text-dim">
@@ -645,7 +706,7 @@ const Pipeline: Component = () => {
                                         </span>
                                     </Show>
                                 </div>
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center justify-between gap-2 sm:justify-end">
                                     {/* Tabs */}
                                     <div class="flex gap-1 bg-black/40 rounded p-0.5">
                                         <button
@@ -697,7 +758,7 @@ const Pipeline: Component = () => {
                                 </Show>
                                 
                                 <Show when={activeTab() === 'config'}>
-                                    <div class="grid grid-cols-2 gap-8">
+                                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
                                         <Show when={selectedJob().details?.script}>
                                             <div class="flex flex-col gap-2">
                                                 <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>

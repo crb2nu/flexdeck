@@ -325,10 +325,10 @@ const Models: Component = () => {
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel px-4 py-3">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <h2 class="text-lg font-medium text-text-main">AI Models</h2>
-            <div class="flex gap-1 rounded-md bg-white/5 p-1">
+            <div class="flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-1 no-scrollbar">
               <TabButton active={activeTab() === 'controller'} onClick={() => setActiveTab('controller')} label="Controller" count={crdModels.length} color="neon-cyan" />
               <TabButton active={activeTab() === 'registry'} onClick={() => setActiveTab('registry')} label="Registry" count={registryModels.length} color="neon-purple" />
               <TabButton active={activeTab() === 'search'} onClick={() => setActiveTab('search')} label="Search" color="status-ok" />
@@ -338,7 +338,7 @@ const Models: Component = () => {
               <TabButton active={activeTab() === 'catalog'} onClick={() => setActiveTab('catalog')} label="Catalog" color="blue-400" />
             </div>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Phase summary pills */}
             <Show when={activeTab() === 'controller' && crdModels.length > 0}>
               <div class="hidden flex-col gap-1 sm:flex">
@@ -467,11 +467,11 @@ const Models: Component = () => {
             <Match when={activeTab() === 'search'}>
               <div class="flex flex-col gap-4">
                 <div class="glass-panel p-4">
-                  <div class="flex gap-3">
+                  <div class="flex flex-col gap-3 sm:flex-row">
                     <select
                       value={searchSource()}
                       onChange={(e) => setSearchSource(e.target.value as 'huggingface' | 'civitai')}
-                      class="rounded-md bg-white/10 px-3 py-2 text-sm text-text-main"
+                      class="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-text-main sm:w-auto"
                     >
                       <option value="huggingface">HuggingFace</option>
                       <option value="civitai">CivitAI</option>
@@ -482,12 +482,12 @@ const Models: Component = () => {
                       onInput={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       placeholder="Search models..."
-                      class="flex-1 rounded-md bg-white/10 px-4 py-2 text-sm text-text-main placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-neon-cyan"
+                      class="flex-1 min-w-0 rounded-md bg-white/10 px-4 py-2 text-sm text-text-main placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-neon-cyan"
                     />
                     <button
                       onClick={() => handleSearch()}
                       disabled={searching() || !searchQuery().trim()}
-                      class="rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+                      class="w-full rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50 sm:w-auto"
                     >
                       {searching() ? 'Searching...' : 'Search'}
                     </button>
@@ -1008,7 +1008,7 @@ const CRDModelCard: Component<{
       </Show>
 
       {/* Action Bar */}
-      <div class="mt-3 flex gap-2 border-t border-white/5 pt-3">
+      <div class="mt-3 flex flex-wrap gap-2 border-t border-white/5 pt-3">
         <Show when={isIdle()}>
           <button
             onClick={() => props.onActivate()}
@@ -1030,13 +1030,13 @@ const CRDModelCard: Component<{
         <button
           onClick={() => props.onRestart()}
           disabled={props.actionLoading?.startsWith(actionKey())}
-          class="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
+          class="flex-1 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50 sm:flex-none"
         >
           {props.actionLoading === `${actionKey()}/restart` ? '...' : 'Restart'}
         </button>
         <button
           onClick={() => setShowEvents(!showEvents())}
-          class={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+          class={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none ${
             showEvents()
               ? 'bg-neon-cyan/20 text-neon-cyan'
               : 'bg-white/10 text-text-muted hover:bg-white/20'
