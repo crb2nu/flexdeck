@@ -4,7 +4,7 @@
 
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
 
-> Last Updated: February 18, 2026
+> Last Updated: February 27, 2026
 
 ## Current Status
 
