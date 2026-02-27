@@ -284,6 +284,27 @@ const Metrics: Component = () => {
 const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) => {
   const [hoveredIndex, setHoveredIndex] = createSignal<number | null>(null);
 
+  const formatValue = (value: number, unit: string, precision: 'headline' | 'stat' | 'axis' | 'tooltip' = 'headline'): string => {
+    // Adaptive unit for network throughput: show KB/s for small values
+    if (unit === 'MB/s') {
+      if (Math.abs(value) < 0.1 && Math.abs(value) > 0) {
+        const kbVal = value * 1024;
+        if (precision === 'headline') return `${kbVal.toFixed(1)}KB/s`;
+        if (precision === 'axis') return `${kbVal.toFixed(0)}`;
+        return `${kbVal.toFixed(1)}KB/s`;
+      }
+      if (precision === 'headline') return `${value.toFixed(1)}${unit}`;
+      if (precision === 'axis') return `${value.toFixed(1)}`;
+      if (precision === 'tooltip') return `${value.toFixed(2)}${unit}`;
+      return `${value.toFixed(1)}`;
+    }
+    // Default formatting
+    if (precision === 'headline') return `${value.toFixed(1)}${unit}`;
+    if (precision === 'axis') return value.toFixed(0);
+    if (precision === 'tooltip') return `${value.toFixed(2)}${unit}`;
+    return value.toFixed(1);
+  };
+
   const stats = createMemo(() => {
     const values = props.panel.values;
     if (values.length === 0) return { current: 0, min: 0, max: 0, avg: 0, trend: 'stable' as const };
@@ -341,7 +362,7 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
           <span class={`text-sm ${getTrendColor()}`}>{getTrendIcon()}</span>
           <span class="text-2xl font-bold text-text-main tabular-nums">
             {props.panel.values.length > 0
-              ? `${stats().current.toFixed(1)}${props.panel.unit}`
+              ? formatValue(stats().current, props.panel.unit, 'headline')
               : '-'}
           </span>
         </div>
@@ -376,7 +397,7 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
           {(val) => (
             <div class="absolute top-0 left-1/2 -translate-x-1/2 rounded-md bg-surface-raised px-2 py-1 text-xs shadow-lg border border-white/10 pointer-events-none z-10">
               <div class="font-mono text-text-main">
-                {val.value.toFixed(2)}{props.panel.unit}
+                {formatValue(val.value, props.panel.unit, 'tooltip')}
               </div>
               <div class="text-text-dim text-[10px]">
                 {new Date(val.time).toLocaleTimeString()}
@@ -389,9 +410,9 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
       {/* Stats footer */}
       <div class="mt-3 flex justify-between border-t border-white/5 pt-3 text-[10px] text-text-dim">
         <div class="flex gap-3">
-          <span>Min: <span class="text-text-muted font-mono">{stats().min.toFixed(1)}</span></span>
-          <span>Avg: <span class="text-text-muted font-mono">{stats().avg.toFixed(1)}</span></span>
-          <span>Max: <span class="text-text-muted font-mono">{stats().max.toFixed(1)}</span></span>
+          <span>Min: <span class="text-text-muted font-mono">{formatValue(stats().min, props.panel.unit, 'stat')}</span></span>
+          <span>Avg: <span class="text-text-muted font-mono">{formatValue(stats().avg, props.panel.unit, 'stat')}</span></span>
+          <span>Max: <span class="text-text-muted font-mono">{formatValue(stats().max, props.panel.unit, 'stat')}</span></span>
         </div>
       </div>
     </div>
@@ -523,7 +544,14 @@ const EnhancedChart: Component<{
               font-size="8"
               fill="rgba(255,255,255,0.3)"
             >
-              {tick.value.toFixed(0)}
+              {(() => {
+                const v = tick.value;
+                if (props.unit === 'MB/s' && Math.abs(v) < 0.1 && Math.abs(v) > 0) {
+                  return `${(v * 1024).toFixed(0)}`;
+                }
+                const range = scales()!.max - scales()!.min;
+                return range < 10 ? v.toFixed(1) : v.toFixed(0);
+              })()}
             </text>
           </>
         )}
