@@ -13,6 +13,7 @@ import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
 import AlertsPanel from './AlertsPanel';
 import LangfuseWidget from './LangfuseWidget';
+import NodeResourcePanel from './NodeResourcePanel';
 import { DetailPanel } from '../shared';
 import { buildInferenceHealthSummary } from './inferenceHealth';
 
@@ -737,6 +738,7 @@ const Dashboard: Component = () => {
           </div>
           
           <AlertsPanel />
+          <NodeResourcePanel />
           <EventsFeed />
           <LangfuseWidget />
         </div>
