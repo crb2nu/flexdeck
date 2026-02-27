@@ -1,7 +1,8 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
+import { computeFluxSyncState, type FluxSyncState } from './syncState';
 
 const POLL_INTERVAL = 15_000;
 
@@ -70,12 +71,24 @@ const FluxStatus: Component = () => {
     }
   };
 
-  const readyCount = createMemo(() => {
-    const all = [...kustomizations(), ...helmReleases()];
-    return all.filter(r => r.ready).length;
+  const allResources = createMemo(() => [...kustomizations(), ...helmReleases()]);
+  const totalCount = createMemo(() => allResources().length);
+  const readyCount = createMemo(
+    () =>
+      allResources().filter((resource) => computeFluxSyncState(resource) === 'in-sync').length
+  );
+  const syncSummary = createMemo(() => {
+    const summary: Record<FluxSyncState, number> = {
+      'in-sync': 0,
+      drifting: 0,
+      error: 0,
+      suspended: 0,
+    };
+    for (const resource of allResources()) {
+      summary[computeFluxSyncState(resource)] += 1;
+    }
+    return summary;
   });
-
-  const totalCount = createMemo(() => kustomizations().length + helmReleases().length);
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
@@ -84,9 +97,7 @@ const FluxStatus: Component = () => {
         <div class="flex items-center gap-4">
           <h2 class="text-lg font-medium text-text-main">Flux GitOps</h2>
           <Show when={!loading()}>
-            <span class="text-sm text-text-dim">
-              {readyCount()}/{totalCount()} ready
-            </span>
+            <span class="text-sm text-text-dim">{readyCount()}/{totalCount()} in sync</span>
           </Show>
         </div>
         <button
@@ -126,6 +137,17 @@ const FluxStatus: Component = () => {
           }
         >
           <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <Show when={totalCount() > 0}>
+              <div class="glass-panel px-4 py-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <SyncSummaryChip label="In Sync" state="in-sync" value={syncSummary()['in-sync']} />
+                  <SyncSummaryChip label="Drifting" state="drifting" value={syncSummary().drifting} />
+                  <SyncSummaryChip label="Error" state="error" value={syncSummary().error} />
+                  <SyncSummaryChip label="Suspended" state="suspended" value={syncSummary().suspended} />
+                </div>
+              </div>
+            </Show>
+
             {/* Sources */}
             <Show when={sources().length > 0}>
               <div class="glass-panel overflow-hidden">
@@ -135,7 +157,7 @@ const FluxStatus: Component = () => {
                     Sources
                   </span>
                   <span class="text-[10px] text-text-dim ml-auto">
-                    {sources().filter(s => s.ready).length}/{sources().length} ready
+                    {sources().filter((source) => computeFluxSyncState({ ready: source.ready, conditions: source.conditions }) === 'in-sync').length}/{sources().length} in sync
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
@@ -155,7 +177,7 @@ const FluxStatus: Component = () => {
                     Kustomizations
                   </span>
                   <span class="text-[10px] text-text-dim ml-auto">
-                    {kustomizations().filter(k => k.ready).length}/{kustomizations().length} ready
+                    {kustomizations().filter((resource) => computeFluxSyncState(resource) === 'in-sync').length}/{kustomizations().length} in sync
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
@@ -183,7 +205,7 @@ const FluxStatus: Component = () => {
                     Helm Releases
                   </span>
                   <span class="text-[10px] text-text-dim ml-auto">
-                    {helmReleases().filter(h => h.ready).length}/{helmReleases().length} ready
+                    {helmReleases().filter((resource) => computeFluxSyncState(resource) === 'in-sync').length}/{helmReleases().length} in sync
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
@@ -247,6 +269,13 @@ const FluxStatus: Component = () => {
 // ─── Source Row ───
 
 const FluxSourceRow: Component<{ source: FluxSource }> = (props) => {
+  const syncState = createMemo(() =>
+    computeFluxSyncState({
+      ready: props.source.ready,
+      conditions: props.source.conditions,
+    }),
+  );
+
   const shortRevision = () => {
     const rev = props.source.revision || '';
     if (rev.includes('/')) {
@@ -259,7 +288,7 @@ const FluxSourceRow: Component<{ source: FluxSource }> = (props) => {
 
   return (
     <div class="flex items-center gap-3 px-4 py-2.5">
-      <span class={`w-2 h-2 rounded-full flex-shrink-0 ${props.source.ready ? 'bg-neon-green' : 'bg-red-500'}`} />
+      <span class={`w-2 h-2 rounded-full flex-shrink-0 ${syncStateDotClass(syncState())}`} />
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium text-text-main truncate">{props.source.name}</span>
@@ -286,6 +315,7 @@ const FluxSourceRow: Component<{ source: FluxSource }> = (props) => {
           {formatRelativeTime(props.source.lastFetched!)}
         </span>
       </Show>
+      <SyncStatePill state={syncState()} />
     </div>
   );
 };
@@ -305,22 +335,18 @@ const FluxResourceRow: Component<{
   onHrToggle?: (section: string) => void;
 }> = (props) => {
   const [expanded, setExpanded] = createSignal(false);
+  const syncState = createMemo(() => computeFluxSyncState(props.resource));
 
   const statusDot = () => {
-    if (props.resource.suspended) return 'bg-status-warn';
-    return props.resource.ready ? 'bg-neon-green' : 'bg-red-500';
+    return syncStateDotClass(syncState());
   };
 
   const statusLabel = () => {
-    if (props.resource.suspended) return 'Suspended';
-    return props.resource.ready ? 'Ready' : 'Not Ready';
+    return syncStateLabel(syncState());
   };
 
   const statusClasses = () => {
-    if (props.resource.suspended) return 'bg-status-warn/10 text-status-warn border border-status-warn/20';
-    return props.resource.ready
-      ? 'bg-neon-green/10 text-neon-green border border-neon-green/20'
-      : 'bg-red-500/10 text-red-400 border border-red-500/20';
+    return syncStatePillClass(syncState());
   };
 
   const shortRevision = () => {
@@ -567,5 +593,57 @@ const FluxResourceRow: Component<{
     </div>
   );
 };
+
+const SyncSummaryChip: Component<{ label: string; state: FluxSyncState; value: number }> = (props) => (
+  <span class={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-mono uppercase tracking-wider ${syncStatePillClass(props.state)}`}>
+    <span>{props.label}</span>
+    <span>{props.value}</span>
+  </span>
+);
+
+const SyncStatePill: Component<{ state: FluxSyncState }> = (props) => (
+  <span class={`text-[10px] font-mono px-2 py-0.5 rounded ${syncStatePillClass(props.state)}`}>
+    {syncStateLabel(props.state)}
+  </span>
+);
+
+function syncStateLabel(state: FluxSyncState): string {
+  switch (state) {
+    case 'in-sync':
+      return 'In Sync';
+    case 'drifting':
+      return 'Drifting';
+    case 'error':
+      return 'Error';
+    case 'suspended':
+      return 'Suspended';
+  }
+}
+
+function syncStateDotClass(state: FluxSyncState): string {
+  switch (state) {
+    case 'in-sync':
+      return 'bg-neon-green';
+    case 'drifting':
+      return 'bg-neon-cyan';
+    case 'error':
+      return 'bg-red-500';
+    case 'suspended':
+      return 'bg-status-warn';
+  }
+}
+
+function syncStatePillClass(state: FluxSyncState): string {
+  switch (state) {
+    case 'in-sync':
+      return 'bg-neon-green/10 text-neon-green border border-neon-green/20';
+    case 'drifting':
+      return 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20';
+    case 'error':
+      return 'bg-red-500/10 text-red-400 border border-red-500/20';
+    case 'suspended':
+      return 'bg-status-warn/10 text-status-warn border border-status-warn/20';
+  }
+}
 
 export default FluxStatus;
