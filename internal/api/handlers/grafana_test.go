@@ -111,3 +111,57 @@ func TestGrafanaDashboards_Anonymous(t *testing.T) {
 		t.Fatalf("expected 1 dashboard with uid 123, got %+v", got)
 	}
 }
+
+func TestGrafanaDashboards_FallbackToAnonymousWhenTokenRejected(t *testing.T) {
+	t.Parallel()
+
+	requestCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		authHeader := r.Header.Get("Authorization")
+		if requestCount == 1 {
+			if authHeader == "" {
+				t.Fatalf("expected token-authenticated request first")
+			}
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if authHeader != "" {
+			t.Fatalf("expected anonymous retry without Authorization header, got %q", authHeader)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"uid":"fallback", "title":"Dash"}]`))
+	}))
+	defer ts.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			Grafana: config.GrafanaConfig{
+				URL:      ts.URL,
+				Token:    "bad-token",
+				Disabled: false,
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/grafana/dashboards", nil)
+	rr := httptest.NewRecorder()
+	h.GrafanaDashboards(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if requestCount != 2 {
+		t.Fatalf("expected two requests (auth + anonymous retry), got %d", requestCount)
+	}
+
+	var got []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(got) != 1 || got[0]["uid"] != "fallback" {
+		t.Fatalf("expected fallback dashboard payload, got %+v", got)
+	}
+}

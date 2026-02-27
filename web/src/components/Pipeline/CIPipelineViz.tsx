@@ -198,6 +198,8 @@ const CIPipelineViz: Component<{
 
   // Helper to extract numeric job ID
   const getNumericJobId = (jobId: string): string => jobId.replace(/^job-/, '');
+  const isLiveGitLabJobId = (jobId: string): boolean =>
+    /^\d+$/.test(getNumericJobId(jobId));
 
   // Job action handlers with real API calls
   const handleRetryJob = async (job: PipelineJob, e: MouseEvent) => {
@@ -208,6 +210,10 @@ const CIPipelineViz: Component<{
     }
 
     const jobId = getNumericJobId(job.id);
+    if (!isLiveGitLabJobId(job.id)) {
+      console.warn('Skipping retry for non-live job id', job.id);
+      return;
+    }
     setActionLoading(job.id);
 
     try {
@@ -241,6 +247,10 @@ const CIPipelineViz: Component<{
     }
 
     const jobId = getNumericJobId(job.id);
+    if (!isLiveGitLabJobId(job.id)) {
+      console.warn('Skipping cancel for non-live job id', job.id);
+      return;
+    }
     setActionLoading(job.id);
 
     try {
@@ -274,6 +284,10 @@ const CIPipelineViz: Component<{
     }
 
     const jobId = getNumericJobId(job.id);
+    if (!isLiveGitLabJobId(job.id)) {
+      console.warn('Skipping play for non-live job id', job.id);
+      return;
+    }
     setActionLoading(job.id);
 
     try {
@@ -802,7 +816,7 @@ const CIPipelineViz: Component<{
                         </Show>
                         
                         {/* Manual trigger button */}
-                        <Show when={job.status === 'manual'}>
+                        <Show when={job.status === 'manual' && isLiveGitLabJobId(job.id)}>
                           <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
@@ -818,7 +832,7 @@ const CIPipelineViz: Component<{
                         </Show>
 
                         {/* Retry button for failed jobs */}
-                        <Show when={job.status === 'failed'}>
+                        <Show when={job.status === 'failed' && isLiveGitLabJobId(job.id)}>
                           <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
@@ -834,7 +848,7 @@ const CIPipelineViz: Component<{
                         </Show>
 
                         {/* Cancel button for running jobs */}
-                        <Show when={job.status === 'running'}>
+                        <Show when={job.status === 'running' && isLiveGitLabJobId(job.id)}>
                           <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{

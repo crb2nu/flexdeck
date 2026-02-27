@@ -9,6 +9,11 @@ const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
 
 const POLL_INTERVAL = 10000; // 10 seconds
+const NUMERIC_ID_PATTERN = /^\d+$/;
+
+function isNumericId(value: string | undefined | null): value is string {
+  return !!value && NUMERIC_ID_PATTERN.test(value);
+}
 
 const Pipeline: Component = () => {
   const [repos, setRepos] = createSignal<RepoInfo[]>([]);
@@ -44,6 +49,7 @@ const Pipeline: Component = () => {
   // Pipeline-level action state
   const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
   const [triggerRef, setTriggerRef] = createSignal('main');
+  const hasLivePipelineId = createMemo(() => isNumericId(pipelineData()?.id));
 
   onMount(async () => {
     try {
@@ -120,7 +126,7 @@ const Pipeline: Component = () => {
   // Check if pipeline has running jobs
   const isPipelineActive = () => {
     const pipeline = pipelineData();
-    if (!pipeline) return false;
+    if (!pipeline || !isNumericId(pipeline.id)) return false;
     return pipeline.stages.some(stage =>
       stage.jobs.some(job => job.status === 'running' || job.status === 'pending')
     );
@@ -197,6 +203,11 @@ const Pipeline: Component = () => {
     if (job && repo?.id && job.id) {
       // Extract numeric job ID from the format "job-123" or just "123"
       const jobId = job.id.replace(/^job-/, '');
+      if (!isNumericId(jobId)) {
+        setTraceLoading(false);
+        setJobTrace('Live logs are only available for real GitLab job runs.');
+        return;
+      }
       fetchJobTrace(repo.id, jobId);
     }
   });
@@ -225,7 +236,7 @@ const Pipeline: Component = () => {
   const handleRetryPipeline = async () => {
     const repo = selectedRepo();
     const pipeline = pipelineData();
-    if (!repo?.id || !pipeline?.id) return;
+    if (!repo?.id || !isNumericId(pipeline?.id)) return;
     setPipelineActionLoading(true);
     try {
       await ciApi.retryPipeline(repo.id, pipeline.id);
@@ -240,7 +251,7 @@ const Pipeline: Component = () => {
   const handleCancelPipeline = async () => {
     const repo = selectedRepo();
     const pipeline = pipelineData();
-    if (!repo?.id || !pipeline?.id) return;
+    if (!repo?.id || !isNumericId(pipeline?.id)) return;
     setPipelineActionLoading(true);
     try {
       await ciApi.cancelPipeline(repo.id, pipeline.id);
@@ -633,7 +644,7 @@ const Pipeline: Component = () => {
 
                             {/* Pipeline-level actions */}
                             <div class="flex flex-wrap items-center gap-1 sm:ml-2 sm:pl-2 sm:border-l border-white/10">
-                                <Show when={pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled'}>
+                                <Show when={hasLivePipelineId() && (pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled')}>
                                     <button
                                         class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
                                         onClick={handleRetryPipeline}
@@ -642,7 +653,7 @@ const Pipeline: Component = () => {
                                         Retry Pipeline
                                     </button>
                                 </Show>
-                                <Show when={pipelineData()?.status === 'running' || pipelineData()?.status === 'pending'}>
+                                <Show when={hasLivePipelineId() && (pipelineData()?.status === 'running' || pipelineData()?.status === 'pending')}>
                                     <button
                                         class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20 transition-all disabled:opacity-50"
                                         onClick={handleCancelPipeline}
