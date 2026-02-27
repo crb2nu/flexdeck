@@ -299,7 +299,7 @@ func Load() (*Config, error) {
 		Grafana: GrafanaConfig{
 			Disabled: parseBool(getEnv("GRAFANA_DISABLED", "false")),
 			URL:      getEnv("GRAFANA_URL", "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"),
-			Token:    getEnv("GRAFANA_TOKEN", ""),
+			Token:    strings.TrimSpace(getEnv("GRAFANA_TOKEN", "")),
 		},
 
 		Alertmanager: AlertmanagerConfig{
@@ -327,7 +327,7 @@ func Load() (*Config, error) {
 
 		GitLab: GitLabConfig{
 			URL:   getEnv("GITLAB_URL", "https://gitlab.com"),
-			Token: getEnv("GITLAB_TOKEN", ""),
+			Token: strings.TrimSpace(getEnv("GITLAB_TOKEN", "")),
 		},
 	}
 

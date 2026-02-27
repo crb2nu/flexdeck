@@ -103,30 +103,44 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 // and forwarded without re-encoding.
 func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 	url := strings.TrimSuffix(h.cfg.Grafana.URL, "/") + path
+	token := strings.TrimSpace(h.cfg.Grafana.Token)
 
 	slog.Debug("fetching grafana api", "url", url)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create grafana request: %w", err)
-	}
-	if h.cfg.Grafana.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+h.cfg.Grafana.Token)
-	}
-	req.Header.Set("Accept", "application/json")
-
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	doRequest := func(authToken string) (*http.Response, error) {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create grafana request: %w", err)
+		}
+		if authToken != "" {
+			req.Header.Set("Authorization", "Bearer "+authToken)
+		}
+		req.Header.Set("Accept", "application/json")
+		return client.Do(req)
+	}
+
+	resp, err := doRequest(token)
 	if err != nil {
 		slog.Error("grafana request failed", "url", url, "error", err)
 		return nil, fmt.Errorf("grafana request failed: %w", err)
+	}
+
+	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && token != "" {
+		_ = resp.Body.Close()
+		slog.Warn("grafana token rejected, retrying anonymous request", "url", url, "status", resp.StatusCode)
+		resp, err = doRequest("")
+		if err != nil {
+			slog.Error("grafana anonymous retry failed", "url", url, "error", err)
+			return nil, fmt.Errorf("grafana request failed after anonymous retry: %w", err)
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Limit read to 1KB
 		errMsg := strings.TrimSpace(string(body))
-		
+
 		slog.Warn("grafana api returned non-200", "url", url, "status", resp.StatusCode, "body_preview", errMsg)
 
 		// Robust HTML detection
@@ -134,7 +148,7 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 		if strings.Contains(lowerMsg, "<!doctype html>") || strings.Contains(lowerMsg, "<html") {
 			errMsg = "received HTML error page instead of JSON (check Grafana URL/connectivity)"
 		}
-		
+
 		if len(errMsg) > 256 {
 			errMsg = errMsg[:253] + "..."
 		}

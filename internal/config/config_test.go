@@ -79,6 +79,23 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadTrimsSensitiveTokens(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "  grafana-token \n")
+	t.Setenv("GITLAB_TOKEN", "\tgitlab-token  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if cfg.Grafana.Token != "grafana-token" {
+		t.Fatalf("expected trimmed Grafana token, got %q", cfg.Grafana.Token)
+	}
+	if cfg.GitLab.Token != "gitlab-token" {
+		t.Fatalf("expected trimmed GitLab token, got %q", cfg.GitLab.Token)
+	}
+}
+
 func TestValidateRequiresPort(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.Validate(); err == nil {

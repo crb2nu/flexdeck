@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { crdInferenceMock, loraMock } = vi.hoisted(() => ({
+const { crdInferenceMock, loraMock, modelMetricsMock } = vi.hoisted(() => ({
   crdInferenceMock: vi.fn(),
   loraMock: vi.fn(),
+  modelMetricsMock: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
   modelsApi: {
     crdInference: crdInferenceMock,
     lora: loraMock,
+  },
+  litellm: {
+    modelMetrics: modelMetricsMock,
   },
 }));
 
@@ -24,6 +28,8 @@ describe('modelIntegration', () => {
     __clearModelIntegrationsForTests();
     crdInferenceMock.mockReset();
     loraMock.mockReset();
+    modelMetricsMock.mockReset();
+    modelMetricsMock.mockResolvedValue(null);
   });
 
   it('deduplicates duplicate model refs inside one batch', async () => {
