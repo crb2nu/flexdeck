@@ -10,9 +10,26 @@ export const litellm = {
   health: () => api<any>("/api/litellm/health"),
   metrics: (model?: string) =>
     api<any>(`/api/litellm/metrics${model ? `/${model}` : ""}`),
+  modelMetrics: (model: string) =>
+    api<LiteLLMModelThroughput>(
+      `/api/litellm/metrics/${encodeURIComponent(model)}`,
+    ),
   models: () => api<any[]>("/api/litellm/models"),
   router: () => api<any>("/api/litellm/router"),
 };
+
+export interface LiteLLMModelThroughput {
+  model: string;
+  tok_per_sec_1m: number;
+  tok_per_sec_5m: number;
+  tok_per_sec_15m: number;
+  output_tok_per_sec: number;
+  requests_per_min: number;
+  avg_latency_ms: number;
+  sparkline: number[];
+  trend: string;
+  last_updated: string;
+}
 
 export const langfuse = {
   health: () => api<any>("/api/langfuse/health"),
@@ -62,7 +79,8 @@ export const langfuse = {
 
 export const prom = {
   health: () => api<any>("/api/prom/health"),
-  query: (query: string) => api<any>(`/api/prom/query?query=${encodeURIComponent(query)}`),
+  query: (query: string) =>
+    api<any>(`/api/prom/query?query=${encodeURIComponent(query)}`),
   queryRange: (query: string, start: number, end: number, step: string) =>
     api<any>(
       `/api/prom/query_range?query=${encodeURIComponent(
@@ -77,14 +95,17 @@ export const loki = {
   labels: () => api<any>("/api/loki/labels"),
   labelValues: (name: string) => api<any>(`/api/loki/label/${name}/values`),
   query: (query: string, limit?: number) =>
-    api<any>(`/api/loki/query?query=${encodeURIComponent(query)}&limit=${limit || 100}`),
+    api<any>(
+      `/api/loki/query?query=${encodeURIComponent(query)}&limit=${limit || 100}`,
+    ),
   queryRange: (query: string, start: number, end: number, limit?: number) =>
     api<any>(
       `/api/loki/query_range?query=${encodeURIComponent(
         query,
       )}&start=${start}&end=${end}&limit=${limit || 100}`,
     ),
-  tailSSEUrl: (query: string) => `/api/loki/tail-sse?query=${encodeURIComponent(query)}`,
+  tailSSEUrl: (query: string) =>
+    `/api/loki/tail-sse?query=${encodeURIComponent(query)}`,
   export: (query: string, start: number, end: number) =>
     `/api/loki/export?query=${encodeURIComponent(query)}&start=${start}&end=${end}`,
 };

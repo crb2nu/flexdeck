@@ -1,6 +1,6 @@
-import type { InferenceMetrics, LoRAAdapter } from '../../lib/types';
+import type { InferenceMetrics, LoRAAdapter } from "../../lib/types";
 
-export type ReliabilityLevel = 'healthy' | 'degraded' | 'partial' | 'unknown';
+export type ReliabilityLevel = "healthy" | "degraded" | "partial" | "unknown";
 
 export interface ReliabilityStatus {
   level: ReliabilityLevel;
@@ -17,6 +17,7 @@ export interface LoRASummary {
 export interface IntegrationFetchState {
   inferenceAvailable: boolean;
   loraAvailable: boolean;
+  throughputAvailable: boolean;
 }
 
 export interface IntegrationCoverageSummary {
@@ -24,9 +25,11 @@ export interface IntegrationCoverageSummary {
   loraUnavailable: number;
 }
 
-export function getReliabilityStatus(metrics: InferenceMetrics | null | undefined): ReliabilityStatus {
-  if (!metrics) return { level: 'unknown', label: 'Unknown' };
-  if (metrics.partial) return { level: 'partial', label: 'Partial' };
+export function getReliabilityStatus(
+  metrics: InferenceMetrics | null | undefined,
+): ReliabilityStatus {
+  if (!metrics) return { level: "unknown", label: "Unknown" };
+  if (metrics.partial) return { level: "partial", label: "Partial" };
 
   const errorRate = metrics.errorRate ?? 0;
   const queueWaitP95Ms = metrics.queueWaitP95Ms ?? 0;
@@ -39,26 +42,28 @@ export function getReliabilityStatus(metrics: InferenceMetrics | null | undefine
     rejectedRequestsPerSec >= 0.05 ||
     activationRetries5m >= 1
   ) {
-    return { level: 'degraded', label: 'Degraded' };
+    return { level: "degraded", label: "Degraded" };
   }
 
-  return { level: 'healthy', label: 'Healthy' };
+  return { level: "healthy", label: "Healthy" };
 }
 
 export function getReliabilityClasses(level: ReliabilityLevel): string {
   switch (level) {
-    case 'healthy':
-      return 'bg-status-ok/20 text-status-ok';
-    case 'degraded':
-      return 'bg-status-error/20 text-status-error';
-    case 'partial':
-      return 'bg-status-warn/20 text-status-warn';
+    case "healthy":
+      return "bg-status-ok/20 text-status-ok";
+    case "degraded":
+      return "bg-status-error/20 text-status-error";
+    case "partial":
+      return "bg-status-warn/20 text-status-warn";
     default:
-      return 'bg-white/10 text-text-dim';
+      return "bg-white/10 text-text-dim";
   }
 }
 
-export function summarizeLoRA(adapters: LoRAAdapter[] | null | undefined): LoRASummary {
+export function summarizeLoRA(
+  adapters: LoRAAdapter[] | null | undefined,
+): LoRASummary {
   const items = adapters || [];
   const summary: LoRASummary = {
     total: items.length,
@@ -68,16 +73,16 @@ export function summarizeLoRA(adapters: LoRAAdapter[] | null | undefined): LoRAS
   };
 
   for (const adapter of items) {
-    if (adapter.state === 'Loaded') summary.loaded += 1;
-    else if (adapter.state === 'Pending') summary.pending += 1;
-    else if (adapter.state === 'Unloading') summary.unloading += 1;
+    if (adapter.state === "Loaded") summary.loaded += 1;
+    else if (adapter.state === "Pending") summary.pending += 1;
+    else if (adapter.state === "Unloading") summary.unloading += 1;
   }
 
   return summary;
 }
 
 export function summarizeIntegrationCoverage(
-  states: IntegrationFetchState[] | null | undefined
+  states: IntegrationFetchState[] | null | undefined,
 ): IntegrationCoverageSummary {
   const items = states || [];
   let inferenceUnavailable = 0;

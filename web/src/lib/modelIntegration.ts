@@ -1,5 +1,6 @@
-import { modelsApi } from './api';
-import type { InferenceMetrics, LoRAAdapter } from './types';
+import { modelsApi, litellm } from "./api";
+import type { InferenceMetrics, LoRAAdapter } from "./types";
+import type { LiteLLMModelThroughput } from "./api/infrastructure";
 
 export interface ModelRef {
   namespace: string;
@@ -9,8 +10,10 @@ export interface ModelRef {
 export interface ModelIntegrationResult {
   metrics?: InferenceMetrics;
   adapters: LoRAAdapter[];
+  throughput?: LiteLLMModelThroughput;
   inferenceAvailable: boolean;
   loraAvailable: boolean;
+  throughputAvailable: boolean;
 }
 
 interface BatchOptions {
@@ -21,28 +24,50 @@ interface BatchOptions {
 const DEFAULT_TTL_MS = 15_000;
 const DEFAULT_CONCURRENCY = 4;
 
-const cache = new Map<string, { expiresAt: number; value: ModelIntegrationResult }>();
+const cache = new Map<
+  string,
+  { expiresAt: number; value: ModelIntegrationResult }
+>();
 const inflight = new Map<string, Promise<ModelIntegrationResult>>();
 
 function keyOf(namespace: string, name: string): string {
   return `${namespace}/${name}`;
 }
 
-async function fetchModelIntegration(namespace: string, name: string): Promise<ModelIntegrationResult> {
-  const [inferenceResult, loraResult] = await Promise.allSettled([
-    modelsApi.crdInference(namespace, name),
-    modelsApi.lora(namespace, name),
-  ]);
+async function fetchModelIntegration(
+  namespace: string,
+  name: string,
+): Promise<ModelIntegrationResult> {
+  const [inferenceResult, loraResult, throughputResult] =
+    await Promise.allSettled([
+      modelsApi.crdInference(namespace, name),
+      modelsApi.lora(namespace, name),
+      litellm.modelMetrics(name).catch(() => null),
+    ]);
 
   return {
-    metrics: inferenceResult.status === 'fulfilled' ? inferenceResult.value : undefined,
-    adapters: loraResult.status === 'fulfilled' ? (loraResult.value.adapters || []) : [],
-    inferenceAvailable: inferenceResult.status === 'fulfilled',
-    loraAvailable: loraResult.status === 'fulfilled',
+    metrics:
+      inferenceResult.status === "fulfilled"
+        ? inferenceResult.value
+        : undefined,
+    adapters:
+      loraResult.status === "fulfilled" ? loraResult.value.adapters || [] : [],
+    throughput:
+      throughputResult.status === "fulfilled" && throughputResult.value
+        ? throughputResult.value
+        : undefined,
+    inferenceAvailable: inferenceResult.status === "fulfilled",
+    loraAvailable: loraResult.status === "fulfilled",
+    throughputAvailable:
+      throughputResult.status === "fulfilled" && !!throughputResult.value,
   };
 }
 
-async function getModelIntegration(namespace: string, name: string, force = false): Promise<ModelIntegrationResult> {
+async function getModelIntegration(
+  namespace: string,
+  name: string,
+  force = false,
+): Promise<ModelIntegrationResult> {
   const key = keyOf(namespace, name);
   const now = Date.now();
   const cached = cache.get(key);
@@ -71,7 +96,7 @@ async function getModelIntegration(namespace: string, name: string, force = fals
 
 export async function fetchModelIntegrationsBatch(
   models: ModelRef[],
-  options: BatchOptions = {}
+  options: BatchOptions = {},
 ): Promise<Record<string, ModelIntegrationResult>> {
   const force = options.force ?? false;
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
@@ -94,7 +119,11 @@ export async function fetchModelIntegrationsBatch(
       const index = nextIndex++;
       if (index >= queue.length) break;
       const item = queue[index];
-      results[keyOf(item.namespace, item.name)] = await getModelIntegration(item.namespace, item.name, force);
+      results[keyOf(item.namespace, item.name)] = await getModelIntegration(
+        item.namespace,
+        item.name,
+        force,
+      );
     }
   });
 
@@ -102,7 +131,10 @@ export async function fetchModelIntegrationsBatch(
   return results;
 }
 
-export function invalidateModelIntegration(namespace: string, name: string): void {
+export function invalidateModelIntegration(
+  namespace: string,
+  name: string,
+): void {
   cache.delete(keyOf(namespace, name));
 }
 

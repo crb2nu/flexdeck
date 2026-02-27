@@ -8,6 +8,7 @@ import type {
   InferenceMetrics,
   LoRAAdapter,
 } from '../../lib/types';
+import type { LiteLLMModelThroughput } from '../../lib/api/infrastructure';
 import { modelsApi } from '../../lib/api';
 import {
   clearModelIntegrationsCache,
@@ -46,6 +47,7 @@ const Models: Component = () => {
   const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
   const [inferenceByModel, setInferenceByModel] = createSignal<Record<string, InferenceMetrics>>({});
   const [loraByModel, setLoraByModel] = createSignal<Record<string, LoRAAdapter[]>>({});
+  const [throughputByModel, setThroughputByModel] = createSignal<Record<string, LiteLLMModelThroughput>>({});
   const [integrationByModel, setIntegrationByModel] = createSignal<Record<string, IntegrationFetchState>>({});
 
   // Registry models (flexdeck's internal model registry)
@@ -66,6 +68,7 @@ const Models: Component = () => {
     if (models.length === 0) {
       setInferenceByModel({});
       setLoraByModel({});
+      setThroughputByModel({});
       setIntegrationByModel({});
       setControllerDataLoading(false);
       return;
@@ -74,6 +77,7 @@ const Models: Component = () => {
     setControllerDataLoading(true);
     const nextInference: Record<string, InferenceMetrics> = {};
     const nextLoRA: Record<string, LoRAAdapter[]> = {};
+    const nextThroughput: Record<string, LiteLLMModelThroughput> = {};
     const nextIntegration: Record<string, IntegrationFetchState> = {};
 
     const integrationData = await fetchModelIntegrationsBatch(
@@ -88,9 +92,13 @@ const Models: Component = () => {
       nextIntegration[key] = {
         inferenceAvailable: integration.inferenceAvailable,
         loraAvailable: integration.loraAvailable,
+        throughputAvailable: integration.throughputAvailable,
       };
       if (integration.metrics) {
         nextInference[key] = integration.metrics;
+      }
+      if (integration.throughput) {
+        nextThroughput[key] = integration.throughput;
       }
       nextLoRA[key] = integration.adapters;
     }
@@ -98,6 +106,7 @@ const Models: Component = () => {
     if (token !== controllerRefreshToken) return;
     setInferenceByModel(nextInference);
     setLoraByModel(nextLoRA);
+    setThroughputByModel(nextThroughput);
     setIntegrationByModel(nextIntegration);
     setControllerDataLoading(false);
   };
@@ -427,6 +436,7 @@ const Models: Component = () => {
                             model={model}
                             inference={inferenceByModel()[modelKey(model.namespace, model.name)]}
                             adapters={loraByModel()[modelKey(model.namespace, model.name)]}
+                            throughput={throughputByModel()[modelKey(model.namespace, model.name)]}
                             integrationState={integrationByModel()[modelKey(model.namespace, model.name)]}
                             integrationLoading={controllerDataLoading()}
                             actionLoading={crdActionLoading()}
@@ -622,6 +632,7 @@ const CRDModelCard: Component<{
   model: FlexInferModel;
   inference?: InferenceMetrics;
   adapters?: LoRAAdapter[];
+  throughput?: LiteLLMModelThroughput;
   integrationState?: IntegrationFetchState;
   integrationLoading: boolean;
   actionLoading: string | null;
@@ -792,6 +803,70 @@ const CRDModelCard: Component<{
           <div class="text-[10px] text-status-warn">
             Inference telemetry unavailable for this model.
           </div>
+        </Show>
+
+        {/* LiteLLM Throughput Metrics */}
+        <Show when={props.throughput}>
+          {(() => {
+            const tp = () => props.throughput!;
+            const sparkline = () => tp().sparkline || [];
+            const trendIcon = () => tp().trend === 'up' ? '↑' : tp().trend === 'down' ? '↓' : '→';
+            const trendColor = () => tp().trend === 'up' ? 'text-status-ok' : tp().trend === 'down' ? 'text-status-error' : 'text-text-dim';
+
+            // Mini sparkline SVG
+            const SparklineSVG = () => {
+              const data = sparkline();
+              if (data.length < 2) return null;
+              const max = Math.max(...data, 0.001);
+              const w = 120;
+              const h = 24;
+              const points = data.map((v, i) =>
+                `${(i / (data.length - 1)) * w},${h - (v / max) * (h - 2)}`
+              ).join(' ');
+              return (
+                <svg width={w} height={h} class="opacity-80">
+                  <polyline
+                    points={points}
+                    fill="none"
+                    stroke="var(--neon-cyan, #22d3ee)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              );
+            };
+
+            return (
+              <div class="rounded-md bg-neon-cyan/5 p-2 space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <div class="text-[10px] font-medium text-neon-cyan uppercase tracking-wider">LiteLLM Throughput</div>
+                  <span class={`text-xs font-medium ${trendColor()}`}>{trendIcon()}</span>
+                </div>
+                <Show when={sparkline().length >= 2}>
+                  <SparklineSVG />
+                </Show>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <div class="flex justify-between gap-2">
+                    <span class="text-text-dim">tok/s (1m)</span>
+                    <span class="font-mono text-neon-cyan font-medium">{tp().tok_per_sec_1m.toFixed(1)}</span>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <span class="text-text-dim">tok/s (5m)</span>
+                    <span class="font-mono text-text-muted">{tp().tok_per_sec_5m.toFixed(1)}</span>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <span class="text-text-dim">req/min</span>
+                    <span class="font-mono text-text-muted">{tp().requests_per_min.toFixed(1)}</span>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <span class="text-text-dim">latency</span>
+                    <span class="font-mono text-text-muted">{tp().avg_latency_ms.toFixed(0)} ms</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </Show>
 
         {/* GPU Spec (from spec, not status) */}
