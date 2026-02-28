@@ -219,17 +219,20 @@ async function fetchInitialData() {
 
     if (nodesRes.ok) {
       const data = await nodesRes.json();
-      setStore("nodes", reconcile(data.items || []));
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setStore("nodes", reconcile(items));
     }
 
     if (podsRes.ok) {
       const data = await podsRes.json();
-      setStore("pods", reconcile(data.items || []));
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setStore("pods", reconcile(items));
     }
 
     if (servicesRes.ok) {
       const data = await servicesRes.json();
-      setStore("services", reconcile(data.items || []));
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setStore("services", reconcile(items));
     }
 
     setStore("lastUpdate", Date.now());

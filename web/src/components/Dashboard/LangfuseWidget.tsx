@@ -41,6 +41,51 @@ interface DailyMetric {
 
 const POLL_INTERVAL = 60_000; // 1 minute
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function aggregateObservationModels(observations: Array<Record<string, unknown>>): LangfuseModelStats[] {
+  const byModel = new Map<string, LangfuseModelStats>();
+
+  for (const item of observations) {
+    const modelName = typeof item.model === 'string' && item.model.length > 0 ? item.model : 'unknown';
+    const usage = isRecord(item.usage) ? item.usage : {};
+    const inputTokens = typeof usage.input === 'number' ? usage.input : 0;
+    const outputTokens = typeof usage.output === 'number' ? usage.output : 0;
+    const totalTokens = typeof usage.total === 'number' ? usage.total : inputTokens + outputTokens;
+    const totalCost = typeof item.calculatedTotalCost === 'number' ? item.calculatedTotalCost : 0;
+    const level = typeof item.level === 'string' ? item.level : '';
+
+    const current = byModel.get(modelName) ?? {
+      model: modelName,
+      totalCalls: 0,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalCost: 0,
+      errors: 0,
+    };
+
+    current.totalCalls += 1;
+    current.inputTokens += inputTokens;
+    current.outputTokens += outputTokens;
+    current.totalTokens += totalTokens;
+    current.totalCost += totalCost;
+    if (level.toUpperCase() === 'ERROR') {
+      current.errors += 1;
+    }
+
+    byModel.set(modelName, current);
+  }
+
+  return [...byModel.values()];
+}
+
 const LangfuseWidget: Component = () => {
   const [healthy, setHealthy] = createSignal<boolean | null>(null);
   const [modelStats, setModelStats] = createSignal<LangfuseModelStats[]>([]);
@@ -70,13 +115,25 @@ const LangfuseWidget: Component = () => {
       ]);
 
       if (modelsRes.status === 'fulfilled') {
-        setModelStats(modelsRes.value?.models || []);
+        const payload = modelsRes.value;
+        const models = toArray<LangfuseModelStats>((payload as any)?.models);
+        if (models.length > 0) {
+          setModelStats(models);
+        } else {
+          // Compatibility fallback: derive model stats from raw observations payload.
+          const observations = toArray<Record<string, unknown>>((payload as any)?.data);
+          setModelStats(aggregateObservationModels(observations));
+        }
       }
       if (tracesRes.status === 'fulfilled') {
-        setTraces(tracesRes.value?.data || []);
+        const payload = tracesRes.value;
+        const tracesData = toArray<LangfuseTrace>((payload as any)?.data);
+        setTraces(tracesData);
       }
       if (metricsRes.status === 'fulfilled') {
-        setDailyMetrics(metricsRes.value?.data || []);
+        const payload = metricsRes.value;
+        const metricData = toArray<DailyMetric>((payload as any)?.data);
+        setDailyMetrics(metricData);
       }
 
       setError('');

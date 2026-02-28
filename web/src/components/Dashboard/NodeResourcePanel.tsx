@@ -40,7 +40,10 @@ const NodeResourcePanel: Component = () => {
     try {
       const data = await prom.query(query);
       const result = data?.data?.result;
-      return (result || []).map((r: any) => ({
+      if (!Array.isArray(result)) {
+        return [];
+      }
+      return result.map((r: any) => ({
         metric: r.metric || {},
         value: parseFloat(r.value?.[1] ?? '0'),
       }));
@@ -50,7 +53,7 @@ const NodeResourcePanel: Component = () => {
   };
 
   const fetchResources = async () => {
-    const k8sNodes = k8sStore.nodes || [];
+    const k8sNodes = Array.isArray(k8sStore.nodes) ? k8sStore.nodes : [];
     if (k8sNodes.length === 0) {
       setLoading(false);
       return;
@@ -70,12 +73,33 @@ const NodeResourcePanel: Component = () => {
     // Count GPUs per node
     const gpuCountResults = await queryProm('count by (instance) (amdgpu_gpu_busy_percent)');
 
-    const matchNode = (instance: string, nodeName: string): boolean => {
-      return instance.includes(nodeName) || nodeName.includes(instance.split(':')[0]);
+    const normalizeNodeName = (value: string): string => {
+      return value.toLowerCase().trim().split(':')[0].split('.')[0];
+    };
+
+    const metricNodeName = (metric: Record<string, string>): string => {
+      return (
+        metric.node ||
+        metric.nodename ||
+        metric.kubernetes_node ||
+        metric.exported_node ||
+        metric.instance ||
+        ''
+      );
+    };
+
+    const matchNode = (metricNode: string, nodeName: string): boolean => {
+      const metricNorm = normalizeNodeName(metricNode);
+      const nodeNorm = normalizeNodeName(nodeName);
+      return (
+        metricNorm === nodeNorm ||
+        metricNorm.includes(nodeNorm) ||
+        nodeNorm.includes(metricNorm)
+      );
     };
 
     const findVal = (results: any[], nodeName: string): number | null => {
-      const match = results.find((r: any) => matchNode(r.metric.instance || '', nodeName));
+      const match = results.find((r: any) => matchNode(metricNodeName(r.metric || {}), nodeName));
       return match ? match.value : null;
     };
 

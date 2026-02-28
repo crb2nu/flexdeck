@@ -54,10 +54,14 @@ const Pipeline: Component = () => {
   onMount(async () => {
     try {
       const data = await ciApi.listRepos();
-      setRepos(data);
+      const normalizedRepos = Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) {
+        console.warn('Unexpected /api/ci/repos payload shape; expected array', data);
+      }
+      setRepos(normalizedRepos);
       // Load pipelines for overview mode
-      if (data.length > 0) {
-        fetchAllPipelines(data);
+      if (normalizedRepos.length > 0) {
+        fetchAllPipelines(normalizedRepos);
       }
     } catch (e) {
       console.error(e);
