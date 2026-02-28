@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { Component, createMemo, createSignal, onMount, For, Show } from 'solid-js';
 import { grafanaApi } from '../../lib/api';
 
 interface Dashboard {
@@ -15,6 +15,83 @@ interface Panel {
   title: string;
   type: string;
   description?: string;
+  datasource?: string;
+  queryPreview?: string;
+  section?: string;
+}
+
+function extractDatasourceName(datasource: unknown): string | undefined {
+  if (typeof datasource === 'string' && datasource.trim()) {
+    return datasource;
+  }
+  if (datasource && typeof datasource === 'object') {
+    const source = datasource as Record<string, unknown>;
+    const name = source.name;
+    if (typeof name === 'string' && name.trim()) return name;
+    const uid = source.uid;
+    if (typeof uid === 'string' && uid.trim()) return uid;
+    const typ = source.type;
+    if (typeof typ === 'string' && typ.trim()) return typ;
+  }
+  return undefined;
+}
+
+function extractQueryPreview(panel: Record<string, any>): string | undefined {
+  const targets = Array.isArray(panel.targets) ? panel.targets : [];
+  for (const target of targets) {
+    if (!target || typeof target !== 'object') continue;
+    const candidate =
+      target.expr ||
+      target.query ||
+      target.rawSql ||
+      target.lucene ||
+      target.target ||
+      target.measurement;
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
+function flattenPanels(rawPanels: any[], section?: string): Panel[] {
+  if (!Array.isArray(rawPanels)) return [];
+
+  const flat: Panel[] = [];
+
+  for (const panel of rawPanels) {
+    if (!panel || typeof panel !== 'object') continue;
+
+    const panelTitle =
+      typeof panel.title === 'string' && panel.title.trim()
+        ? panel.title.trim()
+        : 'Untitled';
+    const panelType =
+      typeof panel.type === 'string' && panel.type.trim()
+        ? panel.type.trim()
+        : 'unknown';
+
+    // Grafana row panels can nest child panels under `panels`, including collapsed rows.
+    if (panelType === 'row') {
+      const rowSection = section ? `${section} / ${panelTitle}` : panelTitle;
+      const rowChildren = flattenPanels(panel.panels || [], rowSection);
+      flat.push(...rowChildren);
+      continue;
+    }
+
+    flat.push({
+      id: typeof panel.id === 'number' ? panel.id : -1,
+      title: panelTitle,
+      type: panelType,
+      description:
+        typeof panel.description === 'string' ? panel.description : undefined,
+      datasource: extractDatasourceName(panel.datasource),
+      queryPreview: extractQueryPreview(panel),
+      section,
+    });
+  }
+
+  return flat;
 }
 
 const GrafanaDashboards: Component = () => {
@@ -24,6 +101,14 @@ const GrafanaDashboards: Component = () => {
   const [expandedUid, setExpandedUid] = createSignal<string | null>(null);
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
+  const panelSummary = createMemo(() => {
+    const list = panels();
+    return {
+      total: list.length,
+      sections: new Set(list.map((panel) => panel.section).filter(Boolean)).size,
+      datasources: new Set(list.map((panel) => panel.datasource).filter(Boolean)).size,
+    };
+  });
 
   const sanitizeError = (msg: string) => {
     if (!msg) return '';
@@ -58,14 +143,7 @@ const GrafanaDashboards: Component = () => {
 
     try {
       const detail = await grafanaApi.dashboard(uid);
-      const dashPanels: Panel[] = (detail?.dashboard?.panels || []).map(
-        (p: any) => ({
-          id: p.id,
-          title: p.title || 'Untitled',
-          type: p.type || 'unknown',
-          description: p.description,
-        }),
-      );
+      const dashPanels: Panel[] = flattenPanels(detail?.dashboard?.panels || []);
       setPanels(dashPanels);
     } catch {
       setPanels([]);
@@ -108,7 +186,9 @@ const GrafanaDashboards: Component = () => {
           {(dash) => (
             <div
               class={`glass-panel-hover flex flex-col p-4 cursor-pointer transition-all ${
-                expandedUid() === dash.uid ? 'border-neon-cyan/30' : ''
+                expandedUid() === dash.uid
+                  ? 'border-neon-cyan/30 md:col-span-2 xl:col-span-3'
+                  : ''
               }`}
               onClick={() => toggleDashboard(dash.uid)}
             >
@@ -154,19 +234,62 @@ const GrafanaDashboards: Component = () => {
                   </Show>
 
                   <Show when={!panelsLoading() && panels().length > 0}>
-                    <div class="space-y-1.5">
-                      <For each={panels()}>
-                        {(panel) => (
-                          <div class="flex items-center gap-2 px-2 py-1 rounded bg-white/5 text-xs">
-                            <span class="text-neon-cyan font-mono">
-                              {panel.type}
-                            </span>
-                            <span class="text-text-main truncate flex-1">
-                              {panel.title}
-                            </span>
-                          </div>
-                        )}
-                      </For>
+                    <div class="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] uppercase tracking-wider text-text-dim">
+                      <span>{panelSummary().total} panels</span>
+                      <Show when={panelSummary().sections > 0}>
+                        <span>{panelSummary().sections} sections</span>
+                      </Show>
+                      <Show when={panelSummary().datasources > 0}>
+                        <span>{panelSummary().datasources} datasources</span>
+                      </Show>
+                    </div>
+                    <div class="max-h-[32rem] overflow-y-auto pr-1">
+                      <div class="grid grid-cols-1 gap-1.5 lg:grid-cols-2 2xl:grid-cols-3">
+                        <For each={panels()}>
+                          {(panel) => (
+                            <div class="rounded bg-white/5 px-2 py-1.5 text-xs">
+                              <div class="flex items-center gap-2">
+                                <span class="text-neon-cyan font-mono">
+                                  {panel.type}
+                                </span>
+                                <span class="text-text-main truncate flex-1 font-medium">
+                                  {panel.title}
+                                </span>
+                                <span class="text-[10px] text-text-dim">
+                                  #{panel.id}
+                                </span>
+                              </div>
+
+                              <Show when={panel.section || panel.datasource}>
+                                <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-text-dim">
+                                  <Show when={panel.section}>
+                                    <span class="rounded bg-white/5 px-1.5 py-0.5">
+                                      {panel.section}
+                                    </span>
+                                  </Show>
+                                  <Show when={panel.datasource}>
+                                    <span class="rounded bg-neon-purple/10 px-1.5 py-0.5 text-neon-purple">
+                                      ds: {panel.datasource}
+                                    </span>
+                                  </Show>
+                                </div>
+                              </Show>
+
+                              <Show when={panel.description}>
+                                <div class="mt-1 text-[11px] text-text-dim">
+                                  {panel.description}
+                                </div>
+                              </Show>
+
+                              <Show when={panel.queryPreview}>
+                                <pre class="mt-1 max-h-24 overflow-auto rounded bg-black/30 p-1.5 font-mono text-[10px] text-text-dim">
+                                  {panel.queryPreview}
+                                </pre>
+                              </Show>
+                            </div>
+                          )}
+                        </For>
+                      </div>
                     </div>
                   </Show>
 
