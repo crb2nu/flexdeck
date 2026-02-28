@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { getApiBasePath } from "./base";
 import type {
   ClusterInfo,
   FlexInferProxyMetricsResponse,
@@ -7,15 +8,15 @@ import type {
 } from "../types";
 
 export const litellm = {
-  health: () => api<any>("/api/litellm/health"),
+  health: () => api<any>("/litellm/health"),
   metrics: (model?: string) =>
-    api<any>(`/api/litellm/metrics${model ? `/${model}` : ""}`),
+    api<any>(`/litellm/metrics${model ? `/${model}` : ""}`),
   modelMetrics: (model: string) =>
     api<LiteLLMModelThroughput>(
-      `/api/litellm/metrics/${encodeURIComponent(model)}`,
+      `/litellm/metrics/${encodeURIComponent(model)}`,
     ),
-  models: () => api<any[]>("/api/litellm/models"),
-  router: () => api<any>("/api/litellm/router"),
+  models: () => api<any[]>("/litellm/models"),
+  router: () => api<any>("/litellm/router"),
 };
 
 export interface LiteLLMModelThroughput {
@@ -32,7 +33,7 @@ export interface LiteLLMModelThroughput {
 }
 
 export const langfuse = {
-  health: () => api<any>("/api/langfuse/health"),
+  health: () => api<any>("/langfuse/health"),
   metrics: (params?: {
     traceName?: string;
     fromTimestamp?: string;
@@ -43,7 +44,7 @@ export const langfuse = {
     if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
     if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
     const q = qs.toString();
-    return api<any>(`/api/langfuse/metrics${q ? `?${q}` : ""}`);
+    return api<any>(`/langfuse/metrics${q ? `?${q}` : ""}`);
   },
   traces: (params?: {
     limit?: number;
@@ -59,62 +60,66 @@ export const langfuse = {
     if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
     if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
     const q = qs.toString();
-    return api<any>(`/api/langfuse/traces${q ? `?${q}` : ""}`);
+    return api<any>(`/langfuse/traces${q ? `?${q}` : ""}`);
   },
   scores: (params?: { limit?: number; name?: string }) => {
     const qs = new URLSearchParams();
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.name) qs.set("name", params.name);
     const q = qs.toString();
-    return api<any>(`/api/langfuse/scores${q ? `?${q}` : ""}`);
+    return api<any>(`/langfuse/scores${q ? `?${q}` : ""}`);
   },
   models: (params?: { fromTimestamp?: string; toTimestamp?: string }) => {
     const qs = new URLSearchParams();
     if (params?.fromTimestamp) qs.set("fromTimestamp", params.fromTimestamp);
     if (params?.toTimestamp) qs.set("toTimestamp", params.toTimestamp);
     const q = qs.toString();
-    return api<any>(`/api/langfuse/models${q ? `?${q}` : ""}`);
+    return api<any>(`/langfuse/models${q ? `?${q}` : ""}`);
   },
 };
 
 export const prom = {
-  health: () => api<any>("/api/prom/health"),
+  health: () => api<any>("/prom/health"),
   query: (query: string) =>
-    api<any>(`/api/prom/query?query=${encodeURIComponent(query)}`),
+    api<any>(`/prom/query?query=${encodeURIComponent(query)}`),
   queryRange: (query: string, start: number, end: number, step: string) =>
     api<any>(
-      `/api/prom/query_range?query=${encodeURIComponent(
+      `/prom/query_range?query=${encodeURIComponent(
         query,
       )}&start=${start}&end=${end}&step=${step}`,
     ),
-  alerts: () => api<any>("/api/prom/alerts"),
-  rules: () => api<any>("/api/prom/rules"),
+  alerts: () => api<any>("/prom/alerts"),
+  rules: () => api<any>("/prom/rules"),
 };
 
 export const loki = {
-  labels: () => api<any>("/api/loki/labels"),
-  labelValues: (name: string) => api<any>(`/api/loki/label/${name}/values`),
+  labels: () => api<any>("/loki/labels"),
+  labelValues: (name: string) => api<any>(`/loki/label/${name}/values`),
   query: (query: string, limit?: number) =>
     api<any>(
-      `/api/loki/query?query=${encodeURIComponent(query)}&limit=${limit || 100}`,
+      `/loki/query?query=${encodeURIComponent(query)}&limit=${limit || 100}`,
     ),
   queryRange: (query: string, start: number, end: number, limit?: number) =>
     api<any>(
-      `/api/loki/query_range?query=${encodeURIComponent(
+      `/loki/query_range?query=${encodeURIComponent(
         query,
       )}&start=${start}&end=${end}&limit=${limit || 100}`,
     ),
-  tailSSEUrl: (query: string) =>
-    `/api/loki/tail-sse?query=${encodeURIComponent(query)}`,
-  export: (query: string, start: number, end: number) =>
-    `/api/loki/export?query=${encodeURIComponent(query)}&start=${start}&end=${end}`,
+  tailSSEUrl: (query: string) => {
+    const apiBase = getApiBasePath();
+    return `${apiBase}/loki/tail-sse?query=${encodeURIComponent(query)}`;
+  },
+  export: (query: string, start: number, end: number) => {
+    const apiBase = getApiBasePath();
+    return `${apiBase}/loki/export?query=${encodeURIComponent(query)}&start=${start}&end=${end}`;
+  },
 };
 
 export const grafanaApi = {
-  dashboards: () => api<any[]>("/api/grafana/dashboards"),
+  dashboards: () => api<any[]>("/grafana/dashboards"),
   dashboard: (uid: string) =>
-    api<any>(`/api/grafana/dashboards/${encodeURIComponent(uid)}`),
-  datasources: () => api<any[]>("/api/grafana/datasources"),
+    api<any>(`/grafana/dashboards/${encodeURIComponent(uid)}`),
+  datasources: () => api<any[]>("/grafana/datasources"),
 };
 
 export interface RepoInfo {
@@ -127,58 +132,58 @@ export interface RepoInfo {
 }
 
 export const ciApi = {
-  listRepos: () => api<RepoInfo[]>("/api/ci/repos"),
-  getPipeline: (id: number) => api<any>(`/api/ci/pipeline/${id}`),
+  listRepos: () => api<RepoInfo[]>("/ci/repos"),
+  getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
   getJobTrace: (projectId: number, jobId: string) =>
     api<{ jobId: string; trace: string }>(
-      `/api/ci/projects/${projectId}/jobs/${jobId}/trace`,
+      `/ci/projects/${projectId}/jobs/${jobId}/trace`,
     ),
   getJobInfo: (projectId: number, jobId: string) =>
-    api<any>(`/api/ci/projects/${projectId}/jobs/${jobId}`),
+    api<any>(`/ci/projects/${projectId}/jobs/${jobId}`),
   retryJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
-      `/api/ci/projects/${projectId}/jobs/${jobId}/retry`,
+      `/ci/projects/${projectId}/jobs/${jobId}/retry`,
       { method: "POST" },
     ),
   cancelJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
-      `/api/ci/projects/${projectId}/jobs/${jobId}/cancel`,
+      `/ci/projects/${projectId}/jobs/${jobId}/cancel`,
       { method: "POST" },
     ),
   playJob: (projectId: number, jobId: string) =>
     api<{ success: boolean; jobId: string; status: string }>(
-      `/api/ci/projects/${projectId}/jobs/${jobId}/play`,
+      `/ci/projects/${projectId}/jobs/${jobId}/play`,
       { method: "POST" },
     ),
   // Pipeline trends & history
-  getTrends: () => api<any[]>("/api/ci/trends"),
-  getProjectTrends: (id: number) => api<any>(`/api/ci/projects/${id}/trends`),
+  getTrends: () => api<any[]>("/ci/trends"),
+  getProjectTrends: (id: number) => api<any>(`/ci/projects/${id}/trends`),
   getProjectHistory: (id: number, limit?: number) =>
     api<any[]>(
-      `/api/ci/projects/${id}/history${limit ? `?limit=${limit}` : ""}`,
+      `/ci/projects/${id}/history${limit ? `?limit=${limit}` : ""}`,
     ),
   // Pipeline-level actions
   listPipelines: (projectId: number) =>
-    api<any[]>(`/api/ci/projects/${projectId}/pipelines`),
+    api<any[]>(`/ci/projects/${projectId}/pipelines`),
   retryPipeline: (projectId: number, pipelineId: string) =>
-    api<any>(`/api/ci/projects/${projectId}/pipelines/${pipelineId}/retry`, {
+    api<any>(`/ci/projects/${projectId}/pipelines/${pipelineId}/retry`, {
       method: "POST",
     }),
   cancelPipeline: (projectId: number, pipelineId: string) =>
-    api<any>(`/api/ci/projects/${projectId}/pipelines/${pipelineId}/cancel`, {
+    api<any>(`/ci/projects/${projectId}/pipelines/${pipelineId}/cancel`, {
       method: "POST",
     }),
   triggerPipeline: (projectId: number, ref: string) =>
-    api<any>(`/api/ci/projects/${projectId}/pipelines`, {
+    api<any>(`/ci/projects/${projectId}/pipelines`, {
       method: "POST",
       body: JSON.stringify({ ref }),
     }),
 };
 
 export const fluxApi = {
-  listKustomizations: () => api<FluxResource[]>("/api/flux/kustomizations"),
-  listHelmReleases: () => api<FluxResource[]>("/api/flux/helmreleases"),
-  listSources: () => api<FluxSource[]>("/api/flux/sources"),
+  listKustomizations: () => api<FluxResource[]>("/flux/kustomizations"),
+  listHelmReleases: () => api<FluxResource[]>("/flux/helmreleases"),
+  listSources: () => api<FluxSource[]>("/flux/sources"),
   reconcile: (
     kind: string,
     namespace: string,
@@ -186,7 +191,7 @@ export const fluxApi = {
     withSource = false,
   ) =>
     api<{ ok: boolean; message: string }>(
-      `/api/flux/reconcile/${kind}/${namespace}/${name}`,
+      `/flux/reconcile/${kind}/${namespace}/${name}`,
       {
         method: "POST",
         body: JSON.stringify({ withSource }),
@@ -194,67 +199,64 @@ export const fluxApi = {
     ),
   suspend: (kind: string, namespace: string, name: string, suspend: boolean) =>
     api<{ ok: boolean; message: string }>(
-      `/api/flux/suspend/${kind}/${namespace}/${name}`,
+      `/flux/suspend/${kind}/${namespace}/${name}`,
       {
         method: "POST",
         body: JSON.stringify({ suspend }),
       },
     ),
   helmReleaseValues: (ns: string, name: string) =>
-    api<any>(`/api/flux/helmreleases/${ns}/${name}/values`),
+    api<any>(`/flux/helmreleases/${ns}/${name}/values`),
   helmReleaseHistory: (ns: string, name: string) =>
-    api<any>(`/api/flux/helmreleases/${ns}/${name}/history`),
+    api<any>(`/flux/helmreleases/${ns}/${name}/history`),
 };
 
 export const flexinferProxyApi = {
-  health: () => api<any>("/api/flexinfer/proxy/health"),
-  models: () => api<any>("/api/flexinfer/proxy/models"),
+  health: () => api<any>("/flexinfer/proxy/health"),
+  models: () => api<any>("/flexinfer/proxy/models"),
   metrics: () =>
-    api<FlexInferProxyMetricsResponse>("/api/flexinfer/proxy/metrics"),
+    api<FlexInferProxyMetricsResponse>("/flexinfer/proxy/metrics"),
 };
 
 export const hudApi = {
-  fleet: () => api<import("../types").HUDFleetResponse>("/api/hud/fleet"),
+  fleet: () => api<import("../types").HUDFleetResponse>("/hud/fleet"),
   presence: () =>
-    api<import("../types").HUDAgentPresence[]>("/api/hud/presence"),
-  claims: () => api<import("../types").HUDClaim[]>("/api/hud/claims"),
-  tasks: () => api<import("../types").HUDTask[]>("/api/hud/tasks"),
-  workflows: () => api<import("../types").HUDWorkflow[]>("/api/hud/workflows"),
+    api<import("../types").HUDAgentPresence[]>("/hud/presence"),
+  claims: () => api<import("../types").HUDClaim[]>("/hud/claims"),
+  tasks: () => api<import("../types").HUDTask[]>("/hud/tasks"),
+  workflows: () => api<import("../types").HUDWorkflow[]>("/hud/workflows"),
   timeline: () =>
-    api<import("../types").HUDTimelineEvent[]>("/api/hud/timeline"),
+    api<import("../types").HUDTimelineEvent[]>("/hud/timeline"),
   approveWorkflow: (id: string) =>
-    api<any>(`/api/hud/workflows/${id}/approve`, { method: "POST" }),
+    api<any>(`/hud/workflows/${id}/approve`, { method: "POST" }),
   rejectWorkflow: (id: string) =>
-    api<any>(`/api/hud/workflows/${id}/reject`, { method: "POST" }),
+    api<any>(`/hud/workflows/${id}/reject`, { method: "POST" }),
   cancelWorkflow: (id: string, comment = "Cancelled from FlexDeck HUD") =>
-    api<any>(`/api/hud/workflows/${id}/cancel`, {
+    api<any>(`/hud/workflows/${id}/cancel`, {
       method: "POST",
       body: JSON.stringify({ comment }),
     }),
   eventsSSEUrl: () => {
-    const isPublicView =
-      typeof window !== "undefined" &&
-      window.location.hostname === "www.flexinfer.ai";
-    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    const apiBase = getApiBasePath();
     return `${apiBase}/hud/events`;
   },
 };
 
 export const alertmanagerApi = {
-  alerts: () => api<AlertmanagerAlert[]>("/api/alertmanager/alerts"),
-  silences: () => api<AlertmanagerSilence[]>("/api/alertmanager/silences"),
+  alerts: () => api<AlertmanagerAlert[]>("/alertmanager/alerts"),
+  silences: () => api<AlertmanagerSilence[]>("/alertmanager/silences"),
   createSilence: (silence: any) =>
-    api<any>("/api/alertmanager/silences", {
+    api<any>("/alertmanager/silences", {
       method: "POST",
       body: JSON.stringify(silence),
     }),
   deleteSilence: (id: string) =>
-    api<any>(`/api/alertmanager/silences/${id}`, { method: "DELETE" }),
-  status: () => api<any>("/api/alertmanager/status"),
+    api<any>(`/alertmanager/silences/${id}`, { method: "DELETE" }),
+  status: () => api<any>("/alertmanager/status"),
 };
 
 export const uiApi = {
-  getConfig: () => api<{ title?: string; theme?: string }>("/api/ui/config"),
+  getConfig: () => api<{ title?: string; theme?: string }>("/ui/config"),
 };
 
 export interface FluxCondition {
@@ -297,13 +299,13 @@ export interface FluxSource {
 }
 
 export const rbacApi = {
-  me: () => api<import("../types").RBACUser>("/api/rbac/me"),
-  roles: () => api<import("../types").RBACRole[]>("/api/rbac/roles"),
-  listUsers: () => api<import("../types").RBACUser[]>("/api/rbac/users"),
+  me: () => api<import("../types").RBACUser>("/rbac/me"),
+  roles: () => api<import("../types").RBACRole[]>("/rbac/roles"),
+  listUsers: () => api<import("../types").RBACUser[]>("/rbac/users"),
   getUser: (id: string) =>
-    api<import("../types").RBACUser>(`/api/rbac/users/${id}`),
+    api<import("../types").RBACUser>(`/rbac/users/${id}`),
   createUser: (data: { username: string; role: string }) =>
-    api<import("../types").RBACUser & { token: string }>("/api/rbac/users", {
+    api<import("../types").RBACUser & { token: string }>("/rbac/users", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -311,12 +313,12 @@ export const rbacApi = {
     id: string,
     data: Partial<{ username: string; role: string; disabled: boolean }>,
   ) =>
-    api<import("../types").RBACUser>(`/api/rbac/users/${id}`, {
+    api<import("../types").RBACUser>(`/rbac/users/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
   deleteUser: (id: string) =>
-    api<void>(`/api/rbac/users/${id}`, { method: "DELETE" }),
+    api<void>(`/rbac/users/${id}`, { method: "DELETE" }),
 };
 
 export const auditApi = {
@@ -336,22 +338,22 @@ export const auditApi = {
     if (params?.offset) qs.set("offset", String(params.offset));
     if (params?.limit) qs.set("limit", String(params.limit));
     return api<{ entries: import("../types").AuditEntry[]; total: number }>(
-      `/api/audit?${qs}`,
+      `/audit?${qs}`,
     );
   },
-  stats: () => api<import("../types").AuditStats>("/api/audit/stats"),
+  stats: () => api<import("../types").AuditStats>("/audit/stats"),
 };
 
 export const clustersApi = {
-  list: () => api<ClusterInfo[]>("/api/clusters"),
-  get: (id: string) => api<ClusterInfo>(`/api/clusters/${id}`),
+  list: () => api<ClusterInfo[]>("/clusters"),
+  get: (id: string) => api<ClusterInfo>(`/clusters/${id}`),
   create: (data: {
     name: string;
     host: string;
     token: string;
     namespace?: string;
   }) =>
-    api<ClusterInfo>("/api/clusters", {
+    api<ClusterInfo>("/clusters", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -365,16 +367,16 @@ export const clustersApi = {
       readOnly: boolean;
     }>,
   ) =>
-    api<ClusterInfo>(`/api/clusters/${id}`, {
+    api<ClusterInfo>(`/clusters/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
   delete: (id: string) =>
-    api<void>(`/api/clusters/${id}`, { method: "DELETE" }),
+    api<void>(`/clusters/${id}`, { method: "DELETE" }),
   test: (id: string) =>
-    api<{ ok: boolean; error?: string }>(`/api/clusters/${id}/test`, {
+    api<{ ok: boolean; error?: string }>(`/clusters/${id}/test`, {
       method: "POST",
     }),
   setDefault: (id: string) =>
-    api<void>(`/api/clusters/${id}/default`, { method: "POST" }),
+    api<void>(`/clusters/${id}/default`, { method: "POST" }),
 };

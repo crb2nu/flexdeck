@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { getApiBasePath } from "./base";
 import type { 
   InferenceMetrics, 
   LoRAAdapter, 
@@ -63,10 +64,7 @@ export const modelsApi = {
   crdRestart: (namespace: string, name: string) =>
     api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/restart`, { method: "POST" }),
   crdWatchSSEUrl: (namespace?: string) => {
-    const isPublicView =
-      typeof window !== "undefined" &&
-      window.location.hostname === "www.flexinfer.ai";
-    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    const apiBase = getApiBasePath();
     return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
   },
   crdEvents: (ns: string, name: string) =>
