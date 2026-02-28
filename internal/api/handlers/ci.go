@@ -24,6 +24,12 @@ type RepoInfo struct {
 	ConfigContent string `json:"configContent,omitempty"`
 }
 
+const (
+	gitlabPerPageDefault    = 100
+	gitlabMaxProjects       = 500
+	gitlabPipelineListLimit = 500
+)
+
 func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -59,29 +65,7 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 		return []RepoInfo{}, nil
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=20&order_by=last_activity_at", gitlabURL)
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("PRIVATE-TOKEN", token)
-
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch projects: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
 	var projects []struct {
 		ID                int    `json:"id"`
 		PathWithNamespace string `json:"path_with_namespace"`
@@ -89,14 +73,59 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 		DefaultBranch     string `json:"default_branch"`
 		WebURL            string `json:"web_url"`
 	}
-
-	if err := json.Unmarshal(bodyBytes, &projects); err != nil {
-		snippet := string(bodyBytes)
-		if len(snippet) > 500 {
-			snippet = snippet[:500]
+	for page := 1; len(projects) < gitlabMaxProjects; page++ {
+		apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=%d&page=%d&order_by=last_activity_at&sort=desc",
+			gitlabURL, gitlabPerPageDefault, page)
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
-		slog.Error("Failed to decode projects", "error", err, "body_snippet", snippet)
-		return nil, fmt.Errorf("failed to decode projects response: %w", err)
+		req.Header.Set("PRIVATE-TOKEN", token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch projects: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+
+		var pageProjects []struct {
+			ID                int    `json:"id"`
+			PathWithNamespace string `json:"path_with_namespace"`
+			Name              string `json:"name"`
+			DefaultBranch     string `json:"default_branch"`
+			WebURL            string `json:"web_url"`
+		}
+
+		if err := json.Unmarshal(bodyBytes, &pageProjects); err != nil {
+			snippet := string(bodyBytes)
+			if len(snippet) > 500 {
+				snippet = snippet[:500]
+			}
+			slog.Error("Failed to decode projects", "error", err, "body_snippet", snippet)
+			return nil, fmt.Errorf("failed to decode projects response: %w", err)
+		}
+
+		projects = append(projects, pageProjects...)
+		if len(pageProjects) < gitlabPerPageDefault {
+			break
+		}
+		if len(pageProjects) == 0 {
+			break
+		}
+	}
+
+	if len(projects) > gitlabMaxProjects {
+		projects = projects[:gitlabMaxProjects]
 	}
 
 	// Fetch .gitlab-ci.yml for each project in parallel (fixes N+1)
@@ -762,7 +791,7 @@ func (h *Handler) GetPipelineHistory(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
 		_, _ = fmt.Sscanf(l, "%d", &limit)
-		if limit <= 0 || limit > 100 {
+		if limit <= 0 || limit > gitlabPipelineListLimit {
 			limit = 20
 		}
 	}
@@ -957,27 +986,18 @@ func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		_, _ = fmt.Sscanf(l, "%d", &limit)
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > gitlabPipelineListLimit {
+		limit = gitlabPipelineListLimit
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
-	pipelinesURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=20", gitlabURL, projectID)
-	req, err := http.NewRequest("GET", pipelinesURL, nil)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
-		return
-	}
-	req.Header.Set("PRIVATE-TOKEN", token)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
-		return
-	}
-
 	var pipelines []struct {
 		ID        int       `json:"id"`
 		Status    string    `json:"status"`
@@ -987,9 +1007,58 @@ func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt time.Time `json:"updated_at"`
 		WebURL    string    `json:"web_url"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to decode response"})
-		return
+
+	for page := 1; len(pipelines) < limit; page++ {
+		perPage := gitlabPerPageDefault
+		remaining := limit - len(pipelines)
+		if remaining < perPage {
+			perPage = remaining
+		}
+
+		pipelinesURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=%d&page=%d",
+			gitlabURL, projectID, perPage, page)
+		req, err := http.NewRequest("GET", pipelinesURL, nil)
+		if err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
+			return
+		}
+		req.Header.Set("PRIVATE-TOKEN", token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			respondJSON(w, http.StatusBadGateway, map[string]any{"error": "Failed to connect to GitLab"})
+			return
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			respondJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("GitLab API error: %d", resp.StatusCode)})
+			return
+		}
+
+		var pagePipelines []struct {
+			ID        int       `json:"id"`
+			Status    string    `json:"status"`
+			Ref       string    `json:"ref"`
+			Duration  *float64  `json:"duration"`
+			CreatedAt time.Time `json:"created_at"`
+			UpdatedAt time.Time `json:"updated_at"`
+			WebURL    string    `json:"web_url"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&pagePipelines); err != nil {
+			_ = resp.Body.Close()
+			respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to decode response"})
+			return
+		}
+		_ = resp.Body.Close()
+
+		pipelines = append(pipelines, pagePipelines...)
+		if len(pagePipelines) < perPage || len(pagePipelines) == 0 {
+			break
+		}
+	}
+	if len(pipelines) > limit {
+		pipelines = pipelines[:limit]
 	}
 
 	result := make([]map[string]any, 0, len(pipelines))
