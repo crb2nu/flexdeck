@@ -1,5 +1,6 @@
 import { Component, createMemo, createSignal, onMount, For, Show } from 'solid-js';
-import { grafanaApi } from '../../lib/api';
+import { grafanaApi, prom } from '../../lib/api';
+import Sparkline from '../shared/Sparkline';
 
 interface Dashboard {
   uid: string;
@@ -17,7 +18,15 @@ interface Panel {
   description?: string;
   datasource?: string;
   queryPreview?: string;
+  queryExpr?: string;
   section?: string;
+}
+
+interface PanelLiveData {
+  state: 'loading' | 'ready' | 'unsupported' | 'error';
+  value?: number;
+  series?: number[];
+  message?: string;
 }
 
 function extractDatasourceName(datasource: unknown): string | undefined {
@@ -52,6 +61,71 @@ function extractQueryPreview(panel: Record<string, any>): string | undefined {
     }
   }
   return undefined;
+}
+
+function extractPromExpr(panel: Record<string, any>): string | undefined {
+  const targets = Array.isArray(panel.targets) ? panel.targets : [];
+  for (const target of targets) {
+    if (!target || typeof target !== 'object') continue;
+    const candidate = target.expr || target.query;
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizePromExpr(expr: string): string {
+  let normalized = expr;
+  const replacements: Record<string, string> = {
+    '$__rate_interval': '5m',
+    '$__interval': '1m',
+    '$__interval_ms': '60000',
+    '$__range': '1h',
+    '$__range_s': '3600',
+  };
+  for (const [token, value] of Object.entries(replacements)) {
+    normalized = normalized.split(token).join(value);
+  }
+  return normalized;
+}
+
+function parsePromSeries(payload: any): number[] {
+  const results = payload?.data?.result;
+  if (!Array.isArray(results) || results.length === 0) return [];
+
+  let selected: any = null;
+  let selectedLen = -1;
+  for (const result of results) {
+    const values = Array.isArray(result?.values) ? result.values : [];
+    if (values.length > selectedLen) {
+      selected = result;
+      selectedLen = values.length;
+    }
+  }
+
+  const values = Array.isArray(selected?.values) ? selected.values : [];
+  const series = values
+    .map((point: any) => Number.parseFloat(point?.[1] ?? ''))
+    .filter((n: number) => Number.isFinite(n));
+
+  return series;
+}
+
+function parsePromInstantValue(payload: any): number | undefined {
+  const results = payload?.data?.result;
+  if (!Array.isArray(results) || results.length === 0) return undefined;
+
+  const value = Number.parseFloat(results[0]?.value?.[1] ?? '');
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function formatMetricValue(value?: number): string {
+  if (value == null || !Number.isFinite(value)) return 'n/a';
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toFixed(0);
+  if (abs >= 100) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 function flattenPanels(rawPanels: any[], section?: string): Panel[] {
@@ -101,6 +175,10 @@ const GrafanaDashboards: Component = () => {
   const [expandedUid, setExpandedUid] = createSignal<string | null>(null);
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
+  const [liveDataByPanel, setLiveDataByPanel] = createSignal<
+    Record<string, PanelLiveData>
+  >({});
+  let liveFetchGeneration = 0;
   const panelSummary = createMemo(() => {
     const list = panels();
     return {
@@ -119,6 +197,78 @@ const GrafanaDashboards: Component = () => {
     return msg;
   };
 
+  const panelKey = (panel: Panel) => `${panel.id}:${panel.title}`;
+
+  const loadLivePanelData = async (nextPanels: Panel[]) => {
+    const generation = ++liveFetchGeneration;
+    const liveState: Record<string, PanelLiveData> = {};
+
+    const candidates = nextPanels
+      .filter((panel) => typeof panel.queryExpr === 'string' && panel.queryExpr.trim().length > 0)
+      .slice(0, 24);
+
+    for (const panel of nextPanels) {
+      const key = panelKey(panel);
+      if (!panel.queryExpr) {
+        liveState[key] = { state: 'unsupported', message: 'No query on panel' };
+        continue;
+      }
+
+      const normalized = normalizePromExpr(panel.queryExpr);
+      if (normalized.includes('$')) {
+        liveState[key] = {
+          state: 'unsupported',
+          message: 'Templated query variable not resolvable here',
+        };
+        continue;
+      }
+
+      liveState[key] = { state: 'loading' };
+    }
+    setLiveDataByPanel(liveState);
+
+    const now = Math.floor(Date.now() / 1000);
+    const start = now - 3600;
+    const end = now;
+    const step = '120';
+
+    await Promise.all(
+      candidates.map(async (panel) => {
+        const key = panelKey(panel);
+        const expr = normalizePromExpr(panel.queryExpr || '');
+        if (!expr || expr.includes('$')) return;
+
+        try {
+          const range = await prom.queryRange(expr, start, end, step);
+          const series = parsePromSeries(range);
+          let value =
+            series.length > 0 ? series[series.length - 1] : undefined;
+
+          if (value == null) {
+            const instant = await prom.query(expr);
+            value = parsePromInstantValue(instant);
+          }
+
+          if (generation !== liveFetchGeneration) return;
+          setLiveDataByPanel((current) => ({
+            ...current,
+            [key]: { state: 'ready', value, series },
+          }));
+        } catch (err) {
+          if (generation !== liveFetchGeneration) return;
+          setLiveDataByPanel((current) => ({
+            ...current,
+            [key]: {
+              state: 'error',
+              message:
+                err instanceof Error ? err.message : 'Live query failed',
+            },
+          }));
+        }
+      }),
+    );
+  };
+
   onMount(async () => {
     try {
       const data = await grafanaApi.dashboards();
@@ -134,19 +284,24 @@ const GrafanaDashboards: Component = () => {
     if (expandedUid() === uid) {
       setExpandedUid(null);
       setPanels([]);
+      setLiveDataByPanel({});
+      liveFetchGeneration++;
       return;
     }
 
     setExpandedUid(uid);
     setPanelsLoading(true);
     setPanels([]);
+    setLiveDataByPanel({});
 
     try {
       const detail = await grafanaApi.dashboard(uid);
       const dashPanels: Panel[] = flattenPanels(detail?.dashboard?.panels || []);
       setPanels(dashPanels);
+      void loadLivePanelData(dashPanels);
     } catch {
       setPanels([]);
+      setLiveDataByPanel({});
     } finally {
       setPanelsLoading(false);
     }
@@ -285,6 +440,43 @@ const GrafanaDashboards: Component = () => {
                                 <pre class="mt-1 max-h-24 overflow-auto rounded bg-black/30 p-1.5 font-mono text-[10px] text-text-dim">
                                   {panel.queryPreview}
                                 </pre>
+                              </Show>
+
+                              <Show when={liveDataByPanel()[panelKey(panel)]}>
+                                {(live) => (
+                                  <div class="mt-1.5 border-t border-white/5 pt-1.5">
+                                    <Show when={live().state === 'ready'}>
+                                      <div class="flex items-end justify-between gap-2">
+                                        <span class="text-base font-semibold tabular-nums text-neon-cyan">
+                                          {formatMetricValue(live().value)}
+                                        </span>
+                                        <Show when={(live().series?.length || 0) > 1}>
+                                          <Sparkline
+                                            data={live().series || []}
+                                            width={110}
+                                            height={24}
+                                            color="#22d3ee"
+                                          />
+                                        </Show>
+                                      </div>
+                                    </Show>
+                                    <Show when={live().state === 'loading'}>
+                                      <div class="text-[10px] text-text-dim">
+                                        Loading live stats...
+                                      </div>
+                                    </Show>
+                                    <Show when={live().state === 'unsupported'}>
+                                      <div class="text-[10px] text-text-dim">
+                                        {live().message || 'Live preview unavailable'}
+                                      </div>
+                                    </Show>
+                                    <Show when={live().state === 'error'}>
+                                      <div class="text-[10px] text-status-error">
+                                        {live().message || 'Live query failed'}
+                                      </div>
+                                    </Show>
+                                  </div>
+                                )}
                               </Show>
                             </div>
                           )}
