@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { authenticatedFetch } from "../../stores/auth";
+import { getApiBasePath } from "./base";
 
 interface ApiError {
   error: string;
@@ -36,11 +37,7 @@ export async function api<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-  // Use /flexdeck/api when hosted at the subpath on www.flexinfer.ai
-  const isPublicView =
-    typeof window !== "undefined" &&
-    window.location.hostname === "www.flexinfer.ai";
-  const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+  const apiBase = getApiBasePath();
 
   const headers = new Headers(options.headers);
 

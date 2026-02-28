@@ -1,4 +1,5 @@
 import { createStore } from "solid-js/store";
+import { getApiBasePath } from "../lib/api/base";
 
 interface Feature {
   enabled: boolean;
@@ -29,10 +30,7 @@ async function fetchHealth(): Promise<void> {
   setHealthStore("error", null);
 
   try {
-    const isPublicView =
-      typeof window !== "undefined" &&
-      window.location.hostname === "www.flexinfer.ai";
-    const healthUrl = isPublicView ? "/flexdeck/api/health" : "/api/health";
+    const healthUrl = `${getApiBasePath()}/health`;
     const response = await fetch(healthUrl);
     if (!response.ok) {
       throw new Error(`Health check failed: ${response.status}`);

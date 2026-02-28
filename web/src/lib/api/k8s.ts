@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { getApiBasePath } from "./base";
 
 export const k8s = {
   getServices: (ns?: string) =>
@@ -17,10 +18,7 @@ export const k8s = {
     api<any>(`/k8s/deployments/${ns}/${name}/restart`, { method: "POST" }),
   // SSE endpoint URL (use EventSource directly)
   watchSSEUrl: (ns?: string) => {
-    const isPublicView =
-      typeof window !== "undefined" &&
-      window.location.hostname === "www.flexinfer.ai";
-    const apiBase = isPublicView ? "/flexdeck/api" : "/api";
+    const apiBase = getApiBasePath();
     return `${apiBase}/k8s/watch-sse${ns ? `?ns=${ns}` : ""}`;
   },
   getEvents: (ns?: string, limit = 20) =>
