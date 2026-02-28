@@ -23,6 +23,11 @@ type PipelineScraper struct {
 	client *http.Client
 }
 
+const (
+	pipelineScrapePerPage    = 100
+	pipelineScrapePerProject = 50
+)
+
 // NewPipelineScraper creates a new pipeline scraper.
 func NewPipelineScraper(cfg config.GitLabConfig, store *Store) *PipelineScraper {
 	return &PipelineScraper{
@@ -192,28 +197,48 @@ func (ps *PipelineScraper) fetchProjects(ctx context.Context) ([]gitlabProject, 
 }
 
 func (ps *PipelineScraper) fetchPipelines(ctx context.Context, projectID int) ([]gitlabPipeline, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/pipelines?per_page=10", ps.cfg.URL, projectID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("PRIVATE-TOKEN", ps.cfg.Token)
+	var all []gitlabPipeline
+	for page := 1; len(all) < pipelineScrapePerProject; page++ {
+		perPage := pipelineScrapePerPage
+		remaining := pipelineScrapePerProject - len(all)
+		if remaining < perPage {
+			perPage = remaining
+		}
 
-	resp, err := ps.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
+		url := fmt.Sprintf("%s/api/v4/projects/%d/pipelines?per_page=%d&page=%d", ps.cfg.URL, projectID, perPage, page)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("PRIVATE-TOKEN", ps.cfg.Token)
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pipelines API status %d", resp.StatusCode)
+		resp, err := ps.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("pipelines API status %d", resp.StatusCode)
+		}
+
+		var pagePipelines []gitlabPipeline
+		if err := json.NewDecoder(resp.Body).Decode(&pagePipelines); err != nil {
+			_ = resp.Body.Close()
+			return nil, err
+		}
+		_ = resp.Body.Close()
+
+		all = append(all, pagePipelines...)
+		if len(pagePipelines) < perPage || len(pagePipelines) == 0 {
+			break
+		}
 	}
 
-	var pipelines []gitlabPipeline
-	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
-		return nil, err
+	if len(all) > pipelineScrapePerProject {
+		all = all[:pipelineScrapePerProject]
 	}
-	return pipelines, nil
+	return all, nil
 }
 
 func (ps *PipelineScraper) fetchPipelineJobs(ctx context.Context, projectID, pipelineID int) ([]StageRun, error) {

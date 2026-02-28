@@ -31,7 +31,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
     setLoading(true);
     setError('');
-    ciApi.getProjectHistory(id, 30)
+    ciApi.getProjectHistory(id, 100)
       .then((data) => setHistory(data || []))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load history'))
       .finally(() => setLoading(false));
