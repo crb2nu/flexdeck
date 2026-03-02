@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/go-chi/chi/v5"
 )
 
 func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {

@@ -21,20 +21,20 @@ type HuggingFaceClient struct {
 
 // HFModelInfo represents a HuggingFace model
 type HFModelInfo struct {
-	ID          string   `json:"id"`           // e.g., "meta-llama/Llama-3.1-8B"
-	ModelID     string   `json:"modelId"`
-	Author      string   `json:"author"`
-	SHA         string   `json:"sha"`
-	Private     bool     `json:"private"`
-	Disabled    bool     `json:"disabled"`
-	Gated       bool     `json:"gated"`
-	Downloads   int64    `json:"downloads"`
-	Likes       int64    `json:"likes"`
-	Tags        []string `json:"tags"`
-	PipelineTag string   `json:"pipeline_tag"` // e.g., "text-generation"
-	LibraryName string   `json:"library_name"` // e.g., "transformers"
-	CreatedAt   string   `json:"createdAt"`
-	LastModified string  `json:"lastModified"`
+	ID           string   `json:"id"` // e.g., "meta-llama/Llama-3.1-8B"
+	ModelID      string   `json:"modelId"`
+	Author       string   `json:"author"`
+	SHA          string   `json:"sha"`
+	Private      bool     `json:"private"`
+	Disabled     bool     `json:"disabled"`
+	Gated        bool     `json:"gated"`
+	Downloads    int64    `json:"downloads"`
+	Likes        int64    `json:"likes"`
+	Tags         []string `json:"tags"`
+	PipelineTag  string   `json:"pipeline_tag"` // e.g., "text-generation"
+	LibraryName  string   `json:"library_name"` // e.g., "transformers"
+	CreatedAt    string   `json:"createdAt"`
+	LastModified string   `json:"lastModified"`
 }
 
 // HFFileInfo represents a file in a HuggingFace repository
@@ -255,13 +255,13 @@ func (c *HuggingFaceClient) ToModel(hf *HFModelInfo) *Model {
 		Description: "", // HF doesn't return description in list
 		Tags:        hf.Tags,
 		Metadata: map[string]any{
-			"author":      hf.Author,
-			"downloads":   hf.Downloads,
-			"likes":       hf.Likes,
-			"pipeline":    hf.PipelineTag,
-			"library":     hf.LibraryName,
-			"gated":       hf.Gated,
-			"private":     hf.Private,
+			"author":    hf.Author,
+			"downloads": hf.Downloads,
+			"likes":     hf.Likes,
+			"pipeline":  hf.PipelineTag,
+			"library":   hf.LibraryName,
+			"gated":     hf.Gated,
+			"private":   hf.Private,
 		},
 	}
 }

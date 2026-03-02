@@ -39,8 +39,8 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
 
       const response = await loki.queryRange(
         query,
-        String(start),
-        String(end),
+        start,
+        end,
         50
       );
 

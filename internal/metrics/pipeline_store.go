@@ -13,13 +13,13 @@ import (
 
 // PipelineRun represents a single pipeline execution.
 type PipelineRun struct {
-	PipelineID int       `json:"pipeline_id"`
-	ProjectID  int       `json:"project_id"`
-	Ref        string    `json:"ref"`
-	Status     string    `json:"status"`
-	Duration   float64   `json:"duration_s"`
-	CreatedAt  time.Time `json:"created_at"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
+	PipelineID int        `json:"pipeline_id"`
+	ProjectID  int        `json:"project_id"`
+	Ref        string     `json:"ref"`
+	Status     string     `json:"status"`
+	Duration   float64    `json:"duration_s"`
+	CreatedAt  time.Time  `json:"created_at"`
+	FinishedAt time.Time  `json:"finished_at,omitempty"`
 	Stages     []StageRun `json:"stages,omitempty"`
 }
 

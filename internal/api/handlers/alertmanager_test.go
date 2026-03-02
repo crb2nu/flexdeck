@@ -44,7 +44,7 @@ func TestAlertmanagerHandlers(t *testing.T) {
 	t.Run("AlertmanagerDisabled", func(t *testing.T) {
 		h_disabled := &Handler{cfg: &config.Config{}}
 		h_disabled.cfg.Alertmanager.Disabled = true
-		
+
 		req := httptest.NewRequest(http.MethodGet, "/api/alerts", nil)
 		rr := httptest.NewRecorder()
 		h_disabled.AlertmanagerAlerts(rr, req)

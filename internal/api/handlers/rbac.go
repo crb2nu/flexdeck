@@ -140,7 +140,7 @@ func (h *Handler) RBACCurrentUser(w http.ResponseWriter, r *http.Request) {
 // RBACRoles returns all available roles and their permissions.
 func (h *Handler) RBACRoles(w http.ResponseWriter, r *http.Request) {
 	type roleInfo struct {
-		Name        rbac.Role        `json:"name"`
+		Name        rbac.Role         `json:"name"`
 		Permissions []rbac.Permission `json:"permissions"`
 	}
 

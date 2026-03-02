@@ -32,28 +32,28 @@ const (
 
 // Agent represents a registered agent
 type Agent struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Type        AgentType         `json:"type"`
-	URL         string            `json:"url"`
-	APIKey      string            `json:"api_key,omitempty"`
-	Model       string            `json:"model,omitempty"`
-	Tags        []string          `json:"tags"`
-	Metadata    map[string]any    `json:"metadata,omitempty"`
-	Status      AgentStatus       `json:"status"`
-	LastChecked *time.Time        `json:"last_checked,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Type        AgentType      `json:"type"`
+	URL         string         `json:"url"`
+	APIKey      string         `json:"api_key,omitempty"`
+	Model       string         `json:"model,omitempty"`
+	Tags        []string       `json:"tags"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	Status      AgentStatus    `json:"status"`
+	LastChecked *time.Time     `json:"last_checked,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 // AgentUsage tracks usage statistics for an agent
 type AgentUsage struct {
-	AgentID       string    `json:"agent_id"`
-	RequestCount  int64     `json:"request_count"`
-	TotalTokens   int64     `json:"total_tokens"`
-	TotalLatencyMs int64    `json:"total_latency_ms"`
-	LastUsed      time.Time `json:"last_used"`
+	AgentID        string    `json:"agent_id"`
+	RequestCount   int64     `json:"request_count"`
+	TotalTokens    int64     `json:"total_tokens"`
+	TotalLatencyMs int64     `json:"total_latency_ms"`
+	LastUsed       time.Time `json:"last_used"`
 }
 
 // Registry manages agent registration and storage

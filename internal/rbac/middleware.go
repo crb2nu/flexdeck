@@ -25,10 +25,10 @@ func ContextWithUser(ctx context.Context, user *User) context.Context {
 // Middleware authenticates requests via the RBAC registry.
 // When RBAC is disabled it delegates to the fallback handler (existing auth).
 type Middleware struct {
-	registry   *Registry
-	cookieName string
+	registry     *Registry
+	cookieName   string
 	cookieSecure bool
-	cookieTTL  time.Duration
+	cookieTTL    time.Duration
 }
 
 // NewMiddleware creates RBAC middleware.

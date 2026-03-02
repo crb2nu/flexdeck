@@ -17,12 +17,12 @@ func TestStore_RecordQuery(t *testing.T) {
 
 	ctx := context.Background()
 	entry := Entry{
-		Action:     "test-action",
-		Method:     "POST",
-		Path:       "/api/test",
-		Status:     200,
-		UserID:     "user-1",
-		Username:   "testuser",
+		Action:   "test-action",
+		Method:   "POST",
+		Path:     "/api/test",
+		Status:   200,
+		UserID:   "user-1",
+		Username: "testuser",
 	}
 
 	err := store.Record(ctx, entry)
