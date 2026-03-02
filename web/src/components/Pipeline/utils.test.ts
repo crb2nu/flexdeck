@@ -5,7 +5,12 @@ import type { Pipeline } from "./CIPipelineViz";
 import {
   formatRelativeTime,
   getJobCountsByStatus,
+  getStatusColor,
+  getStatusLabel,
   hasActiveJobs,
+  normalizeJobStatus,
+  normalizePipeline,
+  normalizePipelineStatus,
   sortJobsByStatus,
   sortPipelines,
   type RepoWithPipeline,
@@ -76,8 +81,59 @@ describe("pipeline utils", () => {
 
   it("detects active jobs from running status", () => {
     expect(hasActiveJobs(makePipeline("running", "2026-01-01T10:00:00Z", 1))).toBe(true);
+    expect(
+      hasActiveJobs({
+        ...makePipeline("pending", "2026-01-01T10:00:00Z", 0),
+        stages: [{ name: "build", jobs: [{ id: "j1", name: "j1", stage: "build", status: "pending" }] }],
+      }),
+    ).toBe(true);
     expect(hasActiveJobs(makePipeline("success", "2026-01-01T10:00:00Z", 0))).toBe(false);
     expect(hasActiveJobs(null)).toBe(false);
+  });
+
+  it("normalizes GitLab job statuses to UI statuses", () => {
+    expect(normalizeJobStatus("created")).toBe("pending");
+    expect(normalizeJobStatus("waiting_for_resource")).toBe("pending");
+    expect(normalizeJobStatus("preparing")).toBe("pending");
+    expect(normalizeJobStatus("canceling")).toBe("failed");
+    expect(normalizeJobStatus("success")).toBe("success");
+  });
+
+  it("normalizes pipeline statuses to UI statuses", () => {
+    expect(normalizePipelineStatus("running")).toBe("running");
+    expect(normalizePipelineStatus("created")).toBe("pending");
+    expect(normalizePipelineStatus("manual")).toBe("pending");
+    expect(normalizePipelineStatus("skipped")).toBe("canceled");
+  });
+
+  it("normalizes pipeline job statuses in-place shape", () => {
+    const pipeline = {
+      id: "p1",
+      ref: "main",
+      status: "created",
+      createdAt: "2026-01-01T10:00:00Z",
+      stages: [
+        {
+          name: "lint",
+          jobs: [
+            { id: "1", name: "lint", stage: "lint", status: "created" },
+            { id: "2", name: "typecheck", stage: "lint", status: "canceling" },
+          ],
+        },
+      ],
+    } as Pipeline;
+
+    const normalized = normalizePipeline(pipeline);
+    expect(normalized.status).toBe("pending");
+    expect(normalized.rawStatus).toBe("created");
+    expect(normalized.stages[0].jobs[0].rawStatus).toBe("created");
+    expect(normalized.stages[0].jobs.map((job) => job.status)).toEqual(["pending", "failed"]);
+  });
+
+  it("prefers raw status for live display label/color", () => {
+    expect(getStatusLabel("pending", "waiting_for_resource")).toBe("waiting for resource");
+    expect(getStatusColor("pending", "waiting_for_resource")).toBe("#ff9f43");
+    expect(getStatusLabel("failed", "canceling")).toBe("canceling");
   });
 
   it("counts jobs by status", () => {

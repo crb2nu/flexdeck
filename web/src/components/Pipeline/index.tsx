@@ -3,7 +3,7 @@ import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
 import { ciApi, RepoInfo } from '../../lib/api';
-import type { PipelineSortConfig } from './utils';
+import { getStatusColor, getStatusLabel, hasActiveJobs, normalizePipeline, type PipelineSortConfig } from './utils';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
@@ -70,11 +70,12 @@ const Pipeline: Component = () => {
       try {
           const liveData = await ciApi.getPipeline(repoId);
           if (liveData && liveData.status !== 'none') {
-              setPipelineData(liveData);
+              const normalizedPipeline = normalizePipeline(liveData as VizPipeline);
+              setPipelineData(normalizedPipeline);
               // Also update the cache
               setPipelinesCache(prev => {
                   const next = new Map(prev);
-                  next.set(repoId, liveData);
+                  next.set(repoId, normalizedPipeline);
                   return next;
               });
           }
@@ -98,7 +99,7 @@ const Pipeline: Component = () => {
                   try {
                       const data = await ciApi.getPipeline(repo.id);
                       if (data && data.status !== 'none') {
-                          return { id: repo.id, pipeline: data as VizPipeline };
+                          return { id: repo.id, pipeline: normalizePipeline(data as VizPipeline) };
                       }
                   } catch {
                       // Silently skip repos without pipelines
@@ -125,11 +126,9 @@ const Pipeline: Component = () => {
 
   // Check if pipeline has running jobs
   const isPipelineActive = () => {
-    const pipeline = pipelineData();
+    const pipeline = pipelineData() ?? null;
     if (!pipeline || !isNumericId(pipeline.id)) return false;
-    return pipeline.stages.some(stage =>
-      stage.jobs.some(job => job.status === 'running' || job.status === 'pending')
-    );
+    return hasActiveJobs(pipeline);
   };
 
   // Auto-refresh polling effect
@@ -702,14 +701,22 @@ const Pipeline: Component = () => {
                             {/* Header */}
                             <div class="flex flex-col gap-3 p-4 border-b border-white/5 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="flex min-w-0 items-center gap-3">
-                                    <div class={`w-2 h-2 rounded-full ${
-                                        selectedJob().status === 'success' ? 'bg-neon-green' :
-                                        selectedJob().status === 'failed' ? 'bg-red-500' :
-                                        selectedJob().status === 'running' ? 'bg-neon-cyan animate-pulse' :
-                                        selectedJob().status === 'pending' ? 'bg-yellow-500' :
-                                        'bg-gray-500'
-                                    }`} />
+                                    <div
+                                      class="w-2 h-2 rounded-full"
+                                      classList={{ 'animate-pulse': selectedJob().status === 'running' }}
+                                      style={{ background: getStatusColor(selectedJob().status, selectedJob().rawStatus) }}
+                                    />
                                     <div class="text-base sm:text-lg font-mono font-bold text-white truncate">{selectedJob().name}</div>
+                                    <span
+                                      class="text-[10px] uppercase px-2 py-0.5 rounded border"
+                                      style={{
+                                        color: getStatusColor(selectedJob().status, selectedJob().rawStatus),
+                                        border: `1px solid ${getStatusColor(selectedJob().status, selectedJob().rawStatus)}50`,
+                                        background: `${getStatusColor(selectedJob().status, selectedJob().rawStatus)}15`,
+                                      }}
+                                    >
+                                      {getStatusLabel(selectedJob().status, selectedJob().rawStatus)}
+                                    </span>
                                     <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{selectedJob().stage}</span>
                                     <Show when={selectedJob().duration}>
                                         <span class="text-xs text-text-dim">

@@ -1,6 +1,132 @@
 import type { RepoInfo } from '../../lib/api';
 import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
+const ACTIVE_JOB_STATUSES = new Set(['running', 'pending', 'created', 'preparing', 'waiting_for_resource', 'scheduled']);
+
+function normalizeRawStatus(status: string | undefined | null): string | undefined {
+  const normalized = (status ?? '').trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function getVisualStatusToken(
+  status: PipelineJob['status'] | Pipeline['status'],
+  rawStatus?: string,
+): string {
+  return normalizeRawStatus(rawStatus) ?? status;
+}
+
+export function getStatusColor(
+  status: PipelineJob['status'] | Pipeline['status'],
+  rawStatus?: string,
+): string {
+  const token = getVisualStatusToken(status, rawStatus);
+  switch (token) {
+    case 'success':
+      return '#00f0ff'; // neon-cyan
+    case 'running':
+      return '#0aff68'; // neon-green
+    case 'failed':
+    case 'canceled':
+    case 'cancelled':
+    case 'canceling':
+      return '#ff003c'; // neon-pink/red
+    case 'manual':
+      return '#bd00ff'; // neon-purple
+    case 'created':
+      return '#ffd166'; // amber
+    case 'preparing':
+      return '#ffb347'; // orange
+    case 'waiting_for_resource':
+      return '#ff9f43'; // deep orange
+    case 'scheduled':
+      return '#c084fc'; // violet
+    case 'pending':
+      return '#fcee0a'; // neon-yellow
+    case 'skipped':
+      return 'rgba(255,255,255,0.3)';
+    default:
+      return '#ffffff';
+  }
+}
+
+export function getStatusLabel(
+  status: PipelineJob['status'] | Pipeline['status'],
+  rawStatus?: string,
+): string {
+  const token = getVisualStatusToken(status, rawStatus);
+  return token.replaceAll('_', ' ');
+}
+
+export function normalizeJobStatus(status: string | undefined | null): PipelineJob['status'] {
+  const normalized = (status ?? '').toLowerCase();
+  switch (normalized) {
+    case 'running':
+      return 'running';
+    case 'success':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'manual':
+      return 'manual';
+    case 'skipped':
+      return 'skipped';
+    case 'canceled':
+    case 'cancelled':
+    case 'canceling':
+      return 'failed';
+    case 'pending':
+    case 'created':
+    case 'preparing':
+    case 'waiting_for_resource':
+    case 'scheduled':
+      return 'pending';
+    default:
+      return 'pending';
+  }
+}
+
+export function normalizePipelineStatus(status: string | undefined | null): Pipeline['status'] {
+  const normalized = (status ?? '').toLowerCase();
+  switch (normalized) {
+    case 'running':
+      return 'running';
+    case 'success':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'canceled':
+    case 'cancelled':
+      return 'canceled';
+    case 'skipped':
+      return 'canceled';
+    case 'pending':
+    case 'created':
+    case 'preparing':
+    case 'waiting_for_resource':
+    case 'scheduled':
+    case 'manual':
+      return 'pending';
+    default:
+      return 'pending';
+  }
+}
+
+export function normalizePipeline(pipeline: Pipeline): Pipeline {
+  return {
+    ...pipeline,
+    rawStatus: normalizeRawStatus(pipeline.rawStatus ?? pipeline.status),
+    status: normalizePipelineStatus(pipeline.status),
+    stages: pipeline.stages.map((stage) => ({
+      ...stage,
+      jobs: stage.jobs.map((job) => ({
+        ...job,
+        rawStatus: normalizeRawStatus(job.rawStatus ?? job.status),
+        status: normalizeJobStatus(job.status),
+      })),
+    })),
+  };
+}
+
 // Status priority for sorting (lower = higher priority, shown first)
 export const JOB_STATUS_PRIORITY: Record<PipelineJob['status'], number> = {
   running: 0,
@@ -49,8 +175,10 @@ export interface RepoWithPipeline {
  */
 export function hasActiveJobs(pipeline: Pipeline | null): boolean {
   if (!pipeline) return false;
+  if (normalizePipelineStatus(pipeline.status) === 'running') return true;
+
   return pipeline.stages.some(stage =>
-    stage.jobs.some(job => job.status === 'running')
+    stage.jobs.some(job => ACTIVE_JOB_STATUSES.has(job.status))
   );
 }
 

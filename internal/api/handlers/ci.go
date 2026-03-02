@@ -7,10 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
 
 	"github.com/flexinfer/flexdeck/internal/metrics"
 )
@@ -271,6 +273,11 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	}
 	latest := pipelines[0]
 
+	stageOrder, err := fetchGitLabStageOrder(client, gitlabURL, token, idStr, latest.Ref)
+	if err != nil {
+		slog.Debug("failed to fetch pipeline stage order from gitlab-ci", "project_id", idStr, "ref", latest.Ref, "error", err)
+	}
+
 	jobsURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", gitlabURL, idStr, latest.ID)
 	jReq, _ := http.NewRequest("GET", jobsURL, nil)
 	jReq.Header.Set("PRIVATE-TOKEN", token)
@@ -297,15 +304,22 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	_ = json.NewDecoder(jResp.Body).Decode(&jobs)
 
 	stageMap := make(map[string][]Job)
-	seenStages := []string{}
-	seenStagesSet := make(map[string]bool)
+	seenStages := make([]string, 0, len(stageOrder))
+	seenStagesSet := make(map[string]struct{}, len(stageOrder))
 
-	stdOrder := []string{".pre", "build", "test", "deploy", ".post"}
-	for _, s := range stdOrder {
-		if !seenStagesSet[s] {
-			seenStagesSet[s] = true
-			seenStages = append(seenStages, s)
+	appendStage := func(name string) {
+		if name == "" {
+			return
 		}
+		if _, exists := seenStagesSet[name]; exists {
+			return
+		}
+		seenStagesSet[name] = struct{}{}
+		seenStages = append(seenStages, name)
+	}
+
+	for _, stageName := range stageOrder {
+		appendStage(stageName)
 	}
 
 	for _, j := range jobs {
@@ -321,11 +335,8 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 
 		if _, exists := stageMap[j.Stage]; !exists {
 			stageMap[j.Stage] = []Job{}
-			if !seenStagesSet[j.Stage] {
-				seenStages = append(seenStages, j.Stage)
-				seenStagesSet[j.Stage] = true
-			}
 		}
+		appendStage(j.Stage)
 		stageMap[j.Stage] = append(stageMap[j.Stage], jobFormatted)
 	}
 
@@ -343,6 +354,71 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		CreatedAt: latest.CreatedAt.Format(time.RFC3339),
 		Stages:    stages,
 	}, nil
+}
+
+func fetchGitLabStageOrder(client *http.Client, gitlabURL, token, projectID, ref string) ([]string, error) {
+	if ref == "" {
+		ref = "main"
+	}
+	fileURL := fmt.Sprintf(
+		"%s/api/v4/projects/%s/repository/files/%s/raw?ref=%s",
+		gitlabURL,
+		projectID,
+		".gitlab-ci.yml",
+		url.QueryEscape(ref),
+	)
+
+	req, err := http.NewRequest("GET", fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gitlab-ci request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch gitlab-ci: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gitlab-ci fetch returned status %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read gitlab-ci response: %w", err)
+	}
+
+	stageOrder, err := parseGitLabStages(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse gitlab-ci stages: %w", err)
+	}
+	return stageOrder, nil
+}
+
+func parseGitLabStages(content []byte) ([]string, error) {
+	var parsed map[string]any
+	if err := yaml.Unmarshal(content, &parsed); err != nil {
+		return nil, err
+	}
+
+	stagesRaw, ok := parsed["stages"]
+	if !ok {
+		return []string{}, nil
+	}
+
+	stagesList, ok := stagesRaw.([]any)
+	if !ok {
+		return []string{}, nil
+	}
+
+	stageOrder := make([]string, 0, len(stagesList))
+	for _, item := range stagesList {
+		if name, ok := item.(string); ok && name != "" {
+			stageOrder = append(stageOrder, name)
+		}
+	}
+	return stageOrder, nil
 }
 
 // GetJobTrace fetches the trace/log output for a specific job
