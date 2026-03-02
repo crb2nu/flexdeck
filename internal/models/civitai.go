@@ -23,13 +23,13 @@ type CivitAIClient struct {
 type CivitAIModelType string
 
 const (
-	CivitTypeCheckpoint   CivitAIModelType = "Checkpoint"
-	CivitTypeLORA         CivitAIModelType = "LORA"
-	CivitTypeTextualInv   CivitAIModelType = "TextualInversion"
-	CivitTypeHypernetwork CivitAIModelType = "Hypernetwork"
+	CivitTypeCheckpoint    CivitAIModelType = "Checkpoint"
+	CivitTypeLORA          CivitAIModelType = "LORA"
+	CivitTypeTextualInv    CivitAIModelType = "TextualInversion"
+	CivitTypeHypernetwork  CivitAIModelType = "Hypernetwork"
 	CivitTypeAestheticGrad CivitAIModelType = "AestheticGradient"
-	CivitTypeControlnet   CivitAIModelType = "Controlnet"
-	CivitTypePoses        CivitAIModelType = "Poses"
+	CivitTypeControlnet    CivitAIModelType = "Controlnet"
+	CivitTypePoses         CivitAIModelType = "Poses"
 )
 
 // CivitAIModel represents a CivitAI model
@@ -45,10 +45,10 @@ type CivitAIModel struct {
 		Image    string `json:"image"`
 	} `json:"creator"`
 	Stats struct {
-		DownloadCount int `json:"downloadCount"`
-		FavoriteCount int `json:"favoriteCount"`
-		CommentCount  int `json:"commentCount"`
-		RatingCount   int `json:"ratingCount"`
+		DownloadCount int     `json:"downloadCount"`
+		FavoriteCount int     `json:"favoriteCount"`
+		CommentCount  int     `json:"commentCount"`
+		RatingCount   int     `json:"ratingCount"`
 		Rating        float64 `json:"rating"`
 	} `json:"stats"`
 	ModelVersions []CivitAIModelVersion `json:"modelVersions"`
@@ -56,37 +56,37 @@ type CivitAIModel struct {
 
 // CivitAIModelVersion represents a version of a CivitAI model
 type CivitAIModelVersion struct {
-	ID             int     `json:"id"`
-	ModelID        int     `json:"modelId"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	CreatedAt      string  `json:"createdAt"`
-	DownloadURL    string  `json:"downloadUrl"`
-	BaseModel      string  `json:"baseModel"` // e.g., "SD 1.5", "SDXL 1.0"
-	TrainedWords   []string `json:"trainedWords"`
-	Files          []CivitAIFile `json:"files"`
+	ID           int           `json:"id"`
+	ModelID      int           `json:"modelId"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	CreatedAt    string        `json:"createdAt"`
+	DownloadURL  string        `json:"downloadUrl"`
+	BaseModel    string        `json:"baseModel"` // e.g., "SD 1.5", "SDXL 1.0"
+	TrainedWords []string      `json:"trainedWords"`
+	Files        []CivitAIFile `json:"files"`
 }
 
 // CivitAIFile represents a file in a CivitAI model version
 type CivitAIFile struct {
-	ID           int     `json:"id"`
-	Name         string  `json:"name"`
-	SizeKB       float64 `json:"sizeKB"`
-	Type         string  `json:"type"` // "Model", "Training Data", etc.
-	Format       string  `json:"format"` // "SafeTensor", "PickleTensor", etc.
-	DownloadURL  string  `json:"downloadUrl"`
-	Primary      bool    `json:"primary"`
+	ID          int     `json:"id"`
+	Name        string  `json:"name"`
+	SizeKB      float64 `json:"sizeKB"`
+	Type        string  `json:"type"`   // "Model", "Training Data", etc.
+	Format      string  `json:"format"` // "SafeTensor", "PickleTensor", etc.
+	DownloadURL string  `json:"downloadUrl"`
+	Primary     bool    `json:"primary"`
 }
 
 // CivitAISearchResponse represents the API search response
 type CivitAISearchResponse struct {
 	Items    []CivitAIModel `json:"items"`
 	Metadata struct {
-		TotalItems   int    `json:"totalItems"`
-		CurrentPage  int    `json:"currentPage"`
-		PageSize     int    `json:"pageSize"`
-		TotalPages   int    `json:"totalPages"`
-		NextCursor   string `json:"nextCursor"`
+		TotalItems  int    `json:"totalItems"`
+		CurrentPage int    `json:"currentPage"`
+		PageSize    int    `json:"pageSize"`
+		TotalPages  int    `json:"totalPages"`
+		NextCursor  string `json:"nextCursor"`
 	} `json:"metadata"`
 }
 
@@ -263,15 +263,15 @@ func (c *CivitAIClient) ToModel(civit *CivitAIModel) *Model {
 		Tags:        civit.Tags,
 		Size:        size,
 		Metadata: map[string]any{
-			"creator":       civit.Creator.Username,
-			"downloads":     civit.Stats.DownloadCount,
-			"favorites":     civit.Stats.FavoriteCount,
-			"rating":        civit.Stats.Rating,
-			"civit_type":    civit.Type,
-			"base_model":    baseModel,
-			"nsfw":          civit.NSFW,
-			"download_url":  downloadURL,
-			"file_name":     fileName,
+			"creator":      civit.Creator.Username,
+			"downloads":    civit.Stats.DownloadCount,
+			"favorites":    civit.Stats.FavoriteCount,
+			"rating":       civit.Stats.Rating,
+			"civit_type":   civit.Type,
+			"base_model":   baseModel,
+			"nsfw":         civit.NSFW,
+			"download_url": downloadURL,
+			"file_name":    fileName,
 		},
 	}
 }

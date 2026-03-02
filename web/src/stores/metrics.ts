@@ -130,8 +130,6 @@ async function fetchMetrics() {
   }
 
   try {
-    const now = Math.floor(Date.now() / 1000);
-
     // Fetch all metrics in parallel
     const [
       nodeCpuResult,
@@ -144,15 +142,15 @@ async function fetchMetrics() {
       clusterMemUsedResult,
       clusterMemTotalResult,
     ] = await Promise.all([
-      prom.query(QUERIES.nodeCpu, String(now)).catch(() => null),
-      prom.query(QUERIES.nodeMemoryPercent, String(now)).catch(() => null),
-      prom.query(QUERIES.nodeMemoryTotal, String(now)).catch(() => null),
-      prom.query(QUERIES.podCpu, String(now)).catch(() => null),
-      prom.query(QUERIES.podMemory, String(now)).catch(() => null),
-      prom.query(QUERIES.podMemoryLimit, String(now)).catch(() => null),
-      prom.query(QUERIES.clusterCpu, String(now)).catch(() => null),
-      prom.query(QUERIES.clusterMemoryUsed, String(now)).catch(() => null),
-      prom.query(QUERIES.clusterMemoryTotal, String(now)).catch(() => null),
+      prom.query(QUERIES.nodeCpu).catch(() => null),
+      prom.query(QUERIES.nodeMemoryPercent).catch(() => null),
+      prom.query(QUERIES.nodeMemoryTotal).catch(() => null),
+      prom.query(QUERIES.podCpu).catch(() => null),
+      prom.query(QUERIES.podMemory).catch(() => null),
+      prom.query(QUERIES.podMemoryLimit).catch(() => null),
+      prom.query(QUERIES.clusterCpu).catch(() => null),
+      prom.query(QUERIES.clusterMemoryUsed).catch(() => null),
+      prom.query(QUERIES.clusterMemoryTotal).catch(() => null),
     ]);
 
     // Parse node metrics

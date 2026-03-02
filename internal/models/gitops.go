@@ -14,8 +14,8 @@ type DeploymentConfig struct {
 	Name           string            `json:"name"`
 	Namespace      string            `json:"namespace"`
 	Replicas       int               `json:"replicas"`
-	Image          string            `json:"image"`           // e.g., "vllm/vllm-openai:latest"
-	ModelPath      string            `json:"model_path"`      // Path to model files
+	Image          string            `json:"image"`      // e.g., "vllm/vllm-openai:latest"
+	ModelPath      string            `json:"model_path"` // Path to model files
 	GPUCount       int               `json:"gpu_count"`
 	GPUType        string            `json:"gpu_type"`        // e.g., "nvidia.com/gpu"
 	MaxModelLen    int               `json:"max_model_len"`   // Max sequence length

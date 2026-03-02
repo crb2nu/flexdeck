@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/flexinfer/flexdeck/internal/audit"
 	"github.com/flexinfer/flexdeck/internal/rbac"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestAuditLogger_Log(t *testing.T) {
@@ -29,11 +29,11 @@ func TestAuditLogger_Log(t *testing.T) {
 
 	t.Run("Logs mutation with body", func(t *testing.T) {
 		handler := al.Log("test-action")(next)
-		
+
 		body := bytes.NewReader([]byte(`{"foo":"bar"}`))
 		req := httptest.NewRequest(http.MethodPost, "/api/mutate", body)
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 
@@ -56,10 +56,10 @@ func TestAuditLogger_Log(t *testing.T) {
 
 	t.Run("Redacts sensitive fields", func(t *testing.T) {
 		handler := al.Log("login")(next)
-		
+
 		body := bytes.NewReader([]byte(`{"username":"admin","password":"secret-password"}`))
 		req := httptest.NewRequest(http.MethodPost, "/api/login", body)
-		
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 
@@ -86,12 +86,12 @@ func TestAuditLogger_Log(t *testing.T) {
 
 	t.Run("Attaches RBAC user", func(t *testing.T) {
 		handler := al.Log("action-with-user")(next)
-		
+
 		req := httptest.NewRequest(http.MethodPost, "/api/action", nil)
 		user := &rbac.User{ID: "user-123", Username: "alice", Role: rbac.RoleAdmin}
 		ctx := rbac.ContextWithUser(req.Context(), user)
 		req = req.WithContext(ctx)
-		
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 

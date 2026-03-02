@@ -8,8 +8,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/go-chi/chi/v5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"

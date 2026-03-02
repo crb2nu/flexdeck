@@ -110,14 +110,15 @@ describe("pipeline utils", () => {
     const pipeline = {
       id: "p1",
       ref: "main",
-      status: "created",
+      status: "pending",
+      rawStatus: "created",
       createdAt: "2026-01-01T10:00:00Z",
       stages: [
         {
           name: "lint",
           jobs: [
-            { id: "1", name: "lint", stage: "lint", status: "created" },
-            { id: "2", name: "typecheck", stage: "lint", status: "canceling" },
+            { id: "1", name: "lint", stage: "lint", status: "pending", rawStatus: "created" },
+            { id: "2", name: "typecheck", stage: "lint", status: "failed", rawStatus: "canceling" },
           ],
         },
       ],

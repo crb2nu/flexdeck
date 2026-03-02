@@ -56,10 +56,10 @@ func TestMiddleware_Handler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Token:           tt.token,
-				TokenCookie:     "auth_token",
-				TokenCookieTTL:  1 * time.Hour,
-				CookieSecure:    false,
+				Token:          tt.token,
+				TokenCookie:    "auth_token",
+				TokenCookieTTL: 1 * time.Hour,
+				CookieSecure:   false,
 			}
 			m := NewMiddleware(cfg)
 

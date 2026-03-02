@@ -43,15 +43,15 @@ func TestStore_Metrics(t *testing.T) {
 	// We can't easily mock time.Now() inside StoreMetrics, so we'll just push two points
 	// and accept that they might have identical timestamps if we run too fast.
 	// But calculateThroughput uses the point's recorded Timestamp (from now.Unix()).
-	
+
 	err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m1})
 	if err != nil {
 		t.Fatalf("StoreMetrics failed: %v", err)
 	}
-	
+
 	// Wait a bit to ensure different timestamp if needed
 	time.Sleep(1 * time.Second)
-	
+
 	err = store.StoreMetrics(ctx, []litellm.ModelMetrics{m2})
 	if err != nil {
 		t.Fatalf("StoreMetrics failed: %v", err)
@@ -73,7 +73,7 @@ func TestStore_Metrics(t *testing.T) {
 	if throughput.TokPerSec1m <= 0 {
 		t.Errorf("expected positive tokens per sec, got %f", throughput.TokPerSec1m)
 	}
-	
+
 	if throughput.AvgLatencyMs != 600 {
 		t.Errorf("expected latency 600, got %f", throughput.AvgLatencyMs)
 	}
@@ -90,7 +90,7 @@ func TestStore_Metrics(t *testing.T) {
 
 func TestStore_Trend(t *testing.T) {
 	store := &Store{}
-	
+
 	cases := []struct {
 		data []float64
 		want string

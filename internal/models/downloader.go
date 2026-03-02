@@ -51,11 +51,11 @@ type downloadTask struct {
 // NewDownloader creates a new download manager
 func NewDownloader(basePath, hfToken, civitKey string, registry *Registry) *Downloader {
 	return &Downloader{
-		basePath:   basePath,
-		hfToken:    hfToken,
-		civitKey:   civitKey,
-		registry:   registry,
-		downloads:  make(map[string]*downloadTask),
+		basePath:  basePath,
+		hfToken:   hfToken,
+		civitKey:  civitKey,
+		registry:  registry,
+		downloads: make(map[string]*downloadTask),
 		httpClient: &http.Client{
 			Timeout: 0, // No timeout for large downloads
 		},

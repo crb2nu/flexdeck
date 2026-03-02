@@ -10,10 +10,10 @@ import (
 )
 
 type Middleware struct {
-	token          string
-	cookieName     string
-	cookieSecure   bool
-	cookieTTL      time.Duration
+	token        string
+	cookieName   string
+	cookieSecure bool
+	cookieTTL    time.Duration
 }
 
 func NewMiddleware(cfg *config.Config) *Middleware {

@@ -12,9 +12,9 @@ import (
 
 // AgentBuilderConfig configures the Agent Builder backed by flexinfer/LiteLLM
 type AgentBuilderConfig struct {
-	Model      string `json:"model"`       // Model to use via LiteLLM (auto-discovered from flexinfer)
-	LiteLLMURL string `json:"-"`           // Base URL for LiteLLM
-	LiteLLMKey string `json:"-"`           // API key for LiteLLM
+	Model      string `json:"model"` // Model to use via LiteLLM (auto-discovered from flexinfer)
+	LiteLLMURL string `json:"-"`     // Base URL for LiteLLM
+	LiteLLMKey string `json:"-"`     // API key for LiteLLM
 }
 
 // AgentBuilderResult is the output of an agent builder chat

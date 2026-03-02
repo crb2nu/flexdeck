@@ -365,7 +365,6 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 	})
 }
 
-
 func fileServer(r chi.Router, path string, root string) {
 	if strings.ContainsAny(path, "{}*") {
 		panic("FileServer does not permit URL parameters")

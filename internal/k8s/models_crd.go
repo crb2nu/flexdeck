@@ -141,7 +141,7 @@ type ModelEvent struct {
 	Reason         string `json:"reason"`
 	Message        string `json:"message"`
 	FirstTimestamp string `json:"firstTimestamp"`
-	LastTimestamp   string `json:"lastTimestamp"`
+	LastTimestamp  string `json:"lastTimestamp"`
 	Count          int32  `json:"count"`
 	Source         string `json:"source,omitempty"`
 }
@@ -175,11 +175,11 @@ type LoRAAdapter struct {
 
 // ModelCatalogEntry represents a flexinfer.ai/v1alpha2 ModelCatalog CRD.
 type ModelCatalogEntry struct {
-	Name         string              `json:"name"`
-	Namespace    string              `json:"namespace"`
-	Source       string              `json:"source"` // HuggingFace, OCI, Ollama
-	Models       []CatalogModelRef   `json:"models"`
-	LastSyncTime string              `json:"lastSyncTime"`
+	Name         string            `json:"name"`
+	Namespace    string            `json:"namespace"`
+	Source       string            `json:"source"` // HuggingFace, OCI, Ollama
+	Models       []CatalogModelRef `json:"models"`
+	LastSyncTime string            `json:"lastSyncTime"`
 }
 
 // CatalogModelRef is a model reference within a catalog.
@@ -376,7 +376,7 @@ func (c *Client) GetFlexInferModelEvents(ctx context.Context, namespace, modelNa
 			Reason:         e.Reason,
 			Message:        e.Message,
 			FirstTimestamp: e.FirstTimestamp.Format("2006-01-02T15:04:05Z"),
-			LastTimestamp:   e.LastTimestamp.Format("2006-01-02T15:04:05Z"),
+			LastTimestamp:  e.LastTimestamp.Format("2006-01-02T15:04:05Z"),
 			Count:          e.Count,
 			Source:         source,
 		})

@@ -120,11 +120,11 @@ func TestEscapeLabelValue(t *testing.T) {
 
 func TestSSEWriter(t *testing.T) {
 	rr := httptest.NewRecorder()
-	
+
 	// Test failure when Flusher is not supported
 	// httptest.ResponseRecorder supports Flusher, so we can't easily test failure here
 	// unless we use a custom ResponseWriter that doesn't implement Flusher.
-	
+
 	sw, err := NewSSEWriter(rr)
 	if err != nil {
 		t.Fatalf("NewSSEWriter failed: %v", err)
@@ -209,7 +209,7 @@ func TestGuards(t *testing.T) {
 
 	t.Run("WithK8sGuard", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		
+
 		// Case: disabled
 		rr1 := httptest.NewRecorder()
 		WithK8sGuard(nil, dummyHandler)(rr1, req)
@@ -227,7 +227,7 @@ func TestGuards(t *testing.T) {
 
 	t.Run("WithFeatureGuard", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		
+
 		rr1 := httptest.NewRecorder()
 		WithFeatureGuard(true, "MyFeature", dummyHandler)(rr1, req)
 		if rr1.Code != http.StatusServiceUnavailable {
@@ -243,7 +243,7 @@ func TestGuards(t *testing.T) {
 
 	t.Run("WithURLGuard", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		
+
 		rr1 := httptest.NewRecorder()
 		WithURLGuard("", "MyService", dummyHandler)(rr1, req)
 		if rr1.Code != http.StatusServiceUnavailable {
@@ -259,7 +259,7 @@ func TestGuards(t *testing.T) {
 
 	t.Run("WithConfigGuard", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		
+
 		// Case: disabled
 		rr1 := httptest.NewRecorder()
 		WithConfigGuard(true, "http://service", "MyService", dummyHandler)(rr1, req)
@@ -282,6 +282,3 @@ func TestGuards(t *testing.T) {
 		}
 	})
 }
-
-
-

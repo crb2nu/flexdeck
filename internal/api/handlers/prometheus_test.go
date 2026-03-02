@@ -48,7 +48,7 @@ func TestPrometheusHandlers(t *testing.T) {
 	t.Run("PromDisabled", func(t *testing.T) {
 		h_disabled := &Handler{cfg: &config.Config{}}
 		h_disabled.cfg.Prom.Disabled = true
-		
+
 		req := httptest.NewRequest(http.MethodGet, "/api/prom/health", nil)
 		rr := httptest.NewRecorder()
 		h_disabled.PromHealth(rr, req)
