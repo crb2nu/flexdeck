@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -47,8 +49,8 @@ func TestCIHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 		h.GetRepoPipeline(rr, req)
 
-		// Note: Without chi context, chi.URLParam returns empty string, 
-		// but fetchRepoPipeline still works if passed manually. 
+		// Note: Without chi context, chi.URLParam returns empty string,
+		// but fetchRepoPipeline still works if passed manually.
 		// This test confirms basic wiring.
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200, got %d", rr.Code)
@@ -65,4 +67,61 @@ func TestCIHandlers(t *testing.T) {
 			t.Errorf("expected 200 (empty list) for unconfigured gitlab, got %d", rr.Code)
 		}
 	})
+}
+
+func TestFetchRepoPipeline_UsesStageOrderFromGitLabCI(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case strings.Contains(r.URL.Path, "/pipelines/555/jobs"):
+			fmt.Fprint(w, `[
+				{"id": 3001, "name": "deploy_staging", "stage": "deploy", "status": "created"},
+				{"id": 3002, "name": "unit_tests", "stage": "test", "status": "created"},
+				{"id": 3003, "name": "lint_code", "stage": "lint", "status": "running"}
+			]`)
+		case strings.Contains(r.URL.Path, "/pipelines"):
+			fmt.Fprint(w, `[{"id": 555, "status": "running", "ref": "main", "created_at": "2026-01-01T00:00:00Z"}]`)
+		case strings.Contains(r.URL.Path, "/repository/files/.gitlab-ci.yml/raw"):
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "stages:\n  - lint\n  - test\n  - deploy\n")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "test-token"
+	h := &Handler{cfg: cfg}
+
+	resp, err := h.fetchRepoPipeline("1")
+	if err != nil {
+		t.Fatalf("fetchRepoPipeline returned error: %v", err)
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+
+	var got struct {
+		Stages []struct {
+			Name string `json:"name"`
+		} `json:"stages"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	stageNames := make([]string, 0, len(got.Stages))
+	for _, stage := range got.Stages {
+		stageNames = append(stageNames, stage.Name)
+	}
+
+	want := []string{"lint", "test", "deploy"}
+	if !reflect.DeepEqual(stageNames, want) {
+		t.Fatalf("unexpected stage order: got %v want %v", stageNames, want)
+	}
 }

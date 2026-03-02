@@ -1,19 +1,7 @@
 import { Component, For, Show } from 'solid-js';
 import type { RepoInfo } from '../../lib/api';
 import type { Pipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
-import { getJobCountsByStatus, formatRelativeTime, hasActiveJobs } from './utils';
-
-const getStatusColor = (status: PipelineJob['status'] | Pipeline['status']): string => {
-  switch (status) {
-    case 'success': return '#00f0ff'; // neon-cyan
-    case 'running': return '#0aff68'; // neon-green
-    case 'failed': return '#ff003c'; // neon-pink
-    case 'pending': return '#fcee0a'; // neon-yellow
-    case 'manual': return '#bd00ff'; // neon-purple
-    case 'skipped': return 'rgba(255,255,255,0.3)';
-    default: return '#ffffff';
-  }
-};
+import { formatRelativeTime, getJobCountsByStatus, getStatusColor, getStatusLabel, hasActiveJobs } from './utils';
 
 const getStageStatusSummary = (stage: PipelineStage): { status: PipelineJob['status']; text: string } => {
   const counts = getJobCountsByStatus(stage.jobs);
@@ -44,6 +32,7 @@ const PipelineCard: Component<{
 }> = (props) => {
   const isActive = () => hasActiveJobs(props.pipeline);
   const status = () => props.pipeline?.status ?? 'pending';
+  const statusColor = () => getStatusColor(status(), props.pipeline?.rawStatus);
 
   return (
     <div
@@ -54,7 +43,7 @@ const PipelineCard: Component<{
       }}
       style={{
         background: 'linear-gradient(135deg, rgba(10, 16, 32, 0.95) 0%, rgba(5, 10, 20, 0.95) 100%)',
-        border: `1px solid ${getStatusColor(status())}30`,
+        border: `1px solid ${statusColor()}30`,
       }}
     >
       {/* Active indicator pulse */}
@@ -62,7 +51,7 @@ const PipelineCard: Component<{
         <div
           class="absolute inset-0 rounded-lg animate-pulse pointer-events-none"
           style={{
-            background: `linear-gradient(135deg, ${getStatusColor('running')}10 0%, transparent 50%)`,
+            background: `linear-gradient(135deg, ${statusColor()}10 0%, transparent 50%)`,
           }}
         />
       </Show>
@@ -70,11 +59,11 @@ const PipelineCard: Component<{
       {/* Corner accents */}
       <div
         class="absolute top-0 left-0 w-2 h-2 border-l-2 border-t-2 rounded-tl-lg"
-        style={{ 'border-color': getStatusColor(status()) }}
+        style={{ 'border-color': statusColor() }}
       />
       <div
         class="absolute bottom-0 right-0 w-2 h-2 border-r-2 border-b-2 rounded-br-lg"
-        style={{ 'border-color': getStatusColor(status()) }}
+        style={{ 'border-color': statusColor() }}
       />
 
       <div class="p-4">
@@ -85,8 +74,8 @@ const PipelineCard: Component<{
               class="w-2 h-2 rounded-full flex-shrink-0"
               classList={{ 'animate-pulse': isActive() }}
               style={{
-                background: getStatusColor(status()),
-                'box-shadow': `0 0 8px ${getStatusColor(status())}`,
+                background: statusColor(),
+                'box-shadow': `0 0 8px ${statusColor()}`,
               }}
             />
             <span class="text-sm font-mono text-white truncate font-medium">
@@ -105,6 +94,16 @@ const PipelineCard: Component<{
           <div class="flex items-center gap-2 mb-3">
             <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-neon-purple">
               {props.pipeline!.ref}
+            </span>
+            <span
+              class="px-2 py-0.5 rounded-full border text-[10px] font-mono uppercase tracking-wide"
+              style={{
+                color: statusColor(),
+                border: `1px solid ${statusColor()}50`,
+                background: `${statusColor()}12`,
+              }}
+            >
+              {getStatusLabel(status(), props.pipeline?.rawStatus)}
             </span>
             <span class="text-[10px] font-mono text-text-dim">
               #{props.pipeline!.id.split('-')[1] || props.pipeline!.id}
@@ -149,8 +148,8 @@ const PipelineCard: Component<{
       <div
         class="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
         style={{
-          background: `linear-gradient(135deg, ${getStatusColor(status())}05 0%, transparent 100%)`,
-          'box-shadow': `inset 0 0 30px ${getStatusColor(status())}10`,
+          background: `linear-gradient(135deg, ${statusColor()}05 0%, transparent 100%)`,
+          'box-shadow': `inset 0 0 30px ${statusColor()}10`,
         }}
       />
     </div>

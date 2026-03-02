@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
-import { sortJobsByStatus } from './utils';
+import { getStatusColor, getStatusLabel, sortJobsByStatus } from './utils';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
 export interface PipelineJob {
@@ -8,6 +8,7 @@ export interface PipelineJob {
   name: string;
   stage: string;
   status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'manual';
+  rawStatus?: string;
   duration?: number;
   startedAt?: string;
   finishedAt?: string;
@@ -23,6 +24,7 @@ export interface Pipeline {
   id: string;
   ref: string;
   status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  rawStatus?: string;
   stages: PipelineStage[];
   createdAt: string;
 }
@@ -91,20 +93,8 @@ const createDemoPipeline = (): Pipeline => ({
   ]
 });
 
-const getStatusColor = (status: PipelineJob['status']): string => {
-  switch (status) {
-    case 'success': return '#00f0ff'; // neon-cyan
-    case 'running': return '#0aff68'; // neon-green
-    case 'failed': return '#ff003c'; // neon-pink
-    case 'pending': return '#fcee0a'; // neon-yellow
-    case 'manual': return '#bd00ff'; // neon-purple
-    case 'skipped': return 'rgba(255,255,255,0.3)';
-    default: return '#ffffff';
-  }
-};
-
-const getStatusGlow = (status: PipelineJob['status']): string => {
-  const color = getStatusColor(status);
+const getStatusGlow = (status: PipelineJob['status'] | Pipeline['status'], rawStatus?: string): string => {
+  const color = getStatusColor(status, rawStatus);
   return `0 0 20px ${color}40, 0 0 40px ${color}20`;
 };
 
@@ -613,8 +603,8 @@ const CIPipelineViz: Component<{
               <div 
                 class="w-3 h-3 rounded-full animate-pulse"
                 style={{
-                  background: getStatusColor(pipeline().status as any),
-                  'box-shadow': getStatusGlow(pipeline().status as any)
+                  background: getStatusColor(pipeline().status, pipeline().rawStatus),
+                  'box-shadow': getStatusGlow(pipeline().status, pipeline().rawStatus)
                 }}
               />
               <h2 class="text-lg font-bold text-white tracking-wide">
@@ -630,9 +620,9 @@ const CIPipelineViz: Component<{
             <span class="uppercase tracking-wider opacity-50">Status</span>
             <span 
               class="uppercase font-bold"
-              style={{ color: getStatusColor(pipeline().status as any) }}
+              style={{ color: getStatusColor(pipeline().status, pipeline().rawStatus) }}
             >
-              {pipeline().status}
+              {getStatusLabel(pipeline().status, pipeline().rawStatus)}
             </span>
           </div>
         </div>
@@ -755,20 +745,20 @@ const CIPipelineViz: Component<{
                           background: hoveredJob() === job.id
                             ? 'rgba(20, 30, 50, 0.9)'
                             : 'rgba(10, 16, 32, 0.8)',
-                          border: `1px solid ${getStatusColor(job.status)}30`,
+                          border: `1px solid ${getStatusColor(job.status, job.rawStatus)}30`,
                           'box-shadow': hoveredJob() === job.id
-                            ? getStatusGlow(job.status)
+                            ? getStatusGlow(job.status, job.rawStatus)
                             : 'none',
                         }}
                       >
                         {/* Corner accents */}
                         <div 
                           class="absolute top-0 left-0 w-3 h-3 border-l-2 border-t-2"
-                          style={{ 'border-color': getStatusColor(job.status) }}
+                          style={{ 'border-color': getStatusColor(job.status, job.rawStatus) }}
                         />
                         <div 
                           class="absolute bottom-0 right-0 w-3 h-3 border-r-2 border-b-2"
-                          style={{ 'border-color': getStatusColor(job.status) }}
+                          style={{ 'border-color': getStatusColor(job.status, job.rawStatus) }}
                         />
                         
                         {/* Status indicator */}
@@ -779,15 +769,15 @@ const CIPipelineViz: Component<{
                               'animate-pulse': job.status === 'running',
                             }}
                             style={{
-                              background: getStatusColor(job.status),
-                              'box-shadow': `0 0 8px ${getStatusColor(job.status)}`
+                              background: getStatusColor(job.status, job.rawStatus),
+                              'box-shadow': `0 0 8px ${getStatusColor(job.status, job.rawStatus)}`
                             }}
                           />
                           <span 
                             class="text-[10px] font-mono uppercase tracking-wider"
-                            style={{ color: getStatusColor(job.status) }}
+                            style={{ color: getStatusColor(job.status, job.rawStatus) }}
                           >
-                            {job.status}
+                            {getStatusLabel(job.status, job.rawStatus)}
                           </span>
                         </div>
                         
@@ -869,20 +859,20 @@ const CIPipelineViz: Component<{
                         <div
                           class="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full px-3 py-2 rounded-lg bg-black/95 border text-xs font-mono z-50 min-w-[160px]"
                           style={{
-                            'box-shadow': `0 4px 20px rgba(0,0,0,0.5), 0 0 20px ${getStatusColor(job.status)}20`,
-                            'border-color': `${getStatusColor(job.status)}40`
+                            'box-shadow': `0 4px 20px rgba(0,0,0,0.5), 0 0 20px ${getStatusColor(job.status, job.rawStatus)}20`,
+                            'border-color': `${getStatusColor(job.status, job.rawStatus)}40`
                           }}
                         >
                           {/* Arrow */}
                           <div
                             class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-black/95 border-b border-r"
-                            style={{ 'border-color': `${getStatusColor(job.status)}40` }}
+                            style={{ 'border-color': `${getStatusColor(job.status, job.rawStatus)}40` }}
                           />
 
                           {/* Status & Duration */}
                           <div class="flex items-center justify-between gap-4 mb-1.5 pb-1.5 border-b border-white/10">
-                            <span style={{ color: getStatusColor(job.status) }} class="uppercase font-bold">
-                              {job.status}
+                            <span style={{ color: getStatusColor(job.status, job.rawStatus) }} class="uppercase font-bold">
+                              {getStatusLabel(job.status, job.rawStatus)}
                             </span>
                             <Show when={job.duration && job.duration > 0}>
                               <span class="text-text-dim">
