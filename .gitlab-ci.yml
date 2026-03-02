@@ -81,7 +81,7 @@ variables:
 
 lint:backend:
   stage: lint
-  image: golang:${GO_VERSION}-alpine
+  image: registry.harbor.lan/dockerhub-cache/library/golang:${GO_VERSION}-alpine
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -99,7 +99,7 @@ lint:backend:
 
 lint:frontend:
   stage: lint
-  image: node:${NODE_VERSION}-alpine
+  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
@@ -121,7 +121,7 @@ lint:frontend:
 # Test backend
 test:backend:
   stage: test
-  image: golang:${GO_VERSION}-alpine
+  image: registry.harbor.lan/dockerhub-cache/library/golang:${GO_VERSION}-alpine
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -146,7 +146,7 @@ test:backend:
 # Test frontend (typecheck only - fast)
 test:frontend:
   stage: test
-  image: node:${NODE_VERSION}-alpine
+  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
@@ -167,7 +167,7 @@ test:frontend:
 
 perf:topology:
   stage: test
-  image: node:${NODE_VERSION}-alpine
+  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
