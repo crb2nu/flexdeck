@@ -1,47 +1,67 @@
-# MCP Inventory (Refreshed 2026-02-17 15:42 ET)
+# MCP Inventory (Refreshed 2026-03-03 08:45 EST)
 
 ## Scope
 - Workspace: `/Users/cblevins/workspace/services/flexdeck`
 - Active Loom profile: `full`
-- Source calls:
-  - `list_mcp_resources`
-  - `list_mcp_resource_templates`
-  - `read_mcp_resource(server="loom", uri="loom://servers")`
-  - `read_mcp_resource(server="loom", uri="loom://tools")`
-  - `read_mcp_resource(server="loom", uri="loom://health")`
-  - `read_mcp_resource(server="loom", uri="loom://config")`
+- Inventory mode: loom-proxy resources/templates (paged)
 
-## Resource Inventory
-- `list_mcp_resources` currently returns no static resources.
-- Template-backed resources exposed by `loom`:
+## Runtime Mode Detection
+- `list_mcp_resources()` returns loom top-level resources:
+  - `loom://config`
   - `loom://servers`
   - `loom://tools`
+  - `loom://tools/index`
   - `loom://health`
-  - `loom://config`
+- `list_mcp_resource_templates()` confirms paged endpoints:
+  - `loom://tools/page/{page}`
+  - `loom://tools/server/{server}/page/{page}`
+- Result: loom-mode is active; inventory should use paged `loom://tools/*` resources to avoid truncation.
 
 ## Runtime Snapshot
-- Configured MCP servers: `42`
-- Active tool catalog size: `370`
-- Tool catalog timestamp: `2026-02-17T15:42:16.686236-05:00`
-- Snapshot indicates `39` local processes currently running (`loom/status.processes`).
-- Core servers relevant to FlexDeck planning and implementation are healthy:
-  - `agent_context`, `codebase_memory`, `git`, `git_worktree`
-  - `k8s_apps_k3s`, `flux`, `prometheus`, `loki`, `grafana`, `alertmanager`
-  - `tavily`, `github`, `gitlab`, `jira`, `docker`, `devbox`
+- `loom/config`:
+  - `serverCount: 44`
+  - `toolCount: 472`
+  - `active profile: full`
+- `loom/tools/index`:
+  - `totalTools: 472`
+  - `totalPages: 5`
+  - `pageSize: 100`
+- `loom/health`:
+  - Core planning/ops servers report healthy (`agent_context`, `codebase_memory`, `git`, `gitlab`, `prometheus`, `loki`, `grafana`, `flux`, `k8s_apps_k3s`, `devbox`, `quality`).
+
+## Tool Count Snapshot (Top Servers)
+- `agent_context: 80`
+- `jobsearch: 66`
+- `gitlab: 30`
+- `flexinfer: 19`
+- `codebase_memory: 17`
+- `github/git/devbox: 11 each`
+
+## Index/Search Readiness
+- `codebase_memory__codebase_stats(repo_id="services-flexdeck")` currently fails:
+  - `dial tcp 192.168.50.176:6333: connect: no route to host`
+- Impact:
+  - Semantic code search/index stats are unavailable in this session.
+- Fallback in this cycle:
+  - Use repo-local truth (`rg`, `git log`, `nl -ba`, targeted file reads) for planning evidence.
 
 ## Constraints And Operating Notes
-- `loom://tools` is large and truncated by proxy byte limits; do not treat truncated output as exhaustive.
-- `loom://health` is point-in-time and can drift quickly; re-check before operational actions.
-- Some servers can report transient connection errors while still marked healthy; check both `running` and health details when a call fails.
-- For FlexDeck roadmap/spec work, prefer:
-  - Code truth: `codebase_memory` + local file inspection (`rg`, `sed`)
-  - Runtime verification: `prometheus`, `loki`, `k8s_apps_k3s`, `flux`
-  - Planning continuity: `.loom/*` + `agent_context`
+- Prefer `loom://tools/index` + page resources over `loom://tools` to avoid payload truncation.
+- Health is point-in-time; validate again before operational actions.
+- For this planning cycle, parallelize read-only inventory calls, then consolidate centrally in `.loom` docs.
+
+## Delegation Plan Rationale
+- Read-heavy discovery can be safely sharded by:
+  - resource type (`config`, `servers`, `tools/index`, `health`)
+  - paged tool inventory slices
+- Synthesis and priority decisions stay single-threaded to avoid conflicting plan narratives.
 
 ## Sources
-- `list_mcp_resources`
-- `list_mcp_resource_templates`
-- `read_mcp_resource(server="loom", uri="loom://servers")`
-- `read_mcp_resource(server="loom", uri="loom://tools")`
-- `read_mcp_resource(server="loom", uri="loom://health")`
+- `list_mcp_resources()`
+- `list_mcp_resource_templates()`
 - `read_mcp_resource(server="loom", uri="loom://config")`
+- `read_mcp_resource(server="loom", uri="loom://servers")`
+- `read_mcp_resource(server="loom", uri="loom://tools/index")`
+- `read_mcp_resource(server="loom", uri="loom://health")`
+- `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+- Command: `loom tools list --json --limit 500`

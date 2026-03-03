@@ -1,75 +1,78 @@
-# Research Brief — Roadmap Reconciliation + Next-Wave Epics (2026-02-17)
+# Research Brief — Post-Hardening Feature Improvements + Polish (2026-03-03)
 
 ## Problem Statement
-Planning artifacts still describe Phase 3 as prospective work, but the codebase already includes substantial FlexInfer and Loom HUD integration. This created drift across roadmap/spec/docs and masked the real next step: reliability hardening and feature-completion.
+Phase 3/3.5 reliability work is now largely shipped. The next planning gap is not missing major subsystems, but inconsistent polish across recently changed surfaces (Pipeline, Grafana, Dashboard/mobile, and CI delivery ergonomics).
 
 ## Method
-- Inspected FlexDeck backend routes/handlers and frontend tabs.
-- Cross-checked upstream integration surfaces in local `flexinfer` and `loom-core` repos.
-- Validated baseline test status for backend and frontend.
+- Refreshed workspace and MCP context pack state.
+- Analyzed recent commit stream and touched-file hotspots.
+- Sampled current implementation details in active UI surfaces for polish opportunities.
 
 Commands used:
-- `rg -n "flexinfer|hud|claims|workflow|inference|rbac|audit|cluster" internal web/src -S`
-- `go test ./internal/api/handlers/... ./internal/agents/... ./internal/k8s/...`
-- `npm -C web run -s test`
-- `rg -n "flexinfer_proxy_|/api/claims|/api/workflows/{id}/cancel" /Users/cblevins/workspace/services/flexinfer /Users/cblevins/workspace/services/loom-core -S`
+- `git log --since='2026-02-18' --pretty=format:'%h %ad %s' --date=short`
+- `python - <<'PY' ... git log --name-only ... Counter ... PY`
+- `nl -ba web/src/components/Pipeline/index.tsx | sed -n '1,260p'`
+- `nl -ba web/src/components/Pipeline/CIPipelineViz.tsx | sed -n '1,320p'`
+- `nl -ba web/src/components/Metrics/GrafanaDashboards.tsx | sed -n '1,320p'`
+- `nl -ba web/src/components/Dashboard/index.tsx | sed -n '1,300p'`
+- `rg -n "TODO|FIXME|XXX|HACK" internal web/src`
 
-## Current-State Audit
+## Facts Found
 
-### Code-vs-Roadmap Matrix
-| Area | Roadmap Before Reconciliation | Code Reality | Gap Type |
-|---|---|---|---|
-| Phase 3 FlexInfer + HUD integration | Marked complete in roadmap, but older `.loom` docs still treated as planning scope | Routes + UI implemented (`/api/flexinfer/*`, `/api/hud/*`, Models Inference/Catalog, Agents HUD) | Documentation drift |
-| Dashboard inference widget contract | Assumed `data.models` shape | Backend returned legacy category maps; normalized contract absent | Data contract mismatch |
-| LoRA visibility | Listed as delivered | LoRA endpoint existed but was not consumed in inference-focused UI | Feature completion gap |
-| HUD claims/cancel operations | Available upstream | Not proxied in FlexDeck HUD API | Surface coverage gap |
-| Phase 4 (RBAC/Audit/Multi-cluster) | Marked not started | Backend routes and admin UI exist behind flags | Status policy drift |
+### Delivery Baseline (Recent)
+- Recent commits show concentrated fixes/enhancements in:
+  - Pipeline reactivity, stage ordering, and deeper history.
+  - Grafana auth fallback + hosted-route behavior + panel visibility polish.
+  - Dashboard signal improvements (node resource panel, LiteLLM throughput on CRD cards).
+  - Mobile overlay/layout refinements.
+  - CI gate hardening and mirrored toolchain images.
+- Roadmap marks Phase 3.5 reliability items complete and Phase 4 as partial/feature-gated.
 
-### FlexDeck Findings
-- FlexInfer + HUD route surface in backend:
-  - `internal/api/router.go:221`
-  - `internal/api/router.go:227`
-- Models APIs include CRD inference + LoRA + catalogs:
-  - `internal/api/router.go:252`
-  - `internal/api/router.go:254`
-  - `internal/api/router.go:255`
-- Phase 4 APIs are implemented behind feature flags:
-  - `internal/api/router.go:308`
-  - `internal/api/router.go:325`
-  - `internal/api/router.go:333`
-- Dashboard inference consumed a mismatched schema:
-  - `web/src/components/Dashboard/index.tsx:95`
-  - `internal/api/handlers/flexinfer_proxy.go:136`
-- Admin UI exists and is feature-gated:
-  - `web/src/components/Admin/index.tsx:9`
+### Hotspots By Change Frequency
+Top files since 2026-02-18 include:
+- `web/src/components/Dashboard/index.tsx` (8 touches)
+- `internal/api/handlers/grafana.go` (6 touches)
+- `web/src/AppLayout.tsx` (6 touches)
+- `web/src/components/Pipeline/index.tsx` (3 touches)
+- `web/src/components/Metrics/GrafanaDashboards.tsx` (4 touches)
 
-### Upstream Delta (FlexDeck-only scope)
-- `loom-core` currently exposes additional HUD endpoints that FlexDeck can proxy:
-  - `/api/claims` and `/api/workflows/{id}/cancel`
-  - Source: `/Users/cblevins/workspace/services/loom-core/internal/hud/app.go:488`, `/Users/cblevins/workspace/services/loom-core/internal/hud/app.go:481`
-- `flexinfer` exposes reliability-relevant proxy metrics beyond currently normalized FlexDeck usage:
-  - `flexinfer_proxy_queue_rejected_total`
-  - `flexinfer_proxy_queue_wait_duration_seconds`
-  - `flexinfer_proxy_activation_retries_total`
-  - Source: `/Users/cblevins/workspace/services/flexinfer/internal/proxy/metrics.go:44`, `/Users/cblevins/workspace/services/flexinfer/internal/proxy/metrics.go:52`, `/Users/cblevins/workspace/services/flexinfer/internal/proxy/metrics.go:129`
+### Implementation Signals For Polish
+- Pipeline page already has active polling logic and action refresh scheduling, but state clarity can still improve when toggling between overview/detail and active/inactive pipelines (`web/src/components/Pipeline/index.tsx:30`, `web/src/components/Pipeline/index.tsx:134`).
+- CI visualization keeps a demo fallback model and optimistic job actions; follow-up polish should prioritize explicit “live vs demo” affordances and action feedback semantics (`web/src/components/Pipeline/CIPipelineViz.tsx:67`, `web/src/components/Pipeline/CIPipelineViz.tsx:194`).
+- Grafana dashboard parser now performs non-trivial query normalization and templating fallback; this is a strong integration baseline but benefits from clearer resolution diagnostics and test reinforcement (`web/src/components/Metrics/GrafanaDashboards.tsx:179`, `web/src/components/Metrics/GrafanaDashboards.tsx:221`).
+- Dashboard aggregates three polling tracks (models, inference, agent activity) with mixed feature-gated pathways; polish should focus on unified freshness/error semantics and reduced status ambiguity (`web/src/components/Dashboard/index.tsx:176`, `web/src/components/Dashboard/index.tsx:120`).
 
-## Validation Snapshot
-- Backend tests: pass (`go test ./internal/api/handlers/... ./internal/agents/... ./internal/k8s/...`)
-- Frontend tests: pass (`npm -C web run -s test`)
+## Gap Summary (What Is Still Missing)
+1. Consistent freshness/status UX across high-frequency panels (Pipeline, Dashboard cards, Grafana live cards).
+2. Stronger operator affordances around “data confidence” states (live, stale, fallback, demo, offline, partial).
+3. End-to-end verification loop for UI polish changes (frontend tests + targeted backend checks + smoke flow).
+4. Coordinated planning rhythm tying roadmap reconciliations to real code deltas (latest reconciliation reported no planning deltas while delivery code kept moving).
+
+## Assumptions
+- Current objective is to improve reliability and operator UX without introducing new backend subsystems.
+- Changes should remain FlexDeck-local and leverage existing APIs/handlers.
+
+## Open Questions
+1. Should pipeline “overview” remain primarily poll-driven, or move to event-driven updates where available?
+2. Which status taxonomy should be canonical across UI surfaces: `offline|partial|stale|fallback|demo|ready`?
+3. Is a single shared “data freshness” component acceptable across Pipeline, Dashboard pulse cards, and Grafana panels?
 
 ## Key Conclusions
-1. The next cycle should not re-plan Phase 3; it should harden and complete it.
-2. Reliability-first ordering is justified by an existing backend/frontend contract mismatch and partial observability.
-3. Phase 4 should be represented as `Partial` rather than `Not started` because implementation exists behind flags.
+1. Next wave should be a focused polish release, not a scope-expansion release.
+2. Pipeline + Grafana + Dashboard status coherence is the highest leverage UX reliability investment.
+3. Planning artifacts should explicitly include a testing/ship loop and troubleshooting loop to prevent drift after fast fix cycles.
 
 ## Sources
-- `ROADMAP.md:87`
-- `internal/api/router.go:221`
-- `internal/api/router.go:308`
-- `internal/api/handlers/flexinfer_proxy.go:136`
-- `web/src/components/Dashboard/index.tsx:95`
-- `web/src/lib/api.ts:536`
-- `web/src/components/Admin/index.tsx:9`
-- `internal/config/config.go:286`
-- `/Users/cblevins/workspace/services/loom-core/internal/hud/app.go:476`
-- `/Users/cblevins/workspace/services/flexinfer/internal/proxy/metrics.go:10`
+- `ROADMAP.md:93`
+- `ROADMAP.md:122`
+- `docs/roadmap-reconciliation-2026-03-03.md:1`
+- `web/src/components/Pipeline/index.tsx:30`
+- `web/src/components/Pipeline/index.tsx:134`
+- `web/src/components/Pipeline/CIPipelineViz.tsx:67`
+- `web/src/components/Pipeline/CIPipelineViz.tsx:194`
+- `web/src/components/Metrics/GrafanaDashboards.tsx:179`
+- `web/src/components/Metrics/GrafanaDashboards.tsx:221`
+- `web/src/components/Dashboard/index.tsx:120`
+- `web/src/components/Dashboard/index.tsx:176`
+- Command: `git log --since='2026-02-18' --pretty=format:'%h %ad %s' --date=short`
+- Command: `python - <<'PY' ... git log --name-only ... Counter ... PY`

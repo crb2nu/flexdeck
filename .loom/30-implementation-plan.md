@@ -1,95 +1,119 @@
-# Implementation Plan — Reconciliation + Reliability-First Expansion
+# Implementation Plan — Feature Improvements And Polish (2026-03)
 
 ## Scope
-- FlexDeck-only implementation in `/Users/cblevins/workspace/services/flexdeck`
-- Reconciliation deliverables:
-  - roadmap/docs/spec alignment
-  - `.loom` context refresh
-- Product deliverables:
-  - Epic 1 + Epic 2 code changes
-  - Epic 3 documentation/governance updates
+- Repository: `/Users/cblevins/workspace/services/flexdeck`
+- Focus: polish and consistency across recently changed Pipeline, Grafana, Dashboard/mobile, and delivery workflows.
+- Out of scope: new subsystem development, cross-repo API changes.
 
 ## Milestones
-1. **A — Reconciliation Artifacts**
-   - Update roadmap status policy to include `Partial`.
-   - Refresh `.loom` index/inventory/research.
-   - Publish dated reconciliation report.
-2. **B — Epic 1 Contract Hardening**
-   - Normalize proxy metrics payload.
-   - Extend inference endpoint reliability fields.
-   - Update dashboard consumption contract.
-3. **C — Epic 2 Feature Completion**
-   - Add LoRA status in inference detail.
-   - Add HUD claims + workflow cancel proxy/UI.
-   - Add stale/live fallback indicators and dual-mode state.
-4. **D — Epic 3 Governance Alignment**
-   - README/config table alignment to actual env keys.
-   - Add `/api/health` feature-flag truth-table references in docs.
-5. **E — Validation + Handoff**
-   - Run backend/frontend tests.
-   - Record assumptions, dependencies, and unresolved risks.
+1. **M1 — Planning Baseline Refresh**
+  - Refresh `.loom` context pack and MCP/runtime inventory.
+  - Capture current constraints (codebase index connectivity issue).
+2. **M2 — Pipeline Confidence Polish**
+   - Land pipeline state/freshness UX and action feedback consistency.
+3. **M3 — Grafana + Dashboard Signal Coherence**
+   - Expose query resolution states and unify status semantics across cards.
+   - Complete final mobile polish verification pass.
+4. **M4 — Verification, Reconciliation, Handoff**
+  - Execute test/ship loop and update roadmap-reconciliation evidence.
 
-## Implementation Steps
-1. Backend API changes
-   - `internal/api/handlers/flexinfer_proxy.go`
-   - `internal/api/handlers/models_inference.go`
-   - `internal/api/handlers/hud_proxy.go`
-   - `internal/api/router.go`
-2. Backend test additions
-   - `internal/api/handlers/flexinfer_proxy_test.go`
-   - `internal/api/handlers/models_inference_test.go`
-   - `internal/api/handlers/hud_proxy_test.go`
-3. Frontend contract and UX updates
-   - `web/src/lib/types.ts`
-   - `web/src/lib/api.ts`
-   - `web/src/components/Dashboard/index.tsx`
-   - `web/src/components/Models/InferenceTab.tsx`
-   - `web/src/components/Agents/HUDTab.tsx`
-   - `web/src/components/Agents/HUDActivityFeed.tsx`
-4. Documentation reconciliation
-   - `.loom/*` files listed in this cycle
-   - `ROADMAP.md`
-   - `README.md`
-   - `docs/roadmap-reconciliation-2026-02-17.md`
+## Delivery Status (As Of 2026-03-03)
+- Workstream A: Delivered on `origin/main` (`6587649`, pipeline polish/status clarity).
+- Workstream B: Delivered on `origin/main` (`343565d`, Grafana resolution/fallback diagnostics).
+- Workstream C: Delivered on `origin/main` (`3f39d9a`, dashboard status semantics + feature-gate clarity).
+- Workstream D: Completed in this branch (governance sync + release smoke checklist), pending merge.
 
-## Test Plan
-- Backend:
-  - `go test ./internal/api/handlers/... ./internal/agents/... ./internal/k8s/...`
-- Frontend:
-  - `npm -C web run -s test`
-- Manual checks:
-  - Confirm `/api/flexinfer/proxy/metrics` includes legacy + normalized fields.
-  - Confirm `/api/models/crd/{ns}/{name}/inference` returns additive reliability fields.
-  - Confirm `/api/hud/claims` and `/api/hud/workflows/{id}/cancel` are reachable.
-  - Confirm HUD tab indicates mode and stale fallback state.
+## Workstreams
 
-## Rollout / Backout
-- Rollout:
-  - Deploy without changing feature-flag defaults.
-  - Enable subsystems per existing env flags (`LOOM_HUD_*`, `RBAC_*`, etc.).
-- Backout:
-  - Revert deployment image.
-  - Disable affected feature flags if immediate mitigation is needed.
-  - No DB/schema migrations involved.
+### Workstream A: Pipeline UX Confidence
+- Target files:
+  - `web/src/components/Pipeline/index.tsx`
+  - `web/src/components/Pipeline/CIPipelineViz.tsx`
+  - `web/src/components/Pipeline/PipelineCard.tsx`
+  - `web/src/components/Pipeline/utils.ts`
+  - `web/src/components/Pipeline/utils.test.ts`
+- Tasks:
+  - Add explicit live/stale/static/offline status affordances.
+  - Standardize retry/cancel/play feedback and refresh timing.
+  - Tighten overview/detail synchronization logic under polling transitions.
 
-## Acceptance Criteria
-- Roadmap/docs/specs are synchronized to shipped state.
-- Data contract mismatch for dashboard inference is resolved.
-- HUD claims/cancel and stale-state UX are present and functional.
-- All listed test commands pass in repo baseline.
+### Workstream B: Grafana Operability Polish
+- Target files:
+  - `web/src/components/Metrics/GrafanaDashboards.tsx`
+  - `internal/api/handlers/grafana.go` (if backend messaging adjustments are required)
+- Tasks:
+  - Surface query resolution path (`direct|templated|fallback`) in panel UI.
+  - Improve unresolved-template diagnostics and unsupported-query messaging.
+  - Verify expanded panel readability on constrained layouts.
 
-## Risks / Dependencies
-- Upstream dependency:
-  - Loom HUD endpoint availability for pull mode.
-  - Prometheus scrape and metric family availability for FlexInfer proxy.
-- Residual risk:
-  - Push-only HUD mode has reduced data completeness.
-  - Some metrics may remain zero when upstream series are absent.
+### Workstream C: Dashboard/Mobile Signal Clarity
+- Target files:
+  - `web/src/components/Dashboard/index.tsx`
+  - `web/src/AppLayout.tsx`
+  - `web/src/components/Dashboard/PodLogPanel.tsx` (if overlay interaction adjustments are needed)
+- Tasks:
+  - Unify card status semantics across model/inference/agent polling surfaces.
+  - Ensure feature-gated disabled states are distinguishable from runtime failures.
+  - Regression-check sub-375px and touch overlay behavior.
+
+### Workstream D: Testing + Governance
+- Target files:
+  - `.loom/00-index.md`
+  - `.loom/10-research.md`
+  - `.loom/20-product-spec.md`
+  - `.loom/30-implementation-plan.md`
+  - `.loom/50-worklog.md`
+  - `docs/polish-release-smoke-checklist.md`
+  - `docs/roadmap-reconciliation-*.md`
+- Tasks:
+  - Keep planning artifacts synchronized with code deltas.
+  - Add concise smoke checklist for polish releases.
+
+## Core Workflow Packs (Execution Design)
+1. **Research loop**
+   - Inputs: `git log`, touched-file frequency, targeted source reads.
+   - Output: `.loom/10-research.md` evidence + prioritized polish gaps.
+2. **Technical writing loop**
+   - Inputs: roadmap + research findings.
+   - Output: updated `.loom/20-product-spec.md` and `.loom/30-implementation-plan.md`.
+3. **Testing + ship loop**
+   - Commands:
+     - `npm -C web run -s test`
+     - `npm -C web run -s lint`
+     - `go test ./internal/api/handlers/... ./internal/metrics/...`
+     - `make lint` (if touched scope justifies full run)
+4. **Troubleshooting loop**
+   - Trigger: stale data, auth fallback failures, inconsistent poll state.
+   - Tools: targeted UI logs + handler tests + endpoint spot checks.
+5. **Coordination loop**
+   - Track decisions/worklog updates in `.loom/40-decisions.md` and `.loom/50-worklog.md`.
+   - Keep reconciliation notes aligned with meaningful code deltas.
+
+## Validation Plan
+- Functional:
+  - Pipeline actions show deterministic post-action states.
+  - Grafana panel cards expose resolution/fallback state.
+  - Dashboard cards show consistent readiness semantics.
+- Regression:
+  - Mobile breakpoints: 320px, 375px, 390px, desktop.
+  - Hosted route/API base behavior remains correct.
+- Quality gates:
+  - Frontend tests/lint pass.
+  - Targeted backend tests pass for touched handlers.
+  - Smoke checklist is executed and recorded in reconciliation notes (`docs/polish-release-smoke-checklist.md`).
+
+## Risks And Mitigations
+- Risk: semantic codebase index unavailable (`qdrant` route issue).
+  - Mitigation: use deterministic local code-reading workflow for this cycle.
+- Risk: polish changes introduce subtle UI regressions.
+  - Mitigation: enforce explicit smoke checklist across Pipeline/Grafana/Dashboard mobile surfaces.
+- Risk: mixed feature-flag states produce false “offline” signals.
+  - Mitigation: normalize status vocabulary and render logic by feature gate.
 
 ## Sources
-- `internal/api/router.go:221`
-- `internal/api/router.go:308`
-- `internal/api/handlers/flexinfer_proxy.go:136`
-- `internal/api/handlers/models_inference.go:58`
-- `internal/config/config.go:286`
-- `web/src/components/Dashboard/index.tsx:95`
+- `web/src/components/Pipeline/index.tsx:134`
+- `web/src/components/Pipeline/CIPipelineViz.tsx:194`
+- `web/src/components/Metrics/GrafanaDashboards.tsx:221`
+- `web/src/components/Dashboard/index.tsx:176`
+- `docs/roadmap-reconciliation-2026-03-03.md:1`
+- Command: `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
