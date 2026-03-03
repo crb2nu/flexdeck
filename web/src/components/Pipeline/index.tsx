@@ -3,17 +3,27 @@ import { parse } from 'yaml';
 import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
 import { ciApi, RepoInfo } from '../../lib/api';
-import { getStatusColor, getStatusLabel, hasActiveJobs, normalizePipeline, type PipelineSortConfig } from './utils';
+import {
+  getPipelineDataState,
+  getStatusColor,
+  getStatusLabel,
+  hasActiveJobs,
+  isLivePipelineId,
+  normalizePipeline,
+  type PipelineDataState,
+  type PipelineSortConfig,
+} from './utils';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
 
 const POLL_INTERVAL = 10000; // 10 seconds
-const NUMERIC_ID_PATTERN = /^\d+$/;
+const PIPELINE_STALE_AFTER_MS = POLL_INTERVAL * 3;
 
-function isNumericId(value: string | undefined | null): value is string {
-  return !!value && NUMERIC_ID_PATTERN.test(value);
-}
+type ActionNotice = {
+  type: 'info' | 'success' | 'error';
+  message: string;
+};
 
 const Pipeline: Component = () => {
   const [repos, setRepos] = createSignal<RepoInfo[]>([]);
@@ -49,7 +59,17 @@ const Pipeline: Component = () => {
   // Pipeline-level action state
   const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
   const [triggerRef, setTriggerRef] = createSignal('main');
-  const hasLivePipelineId = createMemo(() => isNumericId(pipelineData()?.id));
+  const [pipelineFetchError, setPipelineFetchError] = createSignal(false);
+  const [actionNotice, setActionNotice] = createSignal<ActionNotice | null>(null);
+
+  const pushActionNotice = (type: ActionNotice['type'], message: string) => {
+    setActionNotice({ type, message });
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id);
+      setActionNotice((current) => (current?.message === message ? null : current));
+    }, 4500);
+    pendingTimeouts.add(id);
+  };
 
   onMount(async () => {
     try {
@@ -83,9 +103,16 @@ const Pipeline: Component = () => {
                   return next;
               });
           }
+          if (pipelineFetchError()) {
+            pushActionNotice('success', 'Live pipeline status restored.');
+          }
+          setPipelineFetchError(false);
           setLastUpdate(new Date());
       } catch (e) {
-          // Silently handle - repo might not have any pipelines yet
+          if (!pipelineFetchError()) {
+            pushActionNotice('error', 'Live pipeline status unavailable. Showing best available data.');
+          }
+          setPipelineFetchError(true);
           console.debug("No pipeline data available", e);
       }
   };
@@ -131,7 +158,7 @@ const Pipeline: Component = () => {
   // Check if pipeline has running jobs
   const isPipelineActive = () => {
     const pipeline = pipelineData() ?? null;
-    if (!pipeline || !isNumericId(pipeline.id)) return false;
+    if (!pipeline || !isLivePipelineId(pipeline.id)) return false;
     return hasActiveJobs(pipeline);
   };
 
@@ -206,9 +233,9 @@ const Pipeline: Component = () => {
     if (job && repo?.id && job.id) {
       // Extract numeric job ID from the format "job-123" or just "123"
       const jobId = job.id.replace(/^job-/, '');
-      if (!isNumericId(jobId)) {
+      if (!isLivePipelineId(jobId)) {
         setTraceLoading(false);
-        setJobTrace('Live logs are only available for real GitLab job runs.');
+        setJobTrace('Live logs are unavailable for static pipeline previews.');
         return;
       }
       fetchJobTrace(repo.id, jobId);
@@ -239,13 +266,19 @@ const Pipeline: Component = () => {
   const handleRetryPipeline = async () => {
     const repo = selectedRepo();
     const pipeline = pipelineData();
-    if (!repo?.id || !isNumericId(pipeline?.id)) return;
+    if (!repo?.id || !pipeline?.id) return;
+    if (!isLivePipelineId(pipeline.id)) {
+      pushActionNotice('info', 'Retry is unavailable for static pipeline previews.');
+      return;
+    }
     setPipelineActionLoading(true);
     try {
       await ciApi.retryPipeline(repo.id, pipeline.id);
       scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
+      pushActionNotice('success', 'Pipeline retry requested.');
     } catch (e) {
       console.error('Failed to retry pipeline', e);
+      pushActionNotice('error', 'Pipeline retry failed.');
     } finally {
       setPipelineActionLoading(false);
     }
@@ -254,13 +287,19 @@ const Pipeline: Component = () => {
   const handleCancelPipeline = async () => {
     const repo = selectedRepo();
     const pipeline = pipelineData();
-    if (!repo?.id || !isNumericId(pipeline?.id)) return;
+    if (!repo?.id || !pipeline?.id) return;
+    if (!isLivePipelineId(pipeline.id)) {
+      pushActionNotice('info', 'Cancel is unavailable for static pipeline previews.');
+      return;
+    }
     setPipelineActionLoading(true);
     try {
       await ciApi.cancelPipeline(repo.id, pipeline.id);
       scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
+      pushActionNotice('success', 'Pipeline cancel requested.');
     } catch (e) {
       console.error('Failed to cancel pipeline', e);
+      pushActionNotice('error', 'Pipeline cancel failed.');
     } finally {
       setPipelineActionLoading(false);
     }
@@ -273,8 +312,10 @@ const Pipeline: Component = () => {
     try {
       await ciApi.triggerPipeline(repo.id, triggerRef());
       scheduleRefresh(() => fetchPipelineStatus(repo.id), 2000);
+      pushActionNotice('success', `Pipeline trigger requested for ${triggerRef()}.`);
     } catch (e) {
       console.error('Failed to trigger pipeline', e);
+      pushActionNotice('error', 'Pipeline trigger failed.');
     } finally {
       setPipelineActionLoading(false);
     }
@@ -293,6 +334,29 @@ const Pipeline: Component = () => {
   const mobileSectionLabel = createMemo(() => {
     if (pageTab() !== 'pipelines') return pageTab().toUpperCase();
     return viewMode() === 'overview' ? 'PIPELINES / OVERVIEW' : 'PIPELINES / DETAIL';
+  });
+
+  const pipelineDataState = createMemo<PipelineDataState>(() =>
+    getPipelineDataState({
+      pipeline: pipelineData(),
+      lastUpdate: lastUpdate(),
+      fetchError: pipelineFetchError(),
+      staleAfterMs: PIPELINE_STALE_AFTER_MS,
+    })
+  );
+
+  const dataStateMeta = createMemo(() => {
+    const state = pipelineDataState();
+    switch (state) {
+      case 'live':
+        return { label: 'LIVE' };
+      case 'stale':
+        return { label: 'STALE' };
+      case 'static':
+        return { label: 'STATIC' };
+      default:
+        return { label: 'OFFLINE' };
+    }
   });
   
   // ...
@@ -606,6 +670,17 @@ const Pipeline: Component = () => {
                             <div class="text-xs font-mono text-text-muted truncate">
                                 {selectedRepo()?.name}
                             </div>
+                            <span
+                                class="px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-mono uppercase tracking-wider"
+                                classList={{
+                                    'text-neon-green border-neon-green/30 bg-neon-green/10': pipelineDataState() === 'live',
+                                    'text-yellow-300 border-yellow-300/30 bg-yellow-300/10': pipelineDataState() === 'stale',
+                                    'text-neon-cyan border-neon-cyan/30 bg-neon-cyan/10': pipelineDataState() === 'static',
+                                    'text-red-300 border-red-300/30 bg-red-300/10': pipelineDataState() === 'offline',
+                                }}
+                            >
+                                {dataStateMeta().label}
+                            </span>
                             <Show when={isPipelineActive()}>
                                 <div class="flex items-center gap-1.5">
                                     <div class="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse" />
@@ -639,7 +714,10 @@ const Pipeline: Component = () => {
                                 class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all"
                                 onClick={() => {
                                     const repo = selectedRepo();
-                                    if (repo?.id) fetchPipelineStatus(repo.id);
+                                    if (repo?.id) {
+                                      fetchPipelineStatus(repo.id);
+                                      pushActionNotice('info', 'Refreshing pipeline status...');
+                                    }
                                 }}
                             >
                                 ↻ Refresh
@@ -647,7 +725,8 @@ const Pipeline: Component = () => {
 
                             {/* Pipeline-level actions */}
                             <div class="flex flex-wrap items-center gap-1 sm:ml-2 sm:pl-2 sm:border-l border-white/10">
-                                <Show when={hasLivePipelineId() && (pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled')}>
+                                <Show when={isLivePipelineId(pipelineData()?.id)}>
+                                  <Show when={pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled'}>
                                     <button
                                         class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
                                         onClick={handleRetryPipeline}
@@ -655,8 +734,8 @@ const Pipeline: Component = () => {
                                     >
                                         Retry Pipeline
                                     </button>
-                                </Show>
-                                <Show when={hasLivePipelineId() && (pipelineData()?.status === 'running' || pipelineData()?.status === 'pending')}>
+                                  </Show>
+                                  <Show when={pipelineData()?.status === 'running' || pipelineData()?.status === 'pending'}>
                                     <button
                                         class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20 transition-all disabled:opacity-50"
                                         onClick={handleCancelPipeline}
@@ -664,6 +743,7 @@ const Pipeline: Component = () => {
                                     >
                                         Cancel Pipeline
                                     </button>
+                                  </Show>
                                 </Show>
                                 <div class="flex items-center gap-1">
                                     <input
@@ -684,11 +764,24 @@ const Pipeline: Component = () => {
                             </div>
                         </div>
                     </div>
+                    <Show when={actionNotice()}>
+                        <div
+                            class="mx-3 mt-2 rounded border px-3 py-2 text-xs font-mono sm:mx-4"
+                            classList={{
+                                'border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan': actionNotice()?.type === 'info',
+                                'border-neon-green/30 bg-neon-green/10 text-neon-green': actionNotice()?.type === 'success',
+                                'border-red-400/30 bg-red-400/10 text-red-300': actionNotice()?.type === 'error',
+                            }}
+                        >
+                            {actionNotice()?.message}
+                        </div>
+                    </Show>
                     <div class="flex-1 relative p-4">
                         <CIPipelineViz
                             pipeline={pipelineData()}
                             projectId={selectedRepo()?.id}
                             onJobClick={(job) => setSelectedJob(job)}
+                            onActionStatus={(notice) => pushActionNotice(notice.type, notice.message)}
                             onRefresh={() => {
                                 const repo = selectedRepo();
                                 if (repo?.id) {

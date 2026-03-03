@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RepoInfo } from "../../lib/api";
 import type { Pipeline } from "./CIPipelineViz";
 import {
+  getPipelineDataState,
   formatRelativeTime,
   getJobCountsByStatus,
   getStatusColor,
@@ -11,6 +12,7 @@ import {
   normalizeJobStatus,
   normalizePipeline,
   normalizePipelineStatus,
+  isLivePipelineId,
   sortJobsByStatus,
   sortPipelines,
   type RepoWithPipeline,
@@ -158,5 +160,41 @@ describe("pipeline utils", () => {
     expect(formatRelativeTime("2026-02-17T11:59:40Z")).toBe("just now");
     expect(formatRelativeTime("2026-02-17T11:00:00Z")).toBe("1h ago");
     expect(formatRelativeTime("2026-02-15T12:00:00Z")).toBe("2d ago");
+  });
+
+  it("detects live pipeline IDs", () => {
+    expect(isLivePipelineId("12345")).toBe(true);
+    expect(isLivePipelineId("pipeline-demo")).toBe(false);
+    expect(isLivePipelineId("job-10")).toBe(false);
+    expect(isLivePipelineId("")).toBe(false);
+  });
+
+  it("derives pipeline data confidence state", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-17T12:00:00Z"));
+
+    const livePipeline: Pipeline = {
+      ...makePipeline("running", "2026-02-17T11:59:00Z", 1),
+      id: "12345",
+    };
+    const staticPipeline: Pipeline = { ...livePipeline, id: "pipeline-demo-main" };
+
+    expect(
+      getPipelineDataState({
+        pipeline: livePipeline,
+        lastUpdate: new Date("2026-02-17T11:59:50Z"),
+      }),
+    ).toBe("live");
+
+    expect(
+      getPipelineDataState({
+        pipeline: livePipeline,
+        lastUpdate: new Date("2026-02-17T11:58:00Z"),
+      }),
+    ).toBe("stale");
+
+    expect(getPipelineDataState({ pipeline: livePipeline, fetchError: true })).toBe("offline");
+    expect(getPipelineDataState({ pipeline: staticPipeline })).toBe("static");
+    expect(getPipelineDataState({ pipeline: null })).toBe("offline");
   });
 });
