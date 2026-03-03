@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
-import { getStatusColor, getStatusLabel, sortJobsByStatus } from './utils';
+import { getStatusColor, getStatusLabel, isLivePipelineId, sortJobsByStatus } from './utils';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
 export interface PipelineJob {
@@ -103,6 +103,7 @@ const CIPipelineViz: Component<{
   projectId?: number;
   onJobClick?: (job: PipelineJob) => void;
   onRefresh?: () => void;
+  onActionStatus?: (notice: { type: 'info' | 'success' | 'error'; message: string }) => void;
 }> = (props) => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   let containerRef: HTMLDivElement | undefined;
@@ -191,19 +192,28 @@ const CIPipelineViz: Component<{
   const isLiveGitLabJobId = (jobId: string): boolean =>
     /^\d+$/.test(getNumericJobId(jobId));
 
+  const notifyActionStatus = (type: 'info' | 'success' | 'error', message: string) => {
+    props.onActionStatus?.({ type, message });
+  };
+
+  const getLiveJobId = (job: PipelineJob): string | null => {
+    if (!props.projectId) {
+      notifyActionStatus('info', 'Job actions are unavailable until a GitLab project is selected.');
+      return null;
+    }
+    const jobId = getNumericJobId(job.id);
+    if (!/^\d+$/.test(jobId)) {
+      notifyActionStatus('info', 'Job actions are unavailable for static pipeline previews.');
+      return null;
+    }
+    return jobId;
+  };
+
   // Job action handlers with real API calls
   const handleRetryJob = async (job: PipelineJob, e: MouseEvent) => {
     e.stopPropagation();
-    if (!props.projectId) {
-      console.warn('No projectId provided for job action');
-      return;
-    }
-
-    const jobId = getNumericJobId(job.id);
-    if (!isLiveGitLabJobId(job.id)) {
-      console.warn('Skipping retry for non-live job id', job.id);
-      return;
-    }
+    const jobId = getLiveJobId(job);
+    if (!jobId || !props.projectId) return;
     setActionLoading(job.id);
 
     try {
@@ -222,8 +232,10 @@ const CIPipelineViz: Component<{
       }));
       // Trigger refresh to get updated pipeline state
       props.onRefresh?.();
+      notifyActionStatus('success', `Retry requested for ${job.name}.`);
     } catch (err) {
       console.error('Failed to retry job:', err);
+      notifyActionStatus('error', `Retry failed for ${job.name}.`);
     } finally {
       setActionLoading(null);
     }
@@ -231,16 +243,8 @@ const CIPipelineViz: Component<{
 
   const handleCancelJob = async (job: PipelineJob, e: MouseEvent) => {
     e.stopPropagation();
-    if (!props.projectId) {
-      console.warn('No projectId provided for job action');
-      return;
-    }
-
-    const jobId = getNumericJobId(job.id);
-    if (!isLiveGitLabJobId(job.id)) {
-      console.warn('Skipping cancel for non-live job id', job.id);
-      return;
-    }
+    const jobId = getLiveJobId(job);
+    if (!jobId || !props.projectId) return;
     setActionLoading(job.id);
 
     try {
@@ -259,8 +263,10 @@ const CIPipelineViz: Component<{
       }));
       // Trigger refresh to get updated pipeline state
       props.onRefresh?.();
+      notifyActionStatus('success', `Cancel requested for ${job.name}.`);
     } catch (err) {
       console.error('Failed to cancel job:', err);
+      notifyActionStatus('error', `Cancel failed for ${job.name}.`);
     } finally {
       setActionLoading(null);
     }
@@ -268,16 +274,8 @@ const CIPipelineViz: Component<{
 
   const handlePlayJob = async (job: PipelineJob, e: MouseEvent) => {
     e.stopPropagation();
-    if (!props.projectId) {
-      console.warn('No projectId provided for job action');
-      return;
-    }
-
-    const jobId = getNumericJobId(job.id);
-    if (!isLiveGitLabJobId(job.id)) {
-      console.warn('Skipping play for non-live job id', job.id);
-      return;
-    }
+    const jobId = getLiveJobId(job);
+    if (!jobId || !props.projectId) return;
     setActionLoading(job.id);
 
     try {
@@ -296,12 +294,20 @@ const CIPipelineViz: Component<{
       }));
       // Trigger refresh to get updated pipeline state
       props.onRefresh?.();
+      notifyActionStatus('success', `Manual trigger requested for ${job.name}.`);
     } catch (err) {
       console.error('Failed to play job:', err);
+      notifyActionStatus('error', `Manual trigger failed for ${job.name}.`);
     } finally {
       setActionLoading(null);
     }
   };
+
+  const pipelineDisplayId = createMemo(() => {
+    const id = pipeline().id;
+    if (isLivePipelineId(id)) return id;
+    return id.split('-')[1] || id;
+  });
 
   // Memoized connection paths - only recompute when pipeline changes
   const connectionPaths = createMemo(() => {
@@ -608,7 +614,7 @@ const CIPipelineViz: Component<{
                 }}
               />
               <h2 class="text-lg font-bold text-white tracking-wide">
-                PIPELINE <span class="text-neon-cyan font-mono">#{pipeline().id.split('-')[1]}</span>
+                PIPELINE <span class="text-neon-cyan font-mono">#{pipelineDisplayId()}</span>
               </h2>
             </div>
             <div class="px-3 py-1 rounded-full bg-white/5 border border-white/10">

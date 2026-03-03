@@ -170,6 +170,8 @@ export interface RepoWithPipeline {
   pipeline: Pipeline | null;
 }
 
+export type PipelineDataState = 'live' | 'stale' | 'static' | 'offline';
+
 /**
  * Check if a pipeline has any active (running) jobs
  */
@@ -180,6 +182,34 @@ export function hasActiveJobs(pipeline: Pipeline | null): boolean {
   return pipeline.stages.some(stage =>
     stage.jobs.some(job => ACTIVE_JOB_STATUSES.has(job.status))
   );
+}
+
+/**
+ * Live pipelines have numeric IDs from GitLab API responses.
+ * Static previews generated from `.gitlab-ci.yml` use synthetic IDs.
+ */
+export function isLivePipelineId(id: string | undefined | null): boolean {
+  return !!id && /^\d+$/.test(id);
+}
+
+interface PipelineDataStateInput {
+  pipeline: Pipeline | null | undefined;
+  lastUpdate?: Date | null;
+  fetchError?: boolean;
+  staleAfterMs?: number;
+}
+
+/**
+ * Derive data confidence state for pipeline views.
+ */
+export function getPipelineDataState(input: PipelineDataStateInput): PipelineDataState {
+  const { pipeline, lastUpdate = null, fetchError = false, staleAfterMs = 35000 } = input;
+  if (!pipeline) return 'offline';
+  if (!isLivePipelineId(pipeline.id)) return 'static';
+  if (fetchError) return 'offline';
+  if (!lastUpdate) return 'stale';
+  if (Date.now() - lastUpdate.getTime() > staleAfterMs) return 'stale';
+  return 'live';
 }
 
 /**
