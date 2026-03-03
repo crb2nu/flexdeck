@@ -16,8 +16,10 @@ import LangfuseWidget from './LangfuseWidget';
 import NodeResourcePanel from './NodeResourcePanel';
 import { DetailPanel } from '../shared';
 import { buildInferenceHealthSummary } from './inferenceHealth';
+import { dataStateLabel, resolveDashboardDataState } from './statusSemantics';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
+const DASHBOARD_STALE_AFTER_MS = METRICS_REFRESH_INTERVAL * 3;
 
 interface SelectedItem {
   type: 'node' | 'pod' | 'service';
@@ -76,6 +78,7 @@ const Dashboard: Component = () => {
 
   // AI Models state
   const [modelCount, setModelCount] = createSignal({ deployed: 0, total: 0, loading: true, error: '' });
+  const [modelLastUpdateMs, setModelLastUpdateMs] = createSignal(0);
 
   const fetchModelCount = async () => {
     try {
@@ -83,6 +86,7 @@ const Dashboard: Component = () => {
       const models = result?.models || [];
       const deployed = models.filter((m: { deployment_status?: string }) => m.deployment_status === 'deployed').length;
       setModelCount({ deployed, total: models.length, loading: false, error: '' });
+      setModelLastUpdateMs(Date.now());
     } catch {
       setModelCount(prev => ({ ...prev, loading: false, error: 'offline' }));
     }
@@ -92,6 +96,7 @@ const Dashboard: Component = () => {
   const [inferenceHealth, setInferenceHealth] = createSignal({
     totalTps: 0, modelCount: 0, queueDepth: 0, loading: true, error: '',
   });
+  const [inferenceLastUpdateMs, setInferenceLastUpdateMs] = createSignal(0);
   const [tpsHistory, setTpsHistory] = createSignal<number[]>([]);
 
   const fetchInferenceHealth = async () => {
@@ -107,6 +112,7 @@ const Dashboard: Component = () => {
         loading: false,
         error: summary.error,
       });
+      setInferenceLastUpdateMs(Date.now());
       if (summary.totalTps > 0) setTpsHistory(prev => [...prev.slice(-19), summary.totalTps]);
     } catch {
       setInferenceHealth(prev => ({ ...prev, loading: false, error: 'offline' }));
@@ -117,6 +123,7 @@ const Dashboard: Component = () => {
   const [agentActivity, setAgentActivity] = createSignal({
     activeAgents: 0, totalTasks: 0, pendingApprovals: 0, loading: true, error: '',
   });
+  const [agentLastUpdateMs, setAgentLastUpdateMs] = createSignal(0);
   const loomHUDPullEnabled = () => healthStore.features.loom_hud?.enabled ?? false;
   const loomHUDPushEnabled = () => healthStore.features.loom_hud_push?.enabled ?? false;
   const loomHUDAvailable = () => loomHUDPullEnabled() || loomHUDPushEnabled();
@@ -138,6 +145,7 @@ const Dashboard: Component = () => {
           loading: false,
           error: '',
         });
+        setAgentLastUpdateMs(Date.now());
         return;
       }
 
@@ -161,6 +169,7 @@ const Dashboard: Component = () => {
         loading: false,
         error: '',
       });
+      setAgentLastUpdateMs(Date.now());
     } catch {
       setAgentActivity(prev => ({ ...prev, loading: false, error: 'offline' }));
     }
@@ -239,6 +248,85 @@ const Dashboard: Component = () => {
   );
 
   const k8sError = createMemo(() => k8sStore.error);
+  const k8sDataState = createMemo(() =>
+    resolveDashboardDataState({
+      loading: isLoading(),
+      error: connectionStatus() === 'error' ? 'offline' : k8sError(),
+      lastUpdateMs: k8sStore.lastUpdate,
+      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
+    }),
+  );
+  const k8sCardError = createMemo(() =>
+    k8sDataState() === 'offline' ? (k8sError() || 'offline') : '',
+  );
+
+  const resourceDataState = createMemo(() =>
+    resolveDashboardDataState({
+      loading: resourceLoading(),
+      error: resourceError(),
+      lastUpdateMs: metricsStore().lastUpdate,
+      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
+    }),
+  );
+  const resourceCardError = createMemo(() =>
+    resourceDataState() === 'offline' ? (resourceError() || 'offline') : '',
+  );
+
+  const modelDataState = createMemo(() =>
+    resolveDashboardDataState({
+      loading: modelCount().loading,
+      error: modelCount().error,
+      lastUpdateMs: modelLastUpdateMs(),
+      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
+    }),
+  );
+  const modelCardError = createMemo(() =>
+    modelDataState() === 'offline' ? (modelCount().error || 'offline') : '',
+  );
+
+  const inferenceFeatureEnabled = createMemo(
+    () => healthStore.features.flexinfer_proxy?.enabled ?? false,
+  );
+  const inferenceDataState = createMemo(() => {
+    if (!inferenceFeatureEnabled()) return 'offline' as const;
+    return resolveDashboardDataState({
+      loading: inferenceHealth().loading,
+      error: inferenceHealth().error,
+      lastUpdateMs: inferenceLastUpdateMs(),
+      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
+    });
+  });
+  const inferenceCardError = createMemo(() => {
+    if (!inferenceFeatureEnabled()) return '';
+    return inferenceDataState() === 'offline'
+      ? (inferenceHealth().error || 'offline')
+      : '';
+  });
+
+  const agentFeatureEnabled = createMemo(() => loomHUDAvailable());
+  const agentDataState = createMemo(() => {
+    if (!agentFeatureEnabled()) return 'offline' as const;
+    const resolved = resolveDashboardDataState({
+      loading: agentActivity().loading,
+      error: agentActivity().error,
+      lastUpdateMs: agentLastUpdateMs(),
+      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
+    });
+    if (
+      resolved === 'ready' &&
+      loomHUDPushEnabled() &&
+      !loomHUDPullEnabled()
+    ) {
+      return 'partial' as const;
+    }
+    return resolved;
+  });
+  const agentCardError = createMemo(() => {
+    if (!agentFeatureEnabled()) return '';
+    return agentDataState() === 'offline'
+      ? (agentActivity().error || 'offline')
+      : '';
+  });
 
   // Adapt store data to component types
   const nodes = createMemo(() => k8sStore.nodes as unknown as K8sNode[]);
@@ -269,7 +357,8 @@ const Dashboard: Component = () => {
           value={`${podReady()}/${podTotal()}`}
           sub={`${podNamespaces()} namespaces`}
           loading={isLoading()}
-          error={k8sError() || ''}
+          error={k8sCardError()}
+          meta={dataStateLabel(k8sDataState())}
           icon="⬡"
         />
 
@@ -278,7 +367,8 @@ const Dashboard: Component = () => {
           value={`${nodeReady()}/${nodeTotal()}`}
           sub="cluster nodes"
           loading={isLoading()}
-          error={k8sError() || ''}
+          error={k8sCardError()}
+          meta={dataStateLabel(k8sDataState())}
           icon="◈"
         />
 
@@ -287,7 +377,8 @@ const Dashboard: Component = () => {
           value={formatPercent(cpuPercent())}
           sub="cluster utilization"
           loading={resourceLoading()}
-          error={resourceError()}
+          error={resourceCardError()}
+          meta={dataStateLabel(resourceDataState())}
           icon="⚡"
           sparkData={cpuHistory()}
           trend={cpuHistory().length >= 2 ? (cpuHistory()[cpuHistory().length - 1] > cpuHistory()[cpuHistory().length - 2] ? 'up' : 'down') : undefined}
@@ -298,7 +389,8 @@ const Dashboard: Component = () => {
           value={formatBytes(memUsed())}
           sub="used across cluster"
           loading={resourceLoading()}
-          error={resourceError()}
+          error={resourceCardError()}
+          meta={dataStateLabel(resourceDataState())}
           icon="◉"
           sparkData={memHistory()}
         />
@@ -308,39 +400,68 @@ const Dashboard: Component = () => {
           value={`${modelCount().deployed}/${modelCount().total}`}
           sub="deployed models"
           loading={modelCount().loading}
-          error={modelCount().error}
+          error={modelCardError()}
+          meta={dataStateLabel(modelDataState())}
           icon="◆"
         />
 
-        <Show when={healthStore.features.flexinfer_proxy?.enabled}>
-          <PulseCard
-            title="Inference"
-            value={inferenceHealth().totalTps > 0 ? `${inferenceHealth().totalTps.toFixed(1)}` : '0'}
-            sub={`${inferenceHealth().modelCount} models · queue ${inferenceHealth().queueDepth}`}
-            loading={inferenceHealth().loading}
-            error={inferenceHealth().error}
-            icon="⚡"
-            color="purple"
-            sparkData={tpsHistory()}
-            trend={tpsHistory().length >= 2 ? (tpsHistory()[tpsHistory().length - 1] > tpsHistory()[tpsHistory().length - 2] ? 'up' : 'down') : undefined}
-          />
-        </Show>
+        <PulseCard
+          title="Inference"
+          value={
+            inferenceFeatureEnabled()
+              ? (inferenceHealth().totalTps > 0 ? `${inferenceHealth().totalTps.toFixed(1)}` : '0')
+              : '—'
+          }
+          sub={
+            inferenceFeatureEnabled()
+              ? `${inferenceHealth().modelCount} models · queue ${inferenceHealth().queueDepth}`
+              : 'flexinfer_proxy feature disabled'
+          }
+          loading={inferenceFeatureEnabled() ? inferenceHealth().loading : false}
+          error={inferenceCardError()}
+          meta={
+            inferenceFeatureEnabled()
+              ? dataStateLabel(
+                  inferenceDataState(),
+                  inferenceDataState() === 'partial' && inferenceHealth().error
+                    ? inferenceHealth().error
+                    : undefined,
+                )
+              : dataStateLabel('offline', 'feature disabled')
+          }
+          icon="⚡"
+          color={inferenceFeatureEnabled() ? 'purple' : 'orange'}
+          sparkData={inferenceFeatureEnabled() ? tpsHistory() : undefined}
+          trend={
+            inferenceFeatureEnabled() && tpsHistory().length >= 2
+              ? (tpsHistory()[tpsHistory().length - 1] > tpsHistory()[tpsHistory().length - 2] ? 'up' : 'down')
+              : undefined
+          }
+        />
 
-        <Show when={loomHUDAvailable()}>
-          <PulseCard
-            title="Agents"
-            value={`${agentActivity().activeAgents}`}
-            sub={
-              loomHUDPullEnabled()
+        <PulseCard
+          title="Agents"
+          value={agentFeatureEnabled() ? `${agentActivity().activeAgents}` : '—'}
+          sub={
+            agentFeatureEnabled()
+              ? (loomHUDPullEnabled()
                 ? `${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`
-                : `${agentActivity().totalTasks} sessions observed · push mode`
-            }
-            loading={agentActivity().loading}
-            error={agentActivity().error}
-            icon="◎"
-            color="green"
-          />
-        </Show>
+                : `${agentActivity().totalTasks} sessions observed · push mode`)
+              : 'loom_hud feature disabled'
+          }
+          loading={agentFeatureEnabled() ? agentActivity().loading : false}
+          error={agentCardError()}
+          meta={
+            agentFeatureEnabled()
+              ? dataStateLabel(
+                  agentDataState(),
+                  loomHUDPushEnabled() && !loomHUDPullEnabled() ? 'push mode' : undefined,
+                )
+              : dataStateLabel('offline', 'feature disabled')
+          }
+          icon="◎"
+          color={agentFeatureEnabled() ? 'green' : 'orange'}
+        />
       </div>
 
       {/* Main Content: Visualization + Events */}
