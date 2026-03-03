@@ -24,9 +24,110 @@ interface Panel {
 
 interface PanelLiveData {
   state: 'loading' | 'ready' | 'unsupported' | 'error';
+  resolution?: 'direct' | 'templated' | 'fallback';
   value?: number;
   series?: number[];
   message?: string;
+}
+
+interface ResolvedPromExpr {
+  expr: string;
+  unresolvedVars: string[];
+  resolution: 'direct' | 'templated' | 'fallback';
+}
+
+function isPrometheusDatasourceName(name?: string): boolean {
+  if (!name) return true; // Treat inherited/default datasource as potentially Prometheus.
+  const normalized = name.toLowerCase();
+  return (
+    normalized.includes('prom') ||
+    normalized.includes('mimir') ||
+    normalized.includes('thanos')
+  );
+}
+
+function looksLikePromExpr(expr?: string): boolean {
+  if (!expr) return false;
+  const trimmed = expr.trim();
+  if (!trimmed) return false;
+  const lowered = trimmed.toLowerCase();
+
+  // Avoid obvious non-PromQL query languages.
+  if (
+    lowered.includes('select ') ||
+    lowered.includes(' from ') ||
+    lowered.includes(' where ') ||
+    lowered.includes('| json') ||
+    lowered.includes('|=') ||
+    lowered.includes('lucene')
+  ) {
+    return false;
+  }
+
+  return (
+    /[a-zA-Z_:][a-zA-Z0-9_:]*/.test(trimmed) &&
+    (trimmed.includes('{') ||
+      trimmed.includes('(') ||
+      trimmed.includes('[') ||
+      trimmed.includes('_total') ||
+      trimmed.includes('_seconds'))
+  );
+}
+
+function collectTemplateTokens(expr: string): string[] {
+  const tokens: string[] = [];
+  const tokenRegex = /\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}|\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  let match: RegExpExecArray | null = null;
+  while ((match = tokenRegex.exec(expr)) !== null) {
+    const token = match[1] || match[2];
+    if (token) tokens.push(token);
+  }
+  return tokens;
+}
+
+function normalizeTemplateValue(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => (item == null ? '' : String(item).trim()))
+      .filter(Boolean);
+    if (normalized.length === 0) return undefined;
+    if (normalized.some((item) => item === '$__all' || item === 'All')) return '.*';
+    return normalized.length === 1 ? normalized[0] : normalized.join('|');
+  }
+  if (value == null) return undefined;
+  const text = String(value).trim();
+  if (!text) return undefined;
+  if (text === '$__all' || text === 'All') return '.*';
+  return text;
+}
+
+function extractTemplateVariables(dashboard: Record<string, any>): Record<string, string> {
+  const templatingList = Array.isArray(dashboard?.templating?.list)
+    ? dashboard.templating.list
+    : [];
+  const values: Record<string, string> = {};
+
+  for (const variable of templatingList) {
+    if (!variable || typeof variable !== 'object') continue;
+    const name = typeof variable.name === 'string' ? variable.name.trim() : '';
+    if (!name) continue;
+
+    const current = variable.current;
+    let normalized = normalizeTemplateValue(current?.value);
+    if (!normalized) normalized = normalizeTemplateValue(current?.text);
+
+    if (!normalized && Array.isArray(variable.options)) {
+      const selected =
+        variable.options.find((opt: any) => opt?.selected) || variable.options[0];
+      normalized = normalizeTemplateValue(selected?.value) || normalizeTemplateValue(selected?.text);
+    }
+
+    if (normalized && !normalized.includes('$')) {
+      values[name] = normalized;
+    }
+  }
+
+  return values;
 }
 
 function extractDatasourceName(datasource: unknown): string | undefined {
@@ -90,6 +191,67 @@ function normalizePromExpr(expr: string): string {
   return normalized;
 }
 
+function replaceTemplateToken(expr: string, token: string, value: string): string {
+  const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const curly = new RegExp(`\\$\\{${escapedToken}\\}`, 'g');
+  const plain = new RegExp(`\\$${escapedToken}(?![a-zA-Z0-9_])`, 'g');
+  return expr.replace(curly, () => value).replace(plain, () => value);
+}
+
+function fallbackTemplateToken(expr: string, token: string): string {
+  const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tokenPattern = `\\$\\{?${escapedToken}\\}?`;
+
+  const doubleQuotedMatcher = new RegExp(
+    `([a-zA-Z_:][a-zA-Z0-9_:]*)\\s*(=|=~|!=|!~)\\s*"${tokenPattern}"`,
+    'g',
+  );
+  const singleQuotedMatcher = new RegExp(
+    `([a-zA-Z_:][a-zA-Z0-9_:]*)\\s*(=|=~|!=|!~)\\s*'${tokenPattern}'`,
+    'g',
+  );
+  const bareToken = new RegExp(tokenPattern, 'g');
+
+  return expr
+    .replace(doubleQuotedMatcher, (_m, label) => `${label}=~".*"`)
+    .replace(singleQuotedMatcher, (_m, label) => `${label}=~".*"`)
+    .replace(bareToken, '.*');
+}
+
+function resolvePromExpr(
+  rawExpr: string,
+  templateVars: Record<string, string>,
+): ResolvedPromExpr {
+  let expr = normalizePromExpr(rawExpr);
+  const tokens = Array.from(new Set(collectTemplateTokens(expr))).filter(
+    (token) => !token.startsWith('__'),
+  );
+
+  let usedTemplated = false;
+  let usedFallback = false;
+
+  for (const token of tokens) {
+    const replacement = templateVars[token];
+    if (replacement) {
+      expr = replaceTemplateToken(expr, token, replacement);
+      usedTemplated = true;
+      continue;
+    }
+    expr = fallbackTemplateToken(expr, token);
+    usedFallback = true;
+  }
+
+  const unresolvedVars = Array.from(
+    new Set(collectTemplateTokens(expr).filter((token) => !token.startsWith('__'))),
+  );
+
+  return {
+    expr,
+    unresolvedVars,
+    resolution: usedFallback ? 'fallback' : usedTemplated ? 'templated' : 'direct',
+  };
+}
+
 function parsePromSeries(payload: any): number[] {
   const results = payload?.data?.result;
   if (!Array.isArray(results) || results.length === 0) return [];
@@ -128,6 +290,19 @@ function formatMetricValue(value?: number): string {
   return value.toFixed(2);
 }
 
+function resolutionBadgeLabel(resolution?: PanelLiveData['resolution']): string | undefined {
+  switch (resolution) {
+    case 'direct':
+      return 'direct';
+    case 'templated':
+      return 'templated';
+    case 'fallback':
+      return 'fallback';
+    default:
+      return undefined;
+  }
+}
+
 function flattenPanels(rawPanels: any[], section?: string): Panel[] {
   if (!Array.isArray(rawPanels)) return [];
 
@@ -153,14 +328,24 @@ function flattenPanels(rawPanels: any[], section?: string): Panel[] {
       continue;
     }
 
+    const datasource = extractDatasourceName(panel.datasource);
+    const queryPreview = extractQueryPreview(panel);
+    const rawExpr = extractPromExpr(panel);
+    const queryExpr = looksLikePromExpr(rawExpr)
+      ? rawExpr
+      : looksLikePromExpr(queryPreview)
+        ? queryPreview
+        : undefined;
+
     flat.push({
       id: typeof panel.id === 'number' ? panel.id : -1,
       title: panelTitle,
       type: panelType,
       description:
         typeof panel.description === 'string' ? panel.description : undefined,
-      datasource: extractDatasourceName(panel.datasource),
-      queryPreview: extractQueryPreview(panel),
+      datasource,
+      queryPreview,
+      queryExpr,
       section,
     });
   }
@@ -175,6 +360,7 @@ const GrafanaDashboards: Component = () => {
   const [expandedUid, setExpandedUid] = createSignal<string | null>(null);
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
+  const [templateVars, setTemplateVars] = createSignal<Record<string, string>>({});
   const [liveDataByPanel, setLiveDataByPanel] = createSignal<
     Record<string, PanelLiveData>
   >({});
@@ -185,6 +371,17 @@ const GrafanaDashboards: Component = () => {
       total: list.length,
       sections: new Set(list.map((panel) => panel.section).filter(Boolean)).size,
       datasources: new Set(list.map((panel) => panel.datasource).filter(Boolean)).size,
+    };
+  });
+  const templateVarEntries = createMemo(() => Object.entries(templateVars()));
+  const liveSummary = createMemo(() => {
+    const values = Object.values(liveDataByPanel());
+    return {
+      tracked: values.length,
+      ready: values.filter((value) => value.state === 'ready').length,
+      loading: values.filter((value) => value.state === 'loading').length,
+      unsupported: values.filter((value) => value.state === 'unsupported').length,
+      error: values.filter((value) => value.state === 'error').length,
     };
   });
 
@@ -199,33 +396,59 @@ const GrafanaDashboards: Component = () => {
 
   const panelKey = (panel: Panel) => `${panel.id}:${panel.title}`;
 
-  const loadLivePanelData = async (nextPanels: Panel[]) => {
+  const loadLivePanelData = async (
+    nextPanels: Panel[],
+    resolvedTemplateVars: Record<string, string>,
+  ) => {
     const generation = ++liveFetchGeneration;
     const liveState: Record<string, PanelLiveData> = {};
-
-    const candidates = nextPanels
-      .filter((panel) => typeof panel.queryExpr === 'string' && panel.queryExpr.trim().length > 0)
-      .slice(0, 24);
+    const resolvedExprByPanelKey: Record<string, string> = {};
 
     for (const panel of nextPanels) {
       const key = panelKey(panel);
       if (!panel.queryExpr) {
-        liveState[key] = { state: 'unsupported', message: 'No query on panel' };
-        continue;
-      }
-
-      const normalized = normalizePromExpr(panel.queryExpr);
-      if (normalized.includes('$')) {
+        const hasAnyQuery = typeof panel.queryPreview === 'string' && panel.queryPreview.trim().length > 0;
         liveState[key] = {
           state: 'unsupported',
-          message: 'Templated query variable not resolvable here',
+          message: hasAnyQuery
+            ? 'Unsupported query language for live preview (PromQL only)'
+            : 'Live preview unavailable for this panel type',
         };
         continue;
       }
 
-      liveState[key] = { state: 'loading' };
+      if (!isPrometheusDatasourceName(panel.datasource)) {
+        liveState[key] = {
+          state: 'unsupported',
+          message: 'Live preview currently supports Prometheus datasource panels',
+        };
+        continue;
+      }
+
+      const resolved = resolvePromExpr(panel.queryExpr, resolvedTemplateVars);
+      if (resolved.unresolvedVars.length > 0) {
+        liveState[key] = {
+          state: 'unsupported',
+          message: `Unresolved variables: ${resolved.unresolvedVars.join(', ')}`,
+        };
+        continue;
+      }
+
+      resolvedExprByPanelKey[key] = resolved.expr;
+      liveState[key] = {
+        state: 'loading',
+        resolution: resolved.resolution,
+        message:
+          resolved.resolution === 'fallback'
+            ? 'Auto-resolved variables using wildcard fallback'
+            : undefined,
+      };
     }
     setLiveDataByPanel(liveState);
+
+    const candidates = nextPanels
+      .filter((panel) => liveState[panelKey(panel)]?.state === 'loading')
+      .slice(0, 24);
 
     const now = Math.floor(Date.now() / 1000);
     const start = now - 3600;
@@ -235,8 +458,9 @@ const GrafanaDashboards: Component = () => {
     await Promise.all(
       candidates.map(async (panel) => {
         const key = panelKey(panel);
-        const expr = normalizePromExpr(panel.queryExpr || '');
+        const expr = resolvedExprByPanelKey[key] || '';
         if (!expr || expr.includes('$')) return;
+        const resolution = liveState[key]?.resolution;
 
         try {
           const range = await prom.queryRange(expr, start, end, step);
@@ -252,7 +476,7 @@ const GrafanaDashboards: Component = () => {
           if (generation !== liveFetchGeneration) return;
           setLiveDataByPanel((current) => ({
             ...current,
-            [key]: { state: 'ready', value, series },
+            [key]: { state: 'ready', value, series, resolution },
           }));
         } catch (err) {
           if (generation !== liveFetchGeneration) return;
@@ -260,6 +484,7 @@ const GrafanaDashboards: Component = () => {
             ...current,
             [key]: {
               state: 'error',
+              resolution,
               message:
                 err instanceof Error ? err.message : 'Live query failed',
             },
@@ -284,6 +509,7 @@ const GrafanaDashboards: Component = () => {
     if (expandedUid() === uid) {
       setExpandedUid(null);
       setPanels([]);
+      setTemplateVars({});
       setLiveDataByPanel({});
       liveFetchGeneration++;
       return;
@@ -292,15 +518,19 @@ const GrafanaDashboards: Component = () => {
     setExpandedUid(uid);
     setPanelsLoading(true);
     setPanels([]);
+    setTemplateVars({});
     setLiveDataByPanel({});
 
     try {
       const detail = await grafanaApi.dashboard(uid);
       const dashPanels: Panel[] = flattenPanels(detail?.dashboard?.panels || []);
+      const resolvedTemplateVars = extractTemplateVariables(detail?.dashboard || {});
       setPanels(dashPanels);
-      void loadLivePanelData(dashPanels);
+      setTemplateVars(resolvedTemplateVars);
+      void loadLivePanelData(dashPanels, resolvedTemplateVars);
     } catch {
       setPanels([]);
+      setTemplateVars({});
       setLiveDataByPanel({});
     } finally {
       setPanelsLoading(false);
@@ -397,7 +627,29 @@ const GrafanaDashboards: Component = () => {
                       <Show when={panelSummary().datasources > 0}>
                         <span>{panelSummary().datasources} datasources</span>
                       </Show>
+                      <Show when={liveSummary().tracked > 0}>
+                        <span class="text-neon-cyan">{liveSummary().ready} live</span>
+                        <span>{liveSummary().loading} loading</span>
+                        <Show when={liveSummary().unsupported > 0}>
+                          <span>{liveSummary().unsupported} skipped</span>
+                        </Show>
+                        <Show when={liveSummary().error > 0}>
+                          <span class="text-status-error">{liveSummary().error} errors</span>
+                        </Show>
+                      </Show>
                     </div>
+                    <Show when={templateVarEntries().length > 0}>
+                      <div class="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-text-dim">
+                        <span class="uppercase tracking-wider">vars</span>
+                        <For each={templateVarEntries()}>
+                          {(entry) => (
+                            <span class="rounded bg-neon-cyan/10 px-1.5 py-0.5 text-neon-cyan">
+                              {entry[0]}={entry[1]}
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
                     <div class="max-h-[32rem] overflow-y-auto pr-1">
                       <div class="grid grid-cols-1 gap-1.5 lg:grid-cols-2 2xl:grid-cols-3">
                         <For each={panels()}>
@@ -447,9 +699,16 @@ const GrafanaDashboards: Component = () => {
                                   <div class="mt-1.5 border-t border-white/5 pt-1.5">
                                     <Show when={live().state === 'ready'}>
                                       <div class="flex items-end justify-between gap-2">
-                                        <span class="text-base font-semibold tabular-nums text-neon-cyan">
-                                          {formatMetricValue(live().value)}
-                                        </span>
+                                        <div class="flex items-end gap-2">
+                                          <span class="text-base font-semibold tabular-nums text-neon-cyan">
+                                            {formatMetricValue(live().value)}
+                                          </span>
+                                          <Show when={live().resolution}>
+                                            <span class="rounded bg-status-warn/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-status-warn">
+                                              {resolutionBadgeLabel(live().resolution)}
+                                            </span>
+                                          </Show>
+                                        </div>
                                         <Show when={(live().series?.length || 0) > 1}>
                                           <Sparkline
                                             data={live().series || []}
@@ -461,8 +720,13 @@ const GrafanaDashboards: Component = () => {
                                       </div>
                                     </Show>
                                     <Show when={live().state === 'loading'}>
-                                      <div class="text-[10px] text-text-dim">
-                                        Loading live stats...
+                                      <div class="flex items-center gap-1.5 text-[10px] text-text-dim">
+                                        <span>{live().message || 'Loading live stats...'}</span>
+                                        <Show when={live().resolution}>
+                                          <span class="rounded bg-white/10 px-1 py-0.5 uppercase tracking-wider text-[9px]">
+                                            {resolutionBadgeLabel(live().resolution)}
+                                          </span>
+                                        </Show>
                                       </div>
                                     </Show>
                                     <Show when={live().state === 'unsupported'}>
@@ -471,8 +735,13 @@ const GrafanaDashboards: Component = () => {
                                       </div>
                                     </Show>
                                     <Show when={live().state === 'error'}>
-                                      <div class="text-[10px] text-status-error">
-                                        {live().message || 'Live query failed'}
+                                      <div class="flex items-center gap-1.5 text-[10px] text-status-error">
+                                        <span>{live().message || 'Live query failed'}</span>
+                                        <Show when={live().resolution}>
+                                          <span class="rounded bg-status-error/20 px-1 py-0.5 uppercase tracking-wider text-[9px]">
+                                            {resolutionBadgeLabel(live().resolution)}
+                                          </span>
+                                        </Show>
                                       </div>
                                     </Show>
                                   </div>
