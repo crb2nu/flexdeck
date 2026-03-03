@@ -1,0 +1,51 @@
+# Roadmap Issue Reconciliation - 2026-03-03
+
+- Repository: /Users/cblevins/workspace/services/flexdeck
+- Run timestamp (UTC): 2026-03-03T13:20:47Z
+- Baseline since: 2026-03-02T14:10:57Z
+- Summary: Planning/governance artifacts were refreshed after Workstreams A/B/C merged; added polish smoke checklist and tracked deploy-time external blocker context.
+- Issue actions: Post a tracker note on issue `#1` with merged slice references and deploy timeout blocker evidence.
+
+## Evidence
+- Planning delta command: git log --since="2026-03-02T14:10:57Z" --name-only --pretty=format: -- . ':(glob)docs/**' AGENTS.md PLAN.md ROADMAP*.md TODO*.md ':(glob)**/ADR*.md' ':(glob)**/adr*.md'
+- Delivered workstreams on `origin/main`:
+  - `6587649` (Pipeline polish)
+  - `343565d` (Grafana operability polish)
+  - `3f39d9a` (Dashboard signal semantics polish)
+- Governance artifacts added:
+  - `docs/polish-release-smoke-checklist.md`
+  - `.loom/50-worklog.md` (Workstream D entry)
+- External blocker evidence to carry in issue notes:
+  - Post-merge pipeline deploy jobs failed with `flux reconcile kustomization apps --with-source` and `context deadline exceeded`.
+- Changed planning artifacts considered:
+  - .gitlab-ci.yml
+  - internal/agents/registry.go
+  - internal/agents/specdecode.go
+  - internal/api/handlers/alertmanager_test.go
+  - internal/api/handlers/apiutil/apiutil_test.go
+  - internal/api/handlers/ci.go
+  - internal/api/handlers/ci_test.go
+  - internal/api/handlers/flux.go
+  - internal/api/handlers/k8s.go
+  - internal/api/handlers/prometheus_test.go
+  - internal/api/handlers/rbac.go
+  - internal/api/middleware/audit_test.go
+  - internal/api/router.go
+  - internal/audit/store_test.go
+  - internal/auth/middleware.go
+  - internal/auth/middleware_test.go
+  - internal/k8s/models_crd.go
+  - internal/metrics/pipeline_store.go
+  - internal/metrics/store_test.go
+  - internal/models/civitai.go
+  - internal/models/downloader.go
+  - internal/models/gitops.go
+  - internal/models/huggingface.go
+  - internal/rbac/middleware.go
+  - web/src/components/Dashboard/PodLogPanel.tsx
+  - web/src/components/Pipeline/CIPipelineViz.tsx
+  - web/src/components/Pipeline/PipelineCard.tsx
+  - web/src/components/Pipeline/index.tsx
+  - web/src/components/Pipeline/utils.test.ts
+  - web/src/components/Pipeline/utils.ts
+  - web/src/stores/metrics.ts

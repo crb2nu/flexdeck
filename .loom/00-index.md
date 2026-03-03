@@ -9,37 +9,39 @@
 - Decisions: `40-decisions.md`
 - Worklog: `50-worklog.md`
 
-## Current Goal (2026-02-17)
-- Reconcile roadmap/spec/docs against shipped FlexDeck code.
-- Define the next reliability-first feature wave as three decision-complete epics:
-  - Integration contract hardening
-  - FlexInfer + Loom feature-completion surfaces
-  - Rollout/governance alignment
+## Current Goal (2026-03-03)
+- Pick up from recent fixes/enhancements and define the next feature-improvement + polish wave.
+- Keep delivery centered on reliability, operator clarity, and mobile/hosted usability.
+- Produce execution-ready spec/plan updates grounded in shipped code and recent commit history.
 
 ## Current Status Summary
-- Phase 3 integration routes and UI are implemented (`/api/flexinfer/*`, `/api/hud/*`, Models Inference/Catalog tabs, Agents HUD tab).
-- Phase 4 capability exists behind feature flags:
-  - Backend routes for RBAC/Audit/Multi-cluster
-  - Admin UI tabs and cluster selector
-- Remaining work is primarily:
-  - Contract consistency and reliability metrics normalization
-  - Completing HUD claims/cancel and stale-mode UX
-  - Documentation and rollout alignment for feature-gated subsystems
+- Roadmap reflects Phase 3 and 3.5 delivery with Phase 4 marked partial behind flags.
+- Recent changes clustered around:
+  - CI reliability (`lint/typecheck` and mirrored build images).
+  - Pipeline UX correctness (stage ordering, live status reactivity, deeper history/pagination).
+  - Grafana integration hardening (auth fallback, expanded panel visibility, hosted base URL fixes).
+  - Dashboard/model signal expansion (node resource panel, LiteLLM throughput on CRD cards).
+  - Mobile behavior refinements (overlay and small-viewport fixes).
+- Planning posture now shifts from feature introduction to consistency and polish across these surfaces.
+- Workstream delivery status on `origin/main`:
+  - Pipeline UX confidence (merged).
+  - Grafana operability polish (merged).
+  - Dashboard/mobile signal clarity (merged).
+- Remaining backlog slice in this cycle is governance polish (checklists + reconciliation discipline).
 
 ## Success Criteria For This Cycle
-- `.loom` pack reflects current shipped state and no longer treats Phase 3 as unplanned.
-- Product spec and implementation plan are decision-complete for the next 3 epics.
-- Roadmap uses `Partial` status for feature-gated capabilities that are implemented but not broadly enabled.
-- README env vars match live config keys.
+- `.loom` docs capture a post-hardening improvement wave (not a re-plan of completed epics).
+- Product spec defines clear polish requirements and acceptance criteria for Pipeline, Grafana, Dashboard/mobile, and delivery workflows.
+- Implementation plan maps directly to touched files, tests, and operational checks.
+- Known tooling constraints (notably codebase index connectivity) are explicit with fallback workflow.
 
 ## Risks
-- Metrics contract drift between backend and frontend can reintroduce silent dashboard misreporting.
-- HUD pull endpoint reachability may vary across deployment topologies; push-only mode has narrower data coverage.
-- Feature-flag defaults (`RBAC`, `AUDIT`, `MULTICLUSTER`) can hide shipped functionality if docs remain stale.
+- Codebase semantic index is currently unavailable from this environment, reducing high-speed code traversal.
+- UI state freshness can drift between SSE/poll-driven surfaces if status semantics diverge by page.
+- Additional UX polish can regress on low-end mobile hardware if animation/render budgets are not guarded.
 
 ## Sources
-- `internal/api/router.go:221`
-- `internal/api/router.go:308`
-- `web/src/components/Models/InferenceTab.tsx:1`
-- `web/src/components/Agents/HUDTab.tsx:1`
-- `internal/config/config.go:286`
+- `ROADMAP.md:93`
+- `ROADMAP.md:122`
+- `docs/roadmap-reconciliation-2026-03-03.md:1`
+- Command: `git log --since='2026-02-18' --pretty=format:'%h %ad %s' --date=short`

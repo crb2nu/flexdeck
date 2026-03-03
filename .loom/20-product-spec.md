@@ -1,122 +1,93 @@
-# Product Spec — Next-Wave FlexInfer + Loom Integration (Reliability-First)
+# Product Spec — Feature Improvements And Polish Wave (2026-03)
 
 ## Summary
-Define the next implementation wave as three ordered epics:
-1. Integration contract hardening.
-2. FlexInfer + Loom feature-completion surfaces.
-3. Rollout/governance alignment.
-
-Scope is FlexDeck-only; upstream repos are treated as dependency surfaces.
+Define a focused polish release that builds on recent fixes already shipped in Pipeline, Grafana, Dashboard/model surfaces, mobile behavior, and CI reliability. Scope is FlexDeck-only with no new subsystem introduction.
 
 ## Goals
-1. Eliminate backend/frontend data-contract drift in inference metrics.
-2. Complete key operator-visible integration surfaces (LoRA status, claims, workflow cancel, stale-state UX).
-3. Align roadmap/docs with shipped feature-gated capabilities.
+1. Improve operator confidence by making data freshness/state semantics explicit and consistent.
+2. Reduce UI ambiguity in high-churn surfaces (Pipeline, Grafana panels, Dashboard pulse cards).
+3. Preserve recent reliability gains while raising regression resistance for polish-level changes.
 
 ## Non-Goals
-- Changing `flexinfer` or `loom-core` code.
-- Introducing new external dependencies.
-- Re-architecting existing FlexDeck cache/auth subsystems.
+- New major subsystems or cross-repo feature launches.
+- Replacing existing API contracts that were hardened in Phase 3.5.
+- Large architectural refactors unrelated to current high-touch surfaces.
 
-## Epic 1: Integration Contract Hardening (Priority 1)
+## Epic 1: Pipeline UX Confidence Polish (Priority 1)
 
 ### Requirements
-- Extend `GET /api/flexinfer/proxy/metrics` with additive fields:
-  - `byModel`
-  - `totals`
-  - `requestsByStatus`
+- Introduce explicit pipeline data-state affordances:
+  - `live`
+  - `stale`
+  - `static/demo`
+  - `offline`
+- Improve action lifecycle feedback for retry/cancel/play:
+  - in-flight indication
+  - post-action refresh confirmation
+  - action-failed recovery hint
+- Clarify overview/detail synchronization so active pipeline status does not appear inconsistent during polling transitions.
+
+### Acceptance Criteria
+- Operators can distinguish live vs static/demo pipelines without opening dev tools.
+- Pipeline actions always return visible feedback within one interaction cycle.
+- Polling pause/resume rules are visible and test-covered for key transitions (selected job open/close, active pipeline idle/run states).
+
+## Epic 2: Grafana Integration Operability Polish (Priority 1)
+
+### Requirements
+- Surface query resolution status (`direct|templated|fallback`) in panel cards.
+- Improve fallback observability when templated variables cannot be fully resolved.
+- Standardize error messaging for auth failures and non-PromQL panel targets.
+
+### Acceptance Criteria
+- Panel cards with fallback expression substitution are clearly marked.
+- Operators can differentiate “unsupported panel query” from “query failed.”
+- Expanded panel flow remains readable on desktop and mobile breakpoints.
+
+## Epic 3: Dashboard And Mobile Signal Clarity (Priority 2)
+
+### Requirements
+- Unify status vocabulary across pulse cards and observability widgets:
+  - `ready`
   - `partial`
-- Preserve existing legacy keys:
-  - `requests`, `latency`, `queue_depth`, `active_conn`, `scale_ups`
-- Correct parser behavior for `flexinfer_proxy_requests_total{model,status}` so values aggregate per status and per model.
-- Extend `GET /api/models/crd/{namespace}/{name}/inference` with additive fields:
-  - `errorRate`
-  - `queueWaitP95Ms`
-  - `rejectedRequestsPerSec`
-  - `scaleUps5m`
-  - `activationRetries5m`
-  - `partial`
-  - `missingMetrics`
-- Partial degradation rule:
-  - if one or more PromQL queries fail, return best-effort payload with `partial=true` and non-failing fields intact.
-
-### API Contract Additions
-- `FlexInferProxyMetricsResponse` (frontend):
-  - `byModel: Record<string, FlexInferProxyModelMetrics>`
-  - `totals: FlexInferProxyTotals`
-  - `requestsByStatus: Record<string, Record<string, number>>`
-  - `partial: boolean`
-- `InferenceMetrics` (frontend):
-  - existing fields + additive reliability fields listed above.
+  - `stale`
+  - `offline`
+- Harmonize polling freshness indicators for models, inference, and agent activity cards.
+- Apply final mobile polish pass for overlay control friction and compact-layout readability on sub-375px viewports.
 
 ### Acceptance Criteria
-- Dashboard inference card consumes normalized totals and no longer assumes `data.models`.
-- Inference endpoint still returns valid response with all numeric fields defaulting to `0` when Prometheus returns empty vectors.
-- Handler tests verify both legacy and normalized payload keys.
+- No dashboard card reports ambiguous “error/offline” states when feature flags intentionally disable data sources.
+- Mobile overlays can be opened/dismissed predictably on touch devices without layout clipping.
+- Existing mobile remediations remain intact across supported breakpoints.
 
-## Epic 2: FlexInfer + Loom Feature-Completion Surfaces (Priority 2)
+## Epic 4: Ship-Loop And Governance Polish (Priority 2)
 
 ### Requirements
-- Show LoRA adapter state in inference model detail using existing endpoint:
-  - `GET /api/models/lora/{namespace}/{name}`
-- Inference table adds reliability columns:
-  - error rate
-  - queue wait p95
-  - rejected requests/sec
-  - retries (5m)
-  - reliability badge (`Healthy|Degraded|Partial|Unknown`)
-- Add HUD claims surface:
-  - `GET /api/hud/claims` proxy + UI panel
-- Add workflow cancel surface:
-  - `POST /api/hud/workflows/{id}/cancel` proxy + UI action
-- Stale-mode UX:
-  - Activity feed shows live/connecting/poll-fallback state.
-  - HUD panel shows stale warning when SSE is stale or pull polling freshness exceeds threshold.
-- Preserve dual-mode behavior:
-  - Pull mode (full HUD surface via `LOOM_HUD_URL`)
-  - Push mode (presence snapshots via agents endpoint when pull unavailable)
+- Keep roadmap/spec/worklog synchronized with actual code delta cadence.
+- Add a concise regression checklist for polish releases:
+  - frontend tests
+  - targeted backend tests
+  - CI lint/typecheck sanity
+  - manual smoke for pipeline + grafana + dashboard
+- Document temporary codebase-index outage and fallback workflow for planning/triage.
 
 ### Acceptance Criteria
-- Claims panel renders when pull mode is enabled and claims are available.
-- Workflow cancel action invokes backend proxy and refreshes workflow state.
-- HUD view visibly indicates mode (`pull` vs `push`) and stale fallback state.
-- LoRA adapters render in model detail without adding new backend dependencies.
+- `.loom` plan/worklog include explicit verification gates and evidence links.
+- Reconciliation updates no longer miss active code-only deltas in high-touch UI files.
+- Polish release smoke validation is captured against `docs/polish-release-smoke-checklist.md`.
 
-## Epic 3: Rollout + Governance Alignment (Priority 3)
-
-### Requirements
-- Roadmap status policy:
-  - use `Partial` for implemented-but-feature-gated capabilities (RBAC/Audit/Multi-cluster and partially completed integration surfaces).
-- `/api/health` contract documentation:
-  - explicitly map `loom_hud`, `loom_hud_push`, `rbac`, `audit`, `multi_cluster` to UI behavior.
-- Config docs alignment:
-  - document actual env var names from `internal/config/config.go`.
-- Operator checklist:
-  - per-subsystem enablement checks for staging/prod-like rollout.
-- Dependency register:
-  - list upstream API/metric families FlexDeck assumes.
-
-### Acceptance Criteria
-- `ROADMAP.md`, `.loom` docs, and `README.md` no longer disagree about subsystem status or env keys.
-- Reconciliation report for 2026-02-17 captures changed statuses and rationale.
-
-## Test Scenarios
-1. Parser test: multiple status samples aggregate correctly.
-2. Handler test: proxy metrics payload includes both legacy and normalized sections.
-3. Handler test: inference payload additive fields default to zero on empty Prometheus result.
-4. Handler test: HUD claims + cancel proxies forward correctly.
-5. Frontend: inference table/badge rendering for normalized + partial data.
-6. Frontend: HUD claims rendering and workflow cancel action.
-7. Frontend: stale/live/poll-fallback indicator behavior.
-8. Integration: feature flags control admin/nav/HUD modes as expected.
+## Cross-Cutting UX Rules
+- Prefer additive UI indicators over silent behavior changes.
+- Keep existing sci-fi visual language and Tailwind token patterns.
+- Avoid introducing heavy per-frame allocations in visualization paths.
 
 ## Sources
-- `internal/api/router.go:221`
-- `internal/api/router.go:308`
-- `internal/api/handlers/flexinfer_proxy.go:136`
-- `internal/api/handlers/models_inference.go:58`
-- `internal/api/handlers/hud_proxy.go:73`
-- `web/src/components/Dashboard/index.tsx:95`
-- `web/src/components/Models/InferenceTab.tsx:1`
-- `web/src/components/Agents/HUDTab.tsx:1`
-- `internal/config/config.go:286`
+- `ROADMAP.md:93`
+- `ROADMAP.md:122`
+- `docs/roadmap-reconciliation-2026-03-03.md:1`
+- `web/src/components/Pipeline/index.tsx:30`
+- `web/src/components/Pipeline/CIPipelineViz.tsx:67`
+- `web/src/components/Metrics/GrafanaDashboards.tsx:221`
+- `web/src/components/Dashboard/index.tsx:176`
+- `docs/tech-debt/2026-02-24-mobile-implementation-report.md:1`
+- Command: `git log --since='2026-02-18' --pretty=format:'%h %ad %s' --date=short`

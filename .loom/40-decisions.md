@@ -82,3 +82,28 @@ Record decisions as they are made, with date, rationale, and sources.
 - Sources:
   - [S1] `.loom/10-research.md`
   - [S2] `.loom/20-product-spec.md`
+
+### 2026-03-03: Prioritize polish and coherence over net-new subsystem scope
+
+- Decision: The next wave will focus on UX/state coherence across Pipeline, Grafana, Dashboard/mobile, and delivery workflows, rather than launching additional subsystem surfaces.
+- Rationale: Recent commits show substantial capability delivery; the highest value now is reducing operator ambiguity and regression risk in high-touch interfaces.
+- Alternatives considered:
+  - Expand into new backend feature areas (higher scope and risk, lower immediate operator impact).
+  - Continue only documentation reconciliation (insufficient product value by itself).
+- Consequences: Workstream planning centers on consistency, feedback clarity, and verification loops; success is measured by reduced ambiguity and smoother operations.
+- Sources:
+  - [S1] `.loom/10-research.md`
+  - [S2] `.loom/20-product-spec.md`
+  - [S3] `ROADMAP.md`
+
+### 2026-03-03: Use local evidence workflow while semantic index path is unavailable
+
+- Decision: Treat semantic codebase-memory indexing as temporarily unavailable and use local deterministic inspection (`rg`, `nl`, `git log`) for planning evidence.
+- Rationale: `codebase_memory__codebase_stats` currently fails due Qdrant route failure; waiting for index recovery would block planning progress.
+- Alternatives considered:
+  - Block planning until index services recover.
+  - Proceed with assumptions without evidence (rejected).
+- Consequences: Planning remains evidence-backed but uses command/file references instead of semantic index traversal for this cycle.
+- Sources:
+  - [S1] `.loom/00-mcp-inventory.md`
+  - [S2] `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
