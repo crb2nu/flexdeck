@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -161,6 +162,11 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 		return nil, fmt.Errorf("read grafana response: %w", err)
 	}
 
+	if looksLikeHTMLResponse(resp.Header.Get("Content-Type"), body) {
+		slog.Warn("grafana api returned HTML payload", "url", url, "content_type", resp.Header.Get("Content-Type"))
+		return nil, fmt.Errorf("grafana API returned HTML instead of JSON (check GRAFANA_URL/auth)")
+	}
+
 	// Parse to validate JSON, then return as-is for cache compatibility
 	if err := json.Unmarshal(body, &raw); err != nil {
 		slog.Error("failed to decode grafana json", "url", url, "body_preview", string(body[:min(len(body), 100)]))
@@ -175,4 +181,19 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func looksLikeHTMLResponse(contentType string, body []byte) bool {
+	lowerType := strings.ToLower(strings.TrimSpace(contentType))
+	if strings.Contains(lowerType, "text/html") || strings.Contains(lowerType, "application/xhtml+xml") {
+		return true
+	}
+
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+
+	lowerBody := bytes.ToLower(trimmed[:min(len(trimmed), 256)])
+	return bytes.HasPrefix(lowerBody, []byte("<!doctype html")) || bytes.HasPrefix(lowerBody, []byte("<html"))
 }
