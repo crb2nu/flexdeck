@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/flexinfer/flexdeck/internal/config"
@@ -163,5 +164,47 @@ func TestGrafanaDashboards_FallbackToAnonymousWhenTokenRejected(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["uid"] != "fallback" {
 		t.Fatalf("expected fallback dashboard payload, got %+v", got)
+	}
+}
+
+func TestGrafanaDashboards_HTMLResponseRejected(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<!doctype html><html><body>grafana login</body></html>`))
+	}))
+	defer ts.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			Grafana: config.GrafanaConfig{
+				URL:      ts.URL,
+				Token:    "",
+				Disabled: false,
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/grafana/dashboards", nil)
+	rr := httptest.NewRecorder()
+	h.GrafanaDashboards(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response payload: %v", err)
+	}
+
+	errMsg := payload["error"]
+	if !strings.Contains(errMsg, "HTML instead of JSON") {
+		t.Fatalf("expected HTML error message, got %q", errMsg)
+	}
+	if strings.Contains(strings.ToLower(errMsg), "<html") {
+		t.Fatalf("expected sanitized error message, got %q", errMsg)
 	}
 }
