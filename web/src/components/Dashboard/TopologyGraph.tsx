@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
+import { Component, createSignal, createEffect, onMount, onCleanup, Show, untrack } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import {
@@ -24,6 +24,8 @@ interface Props {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
+  topologyVersion: number;
+  styleVersion: number;
   onNodeClick?: (node: D3Node) => void;
 }
 
@@ -46,20 +48,60 @@ interface ParticleSlot {
 // Cached font strings to avoid per-frame string allocation
 const FONT_NODE = '500 11px Inter, system-ui';
 const FONT_OTHER = '400 9px Inter, system-ui';
+const PERF_QUERY_PARAM = 'topologyPerf';
+const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
+const PERF_HUD_UPDATE_MS = 500;
+const PERF_FRAME_WINDOW = 180;
+
+interface PerfCounters {
+  effectRuns: number;
+  topologyRebuilds: number;
+  styleRefreshes: number;
+  simulationInits: number;
+  simulationSettles: number;
+  simulationTotalSettleMs: number;
+  drawStarts: number;
+  drawStops: number;
+  framesRendered: number;
+  denseFrameSkips: number;
+  maxFrameMs: number;
+  legacyHashEntityVisitsAvoided: number;
+}
+
+interface PerfSnapshot {
+  fps: number;
+  avgFrameMs: number;
+  p95FrameMs: number;
+  maxFrameMs: number;
+  nodes: number;
+  links: number;
+  effectRuns: number;
+  topologyRebuilds: number;
+  styleRefreshes: number;
+  simulationInits: number;
+  simulationSettles: number;
+  avgSimulationSettleMs: number;
+  drawStarts: number;
+  drawStops: number;
+  framesRendered: number;
+  denseFrameSkips: number;
+  legacyHashEntityVisitsAvoided: number;
+}
 
 const TopologyGraph: Component<Props> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
   let rafId: number | null = null;
-  let lastTopologyKey = -1;
-  let lastStyleKey = -1;
+  let lastTopologyVersion = -1;
+  let lastStyleVersion = -1;
 
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
   const [hoverNode, setHoverNode] = createSignal<D3Node | null>(null);
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
+  const [perfSnapshot, setPerfSnapshot] = createSignal<PerfSnapshot | null>(null);
 
   // View transform state
   let transform = d3.zoomIdentity;
@@ -71,6 +113,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let selectsLinks: D3Link[] = [];
   let namespaceMap = new Map<string, number>();
   const nodeIndexMap = new Map<string, number>(); // O(1) lookup for particle spawning
+  const graphNodeById = new Map<string, D3Node>();
 
   // Object pool for particles - zero allocations during animation
   const particlePool: ParticleSlot[] = Array.from({ length: MAX_PARTICLES }, () => ({
@@ -96,6 +139,29 @@ const TopologyGraph: Component<Props> = (props) => {
   let simulationSettledAt = 0; // Timestamp when simulation settled
   let lastFrameTime = 0;
   let lastInteractionAt = -Infinity;
+  let simulationStartedAt = 0;
+  let perfEnabled = false;
+  let lastPerfHudUpdate = 0;
+  let sourceNodeCount = 0;
+  let sourcePodCount = 0;
+  let sourceServiceCount = 0;
+  let frameSampleCount = 0;
+  let frameSampleCursor = 0;
+  const frameSamples = new Float32Array(PERF_FRAME_WINDOW);
+  const perfCounters: PerfCounters = {
+    effectRuns: 0,
+    topologyRebuilds: 0,
+    styleRefreshes: 0,
+    simulationInits: 0,
+    simulationSettles: 0,
+    simulationTotalSettleMs: 0,
+    drawStarts: 0,
+    drawStops: 0,
+    framesRendered: 0,
+    denseFrameSkips: 0,
+    maxFrameMs: 0,
+    legacyHashEntityVisitsAvoided: 0
+  };
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
@@ -114,6 +180,70 @@ const TopologyGraph: Component<Props> = (props) => {
   let spatialGridValid = false;
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
+  };
+
+  const readPerfToggle = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const search = new URLSearchParams(window.location.search);
+    if (search.get(PERF_QUERY_PARAM) === '1') return true;
+    return window.localStorage.getItem(PERF_STORAGE_KEY) === '1';
+  };
+
+  const recordFrameSample = (frameMs: number) => {
+    if (!perfEnabled) return;
+    perfCounters.framesRendered++;
+    perfCounters.maxFrameMs = Math.max(perfCounters.maxFrameMs, frameMs);
+    frameSamples[frameSampleCursor] = frameMs;
+    frameSampleCursor = (frameSampleCursor + 1) % PERF_FRAME_WINDOW;
+    frameSampleCount = Math.min(frameSampleCount + 1, PERF_FRAME_WINDOW);
+  };
+
+  const buildPerfSnapshot = (): PerfSnapshot => {
+    const samples = Array.from(frameSamples.slice(0, frameSampleCount));
+    let avgFrameMs = 0;
+    if (samples.length > 0) {
+      let total = 0;
+      for (const sample of samples) total += sample;
+      avgFrameMs = total / samples.length;
+      samples.sort((a, b) => a - b);
+    }
+    const p95Index = samples.length > 0 ? Math.min(samples.length - 1, Math.floor(samples.length * 0.95)) : 0;
+    const p95FrameMs = samples.length > 0 ? samples[p95Index] : 0;
+    const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+    const avgSimulationSettleMs = perfCounters.simulationSettles > 0
+      ? perfCounters.simulationTotalSettleMs / perfCounters.simulationSettles
+      : 0;
+
+    return {
+      fps,
+      avgFrameMs,
+      p95FrameMs,
+      maxFrameMs: perfCounters.maxFrameMs,
+      nodes: graphNodes.length,
+      links: graphLinks.length,
+      effectRuns: perfCounters.effectRuns,
+      topologyRebuilds: perfCounters.topologyRebuilds,
+      styleRefreshes: perfCounters.styleRefreshes,
+      simulationInits: perfCounters.simulationInits,
+      simulationSettles: perfCounters.simulationSettles,
+      avgSimulationSettleMs,
+      drawStarts: perfCounters.drawStarts,
+      drawStops: perfCounters.drawStops,
+      framesRendered: perfCounters.framesRendered,
+      denseFrameSkips: perfCounters.denseFrameSkips,
+      legacyHashEntityVisitsAvoided: perfCounters.legacyHashEntityVisitsAvoided
+    };
+  };
+
+  const maybeUpdatePerfHud = (now: number) => {
+    if (!perfEnabled) return;
+    if (now - lastPerfHudUpdate < PERF_HUD_UPDATE_MS) return;
+    lastPerfHudUpdate = now;
+    const snapshot = buildPerfSnapshot();
+    setPerfSnapshot(snapshot);
+    if (typeof window !== 'undefined') {
+      (window as Window & { __FLEXDECK_TOPOLOGY_PERF__?: PerfSnapshot }).__FLEXDECK_TOPOLOGY_PERF__ = snapshot;
+    }
   };
 
   const resetParticles = () => {
@@ -156,79 +286,36 @@ const TopologyGraph: Component<Props> = (props) => {
     return candidates;
   };
 
-  const hashString = (value: string): number => {
-    let hash = 5381;
-    for (let i = 0; i < value.length; i++) {
-      hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
-    }
-    return hash >>> 0;
-  };
-
-  const getTopologyKey = (): number => {
-    let hash = 0;
-    hash = (hash + props.nodes.length * 3 + props.pods.length * 5 + props.services.length * 7) >>> 0;
-
-    for (const node of props.nodes) {
-      hash = (hash + hashString(`n:${node.metadata.name}`)) >>> 0;
-    }
-
-    for (const pod of props.pods) {
-      const ns = pod.metadata.namespace ?? 'undefined';
-      const nodeName = pod.spec.nodeName ?? '';
-      hash = (hash + hashString(`p:${ns}/${pod.metadata.name}@${nodeName}`)) >>> 0;
-    }
-
-    for (const svc of props.services) {
-      const ns = svc.metadata.namespace ?? 'undefined';
-      const selectorEntries = Object.entries(svc.spec.selector || {}).sort(([a], [b]) => a.localeCompare(b));
-      const selectorKey = selectorEntries.map(([k, v]) => `${k}=${v}`).join(';');
-      hash = (hash + hashString(`s:${ns}/${svc.metadata.name}|${svc.spec.type || ''}|${selectorKey}`)) >>> 0;
-    }
-
-    return hash >>> 0;
-  };
-
-  const getStyleKey = (): number => {
-    let hash = 0;
-    for (const node of props.nodes) {
-      const ready = isNodeReady(node) ? '1' : '0';
-      hash = (hash + hashString(`n:${node.metadata.name}:${ready}`)) >>> 0;
-    }
-    for (const pod of props.pods) {
-      const ns = pod.metadata.namespace ?? 'undefined';
-      const phase = pod.status?.phase || '';
-      hash = (hash + hashString(`p:${ns}/${pod.metadata.name}:${phase}`)) >>> 0;
-    }
-    return hash >>> 0;
-  };
-
   const refreshNodeData = () => {
     if (graphNodes.length === 0) return;
 
-    const nodeMap = new Map(props.nodes.map(node => [`node-${node.metadata.name}`, node]));
-    const podMap = new Map(props.pods.map(pod => [`pod-${pod.metadata.namespace ?? 'undefined'}-${pod.metadata.name}`, pod]));
-    const svcMap = new Map(props.services.map(svc => [`svc-${svc.metadata.namespace ?? 'undefined'}-${svc.metadata.name}`, svc]));
+    for (const nodeData of props.nodes) {
+      const graphNode = graphNodeById.get(`node-${nodeData.metadata.name}`);
+      if (graphNode) {
+        graphNode.data = nodeData;
+        graphNode.status = isNodeReady(nodeData) ? 'ok' : 'error';
+      }
+    }
 
-    for (const node of graphNodes) {
-      if (node.type === 'node') {
-        const data = nodeMap.get(node.id);
-        if (data) {
-          node.data = data;
-          node.status = isNodeReady(data) ? 'ok' : 'error';
-        }
-      } else if (node.type === 'pod') {
-        const data = podMap.get(node.id);
-        if (data) {
-          node.data = data;
-          node.status = data.status.phase === 'Running' ? 'ok' :
-            data.status.phase === 'Pending' ? 'warn' : 'error';
-        }
-      } else if (node.type === 'service') {
-        const data = svcMap.get(node.id);
-        if (data) {
-          node.data = data;
-          node.status = 'ok';
-        }
+    for (const podData of props.pods) {
+      const namespace = podData.metadata.namespace ?? 'undefined';
+      const graphNode = graphNodeById.get(`pod-${namespace}-${podData.metadata.name}`);
+      if (graphNode) {
+        graphNode.data = podData;
+        graphNode.status = podData.status.phase === 'Running'
+          ? 'ok'
+          : podData.status.phase === 'Pending'
+            ? 'warn'
+            : 'error';
+      }
+    }
+
+    for (const serviceData of props.services) {
+      const namespace = serviceData.metadata.namespace ?? 'undefined';
+      const graphNode = graphNodeById.get(`svc-${namespace}-${serviceData.metadata.name}`);
+      if (graphNode) {
+        graphNode.data = serviceData;
+        graphNode.status = 'ok';
       }
     }
 
@@ -237,6 +324,10 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const buildGraph = () => {
+    sourceNodeCount = props.nodes.length;
+    sourcePodCount = props.pods.length;
+    sourceServiceCount = props.services.length;
+
     const graphData = buildTopologyGraphData({
       nodes: props.nodes,
       pods: props.pods,
@@ -251,8 +342,12 @@ const TopologyGraph: Component<Props> = (props) => {
     namespaceMap = graphData.namespaceMap;
 
     // Build O(1) index map for particle spawning
+    graphNodeById.clear();
     nodeIndexMap.clear();
-    graphNodes.forEach((node, idx) => nodeIndexMap.set(node.id, idx));
+    graphNodes.forEach((node, idx) => {
+      graphNodeById.set(node.id, node);
+      nodeIndexMap.set(node.id, idx);
+    });
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
@@ -338,6 +433,7 @@ const TopologyGraph: Component<Props> = (props) => {
   // Start animation loop if not already running
   const startAnimationLoop = () => {
     if (isAnimating) return;
+    if (perfEnabled) perfCounters.drawStarts++;
     isAnimating = true;
     rafId = requestAnimationFrame(draw);
   };
@@ -350,12 +446,17 @@ const TopologyGraph: Component<Props> = (props) => {
     const ctx = canvasRef.getContext('2d');
     if (!ctx) return;
 
-    const now = performance.now();
+    const frameStart = performance.now();
+    const now = frameStart;
     const isUserInteracting = now - lastInteractionAt < INTERACTION_IDLE_MS;
     const isDense = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
       graphLinks.length > LARGE_GRAPH_LINK_THRESHOLD;
     const minFrameMs = isDense ? 1000 / REDUCED_FPS : 0;
     if (isAnimating && minFrameMs > 0 && now - lastFrameTime < minFrameMs) {
+      if (perfEnabled) {
+        perfCounters.denseFrameSkips++;
+        maybeUpdatePerfHud(now);
+      }
       rafId = requestAnimationFrame(draw);
       return;
     }
@@ -734,6 +835,8 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     ctx.restore();
+    recordFrameSample(performance.now() - frameStart);
+    maybeUpdatePerfHud(now);
 
     // Continue animation only if simulation is active or particles exist
     // This prevents infinite 60fps loop when nothing is changing
@@ -741,6 +844,7 @@ const TopologyGraph: Component<Props> = (props) => {
     if (shouldContinue) {
       rafId = requestAnimationFrame(draw);
     } else {
+      if (perfEnabled) perfCounters.drawStops++;
       isAnimating = false;
       rafId = null;
     }
@@ -845,9 +949,19 @@ const TopologyGraph: Component<Props> = (props) => {
       onEnd: () => {
         isSimulationActive = false;
         simulationSettledAt = performance.now();
+        if (perfEnabled && simulationStartedAt > 0) {
+          perfCounters.simulationSettles++;
+          perfCounters.simulationTotalSettleMs += simulationSettledAt - simulationStartedAt;
+          maybeUpdatePerfHud(simulationSettledAt);
+        }
       }
     });
     simulation = created.simulation;
+    if (perfEnabled) {
+      simulationStartedAt = performance.now();
+      perfCounters.simulationInits++;
+      maybeUpdatePerfHud(simulationStartedAt);
+    }
 
     // NOW start animation loop after warmup
     isSimulationActive = true;
@@ -928,6 +1042,11 @@ const TopologyGraph: Component<Props> = (props) => {
   const debouncedResize = debounce(handleResize, 150);
 
   onMount(() => {
+    perfEnabled = readPerfToggle();
+    if (perfEnabled) {
+      maybeUpdatePerfHud(performance.now());
+      console.info('[TopologyGraph] Perf HUD enabled. Add ?topologyPerf=1 or localStorage flexdeck.topologyPerf=1');
+    }
     handleResize();
     window.addEventListener('resize', debouncedResize);
     // Don't start animation loop here - it will start when data arrives via initializeSimulation
@@ -946,19 +1065,22 @@ const TopologyGraph: Component<Props> = (props) => {
   const INIT_DEBOUNCE_MS = 150;
 
   createEffect(() => {
-    // Track props for reactivity
-    props.nodes; props.pods; props.services;
-    const topologyKey = getTopologyKey();
-    const styleKey = getStyleKey();
-    const topologyChanged = topologyKey !== lastTopologyKey;
-    const styleChanged = styleKey !== lastStyleKey;
+    const topologyVersion = props.topologyVersion;
+    const styleVersion = props.styleVersion;
+    const topologyChanged = topologyVersion !== lastTopologyVersion;
+    const styleChanged = styleVersion !== lastStyleVersion;
+    if (perfEnabled) {
+      perfCounters.effectRuns++;
+      perfCounters.legacyHashEntityVisitsAvoided += sourceNodeCount * 2 + sourcePodCount * 2 + sourceServiceCount;
+    }
 
     if (!topologyChanged && !styleChanged) return;
 
-    lastTopologyKey = topologyKey;
-    lastStyleKey = styleKey;
+    lastTopologyVersion = topologyVersion;
+    lastStyleVersion = styleVersion;
 
     if (topologyChanged) {
+      if (perfEnabled) perfCounters.topologyRebuilds++;
       // Clear any pending init
       if (initTimeoutId) {
         clearTimeout(initTimeoutId);
@@ -967,13 +1089,15 @@ const TopologyGraph: Component<Props> = (props) => {
       // Debounce initialization to batch rapid updates
       initTimeoutId = setTimeout(() => {
         initTimeoutId = null;
-        initializeSimulation();
+        untrack(() => initializeSimulation());
       }, INIT_DEBOUNCE_MS);
       return;
     }
 
     // Style-only updates (statuses, readiness) should not re-run simulation
-    refreshNodeData();
+    if (perfEnabled) perfCounters.styleRefreshes++;
+    untrack(() => refreshNodeData());
+    maybeUpdatePerfHud(performance.now());
   });
 
   // Clean up init timeout on unmount
@@ -999,6 +1123,20 @@ const TopologyGraph: Component<Props> = (props) => {
             <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
             <span class="font-mono text-neon-purple hidden sm:inline">Canvas/GPU</span>
         </div>
+
+        <Show when={perfSnapshot()}>
+          {(snapshot) => (
+            <div class="absolute right-4 bottom-4 rounded-md border border-amber-300/40 bg-black/70 p-3 text-[10px] font-mono text-amber-100 backdrop-blur pointer-events-none">
+              <div class="mb-1 text-amber-300 uppercase tracking-wider">Perf HUD</div>
+              <div>fps {snapshot().fps.toFixed(1)} | avg {snapshot().avgFrameMs.toFixed(2)}ms | p95 {snapshot().p95FrameMs.toFixed(2)}ms</div>
+              <div>max {snapshot().maxFrameMs.toFixed(2)}ms | nodes {snapshot().nodes} | links {snapshot().links}</div>
+              <div>effects {snapshot().effectRuns} | rebuilds {snapshot().topologyRebuilds} | style {snapshot().styleRefreshes}</div>
+              <div>sim init {snapshot().simulationInits} | settle {snapshot().simulationSettles} | avg settle {snapshot().avgSimulationSettleMs.toFixed(1)}ms</div>
+              <div>draw start/stop {snapshot().drawStarts}/{snapshot().drawStops} | skipped {snapshot().denseFrameSkips}</div>
+              <div>legacy hash entity visits avoided {snapshot().legacyHashEntityVisitsAvoided.toLocaleString()}</div>
+            </div>
+          )}
+        </Show>
 
         {/* Legend */}
         <div class="absolute bottom-4 left-4 rounded-lg bg-surface/70 p-3 text-xs backdrop-blur-md border border-white/5 pointer-events-none">

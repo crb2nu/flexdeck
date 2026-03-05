@@ -20,6 +20,7 @@ import { dataStateLabel, resolveDashboardDataState } from './statusSemantics';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 const DASHBOARD_STALE_AFTER_MS = METRICS_REFRESH_INTERVAL * 3;
+const EMPTY_OPTIONS: string[] = [];
 
 interface SelectedItem {
   type: 'node' | 'pod' | 'service';
@@ -201,13 +202,16 @@ const Dashboard: Component = () => {
   );
 
   // For filter dropdowns
-  const namespaceList = createMemo(() =>
-    [...new Set(k8sStore.pods.map(p => p.metadata?.namespace).filter(Boolean))].sort() as string[]
-  );
+  const shouldComputeFilterOptions = createMemo(() => viewMode() === '3d' && showFilters());
+  const namespaceList = createMemo(() => {
+    if (!shouldComputeFilterOptions()) return EMPTY_OPTIONS;
+    return [...new Set(k8sStore.pods.map(p => p.metadata?.namespace).filter(Boolean))].sort() as string[];
+  });
 
-  const nodeNameList = createMemo(() =>
-    k8sStore.nodes.map(n => n.metadata?.name).filter(Boolean).sort() as string[]
-  );
+  const nodeNameList = createMemo(() => {
+    if (!shouldComputeFilterOptions()) return EMPTY_OPTIONS;
+    return k8sStore.nodes.map(n => n.metadata?.name).filter(Boolean).sort() as string[];
+  });
 
   const hasActiveFilter = createMemo(() => {
     const activeFilter = filter();
@@ -344,6 +348,7 @@ const Dashboard: Component = () => {
   });
 
   onCleanup(() => {
+    clearTimeout(searchDebounceTimer);
     disconnectK8sStream();
     stopMetricsPolling();
   });
@@ -656,6 +661,8 @@ const Dashboard: Component = () => {
                 nodes={nodes()}
                 pods={pods()}
                 services={services()}
+                topologyVersion={k8sStore.topologyVersion}
+                styleVersion={k8sStore.styleVersion}
             />
           </Show>
         </Show>

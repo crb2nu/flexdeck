@@ -21,10 +21,10 @@ FROM --platform=$BUILDPLATFORM registry.harbor.lan/dockerhub-cache/library/golan
 
 WORKDIR /app
 
-# Use the in-cluster Go module proxy (Athens). CI/buildkit often has restricted
-# egress, and hitting proxy.golang.org can fail with TLS timeouts.
+# Use the in-cluster Go module proxy (Athens) first, but allow resilient fallback.
+# `|` tells Go to fallback on any error (including DNS/network), not only 404/410.
 # Allow override for local builds outside the cluster.
-ARG GOPROXY="http://athens.ci.svc.cluster.local:3000,direct"
+ARG GOPROXY="http://athens.ci.svc.cluster.local:3000|https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY}
 
 # Install build dependencies
