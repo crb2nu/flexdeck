@@ -178,6 +178,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const GRID_KEY_MULTIPLIER = 100000; // Supports grid coords from -50000 to +50000
   const spatialGrid = new Map<number, D3Node[]>();
   let spatialGridValid = false;
+  const visibleNodeIndices: number[] = [];
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
   };
@@ -267,23 +268,44 @@ const TopologyGraph: Component<Props> = (props) => {
     for (const node of graphNodes) {
       if (node.x === undefined || node.y === undefined) continue;
       const key = getSpatialKey(node.x, node.y);
-      if (!spatialGrid.has(key)) spatialGrid.set(key, []);
-      spatialGrid.get(key)!.push(node);
+      let bucket = spatialGrid.get(key);
+      if (!bucket) {
+        bucket = [];
+        spatialGrid.set(key, bucket);
+      }
+      bucket.push(node);
     }
     spatialGridValid = true;
   };
 
-  const getNodesNear = (x: number, y: number): D3Node[] => {
-    // Check the cell and adjacent cells for nodes near the point
-    const candidates: D3Node[] = [];
+  const findNearestNodeInGrid = (x: number, y: number): D3Node | null => {
+    let minDistSq = Infinity;
+    let found: D3Node | null = null;
+
+    // Check the cell and adjacent cells for nodes near the point.
+    // This avoids temporary candidate array allocation on every mouse event.
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         const key = getSpatialKey(x + dx * GRID_CELL_SIZE, y + dy * GRID_CELL_SIZE);
         const cellNodes = spatialGrid.get(key);
-        if (cellNodes) candidates.push(...cellNodes);
+        if (!cellNodes) continue;
+        for (let i = 0; i < cellNodes.length; i++) {
+          const node = cellNodes[i];
+          if (node.x === undefined || node.y === undefined) continue;
+          const deltaX = x - node.x;
+          const deltaY = y - node.y;
+          const distSq = deltaX * deltaX + deltaY * deltaY;
+          const cached = nodeStylesCache.get(node.id);
+          const radius = (cached?.r ?? getNodeRadius(node)) + 4;
+          const radiusSq = radius * radius;
+          if (distSq < radiusSq && distSq < minDistSq) {
+            minDistSq = distSq;
+            found = node;
+          }
+        }
       }
     }
-    return candidates;
+    return found;
   };
 
   const refreshNodeData = () => {
@@ -348,6 +370,7 @@ const TopologyGraph: Component<Props> = (props) => {
       graphNodeById.set(node.id, node);
       nodeIndexMap.set(node.id, idx);
     });
+    visibleNodeIndices.length = graphNodes.length;
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
@@ -451,7 +474,14 @@ const TopologyGraph: Component<Props> = (props) => {
     const isUserInteracting = now - lastInteractionAt < INTERACTION_IDLE_MS;
     const isDense = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
       graphLinks.length > LARGE_GRAPH_LINK_THRESHOLD;
-    const minFrameMs = isDense ? 1000 / REDUCED_FPS : 0;
+    const simulationAlpha = isSimulationActive ? (simulation?.alpha() ?? 0) : 0;
+    const nearSettled = isSimulationActive && simulationAlpha > 0 && simulationAlpha < 0.035 && !isUserInteracting;
+    let minFrameMs = 0;
+    if (isDense) {
+      minFrameMs = nearSettled ? 1000 / 20 : 1000 / REDUCED_FPS;
+    } else if (nearSettled) {
+      minFrameMs = 1000 / 45;
+    }
     if (isAnimating && minFrameMs > 0 && now - lastFrameTime < minFrameMs) {
       if (perfEnabled) {
         perfCounters.denseFrameSkips++;
@@ -468,6 +498,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceDetail = isDense && zoomLevel < 0.85;
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
+    const skipDecorativeNodeEffects = isDense && !isUserInteracting;
     const allowParticles = !reduceLinks && (isSimulationActive || isUserInteracting);
 
     // Invalidate spatial grid when simulation is active (nodes are moving)
@@ -525,7 +556,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const maxX = cachedFrustum.maxX;
     const minY = cachedFrustum.minY;
     const maxY = cachedFrustum.maxY;
-    const shouldCullLinks = zoomLevel > 0.8;
+    const shouldCullLinks = isDense || zoomLevel > 0.8;
 
     // Draw Links with enhanced styling - Batched
     ctx.lineCap = 'round';
@@ -545,7 +576,7 @@ const TopologyGraph: Component<Props> = (props) => {
           ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
       }
-      if (!reduceLinks) {
+      if (!reduceLinks && !isDense) {
         ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
         ctx.lineWidth = 5;
         ctx.setLineDash([]);
@@ -571,7 +602,7 @@ const TopologyGraph: Component<Props> = (props) => {
             ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
       }
-      if (!reduceLinks) {
+      if (!reduceLinks && !isDense) {
         ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
         ctx.lineWidth = 4;
         ctx.setLineDash([]);
@@ -697,12 +728,14 @@ const TopologyGraph: Component<Props> = (props) => {
     const time = frameCount * 0.05; // For subtle animation
 
     // Draw nodes - use indexed for loop to avoid closure allocation
+    let visibleNodeCount = 0;
     for (let i = 0, len = graphNodes.length; i < len; i++) {
       const node = graphNodes[i];
       if (node.x === undefined || node.y === undefined) continue;
 
       // Frustum culling using cached bounds
       if (node.x < minX || node.x > maxX || node.y < minY || node.y > maxY) continue;
+      visibleNodeIndices[visibleNodeCount++] = i;
 
       // Use cached styles instead of recalculating
       const cached = nodeStylesCache.get(node.id)!;
@@ -758,7 +791,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.stroke();
 
       // Inner Highlight Ring for nodes (enhanced)
-      if (node.type === 'node' && !reduceNodeDetail) {
+      if (node.type === 'node' && !reduceNodeDetail && !skipDecorativeNodeEffects) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, r - 4, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -775,7 +808,7 @@ const TopologyGraph: Component<Props> = (props) => {
       // Enhanced center dot for pods with glow
       if (node.type === 'pod') {
         // Outer glow dot
-        if (!reduceNodeDetail) {
+        if (!reduceNodeDetail && !skipDecorativeNodeEffects) {
           ctx.beginPath();
           ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
           ctx.fillStyle = color;
@@ -792,7 +825,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
 
       // Service diamond indicator
-      if (node.type === 'service' && !reduceNodeDetail) {
+      if (node.type === 'service' && !reduceNodeDetail && !skipDecorativeNodeEffects) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, 4, 0, 2 * Math.PI);
         ctx.fillStyle = color;
@@ -812,8 +845,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Draw labels - use indexed for loop to avoid closure allocation
     const labelZoomThreshold = reduceDetail ? 0.7 : 0.4;
-    for (let i = 0, len = graphNodes.length; i < len; i++) {
-        const node = graphNodes[i];
+    for (let i = 0; i < visibleNodeCount; i++) {
+        const node = graphNodes[visibleNodeIndices[i]];
         if (node.x === undefined || node.y === undefined) continue;
         const shouldDrawLabel = node.type === 'node' || node.type === 'service' ||
                                 selectedId === node.id || hoveredId === node.id;
@@ -851,37 +884,31 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   // Click & Hover detection - uses spatial grid for O(1) average lookup
-  const getKeyUnderMouse = (event: MouseEvent): D3Node | null => {
+  const getCanvasPoint = (event: MouseEvent | PointerEvent): { x: number; y: number } | null => {
       if (!canvasRef) return null;
+      if (Number.isFinite(event.offsetX) && Number.isFinite(event.offsetY)) {
+        return { x: event.offsetX, y: event.offsetY };
+      }
       const rect = canvasRef.getBoundingClientRect();
-      const x = (event.clientX - rect.left - transform.x) / transform.k;
-      const y = (event.clientY - rect.top - transform.y) / transform.k;
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+  };
+
+  const getKeyUnderMouse = (event: MouseEvent | PointerEvent): D3Node | null => {
+      if (!canvasRef) return null;
+      const point = getCanvasPoint(event);
+      if (!point) return null;
+      const x = (point.x - transform.x) / transform.k;
+      const y = (point.y - transform.y) / transform.k;
 
       // Rebuild spatial grid if invalidated (nodes moved/changed)
       if (!spatialGridValid) {
           rebuildSpatialGrid();
       }
 
-      let minDistSq = Infinity;
-      let found: D3Node | null = null;
-
-      // Use spatial grid for O(1) lookup instead of O(N) iteration
-      const candidates = getNodesNear(x, y);
-      for (const n of candidates) {
-          if (n.x === undefined || n.y === undefined) continue;
-          const dx = x - n.x;
-          const dy = y - n.y;
-          const distSq = dx * dx + dy * dy; // Avoid sqrt - compare squared distances
-          const cached = nodeStylesCache.get(n.id);
-          const r = (cached?.r ?? getNodeRadius(n)) + 4; // 4px padding for easier selection
-          const rSq = r * r;
-
-          if (distSq < rSq && distSq < minDistSq) {
-              minDistSq = distSq;
-              found = n;
-          }
-      }
-      return found;
+      return findNearestNodeInGrid(x, y);
   };
 
   const handleCanvasClick = (event: MouseEvent) => {
@@ -903,7 +930,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let lastMouseMoveTime = 0;
   const handleMouseMove = (event: MouseEvent) => {
       const now = performance.now();
-      if (now - lastMouseMoveTime < 16) return; // Skip if called too soon
+      const moveThrottleMs = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ? 32 : 16;
+      if (now - lastMouseMoveTime < moveThrottleMs) return; // Skip if called too soon
       lastMouseMoveTime = now;
 
       const node = getKeyUnderMouse(event);
