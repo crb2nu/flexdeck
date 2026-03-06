@@ -1,26 +1,23 @@
-import { Component, createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
-import { createPolling } from '../../hooks/createPolling';
+import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
 import { PulseCard } from '../shared';
-import { healthStore } from '../../stores/health';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
-import { metricsStore, startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
-import { modelsApi, flexinferProxyApi, hudApi, agentsApi } from '../../lib/api';
+import { startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { formatBytes, formatPercent } from '../../lib/format';
-import type { FlexInferProxyMetricsResponse, K8sNode, K8sPod, K8sService } from '../../lib/types';
+import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
-import HoloDeck, { type HoloDeckFilter } from './HoloDeck';
+import HoloDeck from './HoloDeck';
 import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
 import AlertsPanel from './AlertsPanel';
 import LangfuseWidget from './LangfuseWidget';
 import NodeResourcePanel from './NodeResourcePanel';
 import { DetailPanel } from '../shared';
-import { buildInferenceHealthSummary } from './inferenceHealth';
 import { dataStateLabel, resolveDashboardDataState } from './statusSemantics';
+import { useDashboardSummaryState } from './useDashboardSummaryState';
+import { useDashboardTopologyFilters } from './useDashboardTopologyFilters';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 const DASHBOARD_STALE_AFTER_MS = METRICS_REFRESH_INTERVAL * 3;
-const EMPTY_OPTIONS: string[] = [];
 
 interface SelectedItem {
   type: 'node' | 'pod' | 'service';
@@ -29,163 +26,59 @@ interface SelectedItem {
 
 const Dashboard: Component = () => {
   const [viewMode, setViewMode] = createSignal<'2d' | '3d'>('2d');
-  const [filter, setFilter] = createSignal<HoloDeckFilter>({});
   const [showFilters, setShowFilters] = createSignal(false);
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
   const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);
-  const [searchInput, setSearchInput] = createSignal('');
   const [showObservability, setShowObservability] = createSignal(false);
+  const nodes = createMemo(() => k8sStore.nodes as unknown as K8sNode[]);
+  const pods = createMemo(() => k8sStore.pods as unknown as K8sPod[]);
+  const services = createMemo(() => k8sStore.services as unknown as K8sService[]);
 
-  let searchDebounceTimer: ReturnType<typeof setTimeout>;
-
-  // Debounced search update
-  const handleSearchChange = (value: string) => {
-    setSearchInput(value);
-    clearTimeout(searchDebounceTimer);
-    searchDebounceTimer = setTimeout(() => {
-      setFilter({ ...filter(), searchTerm: value || undefined });
-    }, 300);
-  };
-
-  // Quick filter helpers
-  const toggleStatusFilter = (status: string) => {
-    const current = filter().status || [];
-    if (current.includes(status)) {
-      const newStatus = current.filter(s => s !== status);
-      setFilter({ ...filter(), status: newStatus.length > 0 ? newStatus : undefined });
-    } else {
-      setFilter({ ...filter(), status: [...current, status] });
-    }
-  };
-
-  const isStatusActive = (status: string) => filter().status?.includes(status) || false;
-
-  // Resource pulse state
-  const cpuPercent = () => metricsStore().clusterCpu;
-  const memUsed = () => metricsStore().clusterMemory;
-  const resourceLoading = () => metricsStore().loading;
-  const resourceError = () => metricsStore().error || '';
-
-  // Rolling history for sparklines
-  const [cpuHistory, setCpuHistory] = createSignal<number[]>([]);
-  const [memHistory, setMemHistory] = createSignal<number[]>([]);
-
-  createEffect(() => {
-    const cpu = cpuPercent();
-    const mem = memUsed();
-    if (cpu > 0) setCpuHistory(prev => [...prev.slice(-19), cpu]);
-    if (mem > 0) setMemHistory(prev => [...prev.slice(-19), mem]);
+  const {
+    clearFilters,
+    filter,
+    handleSearchChange,
+    hasActiveFilter,
+    isStatusActive,
+    namespaceList,
+    nodeNameList,
+    searchInput,
+    setFilter,
+    setSearchInput,
+    toggleStatusFilter,
+  } = useDashboardTopologyFilters({
+    nodes,
+    pods,
+    showFilters,
+    viewMode,
   });
 
-  // AI Models state
-  const [modelCount, setModelCount] = createSignal({ deployed: 0, total: 0, loading: true, error: '' });
-  const [modelLastUpdateMs, setModelLastUpdateMs] = createSignal(0);
-
-  const fetchModelCount = async () => {
-    try {
-      const result = await modelsApi.list();
-      const models = result?.models || [];
-      const deployed = models.filter((m: { deployment_status?: string }) => m.deployment_status === 'deployed').length;
-      setModelCount({ deployed, total: models.length, loading: false, error: '' });
-      setModelLastUpdateMs(Date.now());
-    } catch {
-      setModelCount(prev => ({ ...prev, loading: false, error: 'offline' }));
-    }
-  };
-
-  // Inference Health state (feature-gated: flexinfer_proxy)
-  const [inferenceHealth, setInferenceHealth] = createSignal({
-    totalTps: 0, modelCount: 0, queueDepth: 0, loading: true, error: '',
+  const {
+    agentActivity,
+    agentCardError,
+    agentDataState,
+    agentFeatureEnabled,
+    cpuHistory,
+    cpuPercent,
+    inferenceCardError,
+    inferenceDataState,
+    inferenceFeatureEnabled,
+    inferenceHealth,
+    loomHUDPullEnabled,
+    loomHUDPushEnabled,
+    memHistory,
+    memUsed,
+    modelCardError,
+    modelCount,
+    modelDataState,
+    resourceCardError,
+    resourceDataState,
+    resourceLoading,
+    tpsHistory,
+  } = useDashboardSummaryState({
+    metricsRefreshInterval: METRICS_REFRESH_INTERVAL,
+    staleAfterMs: DASHBOARD_STALE_AFTER_MS,
   });
-  const [inferenceLastUpdateMs, setInferenceLastUpdateMs] = createSignal(0);
-  const [tpsHistory, setTpsHistory] = createSignal<number[]>([]);
-
-  const fetchInferenceHealth = async () => {
-    if (!healthStore.features.flexinfer_proxy?.enabled) return;
-    try {
-      const data: FlexInferProxyMetricsResponse = await flexinferProxyApi.metrics();
-      const summary = buildInferenceHealthSummary(data);
-
-      setInferenceHealth({
-        totalTps: summary.totalTps,
-        modelCount: summary.modelCount,
-        queueDepth: summary.queueDepth,
-        loading: false,
-        error: summary.error,
-      });
-      setInferenceLastUpdateMs(Date.now());
-      if (summary.totalTps > 0) setTpsHistory(prev => [...prev.slice(-19), summary.totalTps]);
-    } catch {
-      setInferenceHealth(prev => ({ ...prev, loading: false, error: 'offline' }));
-    }
-  };
-
-  // Agent Activity state (feature-gated: loom_hud)
-  const [agentActivity, setAgentActivity] = createSignal({
-    activeAgents: 0, totalTasks: 0, pendingApprovals: 0, loading: true, error: '',
-  });
-  const [agentLastUpdateMs, setAgentLastUpdateMs] = createSignal(0);
-  const loomHUDPullEnabled = () => healthStore.features.loom_hud?.enabled ?? false;
-  const loomHUDPushEnabled = () => healthStore.features.loom_hud_push?.enabled ?? false;
-  const loomHUDAvailable = () => loomHUDPullEnabled() || loomHUDPushEnabled();
-
-  const fetchAgentActivity = async () => {
-    if (!loomHUDAvailable()) return;
-    try {
-      if (loomHUDPullEnabled()) {
-        const data = await hudApi.fleet();
-        const agents = data?.agents || [];
-        const tasks = data?.tasks || [];
-        const activeAgents = agents.filter((a: any) => a.status === 'active').length;
-        const completedTasks = tasks.filter((t: any) => t.status === 'completed').length;
-        const pendingApprovals = data?.kpis?.pending_approvals || 0;
-        setAgentActivity({
-          activeAgents,
-          totalTasks: completedTasks,
-          pendingApprovals,
-          loading: false,
-          error: '',
-        });
-        setAgentLastUpdateMs(Date.now());
-        return;
-      }
-
-      const list = await agentsApi.list();
-      const allAgents = list?.agents || [];
-      const hudAgents = allAgents.filter((a: any) => a?.metadata?.source === 'hud' || a?.type === 'cli-agent');
-      const activeAgents = hudAgents.filter((a: any) => {
-        const presenceStatus = a?.metadata?.presence_status;
-        if (presenceStatus === 'active') return true;
-        if (presenceStatus === 'idle' || presenceStatus === 'offline') return false;
-        return a?.status === 'healthy';
-      }).length;
-      const sessionsSeen = hudAgents.reduce((sum: number, a: any) => {
-        const count = Number(a?.metadata?.session_count || 0);
-        return Number.isFinite(count) ? sum + count : sum;
-      }, 0);
-      setAgentActivity({
-        activeAgents,
-        totalTasks: sessionsSeen,
-        pendingApprovals: 0,
-        loading: false,
-        error: '',
-      });
-      setAgentLastUpdateMs(Date.now());
-    } catch {
-      setAgentActivity(prev => ({ ...prev, loading: false, error: 'offline' }));
-    }
-  };
-
-  createEffect(() => {
-    if (loomHUDAvailable()) {
-      fetchAgentActivity();
-    }
-  });
-
-  // Register polling tasks
-  createPolling('dash-models', fetchModelCount, METRICS_REFRESH_INTERVAL);
-  createPolling('dash-inference', fetchInferenceHealth, METRICS_REFRESH_INTERVAL, () => healthStore.features.flexinfer_proxy?.enabled ?? false);
-  createPolling('dash-agents', fetchAgentActivity, METRICS_REFRESH_INTERVAL, loomHUDAvailable);
 
   // Computed values from K8s store
   const podReady = createMemo(() =>
@@ -200,33 +93,6 @@ const Dashboard: Component = () => {
   const podNamespaces = createMemo(() =>
     new Set(k8sStore.pods.map(p => p.metadata?.namespace)).size
   );
-
-  // For filter dropdowns
-  const shouldComputeFilterOptions = createMemo(() => viewMode() === '3d' && showFilters());
-  const namespaceList = createMemo(() => {
-    if (!shouldComputeFilterOptions()) return EMPTY_OPTIONS;
-    return [...new Set(k8sStore.pods.map(p => p.metadata?.namespace).filter(Boolean))].sort() as string[];
-  });
-
-  const nodeNameList = createMemo(() => {
-    if (!shouldComputeFilterOptions()) return EMPTY_OPTIONS;
-    return k8sStore.nodes.map(n => n.metadata?.name).filter(Boolean).sort() as string[];
-  });
-
-  const hasActiveFilter = createMemo(() => {
-    const activeFilter = filter();
-    return Boolean(
-      activeFilter.namespace ||
-        (activeFilter.status?.length ?? 0) > 0 ||
-        activeFilter.nodeName ||
-        activeFilter.searchTerm
-    );
-  });
-
-  const clearFilters = () => {
-    setFilter({});
-    setSearchInput('');
-  };
 
   // Get pods on a specific node
   const getPodsOnNode = createMemo(() => {
@@ -264,81 +130,6 @@ const Dashboard: Component = () => {
     k8sDataState() === 'offline' ? (k8sError() || 'offline') : '',
   );
 
-  const resourceDataState = createMemo(() =>
-    resolveDashboardDataState({
-      loading: resourceLoading(),
-      error: resourceError(),
-      lastUpdateMs: metricsStore().lastUpdate,
-      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
-    }),
-  );
-  const resourceCardError = createMemo(() =>
-    resourceDataState() === 'offline' ? (resourceError() || 'offline') : '',
-  );
-
-  const modelDataState = createMemo(() =>
-    resolveDashboardDataState({
-      loading: modelCount().loading,
-      error: modelCount().error,
-      lastUpdateMs: modelLastUpdateMs(),
-      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
-    }),
-  );
-  const modelCardError = createMemo(() =>
-    modelDataState() === 'offline' ? (modelCount().error || 'offline') : '',
-  );
-
-  const inferenceFeatureEnabled = createMemo(
-    () => healthStore.features.flexinfer_proxy?.enabled ?? false,
-  );
-  const inferenceDataState = createMemo(() => {
-    if (!inferenceFeatureEnabled()) return 'offline' as const;
-    return resolveDashboardDataState({
-      loading: inferenceHealth().loading,
-      error: inferenceHealth().error,
-      lastUpdateMs: inferenceLastUpdateMs(),
-      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
-    });
-  });
-  const inferenceCardError = createMemo(() => {
-    if (!inferenceFeatureEnabled()) return '';
-    return inferenceDataState() === 'offline'
-      ? (inferenceHealth().error || 'offline')
-      : '';
-  });
-
-  const agentFeatureEnabled = createMemo(() => loomHUDAvailable());
-  const agentDataState = createMemo(() => {
-    if (!agentFeatureEnabled()) return 'offline' as const;
-    const resolved = resolveDashboardDataState({
-      loading: agentActivity().loading,
-      error: agentActivity().error,
-      lastUpdateMs: agentLastUpdateMs(),
-      staleAfterMs: DASHBOARD_STALE_AFTER_MS,
-    });
-    if (
-      resolved === 'ready' &&
-      loomHUDPushEnabled() &&
-      !loomHUDPullEnabled()
-    ) {
-      return 'partial' as const;
-    }
-    return resolved;
-  });
-  const agentCardError = createMemo(() => {
-    if (!agentFeatureEnabled()) return '';
-    return agentDataState() === 'offline'
-      ? (agentActivity().error || 'offline')
-      : '';
-  });
-
-  // Adapt store data to component types
-  const nodes = createMemo(() => k8sStore.nodes as unknown as K8sNode[]);
-  const pods = createMemo(() => k8sStore.pods as unknown as K8sPod[]);
-  const services = createMemo(() => k8sStore.services as unknown as K8sService[]);
-
-
-
   onMount(() => {
     // Connect to K8s SSE stream for real-time updates
     connectK8sStream();
@@ -348,7 +139,6 @@ const Dashboard: Component = () => {
   });
 
   onCleanup(() => {
-    clearTimeout(searchDebounceTimer);
     disconnectK8sStream();
     stopMetricsPolling();
   });

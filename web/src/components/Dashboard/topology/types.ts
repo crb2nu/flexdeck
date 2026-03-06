@@ -19,5 +19,7 @@ export interface TopologyNode extends d3.SimulationNodeDatum {
 export interface TopologyLink extends d3.SimulationLinkDatum<TopologyNode> {
   source: string | TopologyNode;
   target: string | TopologyNode;
+  sourceIdx?: number;
+  targetIdx?: number;
   type: 'hosts' | 'selects';
 }

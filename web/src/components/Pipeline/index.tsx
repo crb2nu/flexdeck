@@ -1,325 +1,54 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, lazy, Suspense, ErrorBoundary, createMemo } from 'solid-js';
-import { parse } from 'yaml';
-import CIPipelineViz, { Pipeline as VizPipeline, PipelineStage } from './CIPipelineViz';
+import { Component, createSignal, Show, lazy, Suspense, ErrorBoundary, createMemo, For } from 'solid-js';
+import CIPipelineViz from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
-import { ciApi, RepoInfo } from '../../lib/api';
 import {
-  getPipelineDataState,
   getStatusColor,
   getStatusLabel,
-  hasActiveJobs,
   isLivePipelineId,
-  normalizePipeline,
-  type PipelineDataState,
-  type PipelineSortConfig,
 } from './utils';
+import { usePipelineController } from './usePipelineController';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
 
-const POLL_INTERVAL = 10000; // 10 seconds
-const PIPELINE_STALE_AFTER_MS = POLL_INTERVAL * 3;
-
-type ActionNotice = {
-  type: 'info' | 'success' | 'error';
-  message: string;
-};
-
 const Pipeline: Component = () => {
-  const [repos, setRepos] = createSignal<RepoInfo[]>([]);
-  const [selectedRepo, setSelectedRepo] = createSignal<RepoInfo | null>(null);
-  const [pipelineData, setPipelineData] = createSignal<VizPipeline | undefined>(undefined);
-  const [loading, setLoading] = createSignal(true);
-
-  const [selectedJob, setSelectedJob] = createSignal<any>(null);
-  const [jobTrace, setJobTrace] = createSignal<string>('');
-  const [traceLoading, setTraceLoading] = createSignal(false);
   const [activeTab, setActiveTab] = createSignal<'config' | 'logs'>('logs');
   const [repoFilter, setRepoFilter] = createSignal('');
-
-  // Auto-refresh state
-  const [autoRefresh, setAutoRefresh] = createSignal(true);
-  const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
-  const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
-
-  // View mode and sorting state for pipeline overview
   const [viewMode, setViewMode] = createSignal<'overview' | 'detail'>('overview');
-  const [pipelineSort, setPipelineSort] = createSignal<PipelineSortConfig>({
-    field: 'activity',
-    direction: 'desc'
-  });
-  const [pipelinesCache, setPipelinesCache] = createSignal<Map<number, VizPipeline>>(new Map());
-  const [overviewLoading, setOverviewLoading] = createSignal(false);
-
-  // Page-level tabs
   const [pageTab, setPageTab] = createSignal<'pipelines' | 'trends' | 'history'>('pipelines');
   const [mobileSidebarOpen, setMobileSidebarOpen] = createSignal(false);
-
-  // Pipeline-level action state
-  const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
-  const [triggerRef, setTriggerRef] = createSignal('main');
-  const [pipelineFetchError, setPipelineFetchError] = createSignal(false);
-  const [actionNotice, setActionNotice] = createSignal<ActionNotice | null>(null);
-
-  const pushActionNotice = (type: ActionNotice['type'], message: string) => {
-    setActionNotice({ type, message });
-    const id = setTimeout(() => {
-      pendingTimeouts.delete(id);
-      setActionNotice((current) => (current?.message === message ? null : current));
-    }, 4500);
-    pendingTimeouts.add(id);
-  };
-
-  onMount(async () => {
-    try {
-      const data = await ciApi.listRepos();
-      const normalizedRepos = Array.isArray(data) ? data : [];
-      if (!Array.isArray(data)) {
-        console.warn('Unexpected /api/ci/repos payload shape; expected array', data);
-      }
-      setRepos(normalizedRepos);
-      // Load pipelines for overview mode
-      if (normalizedRepos.length > 0) {
-        fetchAllPipelines(normalizedRepos);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  });
-
-  const fetchPipelineStatus = async (repoId: number) => {
-      try {
-          const liveData = await ciApi.getPipeline(repoId);
-          if (liveData && liveData.status !== 'none') {
-              const normalizedPipeline = normalizePipeline(liveData as VizPipeline);
-              setPipelineData(normalizedPipeline);
-              // Also update the cache
-              setPipelinesCache(prev => {
-                  const next = new Map(prev);
-                  next.set(repoId, normalizedPipeline);
-                  return next;
-              });
-          }
-          if (pipelineFetchError()) {
-            pushActionNotice('success', 'Live pipeline status restored.');
-          }
-          setPipelineFetchError(false);
-          setLastUpdate(new Date());
-      } catch (e) {
-          if (!pipelineFetchError()) {
-            pushActionNotice('error', 'Live pipeline status unavailable. Showing best available data.');
-          }
-          setPipelineFetchError(true);
-          console.debug("No pipeline data available", e);
-      }
-  };
-
-  // Fetch all pipelines for overview mode (batched)
-  const fetchAllPipelines = async (repoList: RepoInfo[]) => {
-      setOverviewLoading(true);
-      const BATCH_SIZE = 5;
-
-      for (let i = 0; i < repoList.length; i += BATCH_SIZE) {
-          const batch = repoList.slice(i, i + BATCH_SIZE);
-          const results = await Promise.allSettled(
-              batch.map(async (repo) => {
-                  if (!repo.id) return null;
-                  try {
-                      const data = await ciApi.getPipeline(repo.id);
-                      if (data && data.status !== 'none') {
-                          return { id: repo.id, pipeline: normalizePipeline(data as VizPipeline) };
-                      }
-                  } catch {
-                      // Silently skip repos without pipelines
-                  }
-                  return null;
-              })
-          );
-
-          // Update cache with successful results
-          setPipelinesCache(prev => {
-              const next = new Map(prev);
-              results.forEach(result => {
-                  if (result.status === 'fulfilled' && result.value) {
-                      next.set(result.value.id, result.value.pipeline);
-                  }
-              });
-              return next;
-          });
-      }
-
-      setOverviewLoading(false);
-      setLastUpdate(new Date());
-  };
-
-  // Check if pipeline has running jobs
-  const isPipelineActive = () => {
-    const pipeline = pipelineData() ?? null;
-    if (!pipeline || !isLivePipelineId(pipeline.id)) return false;
-    return hasActiveJobs(pipeline);
-  };
-
-  // Auto-refresh polling effect
-  createEffect(() => {
-    // Clear existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-
-    const repo = selectedRepo();
-    const isActive = isPipelineActive();
-    const isAutoRefresh = autoRefresh();
-    const hasJobSelected = selectedJob() !== null;
-
-    // Only poll when: repo selected, pipeline active, auto-refresh on, no job panel open
-    if (repo?.id && isActive && isAutoRefresh && !hasJobSelected) {
-      pollInterval = setInterval(() => {
-        fetchPipelineStatus(repo.id);
-      }, POLL_INTERVAL);
-    }
-  });
-
-  const scheduleRefresh = (fn: () => void, delay: number) => {
-    const id = setTimeout(() => {
-      pendingTimeouts.delete(id);
-      fn();
-    }, delay);
-    pendingTimeouts.add(id);
-  };
-
-  // Cleanup on unmount
-  onCleanup(() => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-    pendingTimeouts.forEach(clearTimeout);
-    pendingTimeouts.clear();
-  });
-
-  // Format time ago
-  const formatTimeAgo = (date: Date | null) => {
-    if (!date) return 'Never';
-    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (seconds < 5) return 'Just now';
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    return `${Math.floor(minutes / 60)}h ago`;
-  };
-
-  const fetchJobTrace = async (projectId: number, jobId: string) => {
-    setTraceLoading(true);
-    setJobTrace('');
-    try {
-      const data = await ciApi.getJobTrace(projectId, jobId);
-      setJobTrace(data.trace || '');
-    } catch (e) {
-      console.error("Failed to fetch job trace", e);
-      setJobTrace('Failed to load job trace. The job may not have any output yet.');
-    } finally {
-      setTraceLoading(false);
-    }
-  };
-
-  // Auto-fetch logs when a job is selected
-  createEffect(() => {
-    const job = selectedJob();
-    const repo = selectedRepo();
-    if (job && repo?.id && job.id) {
-      // Extract numeric job ID from the format "job-123" or just "123"
-      const jobId = job.id.replace(/^job-/, '');
-      if (!isLivePipelineId(jobId)) {
-        setTraceLoading(false);
-        setJobTrace('Live logs are unavailable for static pipeline previews.');
-        return;
-      }
-      fetchJobTrace(repo.id, jobId);
-    }
-  });
-
-  const selectRepo = async (repo: RepoInfo, switchToDetail = true) => {
-    setSelectedRepo(repo);
-    setSelectedJob(null);
-    setJobTrace('');
-    // Switch to detail view when selecting a repo
-    if (switchToDetail) {
-      setViewMode('detail');
-    }
-    // Optimistic / Static load from YAML first
-    if (repo.hasConfig && repo.configContent) {
-        setPipelineData(parseGitLabCi(repo.configContent, repo.name));
-    } else {
-        setPipelineData(undefined);
-    }
-
-    // Then fetch live status
-    if (repo.id) {
-        await fetchPipelineStatus(repo.id);
-    }
-  };
-
-  const handleRetryPipeline = async () => {
-    const repo = selectedRepo();
-    const pipeline = pipelineData();
-    if (!repo?.id || !pipeline?.id) return;
-    if (!isLivePipelineId(pipeline.id)) {
-      pushActionNotice('info', 'Retry is unavailable for static pipeline previews.');
-      return;
-    }
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.retryPipeline(repo.id, pipeline.id);
-      scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
-      pushActionNotice('success', 'Pipeline retry requested.');
-    } catch (e) {
-      console.error('Failed to retry pipeline', e);
-      pushActionNotice('error', 'Pipeline retry failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
-  };
-
-  const handleCancelPipeline = async () => {
-    const repo = selectedRepo();
-    const pipeline = pipelineData();
-    if (!repo?.id || !pipeline?.id) return;
-    if (!isLivePipelineId(pipeline.id)) {
-      pushActionNotice('info', 'Cancel is unavailable for static pipeline previews.');
-      return;
-    }
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.cancelPipeline(repo.id, pipeline.id);
-      scheduleRefresh(() => fetchPipelineStatus(repo.id), 1000);
-      pushActionNotice('success', 'Pipeline cancel requested.');
-    } catch (e) {
-      console.error('Failed to cancel pipeline', e);
-      pushActionNotice('error', 'Pipeline cancel failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
-  };
-
-  const handleTriggerPipeline = async () => {
-    const repo = selectedRepo();
-    if (!repo?.id || !triggerRef()) return;
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.triggerPipeline(repo.id, triggerRef());
-      scheduleRefresh(() => fetchPipelineStatus(repo.id), 2000);
-      pushActionNotice('success', `Pipeline trigger requested for ${triggerRef()}.`);
-    } catch (e) {
-      console.error('Failed to trigger pipeline', e);
-      pushActionNotice('error', 'Pipeline trigger failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
-  };
+  const {
+    actionNotice,
+    autoRefresh,
+    dataStateMeta,
+    fetchPipelineStatus,
+    formatTimeAgo,
+    handleCancelPipeline,
+    handleRetryPipeline,
+    handleTriggerPipeline,
+    isPipelineActive,
+    jobTrace,
+    lastUpdate,
+    loading,
+    overviewLoading,
+    pipelineActionLoading,
+    pipelineData,
+    pipelineDataState,
+    pipelineSort,
+    pipelinesCache,
+    pushActionNotice,
+    repos,
+    scheduleRefresh,
+    selectedJob,
+    selectedRepo,
+    selectRepo,
+    setAutoRefresh,
+    setPipelineSort,
+    setSelectedJob,
+    setTriggerRef,
+    traceLoading,
+    triggerRef,
+  } = usePipelineController();
 
   const filteredRepos = () => {
     return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
@@ -335,113 +64,6 @@ const Pipeline: Component = () => {
     if (pageTab() !== 'pipelines') return pageTab().toUpperCase();
     return viewMode() === 'overview' ? 'PIPELINES / OVERVIEW' : 'PIPELINES / DETAIL';
   });
-
-  const pipelineDataState = createMemo<PipelineDataState>(() =>
-    getPipelineDataState({
-      pipeline: pipelineData(),
-      lastUpdate: lastUpdate(),
-      fetchError: pipelineFetchError(),
-      staleAfterMs: PIPELINE_STALE_AFTER_MS,
-    })
-  );
-
-  const dataStateMeta = createMemo(() => {
-    const state = pipelineDataState();
-    switch (state) {
-      case 'live':
-        return { label: 'LIVE' };
-      case 'stale':
-        return { label: 'STALE' };
-      case 'static':
-        return { label: 'STATIC' };
-      default:
-        return { label: 'OFFLINE' };
-    }
-  });
-  
-  // ...
-
-  const parseGitLabCi = (content: string, repoName: string): VizPipeline => {
-      let parsed: any;
-      try {
-          parsed = parse(content);
-      } catch (e) {
-          console.error("Failed to parse YAML", e);
-          return {
-              id: `pipeline-${repoName}-error`,
-              ref: 'main',
-              status: 'failed',
-              createdAt: new Date().toISOString(),
-              stages: []
-          };
-      }
-
-      if (!parsed) return {
-          id: `pipeline-${repoName}-empty`,
-          ref: 'main',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          stages: []
-      };
-
-      // Extract stages
-      let stages: string[] = parsed.stages || ['build', 'test', 'deploy'];
-      
-      // Normalize stages if it's not an array (unlikely but possible in some valid yamls)
-      if (!Array.isArray(stages)) stages = ['build', 'test', 'deploy'];
-
-      // Initialize pipeline stages
-      const pipelineStages: PipelineStage[] = stages.map(name => ({
-          name,
-          jobs: []
-      }));
-
-      // Reserved keys in GitLab CI that are NOT jobs
-      const reservedKeys = new Set([
-          'stages', 'types', 'variables', 'cache', 'include', 'image', 'services', 
-          'before_script', 'after_script', 'workflow', 'default'
-      ]);
-
-      // Iterate over keys to find jobs
-      Object.entries(parsed).forEach(([key, value]: [string, any]) => {
-          if (reservedKeys.has(key) || key.startsWith('.')) return; // Skip reserved and hidden jobs
-          if (typeof value !== 'object' || !value) return; 
-
-          // Determine stage
-          const jobStage = value.stage || 'test'; // Default stage is 'test' per GitLab spec (usually)
-          
-          // Find or create stage (if someone uses a stage not in the 'stages' array, unlikely but handled)
-          let stage = pipelineStages.find(s => s.name === jobStage);
-          if (!stage) {
-               // If strict, we might ignore. For viz, let's add it or map to 'unknown'? 
-               // GitLab validation would fail, but we want to show something.
-               // Let's check if there is a 'test' stage if stage is missing from definition
-               if (parsed.stages && !parsed.stages.includes(jobStage)) {
-                   // Job references undefined stage.
-                   stage = pipelineStages.find(s => s.name === 'test');
-                   if (!stage && pipelineStages.length > 0) stage = pipelineStages[0];
-               }
-          }
-          
-          if (stage) {
-              stage.jobs.push({
-                  id: `job-${key}`,
-                  name: key,
-                  stage: jobStage,
-                  status: 'pending',
-                  details: value
-              });
-          }
-      });
-
-      return {
-          id: `pipeline-${repoName}`,
-          ref: 'main',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          stages: pipelineStages.filter(s => s.jobs.length > 0)
-      };
-  };
 
   return (
     <div class="relative flex h-full min-h-0 w-full overflow-hidden">
@@ -567,6 +189,7 @@ const Pipeline: Component = () => {
                                         : 'text-text-dim hover:bg-white/5'
                                 }`}
                                 onClick={() => {
+                                    setViewMode('detail');
                                     selectRepo(repo);
                                     setSelectedJob(null);
                                     closeSidebarOnMobile();
@@ -643,7 +266,10 @@ const Pipeline: Component = () => {
                     pipelinesCache={pipelinesCache()}
                     sort={pipelineSort()}
                     onSortChange={setPipelineSort}
-                    onSelectPipeline={(repo) => selectRepo(repo, true)}
+                    onSelectPipeline={(repo) => {
+                      setViewMode('detail');
+                      selectRepo(repo);
+                    }}
                     loading={overviewLoading()}
                 />
             </Show>
@@ -794,30 +420,31 @@ const Pipeline: Component = () => {
 
                     {/* Job Details Panel */}
                     <Show when={selectedJob()}>
+                      {(job) => (
                         <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-col animate-slide-up">
                             {/* Header */}
                             <div class="flex flex-col gap-3 p-4 border-b border-white/5 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="flex min-w-0 items-center gap-3">
                                     <div
                                       class="w-2 h-2 rounded-full"
-                                      classList={{ 'animate-pulse': selectedJob().status === 'running' }}
-                                      style={{ background: getStatusColor(selectedJob().status, selectedJob().rawStatus) }}
+                                      classList={{ 'animate-pulse': job().status === 'running' }}
+                                      style={{ background: getStatusColor(job().status, job().rawStatus) }}
                                     />
-                                    <div class="text-base sm:text-lg font-mono font-bold text-white truncate">{selectedJob().name}</div>
+                                    <div class="text-base sm:text-lg font-mono font-bold text-white truncate">{job().name}</div>
                                     <span
                                       class="text-[10px] uppercase px-2 py-0.5 rounded border"
                                       style={{
-                                        color: getStatusColor(selectedJob().status, selectedJob().rawStatus),
-                                        border: `1px solid ${getStatusColor(selectedJob().status, selectedJob().rawStatus)}50`,
-                                        background: `${getStatusColor(selectedJob().status, selectedJob().rawStatus)}15`,
+                                        color: getStatusColor(job().status, job().rawStatus),
+                                        border: `1px solid ${getStatusColor(job().status, job().rawStatus)}50`,
+                                        background: `${getStatusColor(job().status, job().rawStatus)}15`,
                                       }}
                                     >
-                                      {getStatusLabel(selectedJob().status, selectedJob().rawStatus)}
+                                      {getStatusLabel(job().status, job().rawStatus)}
                                     </span>
-                                    <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{selectedJob().stage}</span>
-                                    <Show when={selectedJob().duration}>
+                                    <span class="text-xs uppercase px-2 py-0.5 rounded bg-white/10 text-text-muted">{job().stage}</span>
+                                    <Show when={job().duration}>
                                         <span class="text-xs text-text-dim">
-                                            {Math.round(selectedJob().duration)}s
+                                            {Math.round(job().duration ?? 0)}s
                                         </span>
                                     </Show>
                                 </div>
@@ -874,11 +501,11 @@ const Pipeline: Component = () => {
                                 
                                 <Show when={activeTab() === 'config'}>
                                     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
-                                        <Show when={selectedJob().details?.script}>
+                                        <Show when={job().details?.script}>
                                             <div class="flex flex-col gap-2">
                                                 <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>
                                                 <div class="bg-black/50 rounded p-3 font-mono text-xs text-text-dim border border-white/5">
-                                                    <For each={selectedJob().details.script}>
+                                                    <For each={job().details?.script as string[]}>
                                                         {(line: string) => <div class="whitespace-pre-wrap">$ {line}</div>}
                                                     </For>
                                                 </div>
@@ -886,10 +513,10 @@ const Pipeline: Component = () => {
                                         </Show>
                                         
                                         <div class="flex flex-col gap-4">
-                                            <Show when={selectedJob().details?.image}>
+                                            <Show when={job().details?.image}>
                                                 <div>
                                                     <div class="text-xs font-bold uppercase text-neon-purple tracking-wider mb-1">Image</div>
-                                                    <div class="font-mono text-sm text-white">{selectedJob().details.image}</div>
+                                                    <div class="font-mono text-sm text-white">{String(job().details?.image ?? '')}</div>
                                                 </div>
                                             </Show>
                                             
@@ -897,7 +524,7 @@ const Pipeline: Component = () => {
                                             <div class="flex flex-col gap-2">
                                                 <div class="text-xs font-bold uppercase text-text-muted tracking-wider">Configuration</div>
                                                 <div class="grid grid-cols-2 gap-2 text-xs font-mono">
-                                                    <For each={Object.entries(selectedJob().details || {}).filter(([k]) => !['script', 'before_script', 'after_script', 'image', 'name', 'stage'].includes(k))}>
+                                                    <For each={Object.entries(job().details || {}).filter(([k]) => !['script', 'before_script', 'after_script', 'image', 'name', 'stage'].includes(k))}>
                                                         {([key, val]) => (
                                                             <>
                                                                 <div class="text-text-dim">{key}:</div>
@@ -912,6 +539,7 @@ const Pipeline: Component = () => {
                                 </Show>
                             </div>
                         </div>
+                      )}
                     </Show>
                 </Show>
             </Show>

@@ -1,20 +1,11 @@
-import { Component, createSignal, createEffect, onCleanup, onMount, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { Component, createSignal, For, Show, Switch, Match, createMemo, ErrorBoundary, lazy, Suspense } from 'solid-js';
 import type {
   RegisteredModel,
-  ModelSearchResult,
   FlexInferModel,
-  FlexInferModelListResponse,
   InferenceMetrics,
   LoRAAdapter,
 } from '../../lib/types';
 import type { LiteLLMModelThroughput } from '../../lib/api/infrastructure';
-import { modelsApi } from '../../lib/api';
-import {
-  clearModelIntegrationsCache,
-  fetchModelIntegrationsBatch,
-  invalidateModelIntegration,
-} from '../../lib/modelIntegration';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
 import PageScrollBody from '../shared/PageScrollBody';
@@ -22,9 +13,9 @@ import {
   getReliabilityClasses,
   getReliabilityStatus,
   type IntegrationFetchState,
-  summarizeIntegrationCoverage,
   summarizeLoRA,
 } from './controllerIntegration';
+import { useModelsController, type ModelsTab } from './useModelsController';
 
 const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
@@ -32,303 +23,42 @@ const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
 const InferenceTab = lazy(() => import('./InferenceTab'));
 const CatalogTab = lazy(() => import('./CatalogTab'));
 
-type Tab = 'controller' | 'registry' | 'search' | 'router' | 'compare' | 'inference' | 'catalog';
-
 const Models: Component = () => {
-  const [activeTab, setActiveTab] = createSignal<Tab>('controller');
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [actionLoading, setActionLoading] = createSignal<string | null>(null);
-  const [discoverLoading, setDiscoverLoading] = createSignal(false);
-  const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
-  const [controllerDataLoading, setControllerDataLoading] = createSignal(false);
-
-  // CRD models from the backend-configured AI namespace (the real controller state)
-  const [crdModels, setCrdModels] = createStore<FlexInferModel[]>([]);
-  const [inferenceByModel, setInferenceByModel] = createSignal<Record<string, InferenceMetrics>>({});
-  const [loraByModel, setLoraByModel] = createSignal<Record<string, LoRAAdapter[]>>({});
-  const [throughputByModel, setThroughputByModel] = createSignal<Record<string, LiteLLMModelThroughput>>({});
-  const [integrationByModel, setIntegrationByModel] = createSignal<Record<string, IntegrationFetchState>>({});
-
-  // Registry models (flexdeck's internal model registry)
-  const [registryModels, setRegistryModels] = createStore<RegisteredModel[]>([]);
-
-  // Search state
-  const [searchQuery, setSearchQuery] = createSignal('');
-  const [searchSource, setSearchSource] = createSignal<'huggingface' | 'civitai'>('huggingface');
-  const [searchResults, setSearchResults] = createStore<RegisteredModel[]>([]);
-  const [searching, setSearching] = createSignal(false);
-
-  let controllerRefreshToken = 0;
+  const [activeTab, setActiveTab] = createSignal<ModelsTab>('controller');
+  const {
+    actionLoading,
+    controllerDataLoading,
+    crdActionLoading,
+    crdModels,
+    discoverLoading,
+    discoverModels,
+    error,
+    fetchCRDModels,
+    fetchRegistryModels,
+    handleCRDAction,
+    handleDelete,
+    handleRegister,
+    handleSearch,
+    handleStartDownload,
+    inferenceByModel,
+    integrationByModel,
+    integrationSummary,
+    loading,
+    loraByModel,
+    loraSummary,
+    phaseSummary,
+    registryModels,
+    reliabilitySummary,
+    searchQuery,
+    searchResults,
+    searchSource,
+    searching,
+    setSearchQuery,
+    setSearchSource,
+    throughputByModel,
+  } = useModelsController(activeTab, setActiveTab);
 
   const modelKey = (namespace: string, name: string) => `${namespace}/${name}`;
-
-  const refreshControllerIntegrations = async (models: FlexInferModel[]) => {
-    const token = ++controllerRefreshToken;
-    if (models.length === 0) {
-      setInferenceByModel({});
-      setLoraByModel({});
-      setThroughputByModel({});
-      setIntegrationByModel({});
-      setControllerDataLoading(false);
-      return;
-    }
-
-    setControllerDataLoading(true);
-    const nextInference: Record<string, InferenceMetrics> = {};
-    const nextLoRA: Record<string, LoRAAdapter[]> = {};
-    const nextThroughput: Record<string, LiteLLMModelThroughput> = {};
-    const nextIntegration: Record<string, IntegrationFetchState> = {};
-
-    const integrationData = await fetchModelIntegrationsBatch(
-      models.map((model) => ({ namespace: model.namespace, name: model.name })),
-      { concurrency: 4 }
-    );
-
-    for (const model of models) {
-      const key = modelKey(model.namespace, model.name);
-      const integration = integrationData[key];
-      if (!integration) continue;
-      nextIntegration[key] = {
-        inferenceAvailable: integration.inferenceAvailable,
-        loraAvailable: integration.loraAvailable,
-        throughputAvailable: integration.throughputAvailable,
-      };
-      if (integration.metrics) {
-        nextInference[key] = integration.metrics;
-      }
-      if (integration.throughput) {
-        nextThroughput[key] = integration.throughput;
-      }
-      nextLoRA[key] = integration.adapters;
-    }
-
-    if (token !== controllerRefreshToken) return;
-    setInferenceByModel(nextInference);
-    setLoraByModel(nextLoRA);
-    setThroughputByModel(nextThroughput);
-    setIntegrationByModel(nextIntegration);
-    setControllerDataLoading(false);
-  };
-
-  // Fetch CRD models from the backend's configured AI namespace
-  const [crdNamespace, setCrdNamespace] = createSignal('');
-  const fetchCRDModels = async () => {
-    try {
-      const data: FlexInferModelListResponse = await modelsApi.crd();
-      setCrdModels(data.models || []);
-      if (data.namespace) setCrdNamespace(data.namespace);
-    } catch (err) {
-      // CRD might not be installed — fall back silently
-      console.warn('CRD fetch failed, falling back to registry:', err);
-    }
-  };
-
-  // Fetch registry models
-  const fetchRegistryModels = async () => {
-    try {
-      const data = await modelsApi.list();
-      setRegistryModels(data.models || []);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch models');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const refreshModels = async () => {
-    await Promise.all([fetchCRDModels(), fetchRegistryModels()]);
-  };
-
-  // Trigger K8s discovery from the configured AI namespace
-  const discoverModels = async () => {
-    setDiscoverLoading(true);
-    try {
-      await modelsApi.discover(crdNamespace() || undefined);
-      clearModelIntegrationsCache();
-      await refreshModels();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Discovery failed');
-    } finally {
-      setDiscoverLoading(false);
-    }
-  };
-
-  // Search models
-  const handleSearch = async () => {
-    if (!searchQuery().trim()) return;
-    setSearching(true);
-    try {
-      const data: ModelSearchResult = searchSource() === 'huggingface'
-        ? await modelsApi.searchHuggingFace(searchQuery(), '', 20)
-        : await modelsApi.searchCivitAI(searchQuery(), '', 20);
-      setSearchResults(data.models || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleRegister = async (source: string, sourceId: string) => {
-    setActionLoading(sourceId);
-    try {
-      await modelsApi.register(source, sourceId);
-      await fetchRegistryModels();
-      setActiveTab('registry');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleStartDownload = async (id: string) => {
-    setActionLoading(id);
-    try {
-      await modelsApi.startDownload(id);
-      await fetchRegistryModels();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this model from registry?')) return;
-    setActionLoading(id);
-    try {
-      await modelsApi.delete(id);
-      await fetchRegistryModels();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // CRD mutation actions
-  const handleCRDAction = async (action: 'activate' | 'scale0' | 'restart', model: FlexInferModel) => {
-    const key = `${model.namespace}/${model.name}/${action}`;
-    setCrdActionLoading(key);
-    try {
-      if (action === 'activate') {
-        await modelsApi.crdActivate(model.namespace, model.name);
-      } else if (action === 'scale0') {
-        await modelsApi.crdScale(model.namespace, model.name, 0);
-      } else {
-        await modelsApi.crdRestart(model.namespace, model.name);
-      }
-      invalidateModelIntegration(model.namespace, model.name);
-      await fetchCRDModels();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `${action} failed`);
-    } finally {
-      setCrdActionLoading(null);
-    }
-  };
-
-  onMount(() => {
-    void refreshModels().finally(() => setLoading(false));
-    // Also trigger discovery to sync registry.
-    void discoverModels();
-    const interval = setInterval(() => {
-      void refreshModels();
-    }, 15000);
-    onCleanup(() => clearInterval(interval));
-  });
-
-  // SSE for real-time CRD model phase changes
-  createEffect(() => {
-    if (activeTab() !== 'controller') return;
-
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource(modelsApi.crdWatchSSEUrl(crdNamespace() || undefined));
-      es.addEventListener('model', (e: MessageEvent) => {
-        try {
-          const event = JSON.parse(e.data);
-          if (!event?.model) return;
-          const incoming = event.model as FlexInferModel;
-          setCrdModels((prev) => {
-            const idx = prev.findIndex(m => m.name === incoming.name && m.namespace === incoming.namespace);
-            if (event.type === 'DELETED') {
-              return idx >= 0 ? [...prev.slice(0, idx), ...prev.slice(idx + 1)] : prev;
-            }
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = incoming;
-              return updated;
-            }
-            return [...prev, incoming];
-          });
-        } catch { /* ignore parse errors */ }
-      });
-      es.onerror = () => {
-        // SSE disconnected — polling fallback handles it
-        es?.close();
-      };
-    } catch { /* EventSource not supported — polling fallback */ }
-
-    onCleanup(() => es?.close());
-  });
-
-  // Refresh per-model inference + LoRA integration data for controller cards.
-  createEffect(() => {
-    if (activeTab() !== 'controller') return;
-    const snapshot = [...crdModels];
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    timer = setTimeout(() => {
-      refreshControllerIntegrations(snapshot);
-    }, 250);
-    onCleanup(() => {
-      if (timer) clearTimeout(timer);
-    });
-  });
-
-  // Phase summary for header
-  const phaseSummary = createMemo(() => {
-    const counts: Record<string, number> = {};
-    crdModels.forEach(m => {
-      const phase = m.status?.phase || 'Unknown';
-      counts[phase] = (counts[phase] || 0) + 1;
-    });
-    return counts;
-  });
-
-  const reliabilitySummary = createMemo(() => {
-    const counts: Record<string, number> = { healthy: 0, degraded: 0, partial: 0, unknown: 0 };
-    crdModels.forEach((model) => {
-      const key = modelKey(model.namespace, model.name);
-      const status = getReliabilityStatus(inferenceByModel()[key]);
-      counts[status.level] += 1;
-    });
-    return counts;
-  });
-
-  const loraSummary = createMemo(() => {
-    let loaded = 0;
-    let total = 0;
-    crdModels.forEach((model) => {
-      const key = modelKey(model.namespace, model.name);
-      const summary = summarizeLoRA(loraByModel()[key]);
-      loaded += summary.loaded;
-      total += summary.total;
-    });
-    return { loaded, total };
-  });
-
-  const integrationSummary = createMemo(() => {
-    if (controllerDataLoading() && Object.keys(integrationByModel()).length === 0) {
-      return { inferenceUnavailable: 0, loraUnavailable: 0 };
-    }
-    const states = crdModels
-      .map((model) => integrationByModel()[modelKey(model.namespace, model.name)])
-      .filter((state): state is IntegrationFetchState => state != null);
-    return summarizeIntegrationCoverage(states);
-  });
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
@@ -338,8 +68,8 @@ const Models: Component = () => {
           <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <h2 class="text-lg font-medium text-text-main">AI Models</h2>
             <div class="flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-1 no-scrollbar">
-              <TabButton active={activeTab() === 'controller'} onClick={() => setActiveTab('controller')} label="Controller" count={crdModels.length} color="neon-cyan" />
-              <TabButton active={activeTab() === 'registry'} onClick={() => setActiveTab('registry')} label="Registry" count={registryModels.length} color="neon-purple" />
+              <TabButton active={activeTab() === 'controller'} onClick={() => setActiveTab('controller')} label="Controller" count={crdModels().length} color="neon-cyan" />
+              <TabButton active={activeTab() === 'registry'} onClick={() => setActiveTab('registry')} label="Registry" count={registryModels().length} color="neon-purple" />
               <TabButton active={activeTab() === 'search'} onClick={() => setActiveTab('search')} label="Search" color="status-ok" />
               <TabButton active={activeTab() === 'router'} onClick={() => setActiveTab('router')} label="Router" color="neon-cyan" />
               <TabButton active={activeTab() === 'compare'} onClick={() => setActiveTab('compare')} label="Compare" color="neon-purple" />
@@ -349,7 +79,7 @@ const Models: Component = () => {
           </div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Phase summary pills */}
-            <Show when={activeTab() === 'controller' && crdModels.length > 0}>
+            <Show when={activeTab() === 'controller' && crdModels().length > 0}>
               <div class="hidden flex-col gap-1 sm:flex">
                 <div class="flex items-center gap-1.5">
                   <For each={Object.entries(phaseSummary())}>
@@ -420,17 +150,17 @@ const Models: Component = () => {
             {/* Controller (CRD) Tab */}
             <Match when={activeTab() === 'controller'}>
               <Show
-                when={!loading() || crdModels.length > 0}
+                when={!loading() || crdModels().length > 0}
                 fallback={<LoadingState message="Querying Model CRDs..." />}
               >
                 <Show
-                  when={crdModels.length > 0}
+                  when={crdModels().length > 0}
                   fallback={<EmptyState icon="⎈" title="No Model CRDs Found" subtitle="Apply Model CRDs to your AI namespace, then click Sync." />}
                 >
                   <div class="flex flex-col gap-4">
                     <ModelGPUTable />
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                      <For each={crdModels}>
+                      <For each={crdModels()}>
                         {(model) => (
                           <CRDModelCard
                             model={model}
@@ -455,11 +185,11 @@ const Models: Component = () => {
             {/* Registry Tab */}
             <Match when={activeTab() === 'registry'}>
               <Show
-                when={registryModels.length > 0}
+                when={registryModels().length > 0}
                 fallback={<EmptyState icon="📦" title="No Models in Registry" subtitle="Sync from K8s or search HuggingFace/CivitAI." />}
               >
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <For each={registryModels}>
+                  <For each={registryModels()}>
                     {(model) => (
                       <RegistryModelCard
                         model={model}
@@ -480,7 +210,7 @@ const Models: Component = () => {
                   <div class="flex flex-col gap-3 sm:flex-row">
                     <select
                       value={searchSource()}
-                      onChange={(e) => setSearchSource(e.target.value as 'huggingface' | 'civitai')}
+                      onChange={(e) => setSearchSource(e.currentTarget.value as 'huggingface' | 'civitai')}
                       class="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-text-main sm:w-auto"
                     >
                       <option value="huggingface">HuggingFace</option>
@@ -489,7 +219,7 @@ const Models: Component = () => {
                     <input
                       type="text"
                       value={searchQuery()}
-                      onInput={(e) => setSearchQuery(e.target.value)}
+                      onInput={(e) => setSearchQuery(e.currentTarget.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       placeholder="Search models..."
                       class="flex-1 min-w-0 rounded-md bg-white/10 px-4 py-2 text-sm text-text-main placeholder-text-dim focus:outline-none focus:ring-1 focus:ring-neon-cyan"
@@ -503,9 +233,9 @@ const Models: Component = () => {
                     </button>
                   </div>
                 </div>
-                <Show when={searchResults.length > 0}>
+                <Show when={searchResults().length > 0}>
                   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <For each={searchResults}>
+                    <For each={searchResults()}>
                       {(model) => (
                         <SearchResultCard
                           model={model}
