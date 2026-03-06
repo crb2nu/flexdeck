@@ -1,4 +1,4 @@
-import { Component, createMemo, createSignal, onMount, For, Show } from 'solid-js';
+import { batch, Component, createMemo, createSignal, onMount, For, Show } from 'solid-js';
 import { grafanaApi, prom } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
 
@@ -35,6 +35,18 @@ interface ResolvedPromExpr {
   unresolvedVars: string[];
   resolution: 'direct' | 'templated' | 'fallback';
 }
+
+interface DashboardCacheEntry {
+  panels: Panel[];
+  templateVars: Record<string, string>;
+  liveDataByPanel: Record<string, PanelLiveData>;
+  detailFetchedAt: number;
+  liveFetchedAt: number;
+}
+
+const DASHBOARD_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000;
+const DASHBOARD_LIVE_CACHE_TTL_MS = 60 * 1000;
+const MAX_LIVE_PANEL_QUERIES = 24;
 
 function isPrometheusDatasourceName(name?: string): boolean {
   if (!name) return true; // Treat inherited/default datasource as potentially Prometheus.
@@ -364,7 +376,9 @@ const GrafanaDashboards: Component = () => {
   const [liveDataByPanel, setLiveDataByPanel] = createSignal<
     Record<string, PanelLiveData>
   >({});
+  const [dashboardCache, setDashboardCache] = createSignal<Record<string, DashboardCacheEntry>>({});
   let liveFetchGeneration = 0;
+  let detailFetchGeneration = 0;
   const panelSummary = createMemo(() => {
     const list = panels();
     return {
@@ -396,7 +410,24 @@ const GrafanaDashboards: Component = () => {
 
   const panelKey = (panel: Panel) => `${panel.id}:${panel.title}`;
 
+  const applyExpandedDashboardState = (
+    nextPanels: Panel[],
+    resolvedTemplateVars: Record<string, string>,
+    nextLiveDataByPanel: Record<string, PanelLiveData>,
+  ) => {
+    batch(() => {
+      setPanels(nextPanels);
+      setTemplateVars(resolvedTemplateVars);
+      setLiveDataByPanel(nextLiveDataByPanel);
+    });
+  };
+
+  const resetExpandedDashboardState = () => {
+    applyExpandedDashboardState([], {}, {});
+  };
+
   const loadLivePanelData = async (
+    uid: string,
     nextPanels: Panel[],
     resolvedTemplateVars: Record<string, string>,
   ) => {
@@ -448,7 +479,21 @@ const GrafanaDashboards: Component = () => {
 
     const candidates = nextPanels
       .filter((panel) => liveState[panelKey(panel)]?.state === 'loading')
-      .slice(0, 24);
+      .slice(0, MAX_LIVE_PANEL_QUERIES);
+
+    if (candidates.length === 0) {
+      setDashboardCache((current) => ({
+        ...current,
+        [uid]: {
+          panels: nextPanels,
+          templateVars: resolvedTemplateVars,
+          liveDataByPanel: liveState,
+          detailFetchedAt: current[uid]?.detailFetchedAt || Date.now(),
+          liveFetchedAt: Date.now(),
+        },
+      }));
+      return;
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const start = now - 3600;
@@ -474,24 +519,32 @@ const GrafanaDashboards: Component = () => {
           }
 
           if (generation !== liveFetchGeneration) return;
-          setLiveDataByPanel((current) => ({
-            ...current,
-            [key]: { state: 'ready', value, series, resolution },
-          }));
+          liveState[key] = { state: 'ready', value, series, resolution };
         } catch (err) {
           if (generation !== liveFetchGeneration) return;
-          setLiveDataByPanel((current) => ({
-            ...current,
-            [key]: {
-              state: 'error',
-              resolution,
-              message:
-                err instanceof Error ? err.message : 'Live query failed',
-            },
-          }));
+          liveState[key] = {
+            state: 'error',
+            resolution,
+            message:
+              err instanceof Error ? err.message : 'Live query failed',
+          };
         }
       }),
     );
+
+    if (generation !== liveFetchGeneration) return;
+    setLiveDataByPanel({ ...liveState });
+    const fetchedAt = Date.now();
+    setDashboardCache((current) => ({
+      ...current,
+      [uid]: {
+        panels: nextPanels,
+        templateVars: resolvedTemplateVars,
+        liveDataByPanel: { ...liveState },
+        detailFetchedAt: current[uid]?.detailFetchedAt || fetchedAt,
+        liveFetchedAt: fetchedAt,
+      },
+    }));
   };
 
   onMount(async () => {
@@ -508,32 +561,60 @@ const GrafanaDashboards: Component = () => {
   const toggleDashboard = async (uid: string) => {
     if (expandedUid() === uid) {
       setExpandedUid(null);
-      setPanels([]);
-      setTemplateVars({});
-      setLiveDataByPanel({});
+      resetExpandedDashboardState();
       liveFetchGeneration++;
       return;
     }
 
+    const now = Date.now();
+    const cached = dashboardCache()[uid];
+    const hasFreshDetail =
+      cached && now - cached.detailFetchedAt < DASHBOARD_DETAIL_CACHE_TTL_MS;
+    const hasFreshLive =
+      cached && now - cached.liveFetchedAt < DASHBOARD_LIVE_CACHE_TTL_MS;
+
     setExpandedUid(uid);
+    if (cached) {
+      applyExpandedDashboardState(cached.panels, cached.templateVars, cached.liveDataByPanel);
+    } else {
+      resetExpandedDashboardState();
+    }
+
+    if (hasFreshDetail) {
+      setPanelsLoading(false);
+      if (!hasFreshLive) {
+        void loadLivePanelData(uid, cached.panels, cached.templateVars);
+      }
+      return;
+    }
+
+    const detailGeneration = ++detailFetchGeneration;
     setPanelsLoading(true);
-    setPanels([]);
-    setTemplateVars({});
-    setLiveDataByPanel({});
 
     try {
       const detail = await grafanaApi.dashboard(uid);
+      if (detailGeneration !== detailFetchGeneration || expandedUid() !== uid) return;
       const dashPanels: Panel[] = flattenPanels(detail?.dashboard?.panels || []);
       const resolvedTemplateVars = extractTemplateVariables(detail?.dashboard || {});
-      setPanels(dashPanels);
-      setTemplateVars(resolvedTemplateVars);
-      void loadLivePanelData(dashPanels, resolvedTemplateVars);
+      applyExpandedDashboardState(dashPanels, resolvedTemplateVars, {});
+      setDashboardCache((current) => ({
+        ...current,
+        [uid]: {
+          panels: dashPanels,
+          templateVars: resolvedTemplateVars,
+          liveDataByPanel: current[uid]?.liveDataByPanel || {},
+          detailFetchedAt: Date.now(),
+          liveFetchedAt: current[uid]?.liveFetchedAt || 0,
+        },
+      }));
+      void loadLivePanelData(uid, dashPanels, resolvedTemplateVars);
     } catch {
-      setPanels([]);
-      setTemplateVars({});
-      setLiveDataByPanel({});
+      if (detailGeneration !== detailFetchGeneration || expandedUid() !== uid) return;
+      resetExpandedDashboardState();
     } finally {
-      setPanelsLoading(false);
+      if (detailGeneration === detailFetchGeneration && expandedUid() === uid) {
+        setPanelsLoading(false);
+      }
     }
   };
 
