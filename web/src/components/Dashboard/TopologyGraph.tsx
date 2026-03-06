@@ -33,10 +33,10 @@ interface Props {
 const MAX_PARTICLES = 40;
 const LARGE_GRAPH_NODE_THRESHOLD = 600;
 const LARGE_GRAPH_LINK_THRESHOLD = 1200;
-const REDUCED_FPS = 30;
-const PARTICLE_IDLE_MS = 5000;
+const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
+const NODE_SPRITE_PADDING = 18;
 interface ParticleSlot {
   active: boolean;
   sourceIdx: number;
@@ -168,6 +168,7 @@ const TopologyGraph: Component<Props> = (props) => {
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
   const nodeStylesCache = new Map<string, { r: number; color: string; truncLabel: string }>();
+  const nodeSpriteCache = new Map<string, HTMLCanvasElement>();
   let nodeStylesCacheValid = false;
 
   // Frustum bounds cache - recomputed only when transform/dimensions change
@@ -455,6 +456,79 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
+  const getNodeSprite = (type: D3Node['type'], radius: number, color: string, variant: 'full' | 'simple'): HTMLCanvasElement => {
+    const key = `${type}:${radius}:${color}:${variant}`;
+    const cachedSprite = nodeSpriteCache.get(key);
+    if (cachedSprite) return cachedSprite;
+
+    const size = Math.ceil((radius + NODE_SPRITE_PADDING) * 2);
+    const sprite = document.createElement('canvas');
+    sprite.width = size;
+    sprite.height = size;
+    const spriteCtx = sprite.getContext('2d');
+    if (!spriteCtx) return sprite;
+
+    const center = size / 2;
+    const simpleVariant = variant === 'simple';
+
+    spriteCtx.beginPath();
+    spriteCtx.arc(center, center, radius, 0, Math.PI * 2);
+    spriteCtx.fillStyle = '#0a1020';
+    spriteCtx.fill();
+
+    spriteCtx.fillStyle = color;
+    spriteCtx.globalAlpha = type === 'node' ? 0.25 : 0.45;
+    spriteCtx.fill();
+    spriteCtx.globalAlpha = 1;
+
+    spriteCtx.beginPath();
+    spriteCtx.arc(center, center, radius, 0, Math.PI * 2);
+    spriteCtx.strokeStyle = color;
+    spriteCtx.lineWidth = type === 'node' ? 2 : 1.5;
+    spriteCtx.stroke();
+
+    if (!simpleVariant && type === 'node') {
+      spriteCtx.beginPath();
+      spriteCtx.arc(center, center, radius - 4, 0, Math.PI * 2);
+      spriteCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+      spriteCtx.lineWidth = 1;
+      spriteCtx.stroke();
+
+      spriteCtx.beginPath();
+      spriteCtx.arc(center, center, radius - 8, 0, Math.PI * 2);
+      spriteCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+      spriteCtx.stroke();
+    }
+
+    if (type === 'pod') {
+      if (!simpleVariant) {
+        spriteCtx.beginPath();
+        spriteCtx.arc(center, center, 3, 0, Math.PI * 2);
+        spriteCtx.fillStyle = color;
+        spriteCtx.globalAlpha = 0.4;
+        spriteCtx.fill();
+        spriteCtx.globalAlpha = 1;
+      }
+
+      spriteCtx.beginPath();
+      spriteCtx.arc(center, center, 1.5, 0, Math.PI * 2);
+      spriteCtx.fillStyle = color;
+      spriteCtx.fill();
+    }
+
+    if (type === 'service' && !simpleVariant) {
+      spriteCtx.beginPath();
+      spriteCtx.arc(center, center, 4, 0, Math.PI * 2);
+      spriteCtx.fillStyle = color;
+      spriteCtx.globalAlpha = 0.3;
+      spriteCtx.fill();
+      spriteCtx.globalAlpha = 1;
+    }
+
+    nodeSpriteCache.set(key, sprite);
+    return sprite;
+  };
+
   // Throttled particle spawning using object pool - zero allocations
   const maybeSpawnParticle = (now: number, allowParticles: boolean) => {
     if (!allowParticles) return;
@@ -525,7 +599,11 @@ const TopologyGraph: Component<Props> = (props) => {
     const nearSettled = isSimulationActive && simulationAlpha > 0 && simulationAlpha < 0.035 && !isUserInteracting;
     let minFrameMs = 0;
     if (isDense) {
-      minFrameMs = nearSettled ? 1000 / 20 : 1000 / REDUCED_FPS;
+      if (isSimulationActive) {
+        minFrameMs = nearSettled ? 1000 / 16 : 1000 / 24;
+      } else if (isUserInteracting) {
+        minFrameMs = 1000 / 24;
+      }
     } else if (nearSettled) {
       minFrameMs = 1000 / 45;
     }
@@ -546,7 +624,8 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
     const skipDecorativeNodeEffects = isDense && !isUserInteracting;
-    const allowParticles = !reduceLinks && (isSimulationActive || isUserInteracting);
+    const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
+    const allowParticles = isSimulationActive && !reduceLinks && !isDense;
 
     // Invalidate spatial grid when simulation is active (nodes are moving)
     if (isSimulationActive) spatialGridDirty = true;
@@ -571,7 +650,7 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.fillRect(0, 0, width, height);
 
     // Subtle animated scanline effect (every 60 frames)
-    if (!reduceLinks && frameCount % 2 === 0) {
+    if (!isDense && isSimulationActive && frameCount % 2 === 0) {
       const scanY = (frameCount * 2) % height;
       ctx.fillStyle = 'rgba(0, 217, 255, 0.015)';
       ctx.fillRect(0, scanY, width, 2);
@@ -796,6 +875,12 @@ const TopologyGraph: Component<Props> = (props) => {
       const isSelected = selectedId === node.id;
       const isHovered = hoveredId === node.id;
 
+      if (!isSelected && !isHovered) {
+        const sprite = getNodeSprite(node.type, r, color, simplifiedNodeRendering ? 'simple' : 'full');
+        ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
+        continue;
+      }
+
       // Multi-layer glow for selected/hovered nodes
       if (isSelected || isHovered) {
         // Outer pulse glow (animates for selected)
@@ -896,12 +981,13 @@ const TopologyGraph: Component<Props> = (props) => {
     let lastFont = '';
 
     // Draw labels - use indexed for loop to avoid closure allocation
-    const labelZoomThreshold = reduceDetail ? 0.7 : 0.4;
+    const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
+    const drawStructuralLabels = !isDense || zoomLevel > 1;
     for (let i = 0; i < visibleNodeCount; i++) {
         const node = graphNodes[visibleNodeIndices[i]];
         if (node.x === undefined || node.y === undefined) continue;
-        const shouldDrawLabel = node.type === 'node' || node.type === 'service' ||
-                                selectedId === node.id || hoveredId === node.id;
+        const shouldDrawLabel = selectedId === node.id || hoveredId === node.id ||
+                                (drawStructuralLabels && (node.type === 'node' || node.type === 'service'));
 
         if (shouldDrawLabel && zoomLevel > labelZoomThreshold) {
             const cached = nodeStylesCache.get(node.id)!;
