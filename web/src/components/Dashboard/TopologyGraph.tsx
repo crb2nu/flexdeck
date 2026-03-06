@@ -36,6 +36,7 @@ const LARGE_GRAPH_LINK_THRESHOLD = 1200;
 const REDUCED_FPS = 30;
 const PARTICLE_IDLE_MS = 5000;
 const INTERACTION_IDLE_MS = 800;
+const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
 interface ParticleSlot {
   active: boolean;
   sourceIdx: number;
@@ -91,6 +92,7 @@ interface PerfSnapshot {
 const TopologyGraph: Component<Props> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
+  let canvasCtx: CanvasRenderingContext2D | null = null;
   let simulation: d3.Simulation<D3Node, D3Link> | null = null;
   let rafId: number | null = null;
   let lastTopologyVersion = -1;
@@ -176,9 +178,14 @@ const TopologyGraph: Component<Props> = (props) => {
   // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
   const GRID_CELL_SIZE = 50; // Pixels per cell
   const GRID_KEY_MULTIPLIER = 100000; // Supports grid coords from -50000 to +50000
-  const spatialGrid = new Map<number, D3Node[]>();
+  const spatialGrid = new Map<number, number[]>();
+  const activeSpatialGridKeys: number[] = [];
   let spatialGridValid = false;
+  let spatialGridDirty = false;
+  let lastSpatialGridBuildAt = -Infinity;
   const visibleNodeIndices: number[] = [];
+  let visibleNodeFlags = new Uint8Array(0);
+  let lastVisibleNodeCount = 0;
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
   };
@@ -263,19 +270,45 @@ const TopologyGraph: Component<Props> = (props) => {
     return cellX * GRID_KEY_MULTIPLIER + cellY;
   };
 
-  const rebuildSpatialGrid = () => {
-    spatialGrid.clear();
-    for (const node of graphNodes) {
-      if (node.x === undefined || node.y === undefined) continue;
-      const key = getSpatialKey(node.x, node.y);
-      let bucket = spatialGrid.get(key);
-      if (!bucket) {
-        bucket = [];
-        spatialGrid.set(key, bucket);
+  const rebuildSpatialGrid = (now = performance.now()) => {
+    for (let i = 0; i < activeSpatialGridKeys.length; i++) {
+      const bucket = spatialGrid.get(activeSpatialGridKeys[i]);
+      if (bucket) bucket.length = 0;
+    }
+    activeSpatialGridKeys.length = 0;
+
+    const useVisibleNodes = lastVisibleNodeCount > 0 && lastVisibleNodeCount < graphNodes.length;
+    if (useVisibleNodes) {
+      for (let i = 0; i < lastVisibleNodeCount; i++) {
+        const nodeIndex = visibleNodeIndices[i];
+        const node = graphNodes[nodeIndex];
+        if (!node || node.x === undefined || node.y === undefined) continue;
+        const key = getSpatialKey(node.x, node.y);
+        let bucket = spatialGrid.get(key);
+        if (!bucket) {
+          bucket = [];
+          spatialGrid.set(key, bucket);
+        }
+        if (bucket.length === 0) activeSpatialGridKeys.push(key);
+        bucket.push(nodeIndex);
       }
-      bucket.push(node);
+    } else {
+      for (let nodeIndex = 0; nodeIndex < graphNodes.length; nodeIndex++) {
+        const node = graphNodes[nodeIndex];
+        if (node.x === undefined || node.y === undefined) continue;
+        const key = getSpatialKey(node.x, node.y);
+        let bucket = spatialGrid.get(key);
+        if (!bucket) {
+          bucket = [];
+          spatialGrid.set(key, bucket);
+        }
+        if (bucket.length === 0) activeSpatialGridKeys.push(key);
+        bucket.push(nodeIndex);
+      }
     }
     spatialGridValid = true;
+    spatialGridDirty = false;
+    lastSpatialGridBuildAt = now;
   };
 
   const findNearestNodeInGrid = (x: number, y: number): D3Node | null => {
@@ -287,10 +320,10 @@ const TopologyGraph: Component<Props> = (props) => {
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         const key = getSpatialKey(x + dx * GRID_CELL_SIZE, y + dy * GRID_CELL_SIZE);
-        const cellNodes = spatialGrid.get(key);
-        if (!cellNodes) continue;
-        for (let i = 0; i < cellNodes.length; i++) {
-          const node = cellNodes[i];
+        const cellNodeIndices = spatialGrid.get(key);
+        if (!cellNodeIndices) continue;
+        for (let i = 0; i < cellNodeIndices.length; i++) {
+          const node = graphNodes[cellNodeIndices[i]];
           if (node.x === undefined || node.y === undefined) continue;
           const deltaX = x - node.x;
           const deltaY = y - node.y;
@@ -370,12 +403,25 @@ const TopologyGraph: Component<Props> = (props) => {
       graphNodeById.set(node.id, node);
       nodeIndexMap.set(node.id, idx);
     });
+    if (visibleNodeFlags.length !== graphNodes.length) {
+      visibleNodeFlags = new Uint8Array(graphNodes.length);
+    } else {
+      visibleNodeFlags.fill(0);
+    }
+    for (let i = 0; i < graphLinks.length; i++) {
+      const link = graphLinks[i];
+      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+      link.sourceIdx = nodeIndexMap.get(sourceId);
+      link.targetIdx = nodeIndexMap.get(targetId);
+    }
     visibleNodeIndices.length = graphNodes.length;
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
     // Invalidate spatial grid - will be rebuilt on next hover check
     spatialGridValid = false;
+    spatialGridDirty = true;
 
     setNodeCount(graphNodes.length);
   };
@@ -466,8 +512,9 @@ const TopologyGraph: Component<Props> = (props) => {
    */
   const draw = () => {
     if (!canvasRef) return;
-    const ctx = canvasRef.getContext('2d');
+    const ctx = canvasCtx ?? canvasRef.getContext('2d');
     if (!ctx) return;
+    canvasCtx = ctx;
 
     const frameStart = performance.now();
     const now = frameStart;
@@ -502,9 +549,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const allowParticles = !reduceLinks && (isSimulationActive || isUserInteracting);
 
     // Invalidate spatial grid when simulation is active (nodes are moving)
-    if (isSimulationActive) {
-      spatialGridValid = false;
-    }
+    if (isSimulationActive) spatialGridDirty = true;
 
     // Clear & Background - use cached gradient
     ctx.clearRect(0, 0, width, height);
@@ -557,6 +602,20 @@ const TopologyGraph: Component<Props> = (props) => {
     const minY = cachedFrustum.minY;
     const maxY = cachedFrustum.maxY;
     const shouldCullLinks = isDense || zoomLevel > 0.8;
+    let visibleNodeCount = 0;
+
+    for (let i = 0, len = graphNodes.length; i < len; i++) {
+      const node = graphNodes[i];
+      const isVisible = node.x !== undefined &&
+        node.y !== undefined &&
+        node.x >= minX &&
+        node.x <= maxX &&
+        node.y >= minY &&
+        node.y <= maxY;
+      visibleNodeFlags[i] = isVisible ? 1 : 0;
+      if (isVisible) visibleNodeIndices[visibleNodeCount++] = i;
+    }
+    lastVisibleNodeCount = visibleNodeCount;
 
     // Draw Links with enhanced styling - Batched
     ctx.lineCap = 'round';
@@ -568,10 +627,8 @@ const TopologyGraph: Component<Props> = (props) => {
       for (const link of hostsLinks) {
         const s = link.source as D3Node; const t = link.target as D3Node;
         if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
-          if (shouldCullLinks) {
-            const sIn = s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY;
-            const tIn = t.x >= minX && t.x <= maxX && t.y >= minY && t.y <= maxY;
-            if (!sIn && !tIn) continue;
+          if (shouldCullLinks && link.sourceIdx !== undefined && link.targetIdx !== undefined) {
+            if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
           }
           ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
@@ -594,12 +651,10 @@ const TopologyGraph: Component<Props> = (props) => {
       for (const link of selectsLinks) {
         const s = link.source as D3Node; const t = link.target as D3Node;
         if (s.x !== undefined && s.y !== undefined && t.x !== undefined && t.y !== undefined) {
-          if (shouldCullLinks) {
-            const sIn = s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY;
-            const tIn = t.x >= minX && t.x <= maxX && t.y >= minY && t.y <= maxY;
-            if (!sIn && !tIn) continue;
+          if (shouldCullLinks && link.sourceIdx !== undefined && link.targetIdx !== undefined) {
+            if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
           }
-            ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
+          ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
         }
       }
       if (!reduceLinks && !isDense) {
@@ -728,14 +783,11 @@ const TopologyGraph: Component<Props> = (props) => {
     const time = frameCount * 0.05; // For subtle animation
 
     // Draw nodes - use indexed for loop to avoid closure allocation
-    let visibleNodeCount = 0;
-    for (let i = 0, len = graphNodes.length; i < len; i++) {
-      const node = graphNodes[i];
-      if (node.x === undefined || node.y === undefined) continue;
-
-      // Frustum culling using cached bounds
-      if (node.x < minX || node.x > maxX || node.y < minY || node.y > maxY) continue;
-      visibleNodeIndices[visibleNodeCount++] = i;
+    for (let i = 0; i < visibleNodeCount; i++) {
+      const node = graphNodes[visibleNodeIndices[i]];
+      const nodeX = node.x;
+      const nodeY = node.y;
+      if (nodeX === undefined || nodeY === undefined) continue;
 
       // Use cached styles instead of recalculating
       const cached = nodeStylesCache.get(node.id)!;
@@ -752,20 +804,20 @@ const TopologyGraph: Component<Props> = (props) => {
 
         // Outer soft glow
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + glowRadius, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, r + glowRadius, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.08;
         ctx.fill();
 
         // Middle glow
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + glowRadius * 0.6, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, r + glowRadius * 0.6, 0, 2 * Math.PI);
         ctx.globalAlpha = 0.12;
         ctx.fill();
 
         // Inner glow
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r + glowRadius * 0.3, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, r + glowRadius * 0.3, 0, 2 * Math.PI);
         ctx.globalAlpha = 0.18;
         ctx.fill();
         ctx.globalAlpha = 1.0;
@@ -773,7 +825,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
       // Main Circle Background with subtle gradient effect
       ctx.beginPath();
-      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.arc(nodeX, nodeY, r, 0, 2 * Math.PI);
       ctx.fillStyle = '#0a1020';
       ctx.fill();
 
@@ -785,7 +837,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
       // Stroke with enhanced styling
       ctx.beginPath();
-      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.arc(nodeX, nodeY, r, 0, 2 * Math.PI);
       ctx.strokeStyle = color;
       ctx.lineWidth = isSelected ? 3 : (node.type === 'node' ? 2 : 1.5);
       ctx.stroke();
@@ -793,14 +845,14 @@ const TopologyGraph: Component<Props> = (props) => {
       // Inner Highlight Ring for nodes (enhanced)
       if (node.type === 'node' && !reduceNodeDetail && !skipDecorativeNodeEffects) {
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r - 4, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, r - 4, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.lineWidth = 1;
         ctx.stroke();
 
         // Secondary inner ring for depth
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r - 8, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, r - 8, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.stroke();
       }
@@ -810,7 +862,7 @@ const TopologyGraph: Component<Props> = (props) => {
         // Outer glow dot
         if (!reduceNodeDetail && !skipDecorativeNodeEffects) {
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
+          ctx.arc(nodeX, nodeY, 3, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.globalAlpha = 0.4;
           ctx.fill();
@@ -819,7 +871,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
         // Core dot
         ctx.beginPath();
-        ctx.arc(node.x, node.y, 1.5, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, 1.5, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.fill();
       }
@@ -827,7 +879,7 @@ const TopologyGraph: Component<Props> = (props) => {
       // Service diamond indicator
       if (node.type === 'service' && !reduceNodeDetail && !skipDecorativeNodeEffects) {
         ctx.beginPath();
-        ctx.arc(node.x, node.y, 4, 0, 2 * Math.PI);
+        ctx.arc(nodeX, nodeY, 4, 0, 2 * Math.PI);
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.3;
         ctx.fill();
@@ -900,12 +952,14 @@ const TopologyGraph: Component<Props> = (props) => {
       if (!canvasRef) return null;
       const point = getCanvasPoint(event);
       if (!point) return null;
+      const now = performance.now();
       const x = (point.x - transform.x) / transform.k;
       const y = (point.y - transform.y) / transform.k;
 
-      // Rebuild spatial grid if invalidated (nodes moved/changed)
-      if (!spatialGridValid) {
-          rebuildSpatialGrid();
+      // Allow a slightly stale grid during active simulation to avoid full O(N)
+      // rebuilds on every hover event while nodes are moving.
+      if (!spatialGridValid || (spatialGridDirty && now - lastSpatialGridBuildAt >= SPATIAL_GRID_ACTIVE_REBUILD_MS)) {
+          rebuildSpatialGrid(now);
       }
 
       return findNearestNodeInGrid(x, y);
@@ -1070,6 +1124,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const debouncedResize = debounce(handleResize, 150);
 
   onMount(() => {
+    canvasCtx = canvasRef?.getContext('2d') ?? null;
     perfEnabled = readPerfToggle();
     if (perfEnabled) {
       maybeUpdatePerfHud(performance.now());
