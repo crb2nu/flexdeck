@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -148,5 +149,32 @@ func TestGetOrFetchPayloadIsJSONEncoded(t *testing.T) {
 	}
 	if decoded["name"] != "flexdeck" {
 		t.Fatalf("unexpected decoded payload: %+v", decoded)
+	}
+}
+
+func TestNewRedisClientConnectsAndHonorsDB(t *testing.T) {
+	t.Parallel()
+
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer server.Close()
+
+	client, err := NewRedisClient(config.RedisConfig{
+		URL: "redis://" + server.Addr(),
+		DB:  3,
+	})
+	if err != nil {
+		t.Fatalf("NewRedisClient() returned error: %v", err)
+	}
+	defer func() {
+		if closeErr := client.Close(); closeErr != nil {
+			t.Fatalf("failed to close redis client: %v", closeErr)
+		}
+	}()
+
+	if got := client.Options().DB; got != 3 {
+		t.Fatalf("expected DB 3, got %d", got)
 	}
 }

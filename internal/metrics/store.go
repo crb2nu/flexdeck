@@ -60,7 +60,12 @@ func NewStore(cfg config.RedisConfig) (*Store, error) {
 		return nil, fmt.Errorf("redis connection failed: %w", err)
 	}
 
-	return &Store{redis: client}, nil
+	return NewStoreWithClient(client), nil
+}
+
+// NewStoreWithClient wraps an existing Redis client for metrics storage.
+func NewStoreWithClient(client *redis.Client) *Store {
+	return &Store{redis: client}
 }
 
 // RedisClient returns the underlying Redis client for use by other packages.
