@@ -1,150 +1,34 @@
-import { Component, createSignal, createEffect, onCleanup, onMount, on, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { Component, createSignal, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import PageScrollBody from '../shared/PageScrollBody';
+import {
+  PROMETHEUS_TIME_RANGES,
+  type MetricPanel,
+  type MetricValue,
+  usePrometheusMetricsController,
+} from './usePrometheusMetricsController';
 
 const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
 const Alerts = lazy(() => import('../Alerts'));
-
-interface MetricValue {
-  time: number;
-  value: number;
-}
-
-interface MetricPanel {
-  title: string;
-  query: string;
-  unit: string;
-  color: string;
-  values: MetricValue[];
-}
+const CHART_STROKE_COLORS: Record<string, string> = {
+  cyan: '#00d9ff',
+  purple: '#a855f7',
+  green: '#22c55e',
+  orange: '#f97316',
+  blue: '#60a5fa',
+  pink: '#ec4899',
+};
 
 const Metrics: Component = () => {
   const [metricsTab, setMetricsTab] = createSignal<'prometheus' | 'grafana' | 'alerts'>('prometheus');
-
-  const [panels, setPanels] = createStore<MetricPanel[]>([
-    {
-      title: 'Cluster CPU Usage',
-      query: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
-      unit: '%',
-      color: 'cyan',
-      values: [],
-    },
-    {
-      title: 'Cluster Memory Usage',
-      query: '(1 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))) * 100',
-      unit: '%',
-      color: 'purple',
-      values: [],
-    },
-    {
-      title: 'Pod Count',
-      query: 'count(kube_pod_info)',
-      unit: '',
-      color: 'green',
-      values: [],
-    },
-    {
-      title: 'Container Restarts (1h)',
-      query: 'sum(increase(kube_pod_container_status_restarts_total[1h]))',
-      unit: '',
-      color: 'orange',
-      values: [],
-    },
-    {
-      title: 'Network Received',
-      query: 'sum(rate(node_network_receive_bytes_total[5m])) / 1024 / 1024',
-      unit: 'MB/s',
-      color: 'blue',
-      values: [],
-    },
-    {
-      title: 'Network Transmitted',
-      query: 'sum(rate(node_network_transmit_bytes_total[5m])) / 1024 / 1024',
-      unit: 'MB/s',
-      color: 'pink',
-      values: [],
-    },
-  ]);
-
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [timeRange, setTimeRange] = createSignal('1h');
-  const [lastUpdated, setLastUpdated] = createSignal<Date | null>(null);
-
-  const timeRanges = [
-    { label: '15m', value: '15m' },
-    { label: '1h', value: '1h' },
-    { label: '3h', value: '3h' },
-    { label: '6h', value: '6h' },
-    { label: '12h', value: '12h' },
-    { label: '24h', value: '24h' },
-  ];
-
-  const parseTimeRange = (range: string): number => {
-    const match = range.match(/^(\d+)([mhd])$/);
-    if (!match) return 3600;
-    const [, num, unit] = match;
-    const multipliers: Record<string, number> = { m: 60, h: 3600, d: 86400 };
-    return parseInt(num) * (multipliers[unit] || 3600);
-  };
-
-  const fetchMetrics = async () => {
-    setLoading(true);
-    setError('');
-
-    const now = Math.floor(Date.now() / 1000);
-    const start = now - parseTimeRange(timeRange());
-    const step = Math.max(15, Math.floor((now - start) / 100));
-
-    try {
-      await Promise.all(
-        panels.map(async (panel, index) => {
-          const params = new URLSearchParams({
-            query: panel.query,
-            start: start.toString(),
-            end: now.toString(),
-            step: step.toString(),
-          });
-
-          const response = await fetch(`/api/prom/query_range?${params}`);
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const data = await response.json();
-          const values: MetricValue[] = [];
-
-          if (data.data?.result?.[0]?.values) {
-            for (const [time, value] of data.data.result[0].values) {
-              values.push({
-                time: time * 1000,
-                value: parseFloat(value) || 0,
-              });
-            }
-          }
-
-          setPanels(index, 'values', values);
-        })
-      );
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch metrics');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  onMount(() => {
-    void fetchMetrics();
-    const interval = setInterval(() => {
-      void fetchMetrics();
-    }, 30000);
-    onCleanup(() => clearInterval(interval));
-  });
-
-  createEffect(on(timeRange, () => {
-    void fetchMetrics();
-  }, { defer: true }));
+  const {
+    panels,
+    loading,
+    error,
+    timeRange,
+    setTimeRange,
+    lastUpdated,
+    fetchMetrics,
+  } = usePrometheusMetricsController(() => metricsTab() === 'prometheus');
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
@@ -194,7 +78,7 @@ const Metrics: Component = () => {
         <Show when={metricsTab() === 'prometheus'}>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             <div class="flex max-w-full overflow-x-auto rounded-lg bg-surface-raised p-0.5 no-scrollbar">
-              <For each={timeRanges}>
+              <For each={PROMETHEUS_TIME_RANGES}>
                 {(range) => (
                   <button
                     onClick={() => setTimeRange(range.value)}
@@ -233,7 +117,7 @@ const Metrics: Component = () => {
           </Show>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <For each={panels}>
+            <For each={panels()}>
               {(panel) => (
                 <MetricCard
                   panel={panel}
@@ -309,16 +193,27 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
     const values = props.panel.values;
     if (values.length === 0) return { current: 0, min: 0, max: 0, avg: 0, trend: 'stable' as const };
 
-    const nums = values.map(v => v.value);
-    const current = nums[nums.length - 1];
-    const min = Math.min(...nums);
-    const max = Math.max(...nums);
-    const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+    let min = values[0].value;
+    let max = values[0].value;
+    let sum = 0;
+    let recentSum = 0;
+    let earlierSum = 0;
+    const recentStart = Math.floor(values.length * 0.8);
 
-    // Calculate trend based on last 20% of values
-    const recentStart = Math.floor(nums.length * 0.8);
-    const recentAvg = nums.slice(recentStart).reduce((a, b) => a + b, 0) / (nums.length - recentStart);
-    const earlierAvg = nums.slice(0, recentStart).reduce((a, b) => a + b, 0) / recentStart || recentAvg;
+    for (let i = 0; i < values.length; i++) {
+      const currentValue = values[i].value;
+      if (currentValue < min) min = currentValue;
+      if (currentValue > max) max = currentValue;
+      sum += currentValue;
+      if (i >= recentStart) recentSum += currentValue;
+      else earlierSum += currentValue;
+    }
+
+    const current = values[values.length - 1].value;
+    const avg = sum / values.length;
+    const recentCount = Math.max(1, values.length - recentStart);
+    const recentAvg = recentSum / recentCount;
+    const earlierAvg = recentStart > 0 ? earlierSum / recentStart : recentAvg;
     const trend = recentAvg > earlierAvg * 1.05 ? 'up' : recentAvg < earlierAvg * 0.95 ? 'down' : 'stable';
 
     return { current, min, max, avg, trend };
@@ -433,63 +328,58 @@ const EnhancedChart: Component<{
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  const scales = createMemo(() => {
+  const chartModel = createMemo(() => {
     const values = props.values;
     if (values.length < 2) return null;
 
-    const nums = values.map(v => v.value);
-    const min = Math.min(...nums);
-    const max = Math.max(...nums);
+    let min = values[0].value;
+    let max = values[0].value;
+    for (let i = 1; i < values.length; i++) {
+      const currentValue = values[i].value;
+      if (currentValue < min) min = currentValue;
+      if (currentValue > max) max = currentValue;
+    }
+
     const range = max - min || 1;
     const paddedMin = min - range * 0.1;
     const paddedMax = max + range * 0.1;
 
+    const domain = paddedMax - paddedMin || 1;
+    const xStep = chartWidth / (values.length - 1);
+    const points = new Array<{ x: number; y: number }>(values.length);
+    let linePath = '';
+
+    for (let i = 0; i < values.length; i++) {
+      const x = padding.left + xStep * i;
+      const y =
+        padding.top + chartHeight - (chartHeight * (values[i].value - paddedMin)) / domain;
+      points[i] = { x, y };
+      linePath += `${i === 0 ? 'M' : ' L'} ${x},${y}`;
+    }
+
+    const areaPath = `${linePath} L ${padding.left + chartWidth},${padding.top + chartHeight} L ${padding.left},${padding.top + chartHeight} Z`;
+    const ticks = [];
+    const tickStep = (paddedMax - paddedMin) / 4;
+    for (let i = 0; i <= 4; i++) {
+      const value = paddedMin + tickStep * i;
+      const y =
+        padding.top + chartHeight - (chartHeight * (value - paddedMin)) / domain;
+      ticks.push({ value, y });
+    }
+
     return {
-      x: (i: number) => padding.left + (chartWidth * i) / (values.length - 1),
-      y: (v: number) => padding.top + chartHeight - (chartHeight * (v - paddedMin)) / (paddedMax - paddedMin),
       min: paddedMin,
       max: paddedMax,
+      range: paddedMax - paddedMin,
+      points,
+      linePath,
+      areaPath,
+      ticks,
+      lastPoint: points[points.length - 1],
     };
   });
 
-  const linePath = createMemo(() => {
-    const s = scales();
-    if (!s) return '';
-    return props.values
-      .map((v, i) => `${i === 0 ? 'M' : 'L'} ${s.x(i)},${s.y(v.value)}`)
-      .join(' ');
-  });
-
-  const areaPath = createMemo(() => {
-    const s = scales();
-    if (!s) return '';
-    const line = props.values.map((v, i) => `${s.x(i)},${s.y(v.value)}`).join(' L ');
-    return `M ${padding.left},${padding.top + chartHeight} L ${line} L ${padding.left + chartWidth},${padding.top + chartHeight} Z`;
-  });
-
-  const strokeColor = () => {
-    const colors: Record<string, string> = {
-      cyan: '#00d9ff',
-      purple: '#a855f7',
-      green: '#22c55e',
-      orange: '#f97316',
-      blue: '#60a5fa',
-      pink: '#ec4899',
-    };
-    return colors[props.color] || '#888';
-  };
-
-  const yTicks = createMemo(() => {
-    const s = scales();
-    if (!s) return [];
-    const ticks = [];
-    const step = (s.max - s.min) / 4;
-    for (let i = 0; i <= 4; i++) {
-      const value = s.min + step * i;
-      ticks.push({ value, y: s.y(value) });
-    }
-    return ticks;
-  });
+  const strokeColor = () => CHART_STROKE_COLORS[props.color] || '#888';
 
   const handleMouseMove = (e: MouseEvent) => {
     const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
@@ -525,7 +415,7 @@ const EnhancedChart: Component<{
       </defs>
 
       {/* Grid lines */}
-      <For each={yTicks()}>
+      <For each={chartModel()?.ticks || []}>
         {(tick) => (
           <>
             <line
@@ -544,14 +434,11 @@ const EnhancedChart: Component<{
               font-size="8"
               fill="rgba(255,255,255,0.3)"
             >
-              {(() => {
-                const v = tick.value;
-                if (props.unit === 'MB/s' && Math.abs(v) < 0.1 && Math.abs(v) > 0) {
-                  return `${(v * 1024).toFixed(0)}`;
-                }
-                const range = scales()!.max - scales()!.min;
-                return range < 10 ? v.toFixed(1) : v.toFixed(0);
-              })()}
+              {props.unit === 'MB/s' && Math.abs(tick.value) < 0.1 && Math.abs(tick.value) > 0
+                ? `${(tick.value * 1024).toFixed(0)}`
+                : (chartModel()?.range || 0) < 10
+                  ? tick.value.toFixed(1)
+                  : tick.value.toFixed(0)}
             </text>
           </>
         )}
@@ -559,14 +446,14 @@ const EnhancedChart: Component<{
 
       {/* Area fill */}
       <path
-        d={areaPath()}
+        d={chartModel()?.areaPath || ''}
         fill={`url(#chart-gradient-${props.color})`}
         class="transition-all duration-300"
       />
 
       {/* Line */}
       <path
-        d={linePath()}
+        d={chartModel()?.linePath || ''}
         fill="none"
         stroke={strokeColor()}
         stroke-width="2"
@@ -577,16 +464,13 @@ const EnhancedChart: Component<{
       />
 
       {/* Endpoint dot with pulse */}
-      <Show when={props.values.length > 0 && scales()} keyed>
-        {(s) => {
-          const lastIdx = props.values.length - 1;
-          const x = s.x(lastIdx);
-          const y = s.y(props.values[lastIdx].value);
+      <Show when={chartModel()?.lastPoint} keyed>
+        {(lastPoint) => {
           return (
             <>
               <circle
-                cx={x}
-                cy={y}
+                cx={lastPoint.x}
+                cy={lastPoint.y}
                 r={6}
                 fill={strokeColor()}
                 opacity={0.3}
@@ -605,8 +489,8 @@ const EnhancedChart: Component<{
                 />
               </circle>
               <circle
-                cx={x}
-                cy={y}
+                cx={lastPoint.x}
+                cy={lastPoint.y}
                 r={3}
                 fill={strokeColor()}
                 stroke="rgba(0,0,0,0.3)"
