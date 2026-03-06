@@ -77,12 +77,16 @@ describe('layoutEngine', () => {
 
   it('uses denser layout tuning for very large graphs', () => {
     const veryLarge = getTopologyLayoutTuning(1500);
-    expect(veryLarge.warmupTicks).toBe(48);
+    expect(veryLarge.warmupTicks).toBe(0);
     expect(veryLarge.alphaDecay).toBe(0.05);
     expect(veryLarge.collisionEnabled).toBe(false);
+
+    const large = getTopologyLayoutTuning(800);
+    expect(large.warmupTicks).toBe(0);
 
     const small = getTopologyLayoutTuning(120);
     expect(small.collisionEnabled).toBe(true);
     expect(small.alphaDecay).toBe(0.03);
+    expect(small.warmupTicks).toBeGreaterThan(0);
   });
 });

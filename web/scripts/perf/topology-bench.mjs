@@ -30,14 +30,14 @@ const getLayoutTuning = (nodeCount) => {
   const isVeryLarge = normalizedNodeCount >= 1200;
   const isLarge = !isVeryLarge && normalizedNodeCount >= 700;
   const warmupTicks = isVeryLarge
-    ? 48
+    ? 0
     : isLarge
-      ? 64
-      : Math.min(100, Math.max(30, Math.round(Math.sqrt(normalizedNodeCount) * 3)));
+      ? 0
+      : Math.min(6, Math.max(2, Math.round(Math.sqrt(normalizedNodeCount) * 0.5)));
 
   return {
     alphaStart: isVeryLarge ? 0.24 : 0.3,
-    alphaAfterWarmup: isVeryLarge ? 0.14 : isLarge ? 0.16 : 0.2,
+    alphaAfterWarmup: isVeryLarge ? 0.22 : isLarge ? 0.2 : 0.2,
     alphaDecay: isVeryLarge ? 0.05 : isLarge ? 0.04 : 0.03,
     alphaMin: isVeryLarge ? 0.002 : isLarge ? 0.0015 : 0.001,
     velocityDecay: isVeryLarge ? 0.58 : isLarge ? 0.54 : 0.5,
