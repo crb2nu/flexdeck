@@ -53,6 +53,7 @@ type HandlerDeps struct {
 	HFClient         *models.HuggingFaceClient
 	CivitClient      *models.CivitAIClient
 	GitOpsGen        *models.GitOpsGenerator
+	Cache            *cache.Cache
 	AgentsRegistry   *agents.Registry
 	AgentsProxy      *agents.Proxy
 	HUDClient        *agents.HUDClient
@@ -64,12 +65,16 @@ type HandlerDeps struct {
 }
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
-	return &Handler{
+	h := &Handler{
 		cfg:          cfg,
 		k8s:          k8sClient,
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
 	}
+	if metricsStore != nil {
+		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
+	}
+	return h
 }
 
 // NewWithDeps creates a handler with all dependencies
@@ -81,8 +86,10 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		metricsStore: metricsStore,
 	}
 
-	// Initialize Redis cache if metrics store has a Redis client
-	if metricsStore != nil {
+	if deps != nil && deps.Cache != nil {
+		h.cache = deps.Cache
+	} else if metricsStore != nil {
+		// Backward-compatible fallback for callers that only pass a metrics store.
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
 	}
 

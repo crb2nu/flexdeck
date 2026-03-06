@@ -13,6 +13,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/api"
 	"github.com/flexinfer/flexdeck/internal/api/handlers"
 	"github.com/flexinfer/flexdeck/internal/audit"
+	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/cluster"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
@@ -20,6 +21,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
 	"github.com/flexinfer/flexdeck/internal/rbac"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -46,29 +48,35 @@ func main() {
 		slog.Info("k8s client disabled")
 	}
 
-	// Initialize LiteLLM client and metrics store
+	// Initialize shared Redis client, cache, and metrics store
+	var redisClient *redis.Client
+	var sharedCache *cache.Cache
 	var litellmClient *litellm.Client
 	var metricsStore *metrics.Store
 	var metricsScraper *metrics.Scraper
+
+	if !cfg.Redis.Disabled && cfg.Redis.URL != "" {
+		redisClient, err = cache.NewRedisClient(cfg.Redis)
+		if err != nil {
+			slog.Warn("failed to create redis client, shared caching disabled", "error", err)
+		} else {
+			sharedCache = cache.New(redisClient, "flexdeck:")
+			metricsStore = metrics.NewStoreWithClient(redisClient)
+			slog.Info("redis client initialized")
+		}
+	} else {
+		slog.Info("redis disabled, shared caching unavailable")
+	}
 
 	if !cfg.LiteLLM.Disabled && cfg.LiteLLM.URL != "" {
 		litellmClient = litellm.NewClient(cfg.LiteLLM.URL, cfg.LiteLLM.APIKey)
 		slog.Info("litellm client initialized", "url", cfg.LiteLLM.URL)
 
-		// Initialize Redis store for metrics if configured
-		if !cfg.Redis.Disabled && cfg.Redis.URL != "" {
-			metricsStore, err = metrics.NewStore(cfg.Redis)
-			if err != nil {
-				slog.Warn("failed to create metrics store, metrics buffering disabled", "error", err)
-			} else {
-				slog.Info("redis metrics store initialized")
-
-				// Start the metrics scraper
-				metricsScraper = metrics.NewScraper(cfg.LiteLLM, metricsStore)
-				go metricsScraper.Start(context.Background())
-			}
+		if metricsStore != nil {
+			metricsScraper = metrics.NewScraper(cfg.LiteLLM, metricsStore)
+			go metricsScraper.Start(context.Background())
 		} else {
-			slog.Info("redis disabled, metrics buffering unavailable")
+			slog.Info("redis unavailable, metrics buffering unavailable")
 		}
 	} else {
 		slog.Info("litellm client disabled")
@@ -84,8 +92,13 @@ func main() {
 
 	// Initialize models subsystem
 	var handlerDeps *handlers.HandlerDeps
+	if sharedCache != nil {
+		handlerDeps = &handlers.HandlerDeps{Cache: sharedCache}
+	}
 	if !cfg.Models.Disabled {
-		handlerDeps = &handlers.HandlerDeps{}
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
 
 		// Initialize model registry
 		modelsRegistry, err := models.NewRegistry(cfg.Models)
@@ -156,11 +169,11 @@ func main() {
 	}
 
 	// Initialize audit store (requires Redis)
-	if !cfg.Audit.Disabled && metricsStore != nil {
+	if !cfg.Audit.Disabled && redisClient != nil {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
-		auditStore := audit.NewStore(metricsStore.RedisClient(), cfg.Audit.TTLDays)
+		auditStore := audit.NewStore(redisClient, cfg.Audit.TTLDays)
 		handlerDeps.AuditStore = auditStore
 		slog.Info("audit store initialized", "ttl_days", cfg.Audit.TTLDays)
 	}

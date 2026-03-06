@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -22,6 +23,27 @@ func New(client *redis.Client, prefix string) *Cache {
 		redis:  client,
 		prefix: prefix,
 	}
+}
+
+// NewRedisClient creates and validates a Redis client from the shared app config.
+func NewRedisClient(cfg config.RedisConfig) (*redis.Client, error) {
+	opts, err := redis.ParseURL(cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid redis URL: %w", err)
+	}
+	opts.Password = cfg.Password
+	opts.DB = cfg.DB
+
+	client := redis.NewClient(opts)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("redis connection failed: %w", err)
+	}
+
+	return client, nil
 }
 
 // GetOrFetch retrieves a cached value or calls fetch to populate it.
