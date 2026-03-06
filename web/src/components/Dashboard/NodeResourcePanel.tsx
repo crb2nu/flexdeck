@@ -1,4 +1,5 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
@@ -146,12 +147,7 @@ const NodeResourcePanel: Component = () => {
     });
   };
 
-  let timer: ReturnType<typeof setInterval>;
-  createEffect(() => {
-    fetchResources();
-    timer = setInterval(fetchResources, POLL_INTERVAL);
-  });
-  onCleanup(() => clearInterval(timer));
+  createPolling('dashboard-node-resources', fetchResources, POLL_INTERVAL);
 
   const formatBytes = (bytes: number) => {
     const gb = bytes / (1024 * 1024 * 1024);

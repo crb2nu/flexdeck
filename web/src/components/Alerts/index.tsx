@@ -1,5 +1,6 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { alertmanagerApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import type { AlertmanagerAlert, AlertmanagerSilence } from '../../lib/types';
 import { formatRelativeTime } from '../../lib/format';
 
@@ -35,11 +36,7 @@ const Alerts: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 30000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('alerts-panel', fetchAll, 30000);
 
   const firingAlerts = createMemo(() => alerts().filter(a => a.status?.state === 'active'));
   const silencedAlerts = createMemo(() => alerts().filter(a => a.status?.state === 'suppressed'));

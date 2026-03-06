@@ -1,4 +1,5 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { litellm } from '../../lib/api';
 import type { LiteLLMRouterResponse, LiteLLMModelEntry } from '../../lib/types';
 
@@ -19,11 +20,7 @@ const LiteLLMRouterPanel: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchRouter();
-    const interval = setInterval(fetchRouter, 30000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('models-litellm-router', fetchRouter, 30000);
 
   return (
     <div class="flex flex-col gap-4">

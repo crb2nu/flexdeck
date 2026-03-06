@@ -1,5 +1,6 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { modelsApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import type { ModelCatalogEntry } from '../../lib/types';
 
 type RegistrySource = 'huggingface' | 'civitai';
@@ -133,11 +134,7 @@ const CatalogTab: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchCatalogs();
-    const interval = setInterval(fetchCatalogs, 60000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('models-catalog-tab', fetchCatalogs, 60000);
 
   const sourceColor = (source: string) => {
     switch (source.toLowerCase()) {
