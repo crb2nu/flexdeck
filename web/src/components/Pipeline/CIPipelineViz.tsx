@@ -98,6 +98,18 @@ const getStatusGlow = (status: PipelineJob['status'] | Pipeline['status'], rawSt
   return `0 0 20px ${color}40, 0 0 40px ${color}20`;
 };
 
+const DEMO_ADVANCE_FRAME_INTERVAL = 200;
+const PARTICLE_SPAWN_CHANCE = 0.08;
+
+type StageViewModel = {
+  name: string;
+  jobs: PipelineJob[];
+  sortedJobs: PipelineJob[];
+  progress: { completed: number; total: number; percent: number };
+  isRunning: boolean;
+  isComplete: boolean;
+};
+
 const CIPipelineViz: Component<{
   pipeline?: Pipeline;
   projectId?: number;
@@ -108,7 +120,13 @@ const CIPipelineViz: Component<{
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   let containerRef: HTMLDivElement | undefined;
   let particleCanvasRef: HTMLCanvasElement | undefined;
-  let animationId: number;
+  let particleCtx: CanvasRenderingContext2D | null = null;
+  let animationId: number | null = null;
+  let refreshNodePositionsFrame: number | null = null;
+  let demoFrameCount = 0;
+  let canvasWidth = 0;
+  let canvasHeight = 0;
+  let isAnimating = false;
 
   const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
 
@@ -119,7 +137,7 @@ const CIPipelineViz: Component<{
   });
 
   const [hoveredJob, setHoveredJob] = createSignal<string | null>(null);
-  const [time, setTime] = createSignal(0);
+  const isDemoMode = createMemo(() => !props.pipeline);
 
   // Track status transitions for animations
   const [statusTransitions, setStatusTransitions] = createSignal<Map<string, { from: string; to: string; startTime: number }>>(new Map());
@@ -309,6 +327,58 @@ const CIPipelineViz: Component<{
     return id.split('-')[1] || id;
   });
 
+  const stageViewModels = createMemo<StageViewModel[]>(() =>
+    pipeline().stages.map((stage) => ({
+      ...stage,
+      sortedJobs: sortJobsByStatus(stage.jobs),
+      progress: getStageProgress(stage),
+      isRunning: stage.jobs.some((job) => job.status === 'running'),
+      isComplete: stage.jobs.every((job) => job.status === 'success' || job.status === 'skipped'),
+    })),
+  );
+
+  const hasRunningJobs = createMemo(() =>
+    stageViewModels().some((stage) => stage.isRunning),
+  );
+
+  const footerStats = createMemo(() => {
+    let passed = 0;
+    let running = 0;
+    let manual = 0;
+    let failed = 0;
+
+    for (const stage of pipeline().stages) {
+      for (const job of stage.jobs) {
+        if (job.status === 'success') passed++;
+        else if (job.status === 'running') running++;
+        else if (job.status === 'manual') manual++;
+        else if (job.status === 'failed') failed++;
+      }
+    }
+
+    return { passed, running, manual, failed };
+  });
+
+  const activeParticlePairs = createMemo(() => {
+    const pairs: Array<{ sourceJobId: string; targetJobId: string }> = [];
+    const stages = pipeline().stages;
+
+    for (let stageIndex = 1; stageIndex < stages.length; stageIndex++) {
+      const previousStage = stages[stageIndex - 1];
+      const currentStage = stages[stageIndex];
+      const successJobs = previousStage.jobs.filter((job) => job.status === 'success');
+      const runningJobs = currentStage.jobs.filter((job) => job.status === 'running');
+
+      for (const sourceJob of successJobs) {
+        for (const targetJob of runningJobs) {
+          pairs.push({ sourceJobId: sourceJob.id, targetJobId: targetJob.id });
+        }
+      }
+    }
+
+    return pairs;
+  });
+
   // Memoized connection paths - only recompute when pipeline changes
   const connectionPaths = createMemo(() => {
     const p = pipeline();
@@ -351,62 +421,48 @@ const CIPipelineViz: Component<{
     return -1;
   };
 
-  // Particle spawn with pool allocation
-  const spawnParticle = () => {
-    const now = performance.now();
-    if (now - lastSpawnTime < MIN_SPAWN_INTERVAL) return;
+  const hasActiveParticles = () => particlePool.some((particle) => particle.active);
 
-    const stages = pipeline().stages;
-    if (nodePositionsCache.size < 2 || stages.length < 2) return;
+  // Particle spawn with pool allocation
+  const spawnParticle = (now: number) => {
+    if (now - lastSpawnTime < MIN_SPAWN_INTERVAL) return;
+    if (nodePositionsCache.size < 2) return;
 
     const slotIndex = findInactiveSlot();
     if (slotIndex === -1) return;
 
-    // Find running jobs to spawn particles from
-    const runningStageIndex = stages.findIndex(s =>
-      s.jobs.some(j => j.status === 'running')
-    );
+    const pairs = activeParticlePairs();
+    if (pairs.length === 0) return;
 
-    if (runningStageIndex > 0) {
-      const prevStage = stages[runningStageIndex - 1];
-      const currentStage = stages[runningStageIndex];
+    const pair = pairs[Math.floor(Math.random() * pairs.length)];
+    const sourcePos = nodePositionsCache.get(pair.sourceJobId);
+    const targetPos = nodePositionsCache.get(pair.targetJobId);
+    if (!sourcePos || !targetPos) return;
 
-      const successJobs = prevStage.jobs.filter(j => j.status === 'success');
-      const runningJobs = currentStage.jobs.filter(j => j.status === 'running');
+    const p = particlePool[slotIndex];
+    p.active = true;
+    p.startX = sourcePos.x;
+    p.startY = sourcePos.y;
+    p.targetX = targetPos.x;
+    p.targetY = targetPos.y;
+    p.progress = 0;
+    p.speed = 0.008 + Math.random() * 0.012;
+    p.color = getStatusColor('running');
+    p.size = 3 + Math.random() * 3;
+    p.trailLength = 0;
 
-      if (successJobs.length > 0 && runningJobs.length > 0) {
-        const sourceJob = successJobs[Math.floor(Math.random() * successJobs.length)];
-        const targetJob = runningJobs[Math.floor(Math.random() * runningJobs.length)];
-
-        const sourcePos = nodePositionsCache.get(sourceJob.id);
-        const targetPos = nodePositionsCache.get(targetJob.id);
-
-        if (sourcePos && targetPos) {
-          const p = particlePool[slotIndex];
-          p.active = true;
-          p.startX = sourcePos.x;
-          p.startY = sourcePos.y;
-          p.targetX = targetPos.x;
-          p.targetY = targetPos.y;
-          p.progress = 0;
-          p.speed = 0.008 + Math.random() * 0.012;
-          p.color = getStatusColor('running');
-          p.size = 3 + Math.random() * 3;
-          p.trailLength = 0;
-
-          lastSpawnTime = now;
-        }
-      }
-    }
+    lastSpawnTime = now;
   };
 
   // Canvas-based particle rendering
   const renderParticles = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.clearRect(0, 0, width, height);
+    let activeCount = 0;
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = particlePool[i];
       if (!p.active) continue;
+      activeCount++;
 
       // Update progress
       p.progress += p.speed;
@@ -464,29 +520,7 @@ const CIPipelineViz: Component<{
     }
 
     ctx.globalAlpha = 1;
-  };
-
-  // Animation loop
-  const animate = () => {
-    setTime(prev => prev + 1);
-
-    // Check for status transitions
-    checkStatusTransitions();
-
-    // Spawn new particles occasionally
-    if (Math.random() > 0.92) {
-      spawnParticle();
-    }
-
-    // Render particles to canvas
-    if (particleCanvasRef) {
-      const ctx = particleCanvasRef.getContext('2d');
-      if (ctx) {
-        renderParticles(ctx, particleCanvasRef.width, particleCanvasRef.height);
-      }
-    }
-
-    animationId = requestAnimationFrame(animate);
+    return activeCount;
   };
 
   // Register node position when rendered (direct cache update, no reactive)
@@ -502,59 +536,153 @@ const CIPipelineViz: Component<{
     nodePositionsCache.set(id, { x, y });
   };
 
+  const refreshNodePositions = () => {
+    if (!containerRef) return;
+    nodePositionsCache.clear();
+    containerRef.querySelectorAll('[data-job-id]').forEach((element) => {
+      const id = element.getAttribute('data-job-id');
+      if (id) registerNode(id, element as HTMLDivElement);
+    });
+  };
+
+  const scheduleNodePositionRefresh = () => {
+    if (refreshNodePositionsFrame != null) {
+      cancelAnimationFrame(refreshNodePositionsFrame);
+    }
+    refreshNodePositionsFrame = requestAnimationFrame(() => {
+      refreshNodePositionsFrame = null;
+      refreshNodePositions();
+    });
+  };
+
   // Resize particle canvas to match container
   const resizeCanvas = () => {
     if (!particleCanvasRef || !containerRef) return;
     const rect = containerRef.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio, 2);
+    canvasWidth = rect.width;
+    canvasHeight = rect.height;
     particleCanvasRef.width = rect.width * dpr;
     particleCanvasRef.height = rect.height * dpr;
     particleCanvasRef.style.width = `${rect.width}px`;
     particleCanvasRef.style.height = `${rect.height}px`;
-    const ctx = particleCanvasRef.getContext('2d');
-    if (ctx) ctx.scale(dpr, dpr);
+    particleCtx = particleCanvasRef.getContext('2d');
+    if (particleCtx) {
+      particleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      particleCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+    }
+    scheduleNodePositionRefresh();
   };
 
-  // Update demo pipeline status over time
-  createEffect(() => {
-    const t = time();
-    
-    // Every 100 frames, advance the pipeline
-    if (t > 0 && t % 200 === 0) {
-      setPipeline(prev => {
-        const updated = { ...prev, stages: [...prev.stages] };
-        
-        // Find first running job and potentially complete it
-        for (const stage of updated.stages) {
-          const runningJob = stage.jobs.find(j => j.status === 'running');
-          if (runningJob && Math.random() > 0.3) {
-            runningJob.status = 'success';
-            runningJob.duration = (runningJob.duration || 0) + Math.floor(Math.random() * 60);
-            
-            // Start next stage's jobs
-            const stageIndex = updated.stages.indexOf(stage);
-            if (stageIndex < updated.stages.length - 1) {
-              const nextStage = updated.stages[stageIndex + 1];
-              const pendingJob = nextStage.jobs.find(j => j.status === 'pending' || j.status === 'manual');
-              if (pendingJob && pendingJob.status !== 'manual') {
-                pendingJob.status = 'running';
-              }
+  const advanceDemoPipeline = () => {
+    if (!isDemoMode()) return;
+
+    setPipeline(prev => {
+      const updated = { ...prev, stages: [...prev.stages] };
+
+      // Find first running job and potentially complete it
+      for (const stage of updated.stages) {
+        const runningJob = stage.jobs.find(j => j.status === 'running');
+        if (runningJob && Math.random() > 0.3) {
+          runningJob.status = 'success';
+          runningJob.duration = (runningJob.duration || 0) + Math.floor(Math.random() * 60);
+
+          // Start next stage's jobs
+          const stageIndex = updated.stages.indexOf(stage);
+          if (stageIndex < updated.stages.length - 1) {
+            const nextStage = updated.stages[stageIndex + 1];
+            const pendingJob = nextStage.jobs.find(j => j.status === 'pending' || j.status === 'manual');
+            if (pendingJob && pendingJob.status !== 'manual') {
+              pendingJob.status = 'running';
             }
-            break;
           }
+          break;
         }
-        
-        // Check if all jobs complete
-        const allComplete = updated.stages.every(s => 
-          s.jobs.every(j => j.status === 'success' || j.status === 'skipped' || j.status === 'manual')
-        );
-        
-        if (allComplete) {
-          updated.status = 'success';
-        }
-        
-        return updated;
-      });
+      }
+
+      // Check if all jobs complete
+      const allComplete = updated.stages.every(s =>
+        s.jobs.every(j => j.status === 'success' || j.status === 'skipped' || j.status === 'manual')
+      );
+
+      if (allComplete) {
+        updated.status = 'success';
+      }
+
+      return updated;
+    });
+  };
+
+  const clearParticleCanvas = () => {
+    if (particleCtx) {
+      particleCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+    }
+  };
+
+  const animate = (now: number) => {
+    checkStatusTransitions();
+
+    if (isDemoMode()) {
+      demoFrameCount += 1;
+      if (demoFrameCount % DEMO_ADVANCE_FRAME_INTERVAL === 0) {
+        advanceDemoPipeline();
+      }
+    }
+
+    if (hasRunningJobs() && Math.random() < PARTICLE_SPAWN_CHANCE) {
+      spawnParticle(now);
+    }
+
+    const activeParticles = particleCtx
+      ? renderParticles(particleCtx, canvasWidth, canvasHeight)
+      : 0;
+
+    const keepAnimating =
+      isDemoMode() ||
+      hasRunningJobs() ||
+      activeParticles > 0 ||
+      statusTransitions().size > 0;
+
+    if (!keepAnimating) {
+      isAnimating = false;
+      animationId = null;
+      clearParticleCanvas();
+      return;
+    }
+
+    animationId = requestAnimationFrame(animate);
+  };
+
+  const startAnimationLoop = () => {
+    if (isAnimating) return;
+    isAnimating = true;
+    animationId = requestAnimationFrame(animate);
+  };
+
+  const stopAnimationLoop = () => {
+    if (animationId != null) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    isAnimating = false;
+    clearParticleCanvas();
+  };
+
+  createEffect(() => {
+    pipeline();
+    scheduleNodePositionRefresh();
+    if (hasRunningJobs() || statusTransitions().size > 0 || isDemoMode() || hasActiveParticles()) {
+      startAnimationLoop();
+    } else {
+      stopAnimationLoop();
+    }
+  });
+
+  // Update demo pipeline status only when demo mode is active.
+  createEffect(() => {
+    if (!isDemoMode()) return;
+    if (statusTransitions().size > 0 || hasRunningJobs()) {
+      startAnimationLoop();
     }
   });
 
@@ -562,21 +690,16 @@ const CIPipelineViz: Component<{
     // Setup canvas
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-
-    animate();
-
-    // Delay node position registration to ensure layout is complete
-    setTimeout(() => {
-      document.querySelectorAll('[data-job-id]').forEach(el => {
-        const id = el.getAttribute('data-job-id');
-        if (id) registerNode(id, el as HTMLDivElement);
-      });
-    }, 100);
+    scheduleNodePositionRefresh();
+    startAnimationLoop();
   });
 
   onCleanup(() => {
     window.removeEventListener('resize', resizeCanvas);
-    if (animationId) cancelAnimationFrame(animationId);
+    stopAnimationLoop();
+    if (refreshNodePositionsFrame != null) {
+      cancelAnimationFrame(refreshNodePositionsFrame);
+    }
   });
 
   return (
@@ -638,12 +761,8 @@ const CIPipelineViz: Component<{
       <div class="relative z-10 p-8 flex flex-col items-center">
         {/* Stage headers with progress */}
         <div class="w-full flex justify-around mb-8">
-          <For each={pipeline().stages}>
+          <For each={stageViewModels()}>
             {(stage, index) => {
-              const progress = () => getStageProgress(stage);
-              const isRunning = () => stage.jobs.some(j => j.status === 'running');
-              const isComplete = () => stage.jobs.every(j => j.status === 'success' || j.status === 'skipped');
-
               return (
                 <div class="flex flex-col items-center gap-2 min-w-[120px]">
                   <div class="text-[10px] font-mono uppercase tracking-[0.3em] text-text-muted">
@@ -652,9 +771,9 @@ const CIPipelineViz: Component<{
                   <div
                     class="text-sm font-bold uppercase tracking-wider"
                     style={{
-                      color: isRunning()
+                      color: stage.isRunning
                         ? getStatusColor('running')
-                        : isComplete()
+                        : stage.isComplete
                           ? getStatusColor('success')
                           : 'rgba(255,255,255,0.7)'
                     }}
@@ -665,17 +784,17 @@ const CIPipelineViz: Component<{
                   {/* Progress indicator */}
                   <div class="flex items-center gap-2">
                     <span class="text-[10px] font-mono text-text-dim">
-                      {progress().completed}/{progress().total}
+                      {stage.progress.completed}/{stage.progress.total}
                     </span>
                     {/* Progress bar */}
                     <div class="w-16 h-1 rounded-full bg-white/10 overflow-hidden">
                       <div
                         class="h-full rounded-full transition-all duration-500"
                         style={{
-                          width: `${progress().percent}%`,
-                          background: isComplete()
+                          width: `${stage.progress.percent}%`,
+                          background: stage.isComplete
                             ? getStatusColor('success')
-                            : isRunning()
+                            : stage.isRunning
                               ? `linear-gradient(90deg, ${getStatusColor('success')}, ${getStatusColor('running')})`
                               : getStatusColor('pending')
                         }}
@@ -726,10 +845,10 @@ const CIPipelineViz: Component<{
 
         {/* Job nodes */}
         <div class="w-full flex justify-around items-start gap-8 relative z-10">
-          <For each={pipeline().stages}>
+          <For each={stageViewModels()}>
             {(stage) => (
               <div class="flex flex-col gap-4 items-center min-w-[200px]">
-                <For each={sortJobsByStatus(stage.jobs)}>
+                <For each={stage.sortedJobs}>
                   {(job) => (
                     <div
                       data-job-id={job.id}
@@ -938,25 +1057,25 @@ const CIPipelineViz: Component<{
         <div class="flex justify-around text-center">
           <div>
             <div class="text-2xl font-bold text-neon-cyan font-mono">
-              {pipeline().stages.reduce((acc, s) => acc + s.jobs.filter(j => j.status === 'success').length, 0)}
+              {footerStats().passed}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Passed</div>
           </div>
           <div>
             <div class="text-2xl font-bold text-neon-green font-mono">
-              {pipeline().stages.reduce((acc, s) => acc + s.jobs.filter(j => j.status === 'running').length, 0)}
+              {footerStats().running}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Running</div>
           </div>
           <div>
             <div class="text-2xl font-bold text-neon-purple font-mono">
-              {pipeline().stages.reduce((acc, s) => acc + s.jobs.filter(j => j.status === 'manual').length, 0)}
+              {footerStats().manual}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Manual</div>
           </div>
           <div>
             <div class="text-2xl font-bold text-neon-pink font-mono">
-              {pipeline().stages.reduce((acc, s) => acc + s.jobs.filter(j => j.status === 'failed').length, 0)}
+              {footerStats().failed}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Failed</div>
           </div>
