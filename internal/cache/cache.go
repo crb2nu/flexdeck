@@ -5,16 +5,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 )
+
+const staleKeySuffix = ":stale"
+
+// FetchOptions controls cache freshness, stale fallback, and jitter behavior.
+type FetchOptions struct {
+	TTL                      time.Duration
+	StaleTTL                 time.Duration
+	JitterFraction           float64
+	BackgroundRefreshTimeout time.Duration
+}
 
 // Cache provides a generic Redis cache layer with TTL-based expiration.
 type Cache struct {
 	redis  *redis.Client
 	prefix string
+	group  singleflight.Group
 }
 
 // New creates a new Cache using an existing Redis client.
@@ -50,34 +63,59 @@ func NewRedisClient(cfg config.RedisConfig) (*redis.Client, error) {
 // The fetch function is called when the cache misses. The result is
 // JSON-serialized and stored with the given TTL.
 func (c *Cache) GetOrFetch(ctx context.Context, key string, ttl time.Duration, fetch func() (any, error)) ([]byte, error) {
-	fullKey := c.prefix + key
+	return c.GetOrFetchWithOptions(ctx, key, FetchOptions{TTL: ttl}, func(context.Context) (any, error) {
+		return fetch()
+	})
+}
 
-	// Try cache first
-	cached, err := c.redis.Get(ctx, fullKey).Bytes()
-	if err == nil {
+// GetOrFetchWithOptions retrieves a cached value with coalescing and optional stale fallback.
+func (c *Cache) GetOrFetchWithOptions(ctx context.Context, key string, opts FetchOptions, fetch func(context.Context) (any, error)) ([]byte, error) {
+	return c.GetOrFetchBytesWithOptions(ctx, key, opts, func(fetchCtx context.Context) ([]byte, error) {
+		result, err := fetch(fetchCtx)
+		if err != nil {
+			return nil, err
+		}
+
+		data, err := json.Marshal(result)
+		if err != nil {
+			return nil, fmt.Errorf("cache marshal error: %w", err)
+		}
+
+		return data, nil
+	})
+}
+
+// GetOrFetchBytesWithOptions retrieves raw bytes with coalescing and optional stale fallback.
+func (c *Cache) GetOrFetchBytesWithOptions(ctx context.Context, key string, opts FetchOptions, fetch func(context.Context) ([]byte, error)) ([]byte, error) {
+	fullKey := c.prefix + key
+	if cached, found := c.readValue(ctx, fullKey); found {
 		return cached, nil
 	}
-	if err != redis.Nil {
-		slog.Warn("cache get error, falling through to fetch", "key", fullKey, "error", err)
+
+	staleKey := fullKey + staleKeySuffix
+	if stale, found := c.readValue(ctx, staleKey); found && opts.useStale() {
+		c.refreshInBackground(fullKey, staleKey, opts, fetch)
+		return stale, nil
 	}
 
-	// Cache miss — call fetch
-	result, err := fetch()
+	value, err, _ := c.group.Do(fullKey, func() (any, error) {
+		if cached, found := c.readValue(ctx, fullKey); found {
+			return cached, nil
+		}
+
+		data, err := fetch(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		c.storeFetchedValue(ctx, fullKey, staleKey, data, opts)
+		return data, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := json.Marshal(result)
-	if err != nil {
-		return nil, fmt.Errorf("cache marshal error: %w", err)
-	}
-
-	// Store in cache (best-effort, don't fail the request)
-	if setErr := c.redis.Set(ctx, fullKey, data, ttl).Err(); setErr != nil {
-		slog.Warn("cache set error", "key", fullKey, "error", setErr)
-	}
-
-	return data, nil
+	return value.([]byte), nil
 }
 
 // Get retrieves a cached value without fetching. Returns nil, nil on cache miss.
@@ -101,7 +139,7 @@ func (c *Cache) Set(ctx context.Context, key string, data []byte, ttl time.Durat
 // Invalidate removes a specific cache key.
 func (c *Cache) Invalidate(ctx context.Context, key string) {
 	fullKey := c.prefix + key
-	if err := c.redis.Del(ctx, fullKey).Err(); err != nil {
+	if err := c.redis.Del(ctx, fullKey, fullKey+staleKeySuffix).Err(); err != nil {
 		slog.Warn("cache invalidate error", "key", fullKey, "error", err)
 	}
 }
@@ -125,4 +163,83 @@ func (c *Cache) InvalidatePattern(ctx context.Context, pattern string) {
 			break
 		}
 	}
+}
+
+func (c *Cache) readValue(ctx context.Context, fullKey string) ([]byte, bool) {
+	cached, err := c.redis.Get(ctx, fullKey).Bytes()
+	if err == nil {
+		return cached, true
+	}
+	if err != redis.Nil {
+		slog.Warn("cache get error, falling through to fetch", "key", fullKey, "error", err)
+	}
+	return nil, false
+}
+
+func (c *Cache) storeFetchedValue(ctx context.Context, fullKey, staleKey string, data []byte, opts FetchOptions) {
+	ttl := applyTTLJitter(opts.TTL, opts.JitterFraction)
+	if ttl >= 0 {
+		if setErr := c.redis.Set(ctx, fullKey, data, ttl).Err(); setErr != nil {
+			slog.Warn("cache set error", "key", fullKey, "error", setErr)
+		}
+	}
+
+	if opts.useStale() {
+		if setErr := c.redis.Set(ctx, staleKey, data, opts.StaleTTL).Err(); setErr != nil {
+			slog.Warn("cache stale set error", "key", staleKey, "error", setErr)
+		}
+	}
+}
+
+func (c *Cache) refreshInBackground(fullKey, staleKey string, opts FetchOptions, fetch func(context.Context) ([]byte, error)) {
+	go func() {
+		refreshCtx := context.Background()
+		cancel := func() {}
+		if opts.BackgroundRefreshTimeout > 0 {
+			refreshCtx, cancel = context.WithTimeout(context.Background(), opts.BackgroundRefreshTimeout)
+		}
+		defer cancel()
+
+		_, err, _ := c.group.Do(fullKey, func() (any, error) {
+			if cached, found := c.readValue(refreshCtx, fullKey); found {
+				return cached, nil
+			}
+
+			data, err := fetch(refreshCtx)
+			if err != nil {
+				return nil, err
+			}
+
+			c.storeFetchedValue(refreshCtx, fullKey, staleKey, data, opts)
+			return data, nil
+		})
+		if err != nil {
+			slog.Warn("cache background refresh error", "key", fullKey, "error", err)
+		}
+	}()
+}
+
+func (o FetchOptions) useStale() bool {
+	return o.StaleTTL > o.TTL && o.StaleTTL > 0
+}
+
+func applyTTLJitter(ttl time.Duration, fraction float64) time.Duration {
+	if ttl <= 0 || fraction <= 0 {
+		return ttl
+	}
+
+	if fraction > 1 {
+		fraction = 1
+	}
+
+	minTTL := float64(ttl) * (1 - fraction)
+	maxTTL := float64(ttl)
+	if minTTL < 1 {
+		minTTL = 1
+	}
+	if maxTTL < minTTL {
+		maxTTL = minTTL
+	}
+
+	return time.Duration(minTTL + rand.Float64()*(maxTTL-minTTL))
 }

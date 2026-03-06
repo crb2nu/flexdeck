@@ -1,5 +1,6 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
 import { flexinferProxyApi, modelsApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import type {
   FlexInferProxyMetricsResponse,
   InferenceMetrics,
@@ -109,11 +110,7 @@ const InferenceTab: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 30000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('models-inference-tab', fetchAll, 30000);
 
   const modelNames = () => {
     return knownModels();

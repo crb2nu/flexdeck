@@ -4,6 +4,7 @@ interface TaskEntry {
   task: PollingTask;
   interval: number;
   timer?: any;
+  running?: boolean;
 }
 
 class PollingScheduler {
@@ -71,11 +72,14 @@ class PollingScheduler {
   }
 
   private async runTask(id: string, entry: TaskEntry) {
-    if (this.isPaused) return;
+    if (this.isPaused || entry.running) return;
+    entry.running = true;
     try {
       await entry.task();
     } catch (error) {
       console.error(`Polling task "${id}" failed:`, error);
+    } finally {
+      entry.running = false;
     }
   }
 

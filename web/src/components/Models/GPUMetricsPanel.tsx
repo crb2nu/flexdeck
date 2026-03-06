@@ -1,4 +1,5 @@
-import { Component, createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
+import { Component, createSignal, Show, For } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
 
@@ -174,14 +175,12 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
     }));
   };
 
-  let timer: ReturnType<typeof setInterval>;
-  createEffect(() => {
-    if (props.node) {
-      fetchMetrics();
-      timer = setInterval(fetchMetrics, POLL_INTERVAL);
-    }
-  });
-  onCleanup(() => clearInterval(timer));
+  createPolling(
+    () => `models-gpu-metrics-${props.node}`,
+    fetchMetrics,
+    POLL_INTERVAL,
+    () => Boolean(props.node),
+  );
 
   const vramPercent = () => {
     const m = metrics();

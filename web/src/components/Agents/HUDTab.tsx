@@ -1,5 +1,6 @@
 import { Component, createMemo, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { agentsApi, hudApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
@@ -123,11 +124,7 @@ const HUDTab: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 15000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('agents-hud-pull', fetchAll, 15000);
 
   createEffect(() => {
     const ticker = setInterval(() => setNow(Date.now()), 5000);

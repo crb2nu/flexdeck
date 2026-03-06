@@ -11,27 +11,36 @@ import { pollingScheduler } from '../lib/polling';
  * @param enabled Whether polling is currently enabled (accessor or constant)
  */
 export function createPolling(
-  id: string,
+  id: string | (() => string),
   task: () => Promise<void> | void,
   interval: number | (() => number),
   enabled: boolean | (() => boolean) = true
 ) {
   createEffect(() => {
+    const taskId = typeof id === 'function' ? id() : id;
     const isEnabled = typeof enabled === 'function' ? enabled() : enabled;
     const intervalMs = typeof interval === 'function' ? interval() : interval;
 
     if (isEnabled) {
-      pollingScheduler.register(id, task, intervalMs);
+      pollingScheduler.register(taskId, task, intervalMs);
     } else {
-      pollingScheduler.unregister(id);
+      pollingScheduler.unregister(taskId);
     }
+
+    onCleanup(() => {
+      pollingScheduler.unregister(taskId);
+    });
   });
 
   onCleanup(() => {
-    pollingScheduler.unregister(id);
+    const taskId = typeof id === 'function' ? id() : id;
+    pollingScheduler.unregister(taskId);
   });
 
   return {
-    trigger: () => pollingScheduler.trigger(id)
+    trigger: () => {
+      const taskId = typeof id === 'function' ? id() : id;
+      pollingScheduler.trigger(taskId);
+    }
   };
 }
