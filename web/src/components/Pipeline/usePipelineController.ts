@@ -1,0 +1,414 @@
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { parse } from 'yaml';
+import { ciApi, type RepoInfo } from '../../lib/api';
+import type { Pipeline as VizPipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
+import {
+  getPipelineDataState,
+  hasActiveJobs,
+  isLivePipelineId,
+  normalizePipeline,
+  type PipelineDataState,
+  type PipelineSortConfig,
+} from './utils';
+
+export const PIPELINE_POLL_INTERVAL = 10000;
+export const PIPELINE_STALE_AFTER_MS = PIPELINE_POLL_INTERVAL * 3;
+
+export type ActionNotice = {
+  type: 'info' | 'success' | 'error';
+  message: string;
+};
+
+export function usePipelineController() {
+  const [repos, setRepos] = createSignal<RepoInfo[]>([]);
+  const [selectedRepo, setSelectedRepo] = createSignal<RepoInfo | null>(null);
+  const [pipelineData, setPipelineData] = createSignal<VizPipeline | undefined>(undefined);
+  const [loading, setLoading] = createSignal(true);
+
+  const [selectedJob, setSelectedJob] = createSignal<PipelineJob | null>(null);
+  const [jobTrace, setJobTrace] = createSignal('');
+  const [traceLoading, setTraceLoading] = createSignal(false);
+  const [autoRefresh, setAutoRefresh] = createSignal(true);
+  const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
+  const [pipelineSort, setPipelineSort] = createSignal<PipelineSortConfig>({
+    field: 'activity',
+    direction: 'desc',
+  });
+  const [pipelinesCache, setPipelinesCache] = createSignal<Map<number, VizPipeline>>(new Map());
+  const [overviewLoading, setOverviewLoading] = createSignal(false);
+  const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);
+  const [triggerRef, setTriggerRef] = createSignal('main');
+  const [pipelineFetchError, setPipelineFetchError] = createSignal(false);
+  const [actionNotice, setActionNotice] = createSignal<ActionNotice | null>(null);
+
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
+
+  const pushActionNotice = (type: ActionNotice['type'], message: string) => {
+    setActionNotice({ type, message });
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id);
+      setActionNotice((current) => (current?.message === message ? null : current));
+    }, 4500);
+    pendingTimeouts.add(id);
+  };
+
+  const fetchPipelineStatus = async (repoId: number) => {
+    try {
+      const liveData = await ciApi.getPipeline(repoId);
+      if (liveData && liveData.status !== 'none') {
+        const normalizedPipeline = normalizePipeline(liveData as VizPipeline);
+        setPipelineData(normalizedPipeline);
+        setPipelinesCache((prev) => {
+          const next = new Map(prev);
+          next.set(repoId, normalizedPipeline);
+          return next;
+        });
+      }
+      if (pipelineFetchError()) {
+        pushActionNotice('success', 'Live pipeline status restored.');
+      }
+      setPipelineFetchError(false);
+      setLastUpdate(new Date());
+    } catch (error) {
+      if (!pipelineFetchError()) {
+        pushActionNotice('error', 'Live pipeline status unavailable. Showing best available data.');
+      }
+      setPipelineFetchError(true);
+      console.debug('No pipeline data available', error);
+    }
+  };
+
+  const fetchAllPipelines = async (repoList: RepoInfo[]) => {
+    setOverviewLoading(true);
+    const batchSize = 5;
+
+    for (let i = 0; i < repoList.length; i += batchSize) {
+      const batch = repoList.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (repo) => {
+          if (!repo.id) return null;
+          try {
+            const data = await ciApi.getPipeline(repo.id);
+            if (data && data.status !== 'none') {
+              return { id: repo.id, pipeline: normalizePipeline(data as VizPipeline) };
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        }),
+      );
+
+      setPipelinesCache((prev) => {
+        const next = new Map(prev);
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            next.set(result.value.id, result.value.pipeline);
+          }
+        });
+        return next;
+      });
+    }
+
+    setOverviewLoading(false);
+    setLastUpdate(new Date());
+  };
+
+  const isPipelineActive = createMemo(() => {
+    const pipeline = pipelineData() ?? null;
+    if (!pipeline || !isLivePipelineId(pipeline.id)) return false;
+    return hasActiveJobs(pipeline);
+  });
+
+  createEffect(() => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+
+    const repo = selectedRepo();
+    if (repo?.id && isPipelineActive() && autoRefresh() && selectedJob() === null) {
+      pollInterval = setInterval(() => {
+        void fetchPipelineStatus(repo.id);
+      }, PIPELINE_POLL_INTERVAL);
+    }
+  });
+
+  const scheduleRefresh = (fn: () => void, delay: number) => {
+    const id = setTimeout(() => {
+      pendingTimeouts.delete(id);
+      fn();
+    }, delay);
+    pendingTimeouts.add(id);
+  };
+
+  const fetchJobTrace = async (projectId: number, jobId: string) => {
+    setTraceLoading(true);
+    setJobTrace('');
+    try {
+      const data = await ciApi.getJobTrace(projectId, jobId);
+      setJobTrace(data.trace || '');
+    } catch (error) {
+      console.error('Failed to fetch job trace', error);
+      setJobTrace('Failed to load job trace. The job may not have any output yet.');
+    } finally {
+      setTraceLoading(false);
+    }
+  };
+
+  createEffect(() => {
+    const job = selectedJob();
+    const repo = selectedRepo();
+    if (job && repo?.id && job.id) {
+      const jobId = job.id.replace(/^job-/, '');
+      if (!isLivePipelineId(jobId)) {
+        setTraceLoading(false);
+        setJobTrace('Live logs are unavailable for static pipeline previews.');
+        return;
+      }
+      void fetchJobTrace(repo.id, jobId);
+    }
+  });
+
+  const parseGitLabCi = (content: string, repoName: string): VizPipeline => {
+    let parsed: any;
+    try {
+      parsed = parse(content);
+    } catch (error) {
+      console.error('Failed to parse YAML', error);
+      return {
+        id: `pipeline-${repoName}-error`,
+        ref: 'main',
+        status: 'failed',
+        createdAt: new Date().toISOString(),
+        stages: [],
+      };
+    }
+
+    if (!parsed) {
+      return {
+        id: `pipeline-${repoName}-empty`,
+        ref: 'main',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        stages: [],
+      };
+    }
+
+    let stages: string[] = parsed.stages || ['build', 'test', 'deploy'];
+    if (!Array.isArray(stages)) stages = ['build', 'test', 'deploy'];
+
+    const pipelineStages: PipelineStage[] = stages.map((name) => ({
+      name,
+      jobs: [],
+    }));
+
+    const reservedKeys = new Set([
+      'stages',
+      'types',
+      'variables',
+      'cache',
+      'include',
+      'image',
+      'services',
+      'before_script',
+      'after_script',
+      'workflow',
+      'default',
+    ]);
+
+    Object.entries(parsed).forEach(([key, value]: [string, any]) => {
+      if (reservedKeys.has(key) || key.startsWith('.') || typeof value !== 'object' || !value) return;
+
+      const jobStage = value.stage || 'test';
+      let stage = pipelineStages.find((item) => item.name === jobStage);
+      if (!stage && parsed.stages && !parsed.stages.includes(jobStage)) {
+        stage = pipelineStages.find((item) => item.name === 'test');
+        if (!stage && pipelineStages.length > 0) stage = pipelineStages[0];
+      }
+
+      if (stage) {
+        stage.jobs.push({
+          id: `job-${key}`,
+          name: key,
+          stage: jobStage,
+          status: 'pending',
+          details: value,
+        });
+      }
+    });
+
+    return {
+      id: `pipeline-${repoName}`,
+      ref: 'main',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      stages: pipelineStages.filter((stage) => stage.jobs.length > 0),
+    };
+  };
+
+  const selectRepo = async (repo: RepoInfo) => {
+    setSelectedRepo(repo);
+    setSelectedJob(null);
+    setJobTrace('');
+
+    if (repo.hasConfig && repo.configContent) {
+      setPipelineData(parseGitLabCi(repo.configContent, repo.name));
+    } else {
+      setPipelineData(undefined);
+    }
+
+    if (repo.id) {
+      await fetchPipelineStatus(repo.id);
+    }
+  };
+
+  const handleRetryPipeline = async () => {
+    const repo = selectedRepo();
+    const pipeline = pipelineData();
+    if (!repo?.id || !pipeline?.id) return;
+    if (!isLivePipelineId(pipeline.id)) {
+      pushActionNotice('info', 'Retry is unavailable for static pipeline previews.');
+      return;
+    }
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.retryPipeline(repo.id, pipeline.id);
+      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 1000);
+      pushActionNotice('success', 'Pipeline retry requested.');
+    } catch (error) {
+      console.error('Failed to retry pipeline', error);
+      pushActionNotice('error', 'Pipeline retry failed.');
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
+  const handleCancelPipeline = async () => {
+    const repo = selectedRepo();
+    const pipeline = pipelineData();
+    if (!repo?.id || !pipeline?.id) return;
+    if (!isLivePipelineId(pipeline.id)) {
+      pushActionNotice('info', 'Cancel is unavailable for static pipeline previews.');
+      return;
+    }
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.cancelPipeline(repo.id, pipeline.id);
+      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 1000);
+      pushActionNotice('success', 'Pipeline cancel requested.');
+    } catch (error) {
+      console.error('Failed to cancel pipeline', error);
+      pushActionNotice('error', 'Pipeline cancel failed.');
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
+  const handleTriggerPipeline = async () => {
+    const repo = selectedRepo();
+    if (!repo?.id || !triggerRef()) return;
+    setPipelineActionLoading(true);
+    try {
+      await ciApi.triggerPipeline(repo.id, triggerRef());
+      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 2000);
+      pushActionNotice('success', `Pipeline trigger requested for ${triggerRef()}.`);
+    } catch (error) {
+      console.error('Failed to trigger pipeline', error);
+      pushActionNotice('error', 'Pipeline trigger failed.');
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
+  const pipelineDataState = createMemo<PipelineDataState>(() =>
+    getPipelineDataState({
+      pipeline: pipelineData(),
+      lastUpdate: lastUpdate(),
+      fetchError: pipelineFetchError(),
+      staleAfterMs: PIPELINE_STALE_AFTER_MS,
+    }),
+  );
+
+  const dataStateMeta = createMemo(() => {
+    const state = pipelineDataState();
+    switch (state) {
+      case 'live':
+        return { label: 'LIVE' };
+      case 'stale':
+        return { label: 'STALE' };
+      case 'static':
+        return { label: 'STATIC' };
+      default:
+        return { label: 'OFFLINE' };
+    }
+  });
+
+  const formatTimeAgo = (date: Date | null) => {
+    if (!date) return 'Never';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 5) return 'Just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
+  };
+
+  onMount(async () => {
+    try {
+      const data = await ciApi.listRepos();
+      const normalizedRepos = Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) {
+        console.warn('Unexpected /api/ci/repos payload shape; expected array', data);
+      }
+      setRepos(normalizedRepos);
+      if (normalizedRepos.length > 0) {
+        void fetchAllPipelines(normalizedRepos);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  onCleanup(() => {
+    if (pollInterval) clearInterval(pollInterval);
+    pendingTimeouts.forEach(clearTimeout);
+    pendingTimeouts.clear();
+  });
+
+  return {
+    actionNotice,
+    autoRefresh,
+    dataStateMeta,
+    fetchPipelineStatus,
+    formatTimeAgo,
+    handleCancelPipeline,
+    handleRetryPipeline,
+    handleTriggerPipeline,
+    isPipelineActive,
+    jobTrace,
+    lastUpdate,
+    loading,
+    overviewLoading,
+    pipelineActionLoading,
+    pipelineData,
+    pipelineDataState,
+    pipelineSort,
+    pipelinesCache,
+    pushActionNotice,
+    repos,
+    scheduleRefresh,
+    selectedJob,
+    selectedRepo,
+    selectRepo,
+    setAutoRefresh,
+    setPipelineSort,
+    setSelectedJob,
+    setTriggerRef,
+    traceLoading,
+    triggerRef,
+  };
+}
