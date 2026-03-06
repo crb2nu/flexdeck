@@ -1,169 +1,44 @@
-import { Component, createSignal, createMemo, onMount, onCleanup, For, Show, createEffect } from 'solid-js';
-import { healthStore } from '../../stores/health';
-import { api } from '../../lib/api';
+import { Component, For, Show } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
-import type { K8sDeployment, K8sService, K8sIngress, K8sStatefulSet, K8sDaemonSet, K8sJob, K8sList } from '../../lib/types';
+import type { K8sDeployment, K8sService, K8sIngress, K8sStatefulSet, K8sDaemonSet, K8sJob } from '../../lib/types';
 import StatusDot from '../shared/StatusDot';
 import type { Status } from '../shared/StatusDot';
-
-const REFRESH_INTERVAL = 30000; // 30 seconds
-
-type TabType = 'deployments' | 'services' | 'ingresses' | 'statefulsets' | 'daemonsets' | 'jobs' | 'storage' | 'configmaps' | 'secrets';
+import { useServicesController } from './useServicesController';
 
 const Services: Component = () => {
-  const [deployments, setDeployments] = createSignal<K8sDeployment[]>([]);
-  const [services, setServices] = createSignal<K8sService[]>([]);
-  const [ingresses, setIngresses] = createSignal<K8sIngress[]>([]);
-  const [statefulsets, setStatefulsets] = createSignal<K8sStatefulSet[]>([]);
-  const [daemonsets, setDaemonsets] = createSignal<K8sDaemonSet[]>([]);
-  const [jobs, setJobs] = createSignal<K8sJob[]>([]);
-  const [pvcs, setPvcs] = createSignal<any[]>([]);
-  const [configmaps, setConfigmaps] = createSignal<any[]>([]);
-  const [secrets, setSecrets] = createSignal<any[]>([]);
-  const [expandedCM, setExpandedCM] = createSignal<Set<string>>(new Set());
-  const [expandedSecret, setExpandedSecret] = createSignal<Set<string>>(new Set());
-  const [secretData, setSecretData] = createSignal<Record<string, any>>({});
-  const [cmData, setCmData] = createSignal<Record<string, any>>({});
-  const [revealedKeys, setRevealedKeys] = createSignal<Set<string>>(new Set());
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [namespaceFilter, setNamespaceFilter] = createSignal('');
-  const [searchTerm, setSearchTerm] = createSignal('');
-  const [activeTab, setActiveTab] = createSignal<TabType>('deployments');
-
-  let refreshInterval: ReturnType<typeof setInterval>;
-
-  const isK8sEnabled = () => healthStore.features?.k8s?.enabled ?? false;
-  const isReadOnly = () => healthStore.features?.k8s?.readOnly ?? true;
-
-  // Get unique namespaces from all resource types
-  const namespaces = createMemo(() => {
-    const ns = new Set<string>();
-    deployments().forEach((d) => ns.add(d.metadata?.namespace || 'default'));
-    services().forEach((s) => ns.add(s.metadata?.namespace || 'default'));
-    statefulsets().forEach((s) => ns.add(s.metadata?.namespace || 'default'));
-    daemonsets().forEach((d) => ns.add(d.metadata?.namespace || 'default'));
-    jobs().forEach((j) => ns.add(j.metadata?.namespace || 'default'));
-    return Array.from(ns).sort();
-  });
-
-  // Helper to filter by namespace and search term
-  const filterResources = <T extends { metadata?: { namespace?: string; name?: string } }>(
-    resources: T[]
-  ): T[] => {
-    let result = resources;
-    const nsFilter = namespaceFilter();
-    const search = searchTerm().toLowerCase();
-
-    if (nsFilter) {
-      result = result.filter((r) => r.metadata?.namespace === nsFilter);
-    }
-    if (search) {
-      result = result.filter((r) => r.metadata?.name?.toLowerCase().includes(search));
-    }
-    return result;
-  };
-
-  // Filtered data
-  const filteredDeployments = createMemo(() => filterResources(deployments()));
-  const filteredServices = createMemo(() => filterResources(services()));
-  const filteredIngresses = createMemo(() => filterResources(ingresses()));
-  const filteredStatefulsets = createMemo(() => filterResources(statefulsets()));
-  const filteredDaemonsets = createMemo(() => filterResources(daemonsets()));
-  const filteredJobs = createMemo(() => filterResources(jobs()));
-  const filteredPvcs = createMemo(() => filterResources(pvcs()));
-  const filteredConfigmaps = createMemo(() => filterResources(configmaps()));
-  const filteredSecrets = createMemo(() => filterResources(secrets()));
-
-  async function fetchData() {
-    if (!isK8sEnabled()) {
-      setLoading(false);
-      setError('Kubernetes disabled');
-      return;
-    }
-
-    try {
-      const [deploys, svcs, ings, sts, ds, jbs, pvcData, cmData, secData] = await Promise.all([
-        api<K8sList<K8sDeployment>>('/k8s/deployments'),
-        api<K8sList<K8sService>>('/k8s/services'),
-        api<K8sList<K8sIngress>>('/k8s/ingresses'),
-        api<K8sList<K8sStatefulSet>>('/k8s/statefulsets').catch(() => ({ items: [] })),
-        api<K8sList<K8sDaemonSet>>('/k8s/daemonsets').catch(() => ({ items: [] })),
-        api<K8sList<K8sJob>>('/k8s/jobs').catch(() => ({ items: [] })),
-        api<any>('/k8s/pvcs').then(d => d.items || d).catch(() => []),
-        api<any>('/k8s/configmaps').catch(() => []),
-        api<any>('/k8s/secrets').catch(() => []),
-      ]);
-
-      setDeployments(deploys.items || []);
-      setServices(svcs.items || []);
-      setIngresses(ings.items || []);
-      setStatefulsets(sts.items || []);
-      setDaemonsets(ds.items || []);
-      setJobs(jbs.items || []);
-      setPvcs(Array.isArray(pvcData) ? pvcData : (pvcData?.items || []));
-      setConfigmaps(Array.isArray(cmData) ? cmData : (cmData?.items || []));
-      setSecrets(Array.isArray(secData) ? secData : (secData?.items || []));
-      setError('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function scaleDeployment(ns: string, name: string, replicas: number) {
-    if (isReadOnly()) return;
-
-    try {
-      await api(`/k8s/deployments/${ns}/${name}/scale?replicas=${replicas}`, {
-        method: 'POST',
-      });
-      await fetchData();
-    } catch (e) {
-      console.error('Scale failed:', e);
-    }
-  }
-
-  async function restartDeployment(ns: string, name: string) {
-    if (isReadOnly()) return;
-
-    try {
-      await api(`/k8s/deployments/${ns}/${name}/restart`, { method: 'POST' });
-      await fetchData();
-    } catch (e) {
-      console.error('Restart failed:', e);
-    }
-  }
-
-  onMount(() => {
-    refreshInterval = setInterval(() => {
-        if (!healthStore.loading) fetchData();
-    }, REFRESH_INTERVAL);
-  });
-
-  createEffect(() => {
-      if (!healthStore.loading && healthStore.ok) {
-          fetchData();
-      }
-  });
-
-  onCleanup(() => {
-    if (refreshInterval) clearInterval(refreshInterval);
-  });
-
-  // Tab configuration
-  const tabs: { id: TabType; label: string; count: () => number }[] = [
-    { id: 'deployments', label: 'Deployments', count: () => filteredDeployments().length },
-    { id: 'statefulsets', label: 'StatefulSets', count: () => filteredStatefulsets().length },
-    { id: 'daemonsets', label: 'DaemonSets', count: () => filteredDaemonsets().length },
-    { id: 'jobs', label: 'Jobs', count: () => filteredJobs().length },
-    { id: 'services', label: 'Services', count: () => filteredServices().length },
-    { id: 'ingresses', label: 'Ingresses', count: () => filteredIngresses().length },
-    { id: 'storage' as TabType, label: 'Storage', count: () => filteredPvcs().length },
-    { id: 'configmaps' as TabType, label: 'ConfigMaps', count: () => filteredConfigmaps().length },
-    { id: 'secrets' as TabType, label: 'Secrets', count: () => filteredSecrets().length },
-  ];
+  const {
+    loading,
+    error,
+    namespaceFilter,
+    setNamespaceFilter,
+    searchTerm,
+    setSearchTerm,
+    activeTab,
+    setActiveTab,
+    namespaces,
+    isReadOnly,
+    filteredDeployments,
+    filteredServices,
+    filteredIngresses,
+    filteredStatefulsets,
+    filteredDaemonsets,
+    filteredJobs,
+    filteredPvcs,
+    filteredConfigmaps,
+    filteredSecrets,
+    expandedCM,
+    cmData,
+    expandedSecret,
+    secretData,
+    revealedKeys,
+    scaleDeployment,
+    restartDeployment,
+    toggleConfigMap,
+    toggleSecret,
+    toggleRevealKey,
+    clearFilters,
+    tabs,
+  } = useServicesController();
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
@@ -235,7 +110,7 @@ const Services: Component = () => {
           {/* Clear filters */}
           <Show when={searchTerm() || namespaceFilter()}>
             <button
-              onClick={() => { setSearchTerm(''); setNamespaceFilter(''); }}
+              onClick={clearFilters}
               class="text-xs text-text-dim hover:text-neon-cyan transition-colors"
             >
               Clear filters
@@ -296,20 +171,7 @@ const Services: Component = () => {
             configmaps={filteredConfigmaps()}
             expanded={expandedCM()}
             cmData={cmData()}
-            onToggle={async (ns: string, name: string) => {
-              const key = `${ns}/${name}`;
-              setExpandedCM(prev => {
-                const next = new Set(prev);
-                if (next.has(key)) { next.delete(key); } else { next.add(key); }
-                return next;
-              });
-              if (!cmData()[key]) {
-                try {
-                  const data = await api<any>(`/k8s/configmaps/${ns}/${name}`);
-                  setCmData(prev => ({ ...prev, [key]: data }));
-                } catch { /* ignore */ }
-              }
-            }}
+            onToggle={toggleConfigMap}
           />
         </Show>
 
@@ -319,27 +181,8 @@ const Services: Component = () => {
             expanded={expandedSecret()}
             secretData={secretData()}
             revealedKeys={revealedKeys()}
-            onToggle={async (ns: string, name: string) => {
-              const key = `${ns}/${name}`;
-              setExpandedSecret(prev => {
-                const next = new Set(prev);
-                if (next.has(key)) { next.delete(key); } else { next.add(key); }
-                return next;
-              });
-              if (!secretData()[key]) {
-                try {
-                  const data = await api<any>(`/k8s/secrets/${ns}/${name}`);
-                  setSecretData(prev => ({ ...prev, [key]: data }));
-                } catch { /* ignore */ }
-              }
-            }}
-            onRevealKey={(key: string) => {
-              setRevealedKeys(prev => {
-                const next = new Set(prev);
-                if (next.has(key)) { next.delete(key); } else { next.add(key); }
-                return next;
-              });
-            }}
+            onToggle={toggleSecret}
+            onRevealKey={toggleRevealKey}
           />
         </Show>
       </div>

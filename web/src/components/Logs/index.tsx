@@ -1,148 +1,45 @@
-import { Component, createSignal, createEffect, onCleanup, onMount, For, Show } from 'solid-js';
-import { createStore } from 'solid-js/store';
-import LogStream, { type LogEntry, type LogFilter } from './LogStream';
+import { Component, createEffect, For, Show } from 'solid-js';
+import LogStream from './LogStream';
 import QueryBuilder from './QueryBuilder';
 import LogStats from './LogStats';
 import { getLogLevelClass, getLogLevelBadge } from '../../lib/logUtils';
-import { showToast, ToastContainer } from '../shared/Toast';
-
-interface LokiStream {
-  stream: Record<string, string>;
-  values: [string, string][];
-}
-
-interface LokiQueryResponse {
-  status: string;
-  data: {
-    resultType: string;
-    result: LokiStream[];
-  };
-}
+import { ToastContainer } from '../shared/Toast';
+import { LOG_TIME_RANGES, useLogsController } from './useLogsController';
 
 const Logs: Component = () => {
-  const [query, setQuery] = createSignal('{namespace="default"}');
-  const [logs, setLogs] = createStore<LogEntry[]>([]);
-  const [loading, setLoading] = createSignal(false);
-  const [error, setError] = createSignal('');
-  const [streaming, setStreaming] = createSignal(false);
-  const [limit, setLimit] = createSignal(100);
-  const [timeRange, setTimeRange] = createSignal('1h');
-  const [viewMode, setViewMode] = createSignal<'list' | 'flow' | 'rain'>('list');
-  const [selectedLog, setSelectedLog] = createSignal<LogEntry | null>(null);
-  const [searchTerm, setSearchTerm] = createSignal('');
-  const [searchRegex, setSearchRegex] = createSignal(false);
-  const [showSidebar, setShowSidebar] = createSignal(false);
-  const [modalClosing, setModalClosing] = createSignal(false);
+  const {
+    query,
+    setQuery,
+    logs,
+    loading,
+    error,
+    streaming,
+    limit,
+    setLimit,
+    timeRange,
+    setTimeRange,
+    viewMode,
+    setViewMode,
+    selectedLog,
+    searchTerm,
+    setSearchTerm,
+    searchRegex,
+    setSearchRegex,
+    showSidebar,
+    setShowSidebar,
+    modalClosing,
+    fetchLogs,
+    startStreaming,
+    stopStreaming,
+    closeModal,
+    logFilter,
+    handleLogClick,
+    clearLogs,
+    copyToClipboard,
+    exportLogs,
+  } = useLogsController();
 
   let logContainerRef: HTMLDivElement | undefined;
-  let eventSource: EventSource | null = null;
-
-  const timeRanges = [
-    { label: '15m', value: '15m' },
-    { label: '1h', value: '1h' },
-    { label: '3h', value: '3h' },
-    { label: '6h', value: '6h' },
-    { label: '12h', value: '12h' },
-    { label: '24h', value: '24h' },
-  ];
-
-  const parseTimeRange = (range: string): number => {
-    const match = range.match(/^(\d+)([mhd])$/);
-    if (!match) return 3600000; // default 1h in ms
-    const [, num, unit] = match;
-    const multipliers: Record<string, number> = { m: 60000, h: 3600000, d: 86400000 };
-    return parseInt(num) * (multipliers[unit] || 3600000);
-  };
-
-  const fetchLogs = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const now = Date.now();
-      const start = now - parseTimeRange(timeRange());
-      const params = new URLSearchParams({
-        query: query(),
-        limit: limit().toString(),
-        start: (BigInt(start) * 1000000n).toString(), // nanoseconds
-        end: (BigInt(now) * 1000000n).toString(),
-      });
-
-      const response = await fetch(`/api/loki/query_range?${params}`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: LokiQueryResponse = await response.json();
-
-      const entries: LogEntry[] = [];
-      if (data.data && data.data.result) {
-          for (const stream of data.data.result) {
-            for (const [ts, line] of stream.values) {
-              entries.push({
-                timestamp: new Date(Number(BigInt(ts) / 1000000n)).toISOString(),
-                line,
-                labels: stream.stream,
-              });
-            }
-          }
-      }
-
-      // Sort by timestamp descending (newest first)
-      entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      setLogs(entries);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch logs');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startStreaming = () => {
-    if (eventSource) {
-      eventSource.close();
-    }
-
-    setStreaming(true);
-    const params = new URLSearchParams({ query: query() });
-    eventSource = new EventSource(`/api/loki/tail-sse?${params}`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.streams) {
-          for (const stream of data.streams) {
-            for (const [ts, line] of stream.values) {
-              const entry: LogEntry = {
-                timestamp: new Date(Number(BigInt(ts) / 1000000n)).toISOString(),
-                line,
-                labels: stream.stream,
-              };
-              setLogs((prev) => [entry, ...prev.slice(0, 999)]);
-            }
-          }
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    eventSource.onerror = () => {
-      setStreaming(false);
-      eventSource?.close();
-      eventSource = null;
-    };
-  };
-
-  const stopStreaming = () => {
-    setStreaming(false);
-    eventSource?.close();
-    eventSource = null;
-  };
-
-  onCleanup(() => {
-    eventSource?.close();
-  });
 
   // Auto-scroll to bottom when new logs arrive
   createEffect(() => {
@@ -163,56 +60,6 @@ const Logs: Component = () => {
       second: '2-digit',
       hour12: false,
     });
-  };
-
-  // Close modal with animation
-  const closeModal = () => {
-    setModalClosing(true);
-    setTimeout(() => {
-      setSelectedLog(null);
-      setModalClosing(false);
-    }, 150);
-  };
-
-  // Keyboard shortcuts
-  onMount(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedLog()) {
-        closeModal();
-      }
-    };
-    window.addEventListener('keydown', handleKeydown);
-    onCleanup(() => window.removeEventListener('keydown', handleKeydown));
-  });
-
-  const logFilter = (): LogFilter => ({
-    searchTerm: searchTerm() || undefined,
-    searchRegex: searchRegex()
-  });
-
-  const handleLogClick = (log: LogEntry) => {
-    setSelectedLog(log);
-  };
-
-  const copyToClipboard = async (text: string, label: string = 'Content') => {
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(`${label} copied to clipboard`, 'success');
-    } catch {
-      showToast('Failed to copy to clipboard', 'error');
-    }
-  };
-
-  const exportLogs = (format: 'json' | 'csv') => {
-    const now = Date.now();
-    const start = now - parseTimeRange(timeRange());
-    const params = new URLSearchParams({
-      query: query(),
-      start: (BigInt(start) * 1000000n).toString(),
-      end: (BigInt(now) * 1000000n).toString(),
-      format,
-    });
-    window.open(`/api/loki/export?${params}`, '_blank');
   };
 
   return (
@@ -236,7 +83,7 @@ const Logs: Component = () => {
               onChange={(e) => setTimeRange(e.currentTarget.value)}
               class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
             >
-              <For each={timeRanges}>{(range) => <option value={range.value}>{range.label}</option>}</For>
+              <For each={LOG_TIME_RANGES}>{(range) => <option value={range.value}>{range.label}</option>}</For>
             </select>
 
             <select
@@ -466,7 +313,7 @@ const Logs: Component = () => {
 
               {/* Clear button */}
               <button
-                onClick={() => setLogs([])}
+                onClick={clearLogs}
                 class="rounded px-2 py-1 text-xs text-text-dim hover:text-text-muted"
               >
                 Clear
