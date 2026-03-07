@@ -4,7 +4,9 @@ import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import {
   buildTopologyGraphData,
   createTopologySimulation,
-  getNamespaceColor
+  getNamespaceColor,
+  type BuildInput,
+  type BuildResult,
 } from './topology/layoutEngine';
 import type { TopologyNode as D3Node, TopologyLink as D3Link } from './topology/types';
 
@@ -37,6 +39,7 @@ const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
 const NODE_SPRITE_PADDING = 18;
+const PAN_PREVIEW_COMMIT_MS = 96;
 interface ParticleSlot {
   active: boolean;
   sourceIdx: number;
@@ -89,6 +92,28 @@ interface PerfSnapshot {
   legacyHashEntityVisitsAvoided: number;
 }
 
+interface WorkerBuildRequest {
+  type: 'build';
+  requestId: number;
+  input: BuildInput;
+  width: number;
+  height: number;
+}
+
+interface WorkerBuildSuccess {
+  type: 'result';
+  requestId: number;
+  graphData: BuildResult;
+}
+
+interface WorkerBuildFailure {
+  type: 'error';
+  requestId: number;
+  error: string;
+}
+
+type WorkerBuildMessage = WorkerBuildSuccess | WorkerBuildFailure;
+
 const TopologyGraph: Component<Props> = (props) => {
   let baseCanvasRef: HTMLCanvasElement | undefined;
   let overlayCanvasRef: HTMLCanvasElement | undefined;
@@ -99,6 +124,11 @@ const TopologyGraph: Component<Props> = (props) => {
   let rafId: number | null = null;
   let lastTopologyVersion = -1;
   let lastStyleVersion = -1;
+  let topologyWorker: Worker | null = null;
+  let topologyWorkerRequestId = 0;
+  let pendingBuildRequestId = 0;
+  let panPreviewCommitTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let baseRasterTransform = { x: 0, y: 0, k: 1 };
 
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
@@ -206,6 +236,38 @@ const TopologyGraph: Component<Props> = (props) => {
     viewportCacheDirty = true;
     baseLayerDirty = true;
     overlayLayerDirty = true;
+  };
+  const clearPanPreviewCommit = () => {
+    if (panPreviewCommitTimeoutId) {
+      clearTimeout(panPreviewCommitTimeoutId);
+      panPreviewCommitTimeoutId = null;
+    }
+  };
+  const clearBaseCanvasPreview = () => {
+    if (!baseCanvasRef) return;
+    baseCanvasRef.style.transform = '';
+    baseCanvasRef.style.transformOrigin = '';
+  };
+  const syncBaseRasterTransform = () => {
+    baseRasterTransform = { x: transform.x, y: transform.y, k: transform.k };
+    clearBaseCanvasPreview();
+  };
+  const applyBaseCanvasPreview = (nextTransform: d3.ZoomTransform) => {
+    if (!baseCanvasRef) return;
+    const baseScale = baseRasterTransform.k || 1;
+    const scale = nextTransform.k / baseScale;
+    const translateX = nextTransform.x - baseRasterTransform.x * scale;
+    const translateY = nextTransform.y - baseRasterTransform.y * scale;
+    baseCanvasRef.style.transformOrigin = '0 0';
+    baseCanvasRef.style.transform = `matrix(${scale}, 0, 0, ${scale}, ${translateX}, ${translateY})`;
+  };
+  const scheduleBaseLayerCommit = () => {
+    clearPanPreviewCommit();
+    panPreviewCommitTimeoutId = setTimeout(() => {
+      panPreviewCommitTimeoutId = null;
+      invalidateViewport();
+      startAnimationLoop();
+    }, PAN_PREVIEW_COMMIT_MS);
   };
 
   const readPerfToggle = (): boolean => {
@@ -398,18 +460,7 @@ const TopologyGraph: Component<Props> = (props) => {
     if (!isAnimating) startAnimationLoop();
   };
 
-  const buildGraph = () => {
-    sourceNodeCount = props.nodes.length;
-    sourcePodCount = props.pods.length;
-    sourceServiceCount = props.services.length;
-
-    const graphData = buildTopologyGraphData({
-      nodes: props.nodes,
-      pods: props.pods,
-      services: props.services,
-      prevNodes: graphNodes
-    });
-
+  const applyGraphData = (graphData: BuildResult) => {
     graphNodes = graphData.nodes;
     graphLinks = graphData.links;
     hostsLinks = graphData.hostsLinks;
@@ -445,6 +496,80 @@ const TopologyGraph: Component<Props> = (props) => {
     invalidateViewport();
 
     setNodeCount(graphNodes.length);
+  };
+
+  const buildGraphDirect = () => {
+    sourceNodeCount = props.nodes.length;
+    sourcePodCount = props.pods.length;
+    sourceServiceCount = props.services.length;
+    applyGraphData(buildTopologyGraphData({
+      nodes: props.nodes,
+      pods: props.pods,
+      services: props.services,
+      prevNodes: graphNodes
+    }));
+  };
+
+  const ensureTopologyWorker = (): Worker | null => {
+    if (topologyWorker || typeof Worker === 'undefined') return topologyWorker;
+    try {
+      topologyWorker = new Worker(new URL('./topology/topologyWorker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      topologyWorker = null;
+    }
+    return topologyWorker;
+  };
+
+  const buildGraphWithWorker = (requestId: number, width: number, height: number): Promise<BuildResult> => {
+    sourceNodeCount = props.nodes.length;
+    sourcePodCount = props.pods.length;
+    sourceServiceCount = props.services.length;
+
+    const worker = ensureTopologyWorker();
+    if (!worker) {
+      const graphData = buildTopologyGraphData({
+        nodes: props.nodes,
+        pods: props.pods,
+        services: props.services,
+        prevNodes: graphNodes
+      });
+      return Promise.resolve(graphData);
+    }
+
+    return new Promise((resolve, reject) => {
+      const handleMessage = (event: MessageEvent<WorkerBuildMessage>) => {
+        const message = event.data;
+        if (message.requestId !== requestId) return;
+        worker.removeEventListener('message', handleMessage);
+        worker.removeEventListener('error', handleError);
+        if (message.type === 'error') {
+          reject(new Error(message.error));
+          return;
+        }
+        resolve(message.graphData);
+      };
+      const handleError = (event: ErrorEvent) => {
+        worker.removeEventListener('message', handleMessage);
+        worker.removeEventListener('error', handleError);
+        reject(event.error ?? new Error(event.message));
+      };
+
+      worker.addEventListener('message', handleMessage);
+      worker.addEventListener('error', handleError, { once: true });
+      const request: WorkerBuildRequest = {
+        type: 'build',
+        requestId,
+        width,
+        height,
+        input: {
+          nodes: props.nodes,
+          pods: props.pods,
+          services: props.services,
+          prevNodes: graphNodes,
+        },
+      };
+      worker.postMessage(request);
+    });
   };
 
   const getNodeColor = (node: D3Node): string => {
@@ -697,6 +822,7 @@ const TopologyGraph: Component<Props> = (props) => {
     skipDecorativeNodeEffects: boolean,
     simplifiedNodeRendering: boolean,
   ) => {
+    clearBaseCanvasPreview();
     drawBackground(ctx, width, height, isDense, isSimulationActive);
     ensureNodeStylesCache();
     updateVisibleNodes(width, height, isSimulationActive);
@@ -797,6 +923,7 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     ctx.restore();
+    syncBaseRasterTransform();
     baseLayerDirty = false;
   };
 
@@ -1174,7 +1301,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
   };
 
-  const initializeSimulation = () => {
+  const initializeSimulation = async () => {
     if (!overlayCanvasRef) return;
 
     // Stop any existing simulation before rebuilding
@@ -1184,7 +1311,28 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     resetParticles();
-    buildGraph();
+    clearPanPreviewCommit();
+    clearBaseCanvasPreview();
+    const { width, height } = dimensions();
+    const requestId = ++topologyWorkerRequestId;
+    pendingBuildRequestId = requestId;
+
+    let graphData: BuildResult;
+    try {
+      graphData = await buildGraphWithWorker(requestId, width, height);
+    } catch {
+      if (requestId !== pendingBuildRequestId) return;
+      buildGraphDirect();
+      graphData = {
+        nodes: graphNodes,
+        links: graphLinks,
+        hostsLinks,
+        selectsLinks,
+        namespaceMap,
+      };
+    }
+    if (requestId !== pendingBuildRequestId) return;
+    applyGraphData(graphData);
 
     // Early exit if no data - just render empty background
     if (graphNodes.length === 0) {
@@ -1193,8 +1341,6 @@ const TopologyGraph: Component<Props> = (props) => {
       draw();
       return;
     }
-
-    const { width, height } = dimensions();
 
     const created = createTopologySimulation({
       nodes: graphNodes,
@@ -1233,7 +1379,13 @@ const TopologyGraph: Component<Props> = (props) => {
       .on('zoom', (e) => {
         transform = e.transform;
         bumpInteraction();
-        invalidateViewport();
+        if (isSimulationActive) {
+          invalidateViewport();
+        } else {
+          applyBaseCanvasPreview(e.transform);
+          invalidateOverlayLayer();
+          scheduleBaseLayerCommit();
+        }
         // Restart animation if not running (for pan/zoom after settling)
         startAnimationLoop();
       });
@@ -1291,6 +1443,8 @@ const TopologyGraph: Component<Props> = (props) => {
       const rect = containerRef.getBoundingClientRect();
       setDimensions({ width: rect.width, height: rect.height });
       // Invalidate gradient cache on resize
+      clearPanPreviewCommit();
+      clearBaseCanvasPreview();
       cachedGradient = null;
       invalidateViewport();
       if (simulation && rect.width > 0) {
@@ -1322,8 +1476,12 @@ const TopologyGraph: Component<Props> = (props) => {
 
   onCleanup(() => {
     window.removeEventListener('resize', debouncedResize);
+    clearPanPreviewCommit();
+    clearBaseCanvasPreview();
     if (rafId !== null) cancelAnimationFrame(rafId);
     simulation?.stop();
+    topologyWorker?.terminate();
+    topologyWorker = null;
   });
 
   // Debounce simulation initialization to prevent rapid re-init during initial data load

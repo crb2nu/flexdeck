@@ -2,14 +2,14 @@ import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
 import type { TopologyNode, TopologyLink } from './types';
 
-interface BuildInput {
+export interface BuildInput {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
   prevNodes: TopologyNode[];
 }
 
-interface BuildResult {
+export interface BuildResult {
   nodes: TopologyNode[];
   links: TopologyLink[];
   hostsLinks: TopologyLink[];
@@ -288,28 +288,72 @@ const seedNodePositions = (nodes: TopologyNode[], width: number, height: number)
   }
 };
 
+const createForceSimulation = (
+  nodes: TopologyNode[],
+  links: TopologyLink[],
+  width: number,
+  height: number,
+  getNodeRadius: (node: TopologyNode) => number,
+  tuning: LayoutTuning,
+): d3.Simulation<TopologyNode, TopologyLink> =>
+  d3.forceSimulation<TopologyNode>(nodes)
+    .alpha(tuning.alphaStart)
+    .alphaDecay(tuning.alphaDecay)
+    .alphaMin(tuning.alphaMin)
+    .velocityDecay(tuning.velocityDecay)
+    .force('link', d3.forceLink<TopologyNode, TopologyLink>(links)
+      .id((node) => node.id)
+      .distance(tuning.linkDistance)
+      .strength(tuning.linkStrength))
+    .force('charge', d3.forceManyBody().strength(tuning.chargeStrength).distanceMax(tuning.distanceMax))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(tuning.centerStrength))
+    .force('collision', tuning.collisionEnabled
+      ? d3.forceCollide<TopologyNode>().radius((node) => getNodeRadius(node) + tuning.collisionPadding).strength(tuning.collisionStrength)
+      : null);
+
+const getBootstrapTickBudget = (nodeCount: number): number => {
+  if (nodeCount >= 1200) return 48;
+  if (nodeCount >= 700) return 36;
+  return Math.min(28, Math.max(10, Math.round(Math.sqrt(Math.max(nodeCount, 1)) * 1.1)));
+};
+
+export const primeTopologyGraphLayout = (
+  nodes: TopologyNode[],
+  links: TopologyLink[],
+  width: number,
+  height: number,
+  getNodeRadius: (node: TopologyNode) => number,
+): LayoutTuning => {
+  const tuning = getTopologyLayoutTuning(nodes.length);
+  seedNodePositions(nodes, width, height);
+
+  const simulation = createForceSimulation(nodes, links, width, height, getNodeRadius, tuning);
+  simulation.stop();
+
+  const tickBudget = Math.max(tuning.warmupTicks, getBootstrapTickBudget(nodes.length));
+  for (let i = 0; i < tickBudget; i++) {
+    simulation.tick();
+    if (simulation.alpha() <= tuning.alphaAfterWarmup) break;
+  }
+
+  simulation.stop();
+  return tuning;
+};
+
 export const createTopologySimulation = (input: CreateSimulationInput): {
   simulation: d3.Simulation<TopologyNode, TopologyLink>;
   tuning: LayoutTuning;
 } => {
   const tuning = getTopologyLayoutTuning(input.nodes.length);
   seedNodePositions(input.nodes, input.width, input.height);
-
-  const simulation = d3.forceSimulation<TopologyNode>(input.nodes)
-    .alpha(tuning.alphaStart)
-    .alphaDecay(tuning.alphaDecay)
-    .alphaMin(tuning.alphaMin)
-    .velocityDecay(tuning.velocityDecay)
-    .force('link', d3.forceLink<TopologyNode, TopologyLink>(input.links)
-      .id((node) => node.id)
-      .distance(tuning.linkDistance)
-      .strength(tuning.linkStrength))
-    .force('charge', d3.forceManyBody().strength(tuning.chargeStrength).distanceMax(tuning.distanceMax))
-    .force('center', d3.forceCenter(input.width / 2, input.height / 2).strength(tuning.centerStrength))
-    .force('collision', tuning.collisionEnabled
-      ? d3.forceCollide<TopologyNode>().radius((node) => input.getNodeRadius(node) + tuning.collisionPadding).strength(tuning.collisionStrength)
-      : null)
-    .on('end', input.onEnd);
+  const simulation = createForceSimulation(
+    input.nodes,
+    input.links,
+    input.width,
+    input.height,
+    input.getNodeRadius,
+    tuning,
+  ).on('end', input.onEnd);
 
   simulation.stop();
   for (let i = 0; i < tuning.warmupTicks; i++) {
