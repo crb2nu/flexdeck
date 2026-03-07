@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
-import { buildTopologyGraphData, getTopologyLayoutTuning } from './layoutEngine';
+import { buildTopologyGraphData, getTopologyLayoutTuning, primeTopologyGraphLayout } from './layoutEngine';
 import type { TopologyNode } from './types';
 
 const makeNode = (name: string, ready = true): K8sNode => ({
@@ -88,5 +88,30 @@ describe('layoutEngine', () => {
     expect(small.collisionEnabled).toBe(true);
     expect(small.alphaDecay).toBe(0.03);
     expect(small.warmupTicks).toBeGreaterThan(0);
+  });
+
+  it('primes a bootstrap layout with positioned nodes', () => {
+    const result = buildTopologyGraphData({
+      nodes: [makeNode('node-a'), makeNode('node-b')],
+      pods: [
+        makePod('api-0', 'apps', { app: 'api' }, 'node-a'),
+        makePod('api-1', 'apps', { app: 'api' }, 'node-b'),
+      ],
+      services: [makeService('api-svc', 'apps', { app: 'api' })],
+      prevNodes: [],
+    });
+
+    primeTopologyGraphLayout(
+      result.nodes,
+      result.links,
+      1200,
+      800,
+      (node) => (node.type === 'node' ? 28 : node.type === 'service' ? 18 : 8),
+    );
+
+    for (const node of result.nodes) {
+      expect(Number.isFinite(node.x)).toBe(true);
+      expect(Number.isFinite(node.y)).toBe(true);
+    }
   });
 });
