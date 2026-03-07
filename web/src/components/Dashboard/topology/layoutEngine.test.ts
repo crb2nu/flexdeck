@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
-import { buildTopologyGraphData, getTopologyLayoutTuning, primeTopologyGraphLayout } from './layoutEngine';
+import {
+  buildTopologyGraphData,
+  createPreparedTopologySimulation,
+  getTopologyLayoutTuning,
+  primeTopologyGraphLayout,
+} from './layoutEngine';
 import type { TopologyNode } from './types';
 
 const makeNode = (name: string, ready = true): K8sNode => ({
@@ -113,5 +118,26 @@ describe('layoutEngine', () => {
       expect(Number.isFinite(node.x)).toBe(true);
       expect(Number.isFinite(node.y)).toBe(true);
     }
+  });
+
+  it('creates a prepared simulation for worker-driven stepping', () => {
+    const result = buildTopologyGraphData({
+      nodes: [makeNode('node-a')],
+      pods: [makePod('api-0', 'apps', { app: 'api' }, 'node-a')],
+      services: [makeService('api-svc', 'apps', { app: 'api' })],
+      prevNodes: [],
+    });
+
+    const prepared = createPreparedTopologySimulation({
+      nodes: result.nodes,
+      links: result.links,
+      width: 900,
+      height: 700,
+      getNodeRadius: (node) => (node.type === 'node' ? 28 : node.type === 'service' ? 18 : 8),
+    });
+
+    expect(prepared.simulation.alpha()).toBeGreaterThan(0);
+    expect(prepared.simulation.alpha()).toBeLessThanOrEqual(prepared.tuning.alphaAfterWarmup);
+    prepared.simulation.stop();
   });
 });

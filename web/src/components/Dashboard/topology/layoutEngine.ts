@@ -28,7 +28,7 @@ interface CreateSimulationInput {
   width: number;
   height: number;
   getNodeRadius: (node: TopologyNode) => number;
-  onEnd: () => void;
+  onEnd?: () => void;
 }
 
 export interface LayoutTuning {
@@ -344,6 +344,19 @@ export const createTopologySimulation = (input: CreateSimulationInput): {
   simulation: d3.Simulation<TopologyNode, TopologyLink>;
   tuning: LayoutTuning;
 } => {
+  const prepared = createPreparedTopologySimulation(input);
+  prepared.simulation.on('end', () => input.onEnd?.());
+  prepared.simulation.restart();
+
+  return prepared;
+};
+
+export const createPreparedTopologySimulation = (
+  input: Omit<CreateSimulationInput, 'onEnd'>,
+): {
+  simulation: d3.Simulation<TopologyNode, TopologyLink>;
+  tuning: LayoutTuning;
+} => {
   const tuning = getTopologyLayoutTuning(input.nodes.length);
   seedNodePositions(input.nodes, input.width, input.height);
   const simulation = createForceSimulation(
@@ -353,13 +366,13 @@ export const createTopologySimulation = (input: CreateSimulationInput): {
     input.height,
     input.getNodeRadius,
     tuning,
-  ).on('end', input.onEnd);
+  );
 
   simulation.stop();
   for (let i = 0; i < tuning.warmupTicks; i++) {
     simulation.tick();
   }
-  simulation.alpha(tuning.alphaAfterWarmup).restart();
+  simulation.alpha(tuning.alphaAfterWarmup);
 
   return { simulation, tuning };
 };
