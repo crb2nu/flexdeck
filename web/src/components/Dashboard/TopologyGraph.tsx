@@ -106,13 +106,42 @@ interface WorkerBuildSuccess {
   graphData: BuildResult;
 }
 
+interface WorkerTickMessage {
+  type: 'tick';
+  requestId: number;
+  alpha: number;
+  settled: boolean;
+  positions: ArrayBuffer;
+}
+
 interface WorkerBuildFailure {
   type: 'error';
   requestId: number;
   error: string;
 }
 
-type WorkerBuildMessage = WorkerBuildSuccess | WorkerBuildFailure;
+interface WorkerDragRequest {
+  type: 'drag';
+  requestId: number;
+  phase: 'start' | 'move' | 'end';
+  nodeId: string;
+  x?: number;
+  y?: number;
+}
+
+interface WorkerResizeRequest {
+  type: 'resize';
+  requestId: number;
+  width: number;
+  height: number;
+}
+
+type WorkerBuildMessage = WorkerBuildSuccess | WorkerBuildFailure | WorkerTickMessage;
+
+interface WorkerBuildPending {
+  resolve: (graphData: BuildResult) => void;
+  reject: (error: Error) => void;
+}
 
 const TopologyGraph: Component<Props> = (props) => {
   let baseCanvasRef: HTMLCanvasElement | undefined;
@@ -127,8 +156,12 @@ const TopologyGraph: Component<Props> = (props) => {
   let topologyWorker: Worker | null = null;
   let topologyWorkerRequestId = 0;
   let pendingBuildRequestId = 0;
+  let activeWorkerRequestId = 0;
   let panPreviewCommitTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let baseRasterTransform = { x: 0, y: 0, k: 1 };
+  let activeSimulationMode: 'main' | 'worker' | null = null;
+  let currentSimulationAlpha = 0;
+  const workerBuildRequests = new Map<number, WorkerBuildPending>();
 
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
@@ -498,22 +531,93 @@ const TopologyGraph: Component<Props> = (props) => {
     setNodeCount(graphNodes.length);
   };
 
-  const buildGraphDirect = () => {
+  const buildGraphDirect = (): BuildResult => {
     sourceNodeCount = props.nodes.length;
     sourcePodCount = props.pods.length;
     sourceServiceCount = props.services.length;
-    applyGraphData(buildTopologyGraphData({
+    return buildTopologyGraphData({
       nodes: props.nodes,
       pods: props.pods,
       services: props.services,
       prevNodes: graphNodes
-    }));
+    });
+  };
+
+  const rejectPendingWorkerBuilds = (error: Error) => {
+    for (const pending of workerBuildRequests.values()) {
+      pending.reject(error);
+    }
+    workerBuildRequests.clear();
+  };
+
+  const handleWorkerTick = (message: WorkerTickMessage) => {
+    if (message.requestId !== activeWorkerRequestId) return;
+    if (message.positions.byteLength !== graphNodes.length * 2 * Float32Array.BYTES_PER_ELEMENT) return;
+
+    const positions = new Float32Array(message.positions);
+    for (let i = 0; i < graphNodes.length; i++) {
+      const node = graphNodes[i];
+      node.x = positions[i * 2];
+      node.y = positions[i * 2 + 1];
+    }
+
+    currentSimulationAlpha = message.alpha;
+    spatialGridDirty = true;
+    invalidateViewport();
+    startAnimationLoop();
+
+    if (!message.settled) {
+      isSimulationActive = true;
+      return;
+    }
+
+    if (!isSimulationActive) return;
+    isSimulationActive = false;
+    simulationSettledAt = performance.now();
+    if (perfEnabled && simulationStartedAt > 0) {
+      perfCounters.simulationSettles++;
+      perfCounters.simulationTotalSettleMs += simulationSettledAt - simulationStartedAt;
+      maybeUpdatePerfHud(simulationSettledAt);
+    }
+  };
+
+  const handleTopologyWorkerMessage = (event: MessageEvent<WorkerBuildMessage>) => {
+    const message = event.data;
+    if (message.type === 'tick') {
+      handleWorkerTick(message);
+      return;
+    }
+
+    const pending = workerBuildRequests.get(message.requestId);
+    if (!pending) return;
+    workerBuildRequests.delete(message.requestId);
+
+    if (message.type === 'error') {
+      pending.reject(new Error(message.error));
+      return;
+    }
+
+    pending.resolve(message.graphData);
+  };
+
+  const handleTopologyWorkerError = (event: ErrorEvent) => {
+    rejectPendingWorkerBuilds(event.error ?? new Error(event.message));
+    topologyWorker?.terminate();
+    topologyWorker = null;
+    if (activeSimulationMode === 'worker') {
+      activeSimulationMode = null;
+      activeWorkerRequestId = 0;
+      currentSimulationAlpha = 0;
+      isSimulationActive = false;
+    }
   };
 
   const ensureTopologyWorker = (): Worker | null => {
     if (topologyWorker || typeof Worker === 'undefined') return topologyWorker;
     try {
       topologyWorker = new Worker(new URL('./topology/topologyWorker.ts', import.meta.url), { type: 'module' });
+      topologyWorker.addEventListener('message', handleTopologyWorkerMessage as EventListener);
+      topologyWorker.addEventListener('error', handleTopologyWorkerError);
     } catch {
       topologyWorker = null;
     }
@@ -537,25 +641,7 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     return new Promise((resolve, reject) => {
-      const handleMessage = (event: MessageEvent<WorkerBuildMessage>) => {
-        const message = event.data;
-        if (message.requestId !== requestId) return;
-        worker.removeEventListener('message', handleMessage);
-        worker.removeEventListener('error', handleError);
-        if (message.type === 'error') {
-          reject(new Error(message.error));
-          return;
-        }
-        resolve(message.graphData);
-      };
-      const handleError = (event: ErrorEvent) => {
-        worker.removeEventListener('message', handleMessage);
-        worker.removeEventListener('error', handleError);
-        reject(event.error ?? new Error(event.message));
-      };
-
-      worker.addEventListener('message', handleMessage);
-      worker.addEventListener('error', handleError, { once: true });
+      workerBuildRequests.set(requestId, { resolve, reject });
       const request: WorkerBuildRequest = {
         type: 'build',
         requestId,
@@ -570,6 +656,30 @@ const TopologyGraph: Component<Props> = (props) => {
       };
       worker.postMessage(request);
     });
+  };
+
+  const postWorkerDrag = (phase: WorkerDragRequest['phase'], node: D3Node, x?: number, y?: number) => {
+    if (activeSimulationMode !== 'worker' || !topologyWorker || activeWorkerRequestId === 0) return;
+    const request: WorkerDragRequest = {
+      type: 'drag',
+      requestId: activeWorkerRequestId,
+      phase,
+      nodeId: node.id,
+      x,
+      y,
+    };
+    topologyWorker.postMessage(request);
+  };
+
+  const postWorkerResize = (width: number, height: number) => {
+    if (activeSimulationMode !== 'worker' || !topologyWorker || activeWorkerRequestId === 0) return;
+    const request: WorkerResizeRequest = {
+      type: 'resize',
+      requestId: activeWorkerRequestId,
+      width,
+      height,
+    };
+    topologyWorker.postMessage(request);
   };
 
   const getNodeColor = (node: D3Node): string => {
@@ -1139,7 +1249,9 @@ const TopologyGraph: Component<Props> = (props) => {
     const isUserInteracting = now - lastInteractionAt < INTERACTION_IDLE_MS;
     const isDense = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
       graphLinks.length > LARGE_GRAPH_LINK_THRESHOLD;
-    const simulationAlpha = isSimulationActive ? (simulation?.alpha() ?? 0) : 0;
+    const simulationAlpha = isSimulationActive
+      ? (activeSimulationMode === 'worker' ? currentSimulationAlpha : (simulation?.alpha() ?? 0))
+      : 0;
     const nearSettled = isSimulationActive && simulationAlpha > 0 && simulationAlpha < 0.035 && !isUserInteracting;
     let minFrameMs = 0;
     if (isDense) {
@@ -1309,6 +1421,9 @@ const TopologyGraph: Component<Props> = (props) => {
       simulation.stop();
       simulation = null;
     }
+    activeSimulationMode = null;
+    activeWorkerRequestId = 0;
+    currentSimulationAlpha = 0;
 
     resetParticles();
     clearPanPreviewCommit();
@@ -1318,18 +1433,13 @@ const TopologyGraph: Component<Props> = (props) => {
     pendingBuildRequestId = requestId;
 
     let graphData: BuildResult;
+    let workerBuildSucceeded = false;
     try {
       graphData = await buildGraphWithWorker(requestId, width, height);
+      workerBuildSucceeded = ensureTopologyWorker() !== null;
     } catch {
       if (requestId !== pendingBuildRequestId) return;
-      buildGraphDirect();
-      graphData = {
-        nodes: graphNodes,
-        links: graphLinks,
-        hostsLinks,
-        selectsLinks,
-        namespaceMap,
-      };
+      graphData = buildGraphDirect();
     }
     if (requestId !== pendingBuildRequestId) return;
     applyGraphData(graphData);
@@ -1337,8 +1447,26 @@ const TopologyGraph: Component<Props> = (props) => {
     // Early exit if no data - just render empty background
     if (graphNodes.length === 0) {
       isSimulationActive = false;
+      activeSimulationMode = null;
+      activeWorkerRequestId = 0;
       invalidateViewport();
       draw();
+      return;
+    }
+
+    if (workerBuildSucceeded) {
+      activeSimulationMode = 'worker';
+      activeWorkerRequestId = requestId;
+      if (perfEnabled) {
+        simulationStartedAt = performance.now();
+        perfCounters.simulationInits++;
+        maybeUpdatePerfHud(simulationStartedAt);
+      }
+      isSimulationActive = true;
+      simulationSettledAt = 0;
+      currentSimulationAlpha = 0.2;
+      invalidateViewport();
+      startAnimationLoop();
       return;
     }
 
@@ -1360,6 +1488,7 @@ const TopologyGraph: Component<Props> = (props) => {
         }
       }
     });
+    activeSimulationMode = 'main';
     simulation = created.simulation;
     if (perfEnabled) {
       simulationStartedAt = performance.now();
@@ -1409,7 +1538,12 @@ const TopologyGraph: Component<Props> = (props) => {
         return node ? node : null;
       })
       .on('start', (e) => {
-        if (!e.active) {
+        if (activeSimulationMode === 'worker') {
+          isSimulationActive = true;
+          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.3);
+          invalidateViewport();
+          startAnimationLoop();
+        } else if (!e.active) {
           simulation?.alphaTarget(0.3).restart();
           isSimulationActive = true;
           invalidateViewport();
@@ -1417,19 +1551,30 @@ const TopologyGraph: Component<Props> = (props) => {
         }
         bumpInteraction();
         const n = e.subject as D3Node;
-        n.fx = n.x;
-        n.fy = n.y;
+        n.x = e.x;
+        n.y = e.y;
+        n.fx = e.x;
+        n.fy = e.y;
+        postWorkerDrag('start', n, e.x, e.y);
       })
       .on('drag', (e) => {
         bumpInteraction();
         const n = e.subject as D3Node;
+        n.x = e.x;
+        n.y = e.y;
         n.fx = e.x;
         n.fy = e.y;
+        postWorkerDrag('move', n, e.x, e.y);
         invalidateViewport();
       })
       .on('end', (e) => {
-        if (!e.active) simulation?.alphaTarget(0);
         const n = e.subject as D3Node;
+        if (activeSimulationMode === 'worker') {
+          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.14);
+          postWorkerDrag('end', n);
+        } else if (!e.active) {
+          simulation?.alphaTarget(0);
+        }
         n.fx = null;
         n.fy = null;
         invalidateViewport();
@@ -1447,7 +1592,12 @@ const TopologyGraph: Component<Props> = (props) => {
       clearBaseCanvasPreview();
       cachedGradient = null;
       invalidateViewport();
-      if (simulation && rect.width > 0) {
+      if (activeSimulationMode === 'worker' && rect.width > 0) {
+        isSimulationActive = true;
+        currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.15);
+        postWorkerResize(rect.width, rect.height);
+        startAnimationLoop();
+      } else if (simulation && rect.width > 0) {
         // Only update center force - keep it simple
         simulation.force('center', d3.forceCenter(rect.width / 2, rect.height / 2).strength(0.1));
         simulation.alpha(0.15).restart(); // Gentler restart on resize
@@ -1480,6 +1630,7 @@ const TopologyGraph: Component<Props> = (props) => {
     clearBaseCanvasPreview();
     if (rafId !== null) cancelAnimationFrame(rafId);
     simulation?.stop();
+    rejectPendingWorkerBuilds(new Error('Topology graph cleanup'));
     topologyWorker?.terminate();
     topologyWorker = null;
   });
