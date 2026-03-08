@@ -162,6 +162,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let activeSimulationMode: 'main' | 'worker' | null = null;
   let currentSimulationAlpha = 0;
   const workerBuildRequests = new Map<number, WorkerBuildPending>();
+  let topologySyncTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // State
   const [selectedNode, setSelectedNode] = createSignal<D3Node | null>(null);
@@ -169,6 +170,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
   const [perfSnapshot, setPerfSnapshot] = createSignal<PerfSnapshot | null>(null);
+  const [topologySyncing, setTopologySyncing] = createSignal(false);
 
   // View transform state
   let transform = d3.zoomIdentity;
@@ -275,6 +277,23 @@ const TopologyGraph: Component<Props> = (props) => {
       clearTimeout(panPreviewCommitTimeoutId);
       panPreviewCommitTimeoutId = null;
     }
+  };
+  const clearTopologySyncTimeout = () => {
+    if (topologySyncTimeoutId) {
+      clearTimeout(topologySyncTimeoutId);
+      topologySyncTimeoutId = null;
+    }
+  };
+  const markTopologySyncing = () => {
+    clearTopologySyncTimeout();
+    setTopologySyncing(true);
+  };
+  const markTopologySynced = () => {
+    clearTopologySyncTimeout();
+    topologySyncTimeoutId = setTimeout(() => {
+      topologySyncTimeoutId = null;
+      setTopologySyncing(false);
+    }, 220);
   };
   const clearBaseCanvasPreview = () => {
     if (!baseCanvasRef) return;
@@ -1415,6 +1434,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const initializeSimulation = async () => {
     if (!overlayCanvasRef) return;
+    markTopologySyncing();
 
     // Stop any existing simulation before rebuilding
     if (simulation) {
@@ -1451,6 +1471,7 @@ const TopologyGraph: Component<Props> = (props) => {
       activeWorkerRequestId = 0;
       invalidateViewport();
       draw();
+      markTopologySynced();
       return;
     }
 
@@ -1467,6 +1488,7 @@ const TopologyGraph: Component<Props> = (props) => {
       currentSimulationAlpha = 0.2;
       invalidateViewport();
       startAnimationLoop();
+      markTopologySynced();
       return;
     }
 
@@ -1501,6 +1523,7 @@ const TopologyGraph: Component<Props> = (props) => {
     simulationSettledAt = 0; // Reset idle timeout when simulation starts
     invalidateViewport();
     startAnimationLoop();
+    markTopologySynced();
 
     // Zoom behavior
     const zoom = d3.zoom<HTMLCanvasElement, unknown>()
@@ -1627,6 +1650,7 @@ const TopologyGraph: Component<Props> = (props) => {
   onCleanup(() => {
     window.removeEventListener('resize', debouncedResize);
     clearPanPreviewCommit();
+    clearTopologySyncTimeout();
     clearBaseCanvasPreview();
     if (rafId !== null) cancelAnimationFrame(rafId);
     simulation?.stop();
@@ -1656,6 +1680,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
     if (topologyChanged) {
       if (perfEnabled) perfCounters.topologyRebuilds++;
+      markTopologySyncing();
       // Clear any pending init
       if (initTimeoutId) {
         clearTimeout(initTimeoutId);
@@ -1682,17 +1707,28 @@ const TopologyGraph: Component<Props> = (props) => {
 
   return (
     <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
+        <div class="pointer-events-none absolute inset-0 overflow-hidden">
+            <div
+                class="absolute -left-20 top-10 h-56 w-56 rounded-full bg-neon-cyan/10 blur-3xl"
+                style={{ animation: 'topologyAuroraDrift 18s ease-in-out infinite' }}
+            />
+            <div
+                class="absolute -right-24 bottom-6 h-64 w-64 rounded-full bg-neon-purple/10 blur-3xl"
+                style={{ animation: 'topologyAuroraFloat 24s ease-in-out infinite' }}
+            />
+            <div class="absolute inset-0 opacity-[0.06]" style={{ background: 'radial-gradient(circle at 20% 20%, rgba(0,217,255,0.18), transparent 32%), radial-gradient(circle at 80% 76%, rgba(168,85,247,0.16), transparent 30%)' }} />
+        </div>
         <canvas
             ref={baseCanvasRef}
             width={dimensions().width}
             height={dimensions().height}
-            class="absolute inset-0 block pointer-events-none"
+            class="absolute inset-0 block pointer-events-none transition-opacity duration-200"
         />
         <canvas
             ref={overlayCanvasRef}
             width={dimensions().width}
             height={dimensions().height}
-            class="absolute inset-0 block touch-none"
+            class="absolute inset-0 block touch-none transition-opacity duration-150"
             onClick={handleCanvasClick}
             onMouseMove={handleMouseMove}
         />
@@ -1703,6 +1739,12 @@ const TopologyGraph: Component<Props> = (props) => {
             <span class="font-mono text-neon-cyan">{nodeCount()}</span>
             <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
             <span class="font-mono text-neon-purple hidden sm:inline">Canvas/GPU</span>
+            <Show when={topologySyncing()}>
+              <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-neon-cyan shadow-[0_0_18px_rgba(0,217,255,0.12)]">
+                <span class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
+                Syncing
+              </span>
+            </Show>
         </div>
 
         <Show when={perfSnapshot()}>
@@ -1792,6 +1834,17 @@ const TopologyGraph: Component<Props> = (props) => {
                 </div>
             )}
         </Show>
+
+        <style>{`
+          @keyframes topologyAuroraDrift {
+            0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.24; }
+            50% { transform: translate3d(38px, -18px, 0) scale(1.08); opacity: 0.38; }
+          }
+          @keyframes topologyAuroraFloat {
+            0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.2; }
+            50% { transform: translate3d(-34px, 22px, 0) scale(1.12); opacity: 0.34; }
+          }
+        `}</style>
     </div>
   );
 };
