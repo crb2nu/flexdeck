@@ -206,7 +206,6 @@ build:
     # Use GZIP for faster cache compression
     BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
   before_script:
-    - *clone_repo
     - |
       echo "Waiting for BuildKit..."
       for i in $(seq 1 30); do
@@ -221,12 +220,14 @@ build:
       IMAGE="${REGISTRY}/${IMAGE_NAME}"
       # Use the shared build-cache repository
       CACHE_REPO="registry.harbor.lan/library/build-cache"
+      REMOTE_CONTEXT="https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git#${CI_COMMIT_SHA}"
 
       # Common build args
       BUILD_ARGS=(
-        --frontend dockerfile.v0
-        --local context=.
-        --local dockerfile=.
+        --frontend gateway.v0
+        --opt source=docker/dockerfile
+        --opt context="${REMOTE_CONTEXT}"
+        --opt filename=Dockerfile
         --opt build-arg:TARGETOS=linux
         --opt build-arg:TARGETARCH=amd64
         # Registry-based cache (cross-build persistence)
