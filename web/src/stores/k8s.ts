@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { authenticatedFetch } from "./auth";
 import { pollingScheduler } from "../lib/polling";
@@ -97,6 +97,9 @@ const [connectionStatus, setConnectionStatus] = createSignal<
 >("disconnected");
 let eventSource: EventSource | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let watchFlushTimeout: ReturnType<typeof setTimeout> | null = null;
+let pendingWatchEvents: WatchEvent[] = [];
+const WATCH_BATCH_MS = 75;
 
 const hashString = (value: string): number => {
   let hash = 5381;
@@ -173,13 +176,13 @@ const bumpStyleVersion = () => {
   setStore("styleVersion", (value) => value + 1);
 };
 
-// Apply a watch event to the store
-function applyWatchEvent(event: WatchEvent) {
-  const { type, objectType, object } = event;
+interface WatchChangeFlags {
+  topologyChanged: boolean;
+  styleChanged: boolean;
+}
 
-  setStore("lastUpdate", Date.now());
-  let topologyChanged = false;
-  let styleChanged = false;
+const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
+  const { type, objectType, object } = event;
 
   if (objectType === "node") {
     const node = object as K8sNode;
@@ -189,24 +192,24 @@ function applyWatchEvent(event: WatchEvent) {
       );
       if (type === "DELETED") {
         if (index >= 0) {
-          topologyChanged = true;
-          styleChanged = true;
+          flags.topologyChanged = true;
+          flags.styleChanged = true;
         }
         return nodes.filter((n) => n.metadata.uid !== node.metadata.uid);
       } else if (index >= 0) {
         const previous = nodes[index];
         if (previous.metadata.name !== node.metadata.name) {
-          topologyChanged = true;
+          flags.topologyChanged = true;
         }
         if (nodeReadyStatus(previous) !== nodeReadyStatus(node)) {
-          styleChanged = true;
+          flags.styleChanged = true;
         }
         const updated = [...nodes];
         updated[index] = node;
         return updated;
       } else {
-        topologyChanged = true;
-        styleChanged = true;
+        flags.topologyChanged = true;
+        flags.styleChanged = true;
         return [...nodes, node];
       }
     });
@@ -216,8 +219,8 @@ function applyWatchEvent(event: WatchEvent) {
       const index = pods.findIndex((p) => p.metadata.uid === pod.metadata.uid);
       if (type === "DELETED") {
         if (index >= 0) {
-          topologyChanged = true;
-          styleChanged = true;
+          flags.topologyChanged = true;
+          flags.styleChanged = true;
         }
         return pods.filter((p) => p.metadata.uid !== pod.metadata.uid);
       } else if (index >= 0) {
@@ -227,17 +230,17 @@ function applyWatchEvent(event: WatchEvent) {
           previous.metadata.namespace !== pod.metadata.namespace ||
           previous.spec.nodeName !== pod.spec.nodeName
         ) {
-          topologyChanged = true;
+          flags.topologyChanged = true;
         }
         if (previous.status?.phase !== pod.status?.phase) {
-          styleChanged = true;
+          flags.styleChanged = true;
         }
         const updated = [...pods];
         updated[index] = pod;
         return updated;
       } else {
-        topologyChanged = true;
-        styleChanged = true;
+        flags.topologyChanged = true;
+        flags.styleChanged = true;
         return [...pods, pod];
       }
     });
@@ -249,7 +252,7 @@ function applyWatchEvent(event: WatchEvent) {
       );
       if (type === "DELETED") {
         if (index >= 0) {
-          topologyChanged = true;
+          flags.topologyChanged = true;
         }
         return services.filter((s) => s.metadata.uid !== service.metadata.uid);
       } else if (index >= 0) {
@@ -260,21 +263,45 @@ function applyWatchEvent(event: WatchEvent) {
           previous.spec.type !== service.spec.type ||
           !selectorEquals(previous.spec.selector, service.spec.selector)
         ) {
-          topologyChanged = true;
+          flags.topologyChanged = true;
         }
         const updated = [...services];
         updated[index] = service;
         return updated;
       } else {
-        topologyChanged = true;
+        flags.topologyChanged = true;
         return [...services, service];
       }
     });
   }
+};
 
-  if (topologyChanged) bumpTopologyVersion();
-  if (styleChanged) bumpStyleVersion();
-}
+const flushPendingWatchEvents = () => {
+  watchFlushTimeout = null;
+  if (pendingWatchEvents.length === 0) return;
+
+  const events = pendingWatchEvents;
+  pendingWatchEvents = [];
+  const flags: WatchChangeFlags = {
+    topologyChanged: false,
+    styleChanged: false,
+  };
+
+  batch(() => {
+    for (const event of events) {
+      applyWatchEventToStore(event, flags);
+    }
+    setStore("lastUpdate", Date.now());
+    if (flags.topologyChanged) bumpTopologyVersion();
+    if (flags.styleChanged) bumpStyleVersion();
+  });
+};
+
+const enqueueWatchEvent = (event: WatchEvent) => {
+  pendingWatchEvents.push(event);
+  if (watchFlushTimeout) return;
+  watchFlushTimeout = setTimeout(flushPendingWatchEvents, WATCH_BATCH_MS);
+};
 
 // Fetch initial data via REST
 async function fetchInitialData() {
@@ -432,7 +459,7 @@ function connectSSE(namespace?: string) {
   eventSource.addEventListener("node", (e: MessageEvent) => {
     try {
       const event: WatchEvent = JSON.parse(e.data);
-      applyWatchEvent(event);
+      enqueueWatchEvent(event);
     } catch (err) {
       console.error("Failed to parse node event:", err);
     }
@@ -441,7 +468,7 @@ function connectSSE(namespace?: string) {
   eventSource.addEventListener("pod", (e: MessageEvent) => {
     try {
       const event: WatchEvent = JSON.parse(e.data);
-      applyWatchEvent(event);
+      enqueueWatchEvent(event);
     } catch (err) {
       console.error("Failed to parse pod event:", err);
     }
@@ -450,7 +477,7 @@ function connectSSE(namespace?: string) {
   eventSource.addEventListener("service", (e: MessageEvent) => {
     try {
       const event: WatchEvent = JSON.parse(e.data);
-      applyWatchEvent(event);
+      enqueueWatchEvent(event);
     } catch (err) {
       console.error("Failed to parse service event:", err);
     }
@@ -515,6 +542,11 @@ export function disconnectK8sStream() {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
+  if (watchFlushTimeout) {
+    clearTimeout(watchFlushTimeout);
+    watchFlushTimeout = null;
+  }
+  pendingWatchEvents = [];
   stopPolling();
   setConnectionStatus("disconnected");
   setStore("connected", false);
