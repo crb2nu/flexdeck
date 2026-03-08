@@ -92,6 +92,15 @@ interface PerfSnapshot {
   legacyHashEntityVisitsAvoided: number;
 }
 
+interface LiveTopologyStats {
+  fps: number;
+  avgFrameMs: number;
+  nodes: number;
+  links: number;
+  lastBuildMs: number;
+  lastSettleMs: number;
+}
+
 interface WorkerBuildRequest {
   type: 'build';
   requestId: number;
@@ -170,6 +179,14 @@ const TopologyGraph: Component<Props> = (props) => {
   const [dimensions, setDimensions] = createSignal({ width: 800, height: 600 });
   const [nodeCount, setNodeCount] = createSignal(0);
   const [perfSnapshot, setPerfSnapshot] = createSignal<PerfSnapshot | null>(null);
+  const [liveTopologyStats, setLiveTopologyStats] = createSignal<LiveTopologyStats>({
+    fps: 0,
+    avgFrameMs: 0,
+    nodes: 0,
+    links: 0,
+    lastBuildMs: 0,
+    lastSettleMs: 0,
+  });
   const [topologySyncing, setTopologySyncing] = createSignal(false);
 
   // View transform state
@@ -211,6 +228,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let simulationStartedAt = 0;
   let perfEnabled = false;
   let lastPerfHudUpdate = 0;
+  let lastTopologyBuildMs = 0;
+  let lastSimulationSettleMs = 0;
   let sourceNodeCount = 0;
   let sourcePodCount = 0;
   let sourceServiceCount = 0;
@@ -330,7 +349,6 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const recordFrameSample = (frameMs: number) => {
-    if (!perfEnabled) return;
     perfCounters.framesRendered++;
     perfCounters.maxFrameMs = Math.max(perfCounters.maxFrameMs, frameMs);
     frameSamples[frameSampleCursor] = frameMs;
@@ -338,7 +356,7 @@ const TopologyGraph: Component<Props> = (props) => {
     frameSampleCount = Math.min(frameSampleCount + 1, PERF_FRAME_WINDOW);
   };
 
-  const buildPerfSnapshot = (): PerfSnapshot => {
+  const collectFrameStats = () => {
     const samples = Array.from(frameSamples.slice(0, frameSampleCount));
     let avgFrameMs = 0;
     if (samples.length > 0) {
@@ -350,6 +368,11 @@ const TopologyGraph: Component<Props> = (props) => {
     const p95Index = samples.length > 0 ? Math.min(samples.length - 1, Math.floor(samples.length * 0.95)) : 0;
     const p95FrameMs = samples.length > 0 ? samples[p95Index] : 0;
     const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+    return { avgFrameMs, fps, p95FrameMs };
+  };
+
+  const buildPerfSnapshot = (): PerfSnapshot => {
+    const { avgFrameMs, fps, p95FrameMs } = collectFrameStats();
     const avgSimulationSettleMs = perfCounters.simulationSettles > 0
       ? perfCounters.simulationTotalSettleMs / perfCounters.simulationSettles
       : 0;
@@ -376,9 +399,22 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const maybeUpdatePerfHud = (now: number) => {
-    if (!perfEnabled) return;
     if (now - lastPerfHudUpdate < PERF_HUD_UPDATE_MS) return;
     lastPerfHudUpdate = now;
+    const frameStats = collectFrameStats();
+    const liveStats = {
+      fps: frameStats.fps,
+      avgFrameMs: frameStats.avgFrameMs,
+      nodes: graphNodes.length,
+      links: graphLinks.length,
+      lastBuildMs: lastTopologyBuildMs,
+      lastSettleMs: lastSimulationSettleMs,
+    };
+    setLiveTopologyStats(liveStats);
+    if (typeof window !== 'undefined') {
+      (window as Window & { __FLEXDECK_TOPOLOGY_LIVE__?: LiveTopologyStats }).__FLEXDECK_TOPOLOGY_LIVE__ = liveStats;
+    }
+    if (!perfEnabled) return;
     const snapshot = buildPerfSnapshot();
     setPerfSnapshot(snapshot);
     if (typeof window !== 'undefined') {
@@ -593,9 +629,12 @@ const TopologyGraph: Component<Props> = (props) => {
     if (!isSimulationActive) return;
     isSimulationActive = false;
     simulationSettledAt = performance.now();
+    if (simulationStartedAt > 0) {
+      lastSimulationSettleMs = simulationSettledAt - simulationStartedAt;
+    }
     if (perfEnabled && simulationStartedAt > 0) {
       perfCounters.simulationSettles++;
-      perfCounters.simulationTotalSettleMs += simulationSettledAt - simulationStartedAt;
+      perfCounters.simulationTotalSettleMs += lastSimulationSettleMs;
       maybeUpdatePerfHud(simulationSettledAt);
     }
   };
@@ -1435,6 +1474,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const initializeSimulation = async () => {
     if (!overlayCanvasRef) return;
     markTopologySyncing();
+    const rebuildStartedAt = performance.now();
 
     // Stop any existing simulation before rebuilding
     if (simulation) {
@@ -1471,6 +1511,8 @@ const TopologyGraph: Component<Props> = (props) => {
       activeWorkerRequestId = 0;
       invalidateViewport();
       draw();
+      lastTopologyBuildMs = performance.now() - rebuildStartedAt;
+      maybeUpdatePerfHud(performance.now());
       markTopologySynced();
       return;
     }
@@ -1478,16 +1520,18 @@ const TopologyGraph: Component<Props> = (props) => {
     if (workerBuildSucceeded) {
       activeSimulationMode = 'worker';
       activeWorkerRequestId = requestId;
+      simulationStartedAt = performance.now();
       if (perfEnabled) {
-        simulationStartedAt = performance.now();
         perfCounters.simulationInits++;
         maybeUpdatePerfHud(simulationStartedAt);
       }
       isSimulationActive = true;
       simulationSettledAt = 0;
+      lastTopologyBuildMs = simulationStartedAt - rebuildStartedAt;
       currentSimulationAlpha = 0.2;
       invalidateViewport();
       startAnimationLoop();
+      maybeUpdatePerfHud(simulationStartedAt);
       markTopologySynced();
       return;
     }
@@ -1503,17 +1547,20 @@ const TopologyGraph: Component<Props> = (props) => {
         simulationSettledAt = performance.now();
         invalidateViewport();
         startAnimationLoop();
+        if (simulationStartedAt > 0) {
+          lastSimulationSettleMs = simulationSettledAt - simulationStartedAt;
+        }
         if (perfEnabled && simulationStartedAt > 0) {
           perfCounters.simulationSettles++;
-          perfCounters.simulationTotalSettleMs += simulationSettledAt - simulationStartedAt;
+          perfCounters.simulationTotalSettleMs += lastSimulationSettleMs;
           maybeUpdatePerfHud(simulationSettledAt);
         }
       }
     });
     activeSimulationMode = 'main';
     simulation = created.simulation;
+    simulationStartedAt = performance.now();
     if (perfEnabled) {
-      simulationStartedAt = performance.now();
       perfCounters.simulationInits++;
       maybeUpdatePerfHud(simulationStartedAt);
     }
@@ -1521,8 +1568,10 @@ const TopologyGraph: Component<Props> = (props) => {
     // NOW start animation loop after warmup
     isSimulationActive = true;
     simulationSettledAt = 0; // Reset idle timeout when simulation starts
+    lastTopologyBuildMs = simulationStartedAt - rebuildStartedAt;
     invalidateViewport();
     startAnimationLoop();
+    maybeUpdatePerfHud(simulationStartedAt);
     markTopologySynced();
 
     // Zoom behavior
@@ -1745,6 +1794,13 @@ const TopologyGraph: Component<Props> = (props) => {
                 Syncing
               </span>
             </Show>
+            <span class="ml-1 hidden items-center gap-2 rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-text-dim shadow-[0_0_16px_rgba(0,0,0,0.2)] lg:inline-flex">
+              <span>{liveTopologyStats().nodes}n/{liveTopologyStats().links}l</span>
+              <span>{liveTopologyStats().fps.toFixed(0)}fps</span>
+              <span>frame {liveTopologyStats().avgFrameMs.toFixed(1)}ms</span>
+              <span>build {liveTopologyStats().lastBuildMs.toFixed(0)}ms</span>
+              <span>settle {liveTopologyStats().lastSettleMs.toFixed(0)}ms</span>
+            </span>
         </div>
 
         <Show when={perfSnapshot()}>

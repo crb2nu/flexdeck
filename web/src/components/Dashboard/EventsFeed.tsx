@@ -1,6 +1,7 @@
-import { Component, createSignal, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { k8s } from '../../lib/api';
+import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
 interface K8sEvent {
   metadata: { name: string; namespace: string; creationTimestamp: string };
@@ -18,6 +19,14 @@ const EventsFeed: Component = () => {
   const [events, setEvents] = createSignal<K8sEvent[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  const stablePanel = useStablePanelState({
+    value: events,
+    loading,
+    error,
+    signature: (items) =>
+      items.map((evt) => `${evt.metadata?.name}:${evt.count ?? 0}:${evt.lastTimestamp || evt.metadata?.creationTimestamp || ''}`).join('|'),
+  });
+  const displayEvents = createMemo(() => stablePanel.effectiveValue());
 
   const fetchEvents = async () => {
     try {
@@ -54,31 +63,45 @@ const EventsFeed: Component = () => {
         <div class="flex items-center gap-2">
           <span class="text-xs text-neon-cyan">⚡</span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">Cluster Events</span>
+          <Show when={stablePanel.status()}>
+            {(status) => (
+              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider ${stablePanelStatusClasses(status())}`}>
+                {status()}
+              </span>
+            )}
+          </Show>
         </div>
-        <span class="text-[10px] text-text-dim">{events().length} recent</span>
+        <span class="text-[10px] text-text-dim">{displayEvents().length} recent</span>
       </div>
 
-      <div class="flex-1 overflow-y-auto">
+      <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
+        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
-          when={!loading()}
+          when={!stablePanel.showBlockingLoading()}
           fallback={
             <div class="flex items-center justify-center py-6">
               <span class="text-xs text-text-dim animate-pulse">Loading events...</span>
             </div>
           }
         >
-          <Show when={error()}>
+          <Show when={stablePanel.showBlockingError()}>
             <div class="px-3 py-2 text-xs text-red-400">{error()}</div>
           </Show>
 
+          <Show when={error() && stablePanel.hasStableValue()}>
+            <div class="px-3 py-2 text-[10px] text-status-warn/90 border-b border-status-warn/10 bg-status-warn/5">
+              Event refresh delayed. Showing last good snapshot.
+            </div>
+          </Show>
+
           <Show
-            when={events().length > 0}
+            when={displayEvents().length > 0}
             fallback={
               <div class="px-3 py-4 text-center text-xs text-text-dim">No recent events</div>
             }
           >
             <div class="divide-y divide-white/5">
-              <For each={events()}>
+              <For each={displayEvents()}>
                 {(evt) => (
                   <div class="px-3 py-2 hover:bg-white/[0.02] transition-colors group">
                     <div class="flex items-start gap-2">

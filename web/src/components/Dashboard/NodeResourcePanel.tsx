@@ -1,8 +1,9 @@
-import { Component, createSignal, For, Show } from 'solid-js';
+import { Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
+import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
 interface NodeGPU {
   node: string;
@@ -36,6 +37,19 @@ const NodeResourcePanel: Component = () => {
   const [gpuHistory, setGpuHistory] = createSignal<Record<string, number[]>>({});
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(false);
+  const stablePanel = useStablePanelState({
+    value: () => ({
+      nodes: nodes(),
+      gpuHistory: gpuHistory(),
+    }),
+    loading,
+    error,
+    signature: (snapshot) => snapshot.nodes
+      .map((node) => `${node.node}:${node.ready ? 1 : 0}:${Math.round(node.cpuPercent ?? -1)}:${Math.round(node.memPercent ?? -1)}:${Math.round(node.gpu?.utilization ?? -1)}`)
+      .join('|'),
+  });
+  const displayNodes = createMemo(() => stablePanel.effectiveValue().nodes);
+  const displayGpuHistory = createMemo(() => stablePanel.effectiveValue().gpuHistory);
 
   const queryProm = async (query: string) => {
     try {
@@ -157,34 +171,49 @@ const NodeResourcePanel: Component = () => {
   const barColor = (pct: number) =>
     pct > 90 ? 'bg-status-error' : pct > 70 ? 'bg-status-warn' : 'bg-neon-cyan';
 
-  const gpuNodes = () => nodes().filter((n) => n.gpu != null);
-  const nonGpuNodes = () => nodes().filter((n) => n.gpu == null);
+  const gpuNodes = () => displayNodes().filter((n) => n.gpu != null);
+  const nonGpuNodes = () => displayNodes().filter((n) => n.gpu == null);
 
   return (
     <div class="glass-panel p-4 space-y-3">
       <div class="flex items-center justify-between">
-        <h3 class="text-xs font-bold uppercase tracking-widest text-text-main">
-          Node Resources
-        </h3>
+        <div class="flex items-center gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-text-main">
+            Node Resources
+          </h3>
+          <Show when={stablePanel.status()}>
+            {(status) => (
+              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider ${stablePanelStatusClasses(status())}`}>
+                {status()}
+              </span>
+            )}
+          </Show>
+        </div>
         <span class="text-[10px] text-text-dim">
-          {nodes().length} nodes · {gpuNodes().length} GPU
+          {displayNodes().length} nodes · {gpuNodes().length} GPU
         </span>
       </div>
 
-      <Show when={loading()}>
+      <Show when={stablePanel.showBlockingLoading()}>
         <div class="flex items-center justify-center py-6">
           <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
         </div>
       </Show>
 
-      <Show when={!loading() && error()}>
+      <Show when={stablePanel.showBlockingError()}>
         <div class="text-xs text-status-warn text-center py-4">
           No node metrics available. Check Prometheus connectivity.
         </div>
       </Show>
 
-      <Show when={!loading() && !error()}>
-        <div class="space-y-2">
+      <Show when={stablePanel.hasStableValue() || (!loading() && !error())}>
+        <div class={`relative space-y-2 transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
+          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+          <Show when={error() && stablePanel.hasStableValue()}>
+            <div class="rounded-md border border-status-warn/10 bg-status-warn/5 px-2 py-1 text-[10px] text-status-warn/90">
+              Metrics refresh delayed. Showing last good snapshot.
+            </div>
+          </Show>
           {/* GPU Nodes first */}
           <For each={gpuNodes()}>
             {(n) => {
@@ -193,7 +222,7 @@ const NodeResourcePanel: Component = () => {
                 gpu().vramUsed != null && gpu().vramTotal != null && gpu().vramTotal! > 0
                   ? (gpu().vramUsed! / gpu().vramTotal!) * 100
                   : null;
-              const hist = () => gpuHistory()[n.node] || [];
+              const hist = () => displayGpuHistory()[n.node] || [];
 
               return (
                 <div class="rounded-md bg-white/5 p-2.5 space-y-1.5">

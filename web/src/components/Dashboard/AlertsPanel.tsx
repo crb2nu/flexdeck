@@ -1,6 +1,7 @@
-import { Component, createSignal, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
+import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
 interface PrometheusAlert {
   labels: Record<string, string>;
@@ -17,6 +18,14 @@ const AlertsPanel: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [collapsed, setCollapsed] = createSignal(false);
+  const stablePanel = useStablePanelState({
+    value: alerts,
+    loading,
+    error,
+    signature: (items) =>
+      items.map((alert) => `${alert.labels?.alertname || 'unknown'}:${alert.state}:${alert.activeAt}`).join('|'),
+  });
+  const displayAlerts = createMemo(() => stablePanel.effectiveValue());
 
   const fetchAlerts = async () => {
     try {
@@ -35,11 +44,11 @@ const AlertsPanel: Component = () => {
   createPolling('dash-alerts', fetchAlerts, POLL_INTERVAL);
 
   const firingAlerts = createMemo(() =>
-    alerts().filter(a => a.state === 'firing')
+    displayAlerts().filter(a => a.state === 'firing')
   );
 
   const pendingAlerts = createMemo(() =>
-    alerts().filter(a => a.state === 'pending')
+    displayAlerts().filter(a => a.state === 'pending')
   );
 
   const severityColor = (severity?: string) => {
@@ -87,6 +96,13 @@ const AlertsPanel: Component = () => {
               {pendingAlerts().length} pending
             </span>
           </Show>
+          <Show when={stablePanel.status()}>
+            {(status) => (
+              <span class={`px-1.5 py-0.5 rounded-full text-[9px] font-mono uppercase border ${stablePanelStatusClasses(status())}`}>
+                {status()}
+              </span>
+            )}
+          </Show>
           <Show when={allActiveAlerts().length === 0 && !loading()}>
             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-neon-green/10 text-neon-green border border-neon-green/20">
               all clear
@@ -105,17 +121,24 @@ const AlertsPanel: Component = () => {
 
       {/* Body */}
       <Show when={!collapsed()}>
-        <div class="flex-1 overflow-y-auto" style={{ 'max-height': '220px' }}>
+        <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`} style={{ 'max-height': '220px' }}>
+          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
           <Show
-            when={!loading()}
+            when={!stablePanel.showBlockingLoading()}
             fallback={
               <div class="flex items-center justify-center py-6">
                 <span class="text-xs text-text-dim animate-pulse">Checking alerts...</span>
               </div>
             }
           >
-            <Show when={error()}>
+            <Show when={stablePanel.showBlockingError()}>
               <div class="px-3 py-2 text-xs text-red-400">{error()}</div>
+            </Show>
+
+            <Show when={error() && stablePanel.hasStableValue()}>
+              <div class="px-3 py-2 text-[10px] text-status-warn/90 border-b border-status-warn/10 bg-status-warn/5">
+                Alert refresh delayed. Showing last good snapshot.
+              </div>
             </Show>
 
             <Show

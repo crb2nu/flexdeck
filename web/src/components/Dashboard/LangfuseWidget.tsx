@@ -1,6 +1,7 @@
-import { Component, createSignal, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { langfuse } from '../../lib/api';
+import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
 interface LangfuseModelStats {
   model: string;
@@ -94,6 +95,27 @@ const LangfuseWidget: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [activeTab, setActiveTab] = createSignal<'models' | 'traces' | 'overview'>('overview');
+  const stablePanel = useStablePanelState({
+    value: () => ({
+      healthy: healthy(),
+      modelStats: modelStats(),
+      traces: traces(),
+      dailyMetrics: dailyMetrics(),
+    }),
+    loading,
+    error,
+    signature: (snapshot) => [
+      snapshot.healthy === null ? 'unknown' : snapshot.healthy ? 'healthy' : 'unhealthy',
+      snapshot.modelStats.length,
+      snapshot.traces.length,
+      snapshot.dailyMetrics.length,
+      snapshot.modelStats.reduce((sum, item) => sum + item.totalCalls, 0),
+      snapshot.modelStats.reduce((sum, item) => sum + item.errors, 0),
+      snapshot.traces[0]?.id || '',
+      snapshot.dailyMetrics[snapshot.dailyMetrics.length - 1]?.date || '',
+    ].join('|'),
+  });
+  const displayData = createMemo(() => stablePanel.effectiveValue());
 
   const fetchAll = async () => {
     try {
@@ -148,23 +170,23 @@ const LangfuseWidget: Component = () => {
 
   // Computed
   const totalCost = createMemo(() =>
-    modelStats().reduce((sum, m) => sum + m.totalCost, 0)
+    displayData().modelStats.reduce((sum, m) => sum + m.totalCost, 0)
   );
 
   const totalTokens = createMemo(() =>
-    modelStats().reduce((sum, m) => sum + m.totalTokens, 0)
+    displayData().modelStats.reduce((sum, m) => sum + m.totalTokens, 0)
   );
 
   const totalCalls = createMemo(() =>
-    modelStats().reduce((sum, m) => sum + m.totalCalls, 0)
+    displayData().modelStats.reduce((sum, m) => sum + m.totalCalls, 0)
   );
 
   const totalErrors = createMemo(() =>
-    modelStats().reduce((sum, m) => sum + m.errors, 0)
+    displayData().modelStats.reduce((sum, m) => sum + m.errors, 0)
   );
 
   const sortedModels = createMemo(() =>
-    [...modelStats()].sort((a, b) => b.totalCalls - a.totalCalls)
+    [...displayData().modelStats].sort((a, b) => b.totalCalls - a.totalCalls)
   );
 
   const formatCost = (cost: number) => {
@@ -218,8 +240,15 @@ const LangfuseWidget: Component = () => {
         <div class="flex items-center gap-2">
           <span class="text-xs text-neon-purple">◈</span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">Langfuse</span>
-          <Show when={healthy() !== null}>
-            <span class={`w-1.5 h-1.5 rounded-full ${healthy() ? 'bg-neon-green' : 'bg-red-500'}`} />
+          <Show when={displayData().healthy !== null}>
+            <span class={`w-1.5 h-1.5 rounded-full ${displayData().healthy ? 'bg-neon-green' : 'bg-red-500'}`} />
+          </Show>
+          <Show when={stablePanel.status()}>
+            {(status) => (
+              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider ${stablePanelStatusClasses(status())}`}>
+                {status()}
+              </span>
+            )}
           </Show>
         </div>
         <div class="flex gap-0.5 bg-black/30 rounded p-0.5">
@@ -241,19 +270,26 @@ const LangfuseWidget: Component = () => {
       </div>
 
       {/* Body */}
-      <div class="flex-1 overflow-y-auto" style={{ 'max-height': '280px' }}>
+      <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`} style={{ 'max-height': '280px' }}>
+        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-purple/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
-          when={!loading()}
+          when={!stablePanel.showBlockingLoading()}
           fallback={
             <div class="flex items-center justify-center py-6">
               <span class="text-xs text-text-dim animate-pulse">Loading Langfuse data...</span>
             </div>
           }
         >
-          <Show when={error()}>
+          <Show when={stablePanel.showBlockingError()}>
             <div class="px-3 py-2 text-xs text-red-400 flex items-center gap-2">
               <span>⚠</span>
               <span>{error()}</span>
+            </div>
+          </Show>
+
+          <Show when={error() && stablePanel.hasStableValue()}>
+            <div class="px-3 py-2 text-[10px] text-status-warn/90 border-b border-status-warn/10 bg-status-warn/5">
+              Langfuse refresh delayed. Showing last good snapshot.
             </div>
           </Show>
 
@@ -283,24 +319,24 @@ const LangfuseWidget: Component = () => {
               </div>
 
               {/* Daily Trend */}
-              <Show when={dailyMetrics().length > 1}>
+              <Show when={displayData().dailyMetrics.length > 1}>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="flex items-center justify-between mb-1">
                     <span class="text-[9px] text-text-dim uppercase">7-Day Trend</span>
-                    <span class="text-[9px] text-text-dim">{dailyMetrics().length} days</span>
+                    <span class="text-[9px] text-text-dim">{displayData().dailyMetrics.length} days</span>
                   </div>
                   <div class="flex items-center gap-3">
                     <div>
                       <div class="text-[9px] text-text-dim mb-0.5">Traces</div>
                       <Sparkline
-                        data={dailyMetrics().slice(-7).map(d => d.countTraces)}
+                        data={displayData().dailyMetrics.slice(-7).map(d => d.countTraces)}
                         color="var(--neon-cyan, #22d3ee)"
                       />
                     </div>
                     <div>
                       <div class="text-[9px] text-text-dim mb-0.5">Cost</div>
                       <Sparkline
-                        data={dailyMetrics().slice(-7).map(d => d.totalCost)}
+                        data={displayData().dailyMetrics.slice(-7).map(d => d.totalCost)}
                         color="var(--neon-purple, #a855f7)"
                       />
                     </div>
@@ -377,13 +413,13 @@ const LangfuseWidget: Component = () => {
           {/* Traces Tab */}
           <Show when={activeTab() === 'traces'}>
             <Show
-              when={traces().length > 0}
+              when={displayData().traces.length > 0}
               fallback={
                 <div class="px-3 py-4 text-center text-xs text-text-dim">No recent traces</div>
               }
             >
               <div class="divide-y divide-white/5">
-                <For each={traces().slice(0, 15)}>
+                <For each={displayData().traces.slice(0, 15)}>
                   {(trace) => (
                     <div class="px-3 py-2 hover:bg-white/[0.02] transition-colors group">
                       <div class="flex items-start gap-2">
