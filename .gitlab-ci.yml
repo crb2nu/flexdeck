@@ -277,16 +277,16 @@ deploy:
         apk add --no-cache ca-certificates
       fi
       update-ca-certificates || true
-      apk add --no-cache curl bash
+      apk add --no-cache curl bash kubectl
     - curl -fsSL https://fluxcd.io/install.sh | bash
   script:
-    - echo "Triggering Flux reconciliation..."
     - echo "Image $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA is ready for deployment"
-    - flux reconcile kustomization apps --with-source
     - echo "Restarting deployment to pull latest image..."
-    - apk add --no-cache kubectl
     - kubectl -n flexdeck rollout restart deployment/flexdeck
     - kubectl -n flexdeck rollout status deployment/flexdeck --timeout=5m
+    - echo "Reconfirming Flux source and apps reconciliation without blocking flexdeck rollout on unrelated app health..."
+    - flux reconcile source git gitops-gitlab
+    - flux reconcile kustomization apps --with-source --timeout=30s || echo "Flux apps reconciliation is still progressing; flexdeck rollout already verified."
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
   environment:
