@@ -50,13 +50,13 @@ This plan outlines the next generation of features to transform FlexDeck from a 
 
 ### 3.5 Prometheus Alerts Panel
 
-**Status**: Planned
+**Status**: Completed
 **What**: Add an alerts section to the Dashboard page. Show active firing/pending alerts from `/api/prom/alerts` with severity badges, alert name, labels, and duration.
 **Frontend**: New `AlertsPanel` component in Dashboard.
 
 ### 3.6 Langfuse Observability Dashboard
 
-**Status**: Planned
+**Status**: Completed
 **What**: Build a dedicated observability page or Dashboard widget that visualizes Langfuse data:
 
 - Daily usage chart (tokens/day, costs/day)
@@ -107,7 +107,6 @@ This plan outlines the next generation of features to transform FlexDeck from a 
 
 ## Implementation Priorities
 
-1. **Langfuse Dashboard Widget** (3.6): High value — makes the Langfuse integration visible immediately.
-2. **Alerts Panel** (3.5): Critical ops visibility — consumes existing backend.
-3. **Per-Model Metrics** (3.4): Quick win — connects existing APIs.
-4. **Node Resource Breakdown** (3.8): Ties CRD GPU data to physical infra.
+1. **Per-Model Metrics** (3.4): Quick win — connects existing APIs.
+2. **K8s Events SSE Feed** (3.7): Real-time event stream upgrade.
+3. **Node Resource Breakdown** (3.8): Ties CRD GPU data to physical infra.

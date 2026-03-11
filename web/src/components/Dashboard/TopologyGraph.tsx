@@ -276,6 +276,11 @@ const TopologyGraph: Component<Props> = (props) => {
   const visibleNodeIndices: number[] = [];
   let visibleNodeFlags = new Uint8Array(0);
   let lastVisibleNodeCount = 0;
+  // Pre-filtered visible link indices (populated in updateVisibleNodes)
+  const visibleHostsLinkIndices: number[] = [];
+  const visibleSelectsLinkIndices: number[] = [];
+  let lastVisibleHostsLinkCount = 0;
+  let lastVisibleSelectsLinkCount = 0;
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
   };
@@ -575,6 +580,8 @@ const TopologyGraph: Component<Props> = (props) => {
       link.targetIdx = nodeIndexMap.get(targetId);
     }
     visibleNodeIndices.length = graphNodes.length;
+    visibleHostsLinkIndices.length = hostsLinks.length;
+    visibleSelectsLinkIndices.length = selectsLinks.length;
 
     // Invalidate style cache - will be rebuilt on next draw
     nodeStylesCacheValid = false;
@@ -896,15 +903,19 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const ensureNodeStylesCache = () => {
     if (nodeStylesCacheValid) return;
-    nodeStylesCache.clear();
+    // Incremental update: only recompute entries for nodes whose style changed
+    const staleIds = new Set(nodeStylesCache.keys());
     for (const node of graphNodes) {
+      staleIds.delete(node.id);
+      const r = getNodeRadius(node);
+      const color = getNodeColor(node);
+      const existing = nodeStylesCache.get(node.id);
+      if (existing && existing.r === r && existing.color === color) continue;
       const truncLabel = node.label.length > 14 ? `${node.label.slice(0, 12)}...` : node.label;
-      nodeStylesCache.set(node.id, {
-        r: getNodeRadius(node),
-        color: getNodeColor(node),
-        truncLabel
-      });
+      nodeStylesCache.set(node.id, { r, color, truncLabel });
     }
+    // Remove entries for nodes no longer in the graph
+    for (const id of staleIds) nodeStylesCache.delete(id);
     nodeStylesCacheValid = true;
   };
 
@@ -944,6 +955,28 @@ const TopologyGraph: Component<Props> = (props) => {
       if (isVisible) visibleNodeIndices[visibleNodeCount++] = i;
     }
     lastVisibleNodeCount = visibleNodeCount;
+
+    // Pre-filter visible links: a link is visible if at least one endpoint is visible
+    let visibleHostsCount = 0;
+    for (let i = 0, len = hostsLinks.length; i < len; i++) {
+      const link = hostsLinks[i];
+      if (link.sourceIdx !== undefined && link.targetIdx !== undefined) {
+        if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
+      }
+      visibleHostsLinkIndices[visibleHostsCount++] = i;
+    }
+    lastVisibleHostsLinkCount = visibleHostsCount;
+
+    let visibleSelectsCount = 0;
+    for (let i = 0, len = selectsLinks.length; i < len; i++) {
+      const link = selectsLinks[i];
+      if (link.sourceIdx !== undefined && link.targetIdx !== undefined) {
+        if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
+      }
+      visibleSelectsLinkIndices[visibleSelectsCount++] = i;
+    }
+    lastVisibleSelectsLinkCount = visibleSelectsCount;
+
     viewportCacheDirty = false;
   };
 
@@ -1005,15 +1038,15 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    if (hostsLinks.length > 0) {
+    // Use pre-filtered visible link lists (computed in updateVisibleNodes)
+    const hostsCount = shouldCullLinks ? lastVisibleHostsLinkCount : hostsLinks.length;
+    if (hostsCount > 0) {
       ctx.beginPath();
-      for (const link of hostsLinks) {
+      for (let i = 0; i < hostsCount; i++) {
+        const link = shouldCullLinks ? hostsLinks[visibleHostsLinkIndices[i]] : hostsLinks[i];
         const source = link.source as D3Node;
         const target = link.target as D3Node;
         if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-        if (shouldCullLinks && link.sourceIdx !== undefined && link.targetIdx !== undefined) {
-          if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
-        }
         ctx.moveTo(source.x, source.y);
         ctx.lineTo(target.x, target.y);
       }
@@ -1029,15 +1062,14 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.stroke();
     }
 
-    if (selectsLinks.length > 0) {
+    const selectsCount = shouldCullLinks ? lastVisibleSelectsLinkCount : selectsLinks.length;
+    if (selectsCount > 0) {
       ctx.beginPath();
-      for (const link of selectsLinks) {
+      for (let i = 0; i < selectsCount; i++) {
+        const link = shouldCullLinks ? selectsLinks[visibleSelectsLinkIndices[i]] : selectsLinks[i];
         const source = link.source as D3Node;
         const target = link.target as D3Node;
         if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-        if (shouldCullLinks && link.sourceIdx !== undefined && link.targetIdx !== undefined) {
-          if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
-        }
         ctx.moveTo(source.x, source.y);
         ctx.lineTo(target.x, target.y);
       }
@@ -1145,45 +1177,35 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     if (particleCount > 0) {
-      ctx.beginPath();
+      // Single-pass: batch particles by color using two paths per render layer (glow + core)
+      const glowCyan = new Path2D();
+      const glowPurple = new Path2D();
+      const coreCyan = new Path2D();
+      const corePurple = new Path2D();
+
       for (let i = 0; i < particleCount; i++) {
         const particle = particlePositionsPool[i];
-        if (particle.colorIdx !== 0) continue;
-        ctx.moveTo(particle.x + 4, particle.y);
-        ctx.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
+        if (particle.colorIdx === 0) {
+          glowCyan.moveTo(particle.x + 4, particle.y);
+          glowCyan.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
+          coreCyan.moveTo(particle.x + 1.5, particle.y);
+          coreCyan.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
+        } else {
+          glowPurple.moveTo(particle.x + 4, particle.y);
+          glowPurple.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
+          corePurple.moveTo(particle.x + 1.5, particle.y);
+          corePurple.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
+        }
       }
+
       ctx.fillStyle = 'rgba(0,217,255,0.25)';
-      ctx.fill();
-
-      ctx.beginPath();
-      for (let i = 0; i < particleCount; i++) {
-        const particle = particlePositionsPool[i];
-        if (particle.colorIdx !== 1) continue;
-        ctx.moveTo(particle.x + 4, particle.y);
-        ctx.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
-      }
+      ctx.fill(glowCyan);
       ctx.fillStyle = 'rgba(168,85,247,0.25)';
-      ctx.fill();
-
-      ctx.beginPath();
-      for (let i = 0; i < particleCount; i++) {
-        const particle = particlePositionsPool[i];
-        if (particle.colorIdx !== 0) continue;
-        ctx.moveTo(particle.x + 1.5, particle.y);
-        ctx.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
-      }
+      ctx.fill(glowPurple);
       ctx.fillStyle = '#00d9ff';
-      ctx.fill();
-
-      ctx.beginPath();
-      for (let i = 0; i < particleCount; i++) {
-        const particle = particlePositionsPool[i];
-        if (particle.colorIdx !== 1) continue;
-        ctx.moveTo(particle.x + 1.5, particle.y);
-        ctx.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
-      }
+      ctx.fill(coreCyan);
       ctx.fillStyle = '#a855f7';
-      ctx.fill();
+      ctx.fill(corePurple);
     }
 
     const selectedId = selectedNode()?.id;
@@ -1296,11 +1318,9 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const draw = () => {
-    const baseCtx = baseCanvasCtx ?? baseCanvasRef?.getContext('2d') ?? null;
-    const overlayCtx = overlayCanvasCtx ?? overlayCanvasRef?.getContext('2d') ?? null;
-    if (!baseCtx || !overlayCtx) return;
-    baseCanvasCtx = baseCtx;
-    overlayCanvasCtx = overlayCtx;
+    if (!baseCanvasCtx || !overlayCanvasCtx) return;
+    const baseCtx = baseCanvasCtx;
+    const overlayCtx = overlayCanvasCtx;
 
     const frameStart = performance.now();
     const now = frameStart;
@@ -1314,9 +1334,9 @@ const TopologyGraph: Component<Props> = (props) => {
     let minFrameMs = 0;
     if (isDense) {
       if (isSimulationActive) {
-        minFrameMs = nearSettled ? 1000 / 16 : 1000 / 24;
+        minFrameMs = nearSettled ? 1000 / 24 : 1000 / 30;
       } else if (isUserInteracting) {
-        minFrameMs = 1000 / 24;
+        minFrameMs = 1000 / 30;
       }
     } else if (nearSettled) {
       minFrameMs = 1000 / 45;
@@ -1453,7 +1473,8 @@ const TopologyGraph: Component<Props> = (props) => {
   let lastMouseMoveTime = 0;
   const handleMouseMove = (event: MouseEvent) => {
       const now = performance.now();
-      const moveThrottleMs = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD ? 32 : 16;
+      const isLarge = graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD;
+      const moveThrottleMs = isLarge ? (isSimulationActive ? 48 : 24) : (isSimulationActive ? 32 : 16);
       if (now - lastMouseMoveTime < moveThrottleMs) return; // Skip if called too soon
       lastMouseMoveTime = now;
 

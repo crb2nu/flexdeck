@@ -1,35 +1,35 @@
 {
-  "generatedAt": "2026-02-24T19:17:48.612Z",
+  "generatedAt": "2026-03-07T18:26:02.862Z",
   "scenarios": [
     {
       "name": "small",
       "nodes": 270,
       "links": 292,
-      "ticks": 109,
-      "warmupTicks": 49,
+      "ticks": 66,
+      "warmupTicks": 6,
       "settleTicks": 60,
-      "buildMs": 0.4634590000000003,
-      "simMs": 52.823999999999984
+      "buildMs": 0.8728750000000218,
+      "simMs": 50.248917000000006
     },
     {
       "name": "medium",
       "nodes": 800,
       "links": 910,
-      "ticks": 122,
-      "warmupTicks": 64,
-      "settleTicks": 58,
-      "buildMs": 0.40295800000001236,
-      "simMs": 180.66983299999998
+      "ticks": 64,
+      "warmupTicks": 0,
+      "settleTicks": 64,
+      "buildMs": 0.4609169999999949,
+      "simMs": 150.534834
     },
     {
       "name": "large",
       "nodes": 1580,
       "links": 1815,
-      "ticks": 92,
-      "warmupTicks": 48,
-      "settleTicks": 44,
-      "buildMs": 0.7467080000000124,
-      "simMs": 290.743083
+      "ticks": 53,
+      "warmupTicks": 0,
+      "settleTicks": 53,
+      "buildMs": 0.8774579999999901,
+      "simMs": 251.96379199999996
     }
   ]
 }

@@ -74,7 +74,6 @@ Define a focused polish release that builds on recent fixes already shipped in P
 ### Acceptance Criteria
 - `.loom` plan/worklog include explicit verification gates and evidence links.
 - Reconciliation updates no longer miss active code-only deltas in high-touch UI files.
-- Polish release smoke validation is captured against `docs/polish-release-smoke-checklist.md`.
 
 ## Cross-Cutting UX Rules
 - Prefer additive UI indicators over silent behavior changes.

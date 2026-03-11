@@ -1,5 +1,17 @@
 # Loom Context Pack
 
+## Current Goal (2026-03-06 Addendum)
+- Identify the next performance and UX improvements that will make FlexDeck feel consistently snappy.
+- Audit whether Redis is being used as an independent platform cache or only as a side effect of LiteLLM metrics enablement.
+- Produce an implementation-ready backlog grounded in local code evidence plus external guidance on dashboard performance, visibility-aware polling, caching, and Prometheus query optimization.
+
+## Current Status Summary (2026-03-06 Addendum)
+- Frontend runtime work has already improved topology, pipeline visualization, metrics polling, and Grafana live preview behavior, but several timer-heavy surfaces still poll independently (`web/src/components/Alerts/index.tsx:40`, `web/src/components/Agents/HUDTab.tsx:128`, `web/src/components/Models/InferenceTab.tsx:114`, `web/src/components/Models/GPUMetricsPanel.tsx:181`, `web/src/components/Dashboard/NodeResourcePanel.tsx:152`).
+- Generic backend response caching is present across K8s, Grafana, CI, Alertmanager, FlexInfer, and LiteLLM handlers, but the cache bootstrap is currently tied to the LiteLLM metrics store (`internal/api/handlers/handlers.go:84`, `cmd/server/main.go:54`, `cmd/server/main.go:59`).
+- Prometheus proxy endpoints currently bypass Redis entirely and proxy each query directly to Prometheus (`internal/api/handlers/prometheus.go:35`, `internal/api/handlers/prometheus.go:56`).
+- Redis time-series storage exists for LiteLLM throughput and CI pipeline history, but hot summaries are recomputed from raw sorted sets on read (`internal/metrics/store.go:115`, `internal/metrics/pipeline_store.go:66`).
+- Codebase search is available again through a lexical-only index after the embedding path failed in this environment; plan updates should treat semantic indexing as degraded but not unavailable.
+
 ## Quick Links
 - Workspace snapshot: `00-workspace-snapshot.md`
 - MCP inventory: `00-mcp-inventory.md`
@@ -45,3 +57,15 @@
 - `ROADMAP.md:122`
 - `docs/roadmap-reconciliation-2026-03-03.md:1`
 - Command: `git log --since='2026-02-18' --pretty=format:'%h %ad %s' --date=short`
+- `internal/api/handlers/handlers.go:84`
+- `cmd/server/main.go:54`
+- `cmd/server/main.go:59`
+- `internal/api/handlers/prometheus.go:35`
+- `internal/api/handlers/prometheus.go:56`
+- `internal/metrics/store.go:115`
+- `internal/metrics/pipeline_store.go:66`
+- `web/src/components/Alerts/index.tsx:40`
+- `web/src/components/Agents/HUDTab.tsx:128`
+- `web/src/components/Models/InferenceTab.tsx:114`
+- `web/src/components/Models/GPUMetricsPanel.tsx:181`
+- `web/src/components/Dashboard/NodeResourcePanel.tsx:152`
