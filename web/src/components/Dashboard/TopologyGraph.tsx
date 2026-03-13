@@ -35,6 +35,8 @@ interface Props {
 const MAX_PARTICLES = 40;
 const LARGE_GRAPH_NODE_THRESHOLD = 600;
 const LARGE_GRAPH_LINK_THRESHOLD = 1200;
+const DENSITY_OVERVIEW_NODE_THRESHOLD = 750;
+const DENSITY_OVERVIEW_ZOOM_THRESHOLD = 0.95;
 const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
@@ -188,6 +190,8 @@ const TopologyGraph: Component<Props> = (props) => {
     lastSettleMs: 0,
   });
   const [topologySyncing, setTopologySyncing] = createSignal(false);
+  const [densityOverviewActive, setDensityOverviewActive] = createSignal(false);
+  const [densityOverviewHiddenPods, setDensityOverviewHiddenPods] = createSignal(0);
 
   // View transform state
   let transform = d3.zoomIdentity;
@@ -919,7 +923,21 @@ const TopologyGraph: Component<Props> = (props) => {
     nodeStylesCacheValid = true;
   };
 
-  const updateVisibleNodes = (width: number, height: number, force = false) => {
+  const shouldUseDensityOverview = (zoomLevel: number, isDense: boolean): boolean =>
+    isDense &&
+    graphNodes.length >= DENSITY_OVERVIEW_NODE_THRESHOLD &&
+    zoomLevel < DENSITY_OVERVIEW_ZOOM_THRESHOLD;
+
+  const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewMode: boolean): boolean =>
+    !densityOverviewMode || node.type !== 'pod';
+
+  const syncDensityOverviewState = (active: boolean) => {
+    const hiddenPods = active ? sourcePodCount : 0;
+    if (densityOverviewActive() !== active) setDensityOverviewActive(active);
+    if (densityOverviewHiddenPods() !== hiddenPods) setDensityOverviewHiddenPods(hiddenPods);
+  };
+
+  const updateVisibleNodes = (width: number, height: number, densityOverviewMode: boolean, force = false) => {
     if (!force && !viewportCacheDirty) return;
 
     if (transform.x !== lastFrustumTransform.x ||
@@ -947,6 +965,7 @@ const TopologyGraph: Component<Props> = (props) => {
       const node = graphNodes[i];
       const isVisible = node.x !== undefined &&
         node.y !== undefined &&
+        shouldRenderNodeForCurrentDensity(node, densityOverviewMode) &&
         node.x >= minX &&
         node.x <= maxX &&
         node.y >= minY &&
@@ -1017,6 +1036,7 @@ const TopologyGraph: Component<Props> = (props) => {
     height: number,
     zoomLevel: number,
     isDense: boolean,
+    densityOverviewMode: boolean,
     reduceDetail: boolean,
     reduceLinks: boolean,
     reduceNodeDetail: boolean,
@@ -1026,9 +1046,9 @@ const TopologyGraph: Component<Props> = (props) => {
     clearBaseCanvasPreview();
     drawBackground(ctx, width, height, isDense, isSimulationActive);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, isSimulationActive);
+    updateVisibleNodes(width, height, densityOverviewMode, isSimulationActive);
 
-    const shouldCullLinks = isDense || zoomLevel > 0.8;
+    const shouldCullLinks = densityOverviewMode || isDense || zoomLevel > 0.8;
     const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
     const drawStructuralLabels = !isDense || zoomLevel > 1;
 
@@ -1134,6 +1154,7 @@ const TopologyGraph: Component<Props> = (props) => {
     now: number,
     zoomLevel: number,
     isDense: boolean,
+    densityOverviewMode: boolean,
     reduceDetail: boolean,
     reduceLinks: boolean,
     reduceNodeDetail: boolean,
@@ -1142,7 +1163,7 @@ const TopologyGraph: Component<Props> = (props) => {
   ) => {
     ctx.clearRect(0, 0, width, height);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, isSimulationActive);
+    updateVisibleNodes(width, height, densityOverviewMode, isSimulationActive);
 
     maybeSpawnParticle(now, allowParticles);
 
@@ -1357,9 +1378,11 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceDetail = isDense && zoomLevel < 0.85;
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
+    const densityOverviewMode = shouldUseDensityOverview(zoomLevel, isDense);
     const skipDecorativeNodeEffects = isDense && !isUserInteracting;
     const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
-    const allowParticles = isSimulationActive && !reduceLinks && !isDense;
+    const allowParticles = isSimulationActive && !reduceLinks && !isDense && !densityOverviewMode;
+    syncDensityOverviewState(densityOverviewMode);
 
     if (isSimulationActive) {
       spatialGridDirty = true;
@@ -1378,6 +1401,7 @@ const TopologyGraph: Component<Props> = (props) => {
         height,
         zoomLevel,
         isDense,
+        densityOverviewMode,
         reduceDetail,
         reduceLinks,
         reduceNodeDetail,
@@ -1394,6 +1418,7 @@ const TopologyGraph: Component<Props> = (props) => {
         now,
         zoomLevel,
         isDense,
+        densityOverviewMode,
         reduceDetail,
         reduceLinks,
         reduceNodeDetail,
@@ -1813,6 +1838,12 @@ const TopologyGraph: Component<Props> = (props) => {
               <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-neon-cyan shadow-[0_0_18px_rgba(0,217,255,0.12)]">
                 <span class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
                 Syncing
+              </span>
+            </Show>
+            <Show when={densityOverviewActive()}>
+              <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.12)]">
+                <span class="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                Overview · {densityOverviewHiddenPods()} pods hidden
               </span>
             </Show>
             <span class="ml-1 hidden items-center gap-2 rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-text-dim shadow-[0_0_16px_rgba(0,0,0,0.2)] lg:inline-flex">
