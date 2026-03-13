@@ -35,8 +35,9 @@ interface Props {
 const MAX_PARTICLES = 40;
 const LARGE_GRAPH_NODE_THRESHOLD = 600;
 const LARGE_GRAPH_LINK_THRESHOLD = 1200;
-const DENSITY_OVERVIEW_NODE_THRESHOLD = 750;
-const DENSITY_OVERVIEW_ZOOM_THRESHOLD = 0.95;
+const DENSITY_OVERVIEW_NODE_THRESHOLD = 600;
+const DENSITY_OVERVIEW_POD_THRESHOLD = 300;
+const DENSITY_OVERVIEW_ZOOM_THRESHOLD = 1.25;
 const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
@@ -923,10 +924,12 @@ const TopologyGraph: Component<Props> = (props) => {
     nodeStylesCacheValid = true;
   };
 
-  const shouldUseDensityOverview = (zoomLevel: number, isDense: boolean): boolean =>
-    isDense &&
-    graphNodes.length >= DENSITY_OVERVIEW_NODE_THRESHOLD &&
-    zoomLevel < DENSITY_OVERVIEW_ZOOM_THRESHOLD;
+  const shouldUseDensityOverview = (zoomLevel: number): boolean => {
+    const largeGraph =
+      graphNodes.length >= DENSITY_OVERVIEW_NODE_THRESHOLD ||
+      sourcePodCount >= DENSITY_OVERVIEW_POD_THRESHOLD;
+    return largeGraph && zoomLevel < DENSITY_OVERVIEW_ZOOM_THRESHOLD;
+  };
 
   const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewMode: boolean): boolean =>
     !densityOverviewMode || node.type !== 'pod';
@@ -1378,7 +1381,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceDetail = isDense && zoomLevel < 0.85;
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
-    const densityOverviewMode = shouldUseDensityOverview(zoomLevel, isDense);
+    const densityOverviewMode = shouldUseDensityOverview(zoomLevel);
     const skipDecorativeNodeEffects = isDense && !isUserInteracting;
     const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
     const allowParticles = isSimulationActive && !reduceLinks && !isDense && !densityOverviewMode;
