@@ -104,6 +104,16 @@ interface LiveTopologyStats {
   lastSettleMs: number;
 }
 
+interface NamespaceAggregateEntry {
+  namespace: string;
+  color: string;
+  x: number;
+  y: number;
+  memberCount: number;
+  podCount: number;
+  serviceCount: number;
+}
+
 interface WorkerBuildRequest {
   type: 'build';
   requestId: number;
@@ -193,6 +203,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const [topologySyncing, setTopologySyncing] = createSignal(false);
   const [densityOverviewActive, setDensityOverviewActive] = createSignal(false);
   const [densityOverviewHiddenPods, setDensityOverviewHiddenPods] = createSignal(0);
+  const [densityOverviewHiddenServices, setDensityOverviewHiddenServices] = createSignal(0);
 
   // View transform state
   let transform = d3.zoomIdentity;
@@ -286,6 +297,11 @@ const TopologyGraph: Component<Props> = (props) => {
   const visibleSelectsLinkIndices: number[] = [];
   let lastVisibleHostsLinkCount = 0;
   let lastVisibleSelectsLinkCount = 0;
+  const namespaceAggregatePool: NamespaceAggregateEntry[] = [];
+  const namespaceAggregateIndex = new Map<string, NamespaceAggregateEntry>();
+  let lastNamespaceAggregateCount = 0;
+  let renderedTopologyNodeCount = 0;
+  let renderedTopologyLinkCount = 0;
   const bumpInteraction = () => {
     lastInteractionAt = performance.now();
   };
@@ -415,8 +431,8 @@ const TopologyGraph: Component<Props> = (props) => {
     const liveStats = {
       fps: frameStats.fps,
       avgFrameMs: frameStats.avgFrameMs,
-      nodes: graphNodes.length,
-      links: graphLinks.length,
+      nodes: renderedTopologyNodeCount || graphNodes.length,
+      links: renderedTopologyLinkCount || graphLinks.length,
       lastBuildMs: lastTopologyBuildMs,
       lastSettleMs: lastSimulationSettleMs,
     };
@@ -932,12 +948,74 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewMode: boolean): boolean =>
-    !densityOverviewMode || node.type !== 'pod';
+    !densityOverviewMode || node.type === 'node';
 
   const syncDensityOverviewState = (active: boolean) => {
     const hiddenPods = active ? sourcePodCount : 0;
+    const hiddenServices = active ? sourceServiceCount : 0;
     if (densityOverviewActive() !== active) setDensityOverviewActive(active);
     if (densityOverviewHiddenPods() !== hiddenPods) setDensityOverviewHiddenPods(hiddenPods);
+    if (densityOverviewHiddenServices() !== hiddenServices) setDensityOverviewHiddenServices(hiddenServices);
+  };
+
+  const updateNamespaceAggregates = () => {
+    lastNamespaceAggregateCount = 0;
+    namespaceAggregateIndex.clear();
+
+    const minX = cachedFrustum.minX;
+    const maxX = cachedFrustum.maxX;
+    const minY = cachedFrustum.minY;
+    const maxY = cachedFrustum.maxY;
+
+    for (let i = 0, len = graphNodes.length; i < len; i++) {
+      const node = graphNodes[i];
+      const nodeX = node.x;
+      const nodeY = node.y;
+      if (node.type === 'node' || !node.namespace || nodeX === undefined || nodeY === undefined) continue;
+      if (nodeX < minX || nodeX > maxX || nodeY < minY || nodeY > maxY) continue;
+
+      let aggregate = namespaceAggregateIndex.get(node.namespace);
+      if (!aggregate) {
+        aggregate = namespaceAggregatePool[lastNamespaceAggregateCount];
+        if (!aggregate) {
+          aggregate = {
+            namespace: node.namespace,
+            color: getNamespaceColor(node.namespace, namespaceMap),
+            x: 0,
+            y: 0,
+            memberCount: 0,
+            podCount: 0,
+            serviceCount: 0,
+          };
+          namespaceAggregatePool.push(aggregate);
+        }
+        aggregate.namespace = node.namespace;
+        aggregate.color = getNamespaceColor(node.namespace, namespaceMap);
+        aggregate.x = 0;
+        aggregate.y = 0;
+        aggregate.memberCount = 0;
+        aggregate.podCount = 0;
+        aggregate.serviceCount = 0;
+        namespaceAggregateIndex.set(node.namespace, aggregate);
+        lastNamespaceAggregateCount++;
+      }
+
+      aggregate.x += nodeX;
+      aggregate.y += nodeY;
+      aggregate.memberCount++;
+      if (node.type === 'pod') {
+        aggregate.podCount++;
+      } else {
+        aggregate.serviceCount++;
+      }
+    }
+
+    for (let i = 0; i < lastNamespaceAggregateCount; i++) {
+      const aggregate = namespaceAggregatePool[i];
+      if (aggregate.memberCount === 0) continue;
+      aggregate.x /= aggregate.memberCount;
+      aggregate.y /= aggregate.memberCount;
+    }
   };
 
   const updateVisibleNodes = (width: number, height: number, densityOverviewMode: boolean, force = false) => {
@@ -1050,10 +1128,24 @@ const TopologyGraph: Component<Props> = (props) => {
     drawBackground(ctx, width, height, isDense, isSimulationActive);
     ensureNodeStylesCache();
     updateVisibleNodes(width, height, densityOverviewMode, isSimulationActive);
+    if (densityOverviewMode) {
+      updateNamespaceAggregates();
+    } else {
+      lastNamespaceAggregateCount = 0;
+    }
 
     const shouldCullLinks = densityOverviewMode || isDense || zoomLevel > 0.8;
     const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
-    const drawStructuralLabels = !isDense || zoomLevel > 1;
+    const drawStructuralLabels = densityOverviewMode ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1);
+
+    renderedTopologyNodeCount = densityOverviewMode
+      ? lastVisibleNodeCount + lastNamespaceAggregateCount
+      : lastVisibleNodeCount;
+    renderedTopologyLinkCount = densityOverviewMode
+      ? 0
+      : shouldCullLinks
+        ? lastVisibleHostsLinkCount + lastVisibleSelectsLinkCount
+        : hostsLinks.length + selectsLinks.length;
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
@@ -1143,6 +1235,57 @@ const TopologyGraph: Component<Props> = (props) => {
         lastFont = font;
       }
       ctx.fillText(cached.truncLabel, node.x, node.y + cached.r + 12);
+    }
+
+    if (densityOverviewMode) {
+      for (let i = 0; i < lastNamespaceAggregateCount; i++) {
+        const aggregate = namespaceAggregatePool[i];
+        const radius = Math.max(16, Math.min(34, 12 + Math.sqrt(aggregate.memberCount) * 2.2));
+        const namespaceLabel = aggregate.namespace.length > 14
+          ? `${aggregate.namespace.slice(0, 12)}...`
+          : aggregate.namespace;
+
+        ctx.beginPath();
+        ctx.arc(aggregate.x, aggregate.y, radius + 8, 0, 2 * Math.PI);
+        ctx.fillStyle = aggregate.color;
+        ctx.globalAlpha = 0.08;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(aggregate.x, aggregate.y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = '#07101d';
+        ctx.globalAlpha = 0.92;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(aggregate.x, aggregate.y, radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = aggregate.color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.75;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        const countFont = radius >= 24 ? '600 12px Inter, system-ui' : '600 11px Inter, system-ui';
+        if (countFont !== lastFont) {
+          ctx.font = countFont;
+          lastFont = countFont;
+        }
+        ctx.fillStyle = '#f5f7ff';
+        ctx.fillText(String(aggregate.memberCount), aggregate.x, aggregate.y - 2);
+
+        const detailFont = '400 9px Inter, system-ui';
+        if (detailFont !== lastFont) {
+          ctx.font = detailFont;
+          lastFont = detailFont;
+        }
+        ctx.fillStyle = 'rgba(245,247,255,0.72)';
+        ctx.fillText(`${aggregate.serviceCount}s · ${aggregate.podCount}p`, aggregate.x, aggregate.y + 10);
+
+        if (zoomLevel > labelZoomThreshold) {
+          ctx.fillStyle = '#d7def0';
+          ctx.fillText(namespaceLabel, aggregate.x, aggregate.y + radius + 11);
+        }
+      }
     }
 
     ctx.restore();
@@ -1834,7 +1977,7 @@ const TopologyGraph: Component<Props> = (props) => {
         {/* Stats Overlay */}
         <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-surface/60 px-3 py-1.5 text-xs backdrop-blur pointer-events-none border border-white/5">
             <span class="text-text-dim">Nodes:</span>
-            <span class="font-mono text-neon-cyan">{nodeCount()}</span>
+            <span class="font-mono text-neon-cyan">{liveTopologyStats().nodes || nodeCount()}</span>
             <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
             <span class="font-mono text-neon-purple hidden sm:inline">Canvas/GPU</span>
             <Show when={topologySyncing()}>
@@ -1846,7 +1989,7 @@ const TopologyGraph: Component<Props> = (props) => {
             <Show when={densityOverviewActive()}>
               <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.12)]">
                 <span class="h-1.5 w-1.5 rounded-full bg-amber-300" />
-                Overview · {densityOverviewHiddenPods()} pods hidden
+                Overview · {densityOverviewHiddenServices()} services + {densityOverviewHiddenPods()} pods grouped
               </span>
             </Show>
             <span class="ml-1 hidden items-center gap-2 rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-text-dim shadow-[0_0_16px_rgba(0,0,0,0.2)] lg:inline-flex">
