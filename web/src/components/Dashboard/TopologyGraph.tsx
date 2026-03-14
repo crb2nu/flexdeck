@@ -431,8 +431,8 @@ const TopologyGraph: Component<Props> = (props) => {
     const liveStats = {
       fps: frameStats.fps,
       avgFrameMs: frameStats.avgFrameMs,
-      nodes: renderedTopologyNodeCount || graphNodes.length,
-      links: renderedTopologyLinkCount || graphLinks.length,
+      nodes: densityOverviewActive() ? renderedTopologyNodeCount : (renderedTopologyNodeCount || graphNodes.length),
+      links: densityOverviewActive() ? renderedTopologyLinkCount : (renderedTopologyLinkCount || graphLinks.length),
       lastBuildMs: lastTopologyBuildMs,
       lastSettleMs: lastSimulationSettleMs,
     };
