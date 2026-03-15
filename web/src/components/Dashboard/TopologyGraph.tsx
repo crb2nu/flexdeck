@@ -38,6 +38,7 @@ const LARGE_GRAPH_LINK_THRESHOLD = 1200;
 const DENSITY_OVERVIEW_NODE_THRESHOLD = 600;
 const DENSITY_OVERVIEW_POD_THRESHOLD = 300;
 const DENSITY_OVERVIEW_ZOOM_THRESHOLD = 1.25;
+const DENSITY_OVERVIEW_TRANSITION_BAND = 0.22;
 const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
@@ -59,6 +60,7 @@ const PERF_QUERY_PARAM = 'topologyPerf';
 const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
 const PERF_HUD_UPDATE_MS = 500;
 const PERF_FRAME_WINDOW = 180;
+const DENSITY_OVERVIEW_NEAR_FULL_BLEND = 0.98;
 
 interface PerfCounters {
   effectRuns: number;
@@ -940,19 +942,31 @@ const TopologyGraph: Component<Props> = (props) => {
     nodeStylesCacheValid = true;
   };
 
-  const shouldUseDensityOverview = (zoomLevel: number): boolean => {
+  const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+  const smoothstep = (edge0: number, edge1: number, value: number): number => {
+    if (edge0 === edge1) return value < edge0 ? 0 : 1;
+    const t = clamp01((value - edge0) / (edge1 - edge0));
+    return t * t * (3 - 2 * t);
+  };
+
+  const getDensityOverviewBlend = (zoomLevel: number): number => {
     const largeGraph =
       graphNodes.length >= DENSITY_OVERVIEW_NODE_THRESHOLD ||
       sourcePodCount >= DENSITY_OVERVIEW_POD_THRESHOLD;
-    return largeGraph && zoomLevel < DENSITY_OVERVIEW_ZOOM_THRESHOLD;
+    if (!largeGraph) return 0;
+    const transitionStart = DENSITY_OVERVIEW_ZOOM_THRESHOLD - DENSITY_OVERVIEW_TRANSITION_BAND;
+    const transitionEnd = DENSITY_OVERVIEW_ZOOM_THRESHOLD + DENSITY_OVERVIEW_TRANSITION_BAND;
+    return 1 - smoothstep(transitionStart, transitionEnd, zoomLevel);
   };
 
-  const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewMode: boolean): boolean =>
-    !densityOverviewMode || node.type === 'node';
+  const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewBlend: number): boolean =>
+    densityOverviewBlend < DENSITY_OVERVIEW_NEAR_FULL_BLEND || node.type === 'node';
 
-  const syncDensityOverviewState = (active: boolean) => {
-    const hiddenPods = active ? sourcePodCount : 0;
-    const hiddenServices = active ? sourceServiceCount : 0;
+  const syncDensityOverviewState = (blend: number) => {
+    const active = blend > 0.18;
+    const hiddenPods = active ? Math.round(sourcePodCount * blend) : 0;
+    const hiddenServices = active ? Math.round(sourceServiceCount * blend) : 0;
     if (densityOverviewActive() !== active) setDensityOverviewActive(active);
     if (densityOverviewHiddenPods() !== hiddenPods) setDensityOverviewHiddenPods(hiddenPods);
     if (densityOverviewHiddenServices() !== hiddenServices) setDensityOverviewHiddenServices(hiddenServices);
@@ -1018,7 +1032,7 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  const updateVisibleNodes = (width: number, height: number, densityOverviewMode: boolean, force = false) => {
+  const updateVisibleNodes = (width: number, height: number, densityOverviewBlend: number, force = false) => {
     if (!force && !viewportCacheDirty) return;
 
     if (transform.x !== lastFrustumTransform.x ||
@@ -1046,7 +1060,7 @@ const TopologyGraph: Component<Props> = (props) => {
       const node = graphNodes[i];
       const isVisible = node.x !== undefined &&
         node.y !== undefined &&
-        shouldRenderNodeForCurrentDensity(node, densityOverviewMode) &&
+        shouldRenderNodeForCurrentDensity(node, densityOverviewBlend) &&
         node.x >= minX &&
         node.x <= maxX &&
         node.y >= minY &&
@@ -1117,7 +1131,7 @@ const TopologyGraph: Component<Props> = (props) => {
     height: number,
     zoomLevel: number,
     isDense: boolean,
-    densityOverviewMode: boolean,
+    densityOverviewBlend: number,
     reduceDetail: boolean,
     reduceLinks: boolean,
     reduceNodeDetail: boolean,
@@ -1127,25 +1141,25 @@ const TopologyGraph: Component<Props> = (props) => {
     clearBaseCanvasPreview();
     drawBackground(ctx, width, height, isDense, isSimulationActive);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, densityOverviewMode, isSimulationActive);
-    if (densityOverviewMode) {
+    updateVisibleNodes(width, height, densityOverviewBlend, isSimulationActive);
+    if (densityOverviewBlend > 0.001) {
       updateNamespaceAggregates();
     } else {
       lastNamespaceAggregateCount = 0;
     }
 
-    const shouldCullLinks = densityOverviewMode || isDense || zoomLevel > 0.8;
+    const rawOpacity = clamp01(1 - densityOverviewBlend);
+    const overviewOpacity = clamp01(densityOverviewBlend);
+    const shouldCullLinks = densityOverviewBlend > 0.7 || isDense || zoomLevel > 0.8;
     const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
-    const drawStructuralLabels = densityOverviewMode ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1);
+    const drawStructuralLabels = overviewOpacity > 0.5 ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1);
 
-    renderedTopologyNodeCount = densityOverviewMode
-      ? lastVisibleNodeCount + lastNamespaceAggregateCount
-      : lastVisibleNodeCount;
-    renderedTopologyLinkCount = densityOverviewMode
-      ? 0
-      : shouldCullLinks
-        ? lastVisibleHostsLinkCount + lastVisibleSelectsLinkCount
-        : hostsLinks.length + selectsLinks.length;
+    const rawLinkCount = shouldCullLinks
+      ? lastVisibleHostsLinkCount + lastVisibleSelectsLinkCount
+      : hostsLinks.length + selectsLinks.length;
+    const overviewNodeCount = sourceNodeCount + lastNamespaceAggregateCount;
+    renderedTopologyNodeCount = Math.round(lastVisibleNodeCount * rawOpacity + overviewNodeCount * overviewOpacity);
+    renderedTopologyLinkCount = Math.round(rawLinkCount * rawOpacity);
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
@@ -1153,119 +1167,128 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Use pre-filtered visible link lists (computed in updateVisibleNodes)
-    const hostsCount = shouldCullLinks ? lastVisibleHostsLinkCount : hostsLinks.length;
-    if (hostsCount > 0) {
-      ctx.beginPath();
-      for (let i = 0; i < hostsCount; i++) {
-        const link = shouldCullLinks ? hostsLinks[visibleHostsLinkIndices[i]] : hostsLinks[i];
-        const source = link.source as D3Node;
-        const target = link.target as D3Node;
-        if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
-      }
-      if (!reduceLinks && !isDense) {
-        ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
-        ctx.lineWidth = 5;
-        ctx.setLineDash([]);
-        ctx.stroke();
-      }
-      ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([]);
-      ctx.stroke();
-    }
-
-    const selectsCount = shouldCullLinks ? lastVisibleSelectsLinkCount : selectsLinks.length;
-    if (selectsCount > 0) {
-      ctx.beginPath();
-      for (let i = 0; i < selectsCount; i++) {
-        const link = shouldCullLinks ? selectsLinks[visibleSelectsLinkIndices[i]] : selectsLinks[i];
-        const source = link.source as D3Node;
-        const target = link.target as D3Node;
-        if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
-      }
-      if (!reduceLinks && !isDense) {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
-        ctx.lineWidth = 4;
-        ctx.setLineDash([]);
-        ctx.stroke();
-      }
-      ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash(reduceLinks ? [] : [4, 4]);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-
-    for (let i = 0; i < lastVisibleNodeCount; i++) {
-      const node = graphNodes[visibleNodeIndices[i]];
-      const nodeX = node.x;
-      const nodeY = node.y;
-      if (nodeX === undefined || nodeY === undefined) continue;
-
-      const cached = nodeStylesCache.get(node.id)!;
-      const sprite = getNodeSprite(
-        node.type,
-        cached.r,
-        cached.color,
-        simplifiedNodeRendering ? 'simple' : 'full',
-      );
-      ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
-    }
-
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#cccccc';
     let lastFont = '';
 
-    for (let i = 0; i < lastVisibleNodeCount; i++) {
-      const node = graphNodes[visibleNodeIndices[i]];
-      if (node.x === undefined || node.y === undefined) continue;
-      if (!drawStructuralLabels || (node.type !== 'node' && node.type !== 'service')) continue;
-      if (zoomLevel <= labelZoomThreshold) continue;
+    if (rawOpacity > 0.001) {
+      ctx.save();
+      ctx.globalAlpha = rawOpacity;
 
-      const cached = nodeStylesCache.get(node.id)!;
-      const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
-      if (font !== lastFont) {
-        ctx.font = font;
-        lastFont = font;
+      // Use pre-filtered visible link lists (computed in updateVisibleNodes)
+      const hostsCount = shouldCullLinks ? lastVisibleHostsLinkCount : hostsLinks.length;
+      if (hostsCount > 0) {
+        ctx.beginPath();
+        for (let i = 0; i < hostsCount; i++) {
+          const link = shouldCullLinks ? hostsLinks[visibleHostsLinkIndices[i]] : hostsLinks[i];
+          const source = link.source as D3Node;
+          const target = link.target as D3Node;
+          if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
+          ctx.moveTo(source.x, source.y);
+          ctx.lineTo(target.x, target.y);
+        }
+        if (!reduceLinks && !isDense) {
+          ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
+          ctx.lineWidth = 5;
+          ctx.setLineDash([]);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.stroke();
       }
-      ctx.fillText(cached.truncLabel, node.x, node.y + cached.r + 12);
+
+      const selectsCount = shouldCullLinks ? lastVisibleSelectsLinkCount : selectsLinks.length;
+      if (selectsCount > 0) {
+        ctx.beginPath();
+        for (let i = 0; i < selectsCount; i++) {
+          const link = shouldCullLinks ? selectsLinks[visibleSelectsLinkIndices[i]] : selectsLinks[i];
+          const source = link.source as D3Node;
+          const target = link.target as D3Node;
+          if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
+          ctx.moveTo(source.x, source.y);
+          ctx.lineTo(target.x, target.y);
+        }
+        if (!reduceLinks && !isDense) {
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+          ctx.lineWidth = 4;
+          ctx.setLineDash([]);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash(reduceLinks ? [] : [4, 4]);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      for (let i = 0; i < lastVisibleNodeCount; i++) {
+        const node = graphNodes[visibleNodeIndices[i]];
+        const nodeX = node.x;
+        const nodeY = node.y;
+        if (nodeX === undefined || nodeY === undefined) continue;
+
+        const cached = nodeStylesCache.get(node.id)!;
+        const sprite = getNodeSprite(
+          node.type,
+          cached.r,
+          cached.color,
+          simplifiedNodeRendering ? 'simple' : 'full',
+        );
+        ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
+      }
+
+      for (let i = 0; i < lastVisibleNodeCount; i++) {
+        const node = graphNodes[visibleNodeIndices[i]];
+        if (node.x === undefined || node.y === undefined) continue;
+        if (!drawStructuralLabels || (node.type !== 'node' && node.type !== 'service')) continue;
+        if (zoomLevel <= labelZoomThreshold) continue;
+
+        const cached = nodeStylesCache.get(node.id)!;
+        const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
+        if (font !== lastFont) {
+          ctx.font = font;
+          lastFont = font;
+        }
+        ctx.fillText(cached.truncLabel, node.x, node.y + cached.r + 12);
+      }
+
+      ctx.restore();
     }
 
-    if (densityOverviewMode) {
+    if (overviewOpacity > 0.001) {
       for (let i = 0; i < lastNamespaceAggregateCount; i++) {
         const aggregate = namespaceAggregatePool[i];
         const radius = Math.max(16, Math.min(34, 12 + Math.sqrt(aggregate.memberCount) * 2.2));
         const namespaceLabel = aggregate.namespace.length > 14
           ? `${aggregate.namespace.slice(0, 12)}...`
           : aggregate.namespace;
+        const revealScale = 0.88 + overviewOpacity * 0.12;
+        const displayRadius = radius * revealScale;
 
         ctx.beginPath();
-        ctx.arc(aggregate.x, aggregate.y, radius + 8, 0, 2 * Math.PI);
+        ctx.arc(aggregate.x, aggregate.y, displayRadius + 8, 0, 2 * Math.PI);
         ctx.fillStyle = aggregate.color;
-        ctx.globalAlpha = 0.08;
+        ctx.globalAlpha = 0.08 * overviewOpacity;
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(aggregate.x, aggregate.y, radius, 0, 2 * Math.PI);
+        ctx.arc(aggregate.x, aggregate.y, displayRadius, 0, 2 * Math.PI);
         ctx.fillStyle = '#07101d';
-        ctx.globalAlpha = 0.92;
+        ctx.globalAlpha = 0.92 * overviewOpacity;
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(aggregate.x, aggregate.y, radius, 0, 2 * Math.PI);
+        ctx.arc(aggregate.x, aggregate.y, displayRadius, 0, 2 * Math.PI);
         ctx.strokeStyle = aggregate.color;
         ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.75;
+        ctx.globalAlpha = 0.75 * overviewOpacity;
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = overviewOpacity;
 
-        const countFont = radius >= 24 ? '600 12px Inter, system-ui' : '600 11px Inter, system-ui';
+        const countFont = displayRadius >= 24 ? '600 12px Inter, system-ui' : '600 11px Inter, system-ui';
         if (countFont !== lastFont) {
           ctx.font = countFont;
           lastFont = countFont;
@@ -1283,9 +1306,10 @@ const TopologyGraph: Component<Props> = (props) => {
 
         if (zoomLevel > labelZoomThreshold) {
           ctx.fillStyle = '#d7def0';
-          ctx.fillText(namespaceLabel, aggregate.x, aggregate.y + radius + 11);
+          ctx.fillText(namespaceLabel, aggregate.x, aggregate.y + displayRadius + 11);
         }
       }
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -1300,7 +1324,7 @@ const TopologyGraph: Component<Props> = (props) => {
     now: number,
     zoomLevel: number,
     isDense: boolean,
-    densityOverviewMode: boolean,
+    densityOverviewBlend: number,
     reduceDetail: boolean,
     reduceLinks: boolean,
     reduceNodeDetail: boolean,
@@ -1309,7 +1333,8 @@ const TopologyGraph: Component<Props> = (props) => {
   ) => {
     ctx.clearRect(0, 0, width, height);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, densityOverviewMode, isSimulationActive);
+    updateVisibleNodes(width, height, densityOverviewBlend, isSimulationActive);
+    const rawOpacity = clamp01(1 - densityOverviewBlend);
 
     maybeSpawnParticle(now, allowParticles);
 
@@ -1343,7 +1368,9 @@ const TopologyGraph: Component<Props> = (props) => {
       pos.colorIdx = slot.colorIdx;
     }
 
-    if (particleCount > 0) {
+    if (particleCount > 0 && rawOpacity > 0.001) {
+      ctx.save();
+      ctx.globalAlpha = rawOpacity;
       // Single-pass: batch particles by color using two paths per render layer (glow + core)
       const glowCyan = new Path2D();
       const glowPurple = new Path2D();
@@ -1373,6 +1400,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill(coreCyan);
       ctx.fillStyle = '#a855f7';
       ctx.fill(corePurple);
+      ctx.restore();
     }
 
     const selectedId = selectedNode()?.id;
@@ -1384,6 +1412,7 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#f5f7ff';
+    ctx.globalAlpha = rawOpacity;
 
     for (let i = 0; i < lastVisibleNodeCount; i++) {
       const node = graphNodes[visibleNodeIndices[i]];
@@ -1480,6 +1509,7 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     }
 
+    ctx.globalAlpha = 1;
     ctx.restore();
     overlayLayerDirty = false;
   };
@@ -1524,11 +1554,11 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceDetail = isDense && zoomLevel < 0.85;
     const reduceLinks = reduceDetail || zoomLevel < 0.5;
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
-    const densityOverviewMode = shouldUseDensityOverview(zoomLevel);
+    const densityOverviewBlend = getDensityOverviewBlend(zoomLevel);
     const skipDecorativeNodeEffects = isDense && !isUserInteracting;
     const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
-    const allowParticles = isSimulationActive && !reduceLinks && !isDense && !densityOverviewMode;
-    syncDensityOverviewState(densityOverviewMode);
+    const allowParticles = isSimulationActive && !reduceLinks && !isDense && densityOverviewBlend < 0.15;
+    syncDensityOverviewState(densityOverviewBlend);
 
     if (isSimulationActive) {
       spatialGridDirty = true;
@@ -1547,7 +1577,7 @@ const TopologyGraph: Component<Props> = (props) => {
         height,
         zoomLevel,
         isDense,
-        densityOverviewMode,
+        densityOverviewBlend,
         reduceDetail,
         reduceLinks,
         reduceNodeDetail,
@@ -1564,7 +1594,7 @@ const TopologyGraph: Component<Props> = (props) => {
         now,
         zoomLevel,
         isDense,
-        densityOverviewMode,
+        densityOverviewBlend,
         reduceDetail,
         reduceLinks,
         reduceNodeDetail,
