@@ -64,8 +64,6 @@ let activeNodes: TopologyNode[] = [];
 let activeNodeByID = new Map<string, TopologyNode>();
 let stepTimeoutID: ReturnType<typeof setTimeout> | null = null;
 
-const SNAPSHOT_INTERVAL_MS = 34;
-
 const getNodeRadius = (node: TopologyNode): number => {
   switch (node.type) {
     case 'node':
@@ -86,11 +84,18 @@ const normalizeLinks = (links: TopologyLink[]): TopologyLink[] =>
     target: typeof link.target === 'string' ? link.target : link.target.id,
   }));
 
-const getTickBatchSize = (nodeCount: number): number => {
-  if (nodeCount >= 1200) return 4;
-  if (nodeCount >= 700) return 3;
-  if (nodeCount >= 250) return 2;
+const getTickBatchSize = (nodeCount: number, alpha: number): number => {
+  if (nodeCount >= 1200) return alpha < 0.05 ? 6 : alpha < 0.12 ? 5 : 4;
+  if (nodeCount >= 700) return alpha < 0.05 ? 4 : 3;
+  if (nodeCount >= 250) return alpha < 0.05 ? 3 : 2;
   return 1;
+};
+
+const getSnapshotIntervalMs = (nodeCount: number, alpha: number): number => {
+  if (nodeCount >= 1200) return alpha < 0.05 ? 72 : alpha < 0.12 ? 56 : 40;
+  if (nodeCount >= 700) return alpha < 0.05 ? 60 : alpha < 0.12 ? 46 : 34;
+  if (nodeCount >= 250) return alpha < 0.05 ? 44 : 30;
+  return alpha < 0.05 ? 28 : 22;
 };
 
 const clearStepLoop = (): void => {
@@ -128,7 +133,10 @@ const postSnapshot = (settled: boolean): void => {
 
 const scheduleStepLoop = (): void => {
   if (stepTimeoutID || !activeSimulation) return;
-  stepTimeoutID = setTimeout(runSimulationStep, SNAPSHOT_INTERVAL_MS);
+  stepTimeoutID = setTimeout(
+    runSimulationStep,
+    getSnapshotIntervalMs(activeNodes.length, activeSimulation.alpha()),
+  );
 };
 
 const restartSimulation = (alpha: number, alphaTarget = 0): void => {
@@ -142,7 +150,7 @@ function runSimulationStep(): void {
   stepTimeoutID = null;
   if (!activeSimulation) return;
 
-  const tickBatchSize = getTickBatchSize(activeNodes.length);
+  const tickBatchSize = getTickBatchSize(activeNodes.length, activeSimulation.alpha());
   for (let i = 0; i < tickBatchSize; i++) {
     activeSimulation.tick();
   }

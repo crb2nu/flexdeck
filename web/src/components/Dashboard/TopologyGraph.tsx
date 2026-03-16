@@ -347,6 +347,10 @@ const TopologyGraph: Component<Props> = (props) => {
     baseCanvasRef.style.transform = '';
     baseCanvasRef.style.transformOrigin = '';
   };
+  const hasActiveOverlayState = (): boolean =>
+    activeParticleCount > 0 ||
+    hoverNode() !== null ||
+    selectedNode() !== null;
   const syncBaseRasterTransform = () => {
     baseRasterTransform = { x: transform.x, y: transform.y, k: transform.k };
     clearBaseCanvasPreview();
@@ -648,7 +652,11 @@ const TopologyGraph: Component<Props> = (props) => {
 
     currentSimulationAlpha = message.alpha;
     spatialGridDirty = true;
-    invalidateViewport();
+    viewportCacheDirty = true;
+    baseLayerDirty = true;
+    if (hasActiveOverlayState()) {
+      overlayLayerDirty = true;
+    }
     startAnimationLoop();
 
     if (!message.settled) {
@@ -1333,7 +1341,7 @@ const TopologyGraph: Component<Props> = (props) => {
   ) => {
     ctx.clearRect(0, 0, width, height);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, densityOverviewBlend, isSimulationActive);
+    updateVisibleNodes(width, height, densityOverviewBlend);
     const rawOpacity = clamp01(1 - densityOverviewBlend);
 
     maybeSpawnParticle(now, allowParticles);
@@ -1564,11 +1572,13 @@ const TopologyGraph: Component<Props> = (props) => {
       spatialGridDirty = true;
       viewportCacheDirty = true;
       baseLayerDirty = true;
-      overlayLayerDirty = true;
+      if (hasActiveOverlayState()) {
+        overlayLayerDirty = true;
+      }
     }
 
     const shouldDrawBase = baseLayerDirty || viewportCacheDirty;
-    const shouldDrawOverlay = overlayLayerDirty || activeParticleCount > 0 || allowParticles;
+    const shouldDrawOverlay = overlayLayerDirty || hasActiveOverlayState() || allowParticles;
 
     if (shouldDrawBase) {
       drawBaseLayer(
