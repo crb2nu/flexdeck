@@ -1,6 +1,7 @@
 import { Component, onMount, onCleanup, createEffect, createSignal, createMemo, Show, untrack } from 'solid-js';
 import * as THREE from 'three';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
+import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../../lib/fiAccel';
 import { getNodeMetrics } from '../../../stores/metrics';
 import { formatPercent } from '../../../lib/format';
 import {
@@ -18,6 +19,7 @@ import {
   computeClusterHealth,
   nodeMatchesFilter,
   podMatchesFilter,
+  serviceMatchesFilter,
   type HoloDeckFilter
 } from './derivedState';
 import { TrafficManager } from './traffic';
@@ -57,6 +59,46 @@ interface ServiceVisualRef {
   waveOffset: number;
 }
 
+interface HoloDeckPerfSnapshot {
+  sceneBuildMs: number;
+  filterApplyMs: number;
+  filterMatchCount: number;
+  renderedNodes: number;
+  renderedPods: number;
+  renderedServices: number;
+  podCurves: number;
+  serviceCurves: number;
+  fiAccelInitState: string;
+  fiAccelSelectorCalls: number;
+  fiAccelSelectorFallbackCalls: number;
+  fiAccelSelectorCandidates: number;
+  fiAccelSelectorMs: number;
+}
+
+const PERF_QUERY_PARAM = 'topologyPerf';
+const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
+const HOLO_PERF_QUERY_PARAM = 'holodeckPerf';
+const HOLO_PERF_STORAGE_KEY = 'flexdeck.holodeckPerf';
+const EMPTY_FI_ACCEL_DELTA: FiAccelMetricsDelta = {
+  initState: 'loading',
+  logAnalyzeCalls: 0,
+  logAnalyzeFallbackCalls: 0,
+  logAnalyzeLines: 0,
+  logAnalyzeMs: 0,
+  selectorFilterCalls: 0,
+  selectorFilterFallbackCalls: 0,
+  selectorFilterCandidates: 0,
+  selectorFilterMs: 0,
+};
+
+const readPerfToggle = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const search = new URLSearchParams(window.location.search);
+  if (search.get(HOLO_PERF_QUERY_PARAM) === '1' || search.get(PERF_QUERY_PARAM) === '1') return true;
+  return window.localStorage.getItem(HOLO_PERF_STORAGE_KEY) === '1'
+    || window.localStorage.getItem(PERF_STORAGE_KEY) === '1';
+};
+
 const HoloDeck: Component<Props> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let engine: HoloEngine;
@@ -87,6 +129,8 @@ const HoloDeck: Component<Props> = (props) => {
   } | null>(null);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [interactionType, setInteractionType] = createSignal<'mouse' | 'touch'>('mouse');
+  const [perfEnabled, setPerfEnabled] = createSignal(false);
+  const [perfSnapshot, setPerfSnapshot] = createSignal<HoloDeckPerfSnapshot | null>(null);
 
   const objectMap = new Map<string, THREE.Object3D>();
   const dataMap = new Map<string, K8sNode | K8sPod | K8sService>();
@@ -107,6 +151,10 @@ const HoloDeck: Component<Props> = (props) => {
 
   let curves: THREE.QuadraticBezierCurve3[] = [];
   let serviceCurves: THREE.QuadraticBezierCurve3[] = [];
+  let lastSceneBuildMs = 0;
+  let lastFilterApplyMs = 0;
+  let lastFilterMatchCount = 0;
+  let lastSceneAccelDelta: FiAccelMetricsDelta = EMPTY_FI_ACCEL_DELTA;
 
   const sceneDataKey = createMemo<string>(() => {
     const nodeCount = props.nodes.length;
@@ -181,13 +229,46 @@ const HoloDeck: Component<Props> = (props) => {
     }
   };
 
+  const publishPerfSnapshot = () => {
+    const snapshot: HoloDeckPerfSnapshot = {
+      sceneBuildMs: lastSceneBuildMs,
+      filterApplyMs: lastFilterApplyMs,
+      filterMatchCount: lastFilterMatchCount,
+      renderedNodes: nodeVisuals.length,
+      renderedPods: podVisuals.length,
+      renderedServices: serviceVisuals.length,
+      podCurves: curves.length,
+      serviceCurves: serviceCurves.length,
+      fiAccelInitState: lastSceneAccelDelta.initState,
+      fiAccelSelectorCalls: lastSceneAccelDelta.selectorFilterCalls,
+      fiAccelSelectorFallbackCalls: lastSceneAccelDelta.selectorFilterFallbackCalls,
+      fiAccelSelectorCandidates: lastSceneAccelDelta.selectorFilterCandidates,
+      fiAccelSelectorMs: lastSceneAccelDelta.selectorFilterMs,
+    };
+
+    if (typeof window !== 'undefined') {
+      (window as Window & { __FLEXDECK_HOLODECK_PERF__?: HoloDeckPerfSnapshot }).__FLEXDECK_HOLODECK_PERF__ = snapshot;
+    }
+
+    if (perfEnabled()) {
+      setPerfSnapshot(snapshot);
+    }
+  };
+
   const applyFilterVisuals = () => {
     const filter = props.filter;
+    const startedAt = performance.now();
+    let matchCount = 0;
     objectMap.forEach((obj, id) => {
       const data = dataMap.get(id);
       if (!data) return;
-      const matches = id.startsWith('node-') ? nodeMatchesFilter(data as K8sNode, props.pods, filter) : podMatchesFilter(data as K8sPod, filter);
+      const matches = id.startsWith('node-')
+        ? nodeMatchesFilter(data as K8sNode, props.pods, filter)
+        : id.startsWith('service-')
+          ? serviceMatchesFilter(data as K8sService, filter)
+          : podMatchesFilter(data as K8sPod, filter);
       matchesFilterMap.set(id, matches);
+      if (matches) matchCount++;
       const mats = obj.userData.filterableMaterials as THREE.Material[];
       if (mats) {
         mats.forEach(m => {
@@ -196,10 +277,18 @@ const HoloDeck: Component<Props> = (props) => {
         });
       }
     });
+    lastFilterApplyMs = performance.now() - startedAt;
+    lastFilterMatchCount = matchCount;
+    publishPerfSnapshot();
   };
 
   onMount(() => {
     if (!containerRef) return;
+    const perf = readPerfToggle();
+    setPerfEnabled(perf);
+    if (perf) {
+      console.info('[HoloDeck] Perf HUD enabled. Add ?holodeckPerf=1 or localStorage flexdeck.holodeckPerf=1');
+    }
     engine = new HoloEngine(containerRef, getInitialQuality());
     engine.scene.add(dataGroup);
 
@@ -395,12 +484,22 @@ const HoloDeck: Component<Props> = (props) => {
       nodeVisuals.length = 0;
       podVisuals.length = 0;
       serviceVisuals.length = 0;
+      const fiAccelBefore = getFiAccelMetricsSnapshot();
+      const sceneBuildStartedAt = performance.now();
       const ctx: SceneContext = { dataGroup, objectMap, dataMap, serviceToPodsMap, sharedGeoms, sharedMats, coreMatCache, scannerMatCache, edgeMatCache, podMatCache, podLineMatCache };
       const res = buildScene(ctx, props.nodes, props.pods, props.services);
+      lastSceneBuildMs = performance.now() - sceneBuildStartedAt;
+      lastSceneAccelDelta = diffFiAccelMetrics(fiAccelBefore, getFiAccelMetricsSnapshot());
       curves = res.curves; serviceCurves = res.serviceCurves;
       rebuildVisualRefs();
       applyFilterVisuals();
     });
+  });
+
+  createEffect(() => {
+    if (perfEnabled()) {
+      publishPerfSnapshot();
+    }
   });
 
   createEffect(() => { void props.filter; if (objectMap.size > 0) applyFilterVisuals(); });
@@ -455,6 +554,17 @@ const HoloDeck: Component<Props> = (props) => {
                 </div>
             </div>
         </div>
+
+        <Show when={perfEnabled() && perfSnapshot()}>
+            {snapshot => (
+                <div class="absolute right-4 top-4 z-10 rounded-md border border-amber-300/40 bg-black/70 p-3 text-[10px] font-mono text-amber-100 backdrop-blur pointer-events-none">
+                    <div class="mb-1 text-amber-300 uppercase tracking-wider">Holo Perf</div>
+                    <div>scene {snapshot().sceneBuildMs.toFixed(1)}ms | filter {snapshot().filterApplyMs.toFixed(2)}ms | visible {snapshot().filterMatchCount}</div>
+                    <div>objects n{snapshot().renderedNodes} p{snapshot().renderedPods} s{snapshot().renderedServices} | curves {snapshot().podCurves + snapshot().serviceCurves}</div>
+                    <div>fi-accel {snapshot().fiAccelInitState} | selector {snapshot().fiAccelSelectorCalls}x/{snapshot().fiAccelSelectorCandidates} candidates | fallback {snapshot().fiAccelSelectorFallbackCalls} | {snapshot().fiAccelSelectorMs.toFixed(3)}ms</div>
+                </div>
+            )}
+        </Show>
     </div>
   );
 };

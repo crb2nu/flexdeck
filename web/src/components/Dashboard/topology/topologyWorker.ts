@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import * as d3 from 'd3';
+import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../../lib/fiAccel';
 import {
   buildTopologyGraphData,
   createPreparedTopologySimulation,
@@ -40,6 +41,7 @@ interface WorkerBuildResponse {
   type: 'result';
   requestId: number;
   graphData: BuildResult;
+  buildMetrics: WorkerBuildMetrics;
 }
 
 interface WorkerTickResponse {
@@ -54,6 +56,12 @@ interface WorkerErrorResponse {
   type: 'error';
   requestId: number;
   error: string;
+}
+
+interface WorkerBuildMetrics {
+  mode: 'worker';
+  buildMs: number;
+  fiAccel: FiAccelMetricsDelta;
 }
 
 type WorkerRequest = WorkerBuildRequest | WorkerResizeRequest | WorkerDragRequest;
@@ -170,6 +178,8 @@ function runSimulationStep(): void {
 const handleBuild = (message: WorkerBuildRequest): void => {
   stopActiveSimulation();
   activeRequestId = message.requestId;
+  const buildStartedAt = performance.now();
+  const fiAccelBefore = getFiAccelMetricsSnapshot();
 
   const graphData = buildTopologyGraphData(message.input);
   primeTopologyGraphLayout(
@@ -195,9 +205,16 @@ const handleBuild = (message: WorkerBuildRequest): void => {
     scheduleStepLoop();
   }
 
+  const buildMetrics: WorkerBuildMetrics = {
+    mode: 'worker',
+    buildMs: performance.now() - buildStartedAt,
+    fiAccel: diffFiAccelMetrics(fiAccelBefore, getFiAccelMetricsSnapshot()),
+  };
+
   const response: WorkerBuildResponse = {
     type: 'result',
     requestId: message.requestId,
+    buildMetrics,
     graphData: {
       ...graphData,
       links: normalizeLinks(graphData.links),

@@ -1,8 +1,18 @@
-import { Component, createEffect, For, Show } from 'solid-js';
+import { Component, createEffect, createMemo, For, Show } from 'solid-js';
 import LogStream from './LogStream';
 import QueryBuilder from './QueryBuilder';
 import LogStats from './LogStats';
-import { getLogLevelClass, getLogLevelBadge } from '../../lib/logUtils';
+import {
+  analyzeLogLines,
+  getFiAccelMetricsSnapshot,
+  type FiAccelLogAnalysisMatch,
+} from '../../lib/fiAccel';
+import {
+  getLogLevelBadge,
+  getLogLevelBadgeForLevel,
+  getLogLevelClass,
+  getLogLevelClassForLevel,
+} from '../../lib/logUtils';
 import { ToastContainer } from '../shared/Toast';
 import { LOG_TIME_RANGES, useLogsController } from './useLogsController';
 
@@ -40,6 +50,15 @@ const Logs: Component = () => {
   } = useLogsController();
 
   let logContainerRef: HTMLDivElement | undefined;
+
+  const logAnalysis = createMemo<FiAccelLogAnalysisMatch[]>(() =>
+    analyzeLogLines(logs.map((entry) => entry.line))
+  );
+
+  const fiAccelSnapshot = createMemo(() => {
+    logAnalysis();
+    return getFiAccelMetricsSnapshot();
+  });
 
   // Auto-scroll to bottom when new logs arrive
   createEffect(() => {
@@ -192,7 +211,7 @@ const Logs: Component = () => {
                   </svg>
                   Log Statistics
                 </h3>
-                <LogStats logs={logs} />
+                <LogStats logs={logs} analysis={logAnalysis()} />
               </div>
             </div>
           </div>
@@ -229,7 +248,7 @@ const Logs: Component = () => {
                     </svg>
                     Log Statistics
                   </h3>
-                  <LogStats logs={logs} />
+                  <LogStats logs={logs} analysis={logAnalysis()} />
                 </div>
               </div>
             </div>
@@ -244,6 +263,11 @@ const Logs: Component = () => {
             <div class="flex flex-wrap items-center gap-2 sm:gap-3">
               <span class="text-sm font-medium text-text-main">Logs</span>
               <span class="text-xs text-text-dim">{logs.length} entries</span>
+              <Show when={logs.length > 0}>
+                <span class="hidden md:inline text-[10px] font-mono text-text-dim">
+                  accel {fiAccelSnapshot().initState} · analyze {fiAccelSnapshot().logAnalyzeCalls}x/{fiAccelSnapshot().logAnalyzeLines} lines · fallback {fiAccelSnapshot().logAnalyzeFallbackCalls}
+                </span>
+              </Show>
               <Show when={streaming()}>
                 <span class="flex items-center gap-1 text-xs text-neon-purple">
                   <span class="h-2 w-2 animate-pulse rounded-full bg-neon-purple" />
@@ -353,8 +377,14 @@ const Logs: Component = () => {
                   </thead>
                   <tbody>
                     <For each={logs}>
-                      {(entry) => {
-                        const badge = getLogLevelBadge(entry.line);
+                      {(entry, index) => {
+                        const analysis = () => logAnalysis()[index()] ?? {
+                          index: index(),
+                          level: 'info' as const,
+                          matchesFilter: true,
+                          matchesSearch: false,
+                        };
+                        const badge = () => getLogLevelBadgeForLevel(analysis().level);
                         return (
                           <tr
                             class="border-b border-white/5 hover:bg-white/5 group cursor-pointer transition-colors duration-150"
@@ -367,7 +397,7 @@ const Logs: Component = () => {
                               {entry.labels.pod || entry.labels.container || '-'}
                             </td>
                             <td class="px-3 py-1.5 w-16 align-top">
-                              <Show when={badge}>
+                              <Show when={badge()}>
                                 {(b) => (
                                   <span class={`px-1.5 py-0.5 text-[9px] font-mono rounded border ${b().class}`}>
                                     {b().text}
@@ -375,7 +405,7 @@ const Logs: Component = () => {
                                 )}
                               </Show>
                             </td>
-                            <td class={`px-3 py-1.5 ${getLogLevelClass(entry.line)} align-top`}>
+                            <td class={`px-3 py-1.5 ${getLogLevelClassForLevel(analysis().level)} align-top`}>
                               <pre class="whitespace-pre-wrap break-all">{entry.line}</pre>
                             </td>
                           </tr>

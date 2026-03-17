@@ -1,4 +1,6 @@
-import { Component, onMount, onCleanup, createEffect, createSignal, Show } from 'solid-js';
+import { Component, onMount, onCleanup, createEffect, createMemo, createSignal, Show } from 'solid-js';
+import { analyzeLogLines } from '../../lib/fiAccel';
+import { getLogLevel, getLogLevelColor, type LogLevel } from '../../lib/logUtils';
 
 export interface LogEntry {
   timestamp: string;
@@ -87,58 +89,46 @@ const LogStream: Component<Props> = (props) => {
 
   // Katakana code range for Matrix feel
   const getMatrixChar = () => String.fromCharCode(0x30A0 + Math.floor(Math.random() * 96));
-  
-  const getLogColor = (line: string) => {
-    const lower = line.toLowerCase();
-    if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) return '#ff0055';
-    if (lower.includes('warn')) return '#ffaa00';
-    if (lower.includes('debug')) return '#3d5a80';
-    if (lower.includes('info')) return '#00d9ff';
-    return '#00d9ff';
-  };
+  const isErrorLog = (line: string) => getLogLevel(line) === 'error';
 
-  const isErrorLog = (line: string) => /error|fatal|panic/i.test(line);
+  const analyzedLogWindow = createMemo(() => {
+    const visibleLogs = props.logs.slice(0, 50);
+    const analyses = analyzeLogLines(
+      visibleLogs.map((log) => log.line),
+      props.filter,
+    );
 
-  const getLogLevel = (line: string): string => {
-    const lower = line.toLowerCase();
-    if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) return 'error';
-    if (lower.includes('warn')) return 'warn';
-    if (lower.includes('debug') || lower.includes('trace')) return 'debug';
-    return 'info';
-  };
+    return new Map(
+      visibleLogs.map((log, index) => [
+        log,
+        analyses[index] ?? {
+          level: getLogLevel(log.line),
+          matchesFilter: true,
+          matchesSearch: false,
+        },
+      ]),
+    );
+  });
 
-  const logMatchesFilter = (log: LogEntry, filter?: LogFilter): { matches: boolean; isSearchMatch: boolean } => {
-    if (!filter) return { matches: true, isSearchMatch: false };
-
-    const level = getLogLevel(log.line);
-
-    // Level filter
-    if (filter.levels && filter.levels.length > 0 && !filter.levels.includes(level)) {
-      return { matches: false, isSearchMatch: false };
+  const getLogAnalysis = (log: LogEntry): {
+    level: LogLevel;
+    matchesFilter: boolean;
+    matchesSearch: boolean;
+  } => {
+    const cached = analyzedLogWindow().get(log);
+    if (cached) {
+      return {
+        level: cached.level,
+        matchesFilter: cached.matchesFilter,
+        matchesSearch: cached.matchesSearch,
+      };
     }
 
-    // Search term filter (supports regex)
-    if (filter.searchTerm && filter.searchTerm.trim()) {
-      let searchMatch = false;
-
-      if (filter.searchRegex) {
-        // Try regex search, fall back to string search on invalid regex
-        try {
-          const regex = new RegExp(filter.searchTerm, 'i');
-          searchMatch = regex.test(log.line);
-        } catch {
-          // Invalid regex - fall back to string search
-          searchMatch = log.line.toLowerCase().includes(filter.searchTerm.toLowerCase());
-        }
-      } else {
-        // Plain string search
-        searchMatch = log.line.toLowerCase().includes(filter.searchTerm.toLowerCase());
-      }
-
-      return { matches: true, isSearchMatch: searchMatch };
-    }
-
-    return { matches: true, isSearchMatch: false };
+    return {
+      level: getLogLevel(log.line),
+      matchesFilter: true,
+      matchesSearch: false,
+    };
   };
 
   // Performance: Find inactive slot in pool (O(n) but pool is fixed size)
@@ -159,17 +149,16 @@ const LogStream: Component<Props> = (props) => {
     if (slotIndex === -1) return; // Pool exhausted
 
     const p = particlePool[slotIndex];
-    const isError = isErrorLog(log.line);
+    const analysis = getLogAnalysis(log);
+    const isError = analysis.level === 'error';
 
-    // Check filter match status
-    const { matches, isSearchMatch } = logMatchesFilter(log, props.filter);
-    p.matchesFilter = matches;
-    p.isSearchMatch = isSearchMatch;
+    p.matchesFilter = analysis.matchesFilter;
+    p.isSearchMatch = analysis.matchesSearch;
 
     p.active = true;
     p.logEntry = log;
     p.isError = isError;
-    p.color = isSearchMatch ? '#ffdd00' : getLogColor(log.line); // Yellow for search matches
+    p.color = analysis.matchesSearch ? '#ffdd00' : getLogLevelColor(log.line); // Yellow for search matches
     p.lifetime = 0;
 
     // Error flash effect - quick red tint on error arrival

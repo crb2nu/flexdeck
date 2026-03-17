@@ -1,4 +1,5 @@
 import type { RepoInfo } from '../../lib/api';
+import { normalizeCiJobStatus, normalizeCiPipelineStatus } from '../../lib/fiAccel';
 import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
 const ACTIVE_JOB_STATUSES = new Set(['running', 'pending', 'created', 'preparing', 'waiting_for_resource', 'scheduled']);
@@ -58,8 +59,7 @@ export function getStatusLabel(
 }
 
 export function normalizeJobStatus(status: string | undefined | null): PipelineJob['status'] {
-  const normalized = (status ?? '').toLowerCase();
-  switch (normalized) {
+  switch (normalizeCiJobStatus(status)) {
     case 'running':
       return 'running';
     case 'success':
@@ -71,14 +71,8 @@ export function normalizeJobStatus(status: string | undefined | null): PipelineJ
     case 'skipped':
       return 'skipped';
     case 'canceled':
-    case 'cancelled':
-    case 'canceling':
       return 'failed';
     case 'pending':
-    case 'created':
-    case 'preparing':
-    case 'waiting_for_resource':
-    case 'scheduled':
       return 'pending';
     default:
       return 'pending';
@@ -86,8 +80,7 @@ export function normalizeJobStatus(status: string | undefined | null): PipelineJ
 }
 
 export function normalizePipelineStatus(status: string | undefined | null): Pipeline['status'] {
-  const normalized = (status ?? '').toLowerCase();
-  switch (normalized) {
+  switch (normalizeCiPipelineStatus(status)) {
     case 'running':
       return 'running';
     case 'success':
@@ -95,15 +88,9 @@ export function normalizePipelineStatus(status: string | undefined | null): Pipe
     case 'failed':
       return 'failed';
     case 'canceled':
-    case 'cancelled':
-      return 'canceled';
     case 'skipped':
       return 'canceled';
     case 'pending':
-    case 'created':
-    case 'preparing':
-    case 'waiting_for_resource':
-    case 'scheduled':
     case 'manual':
       return 'pending';
     default:

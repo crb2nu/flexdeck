@@ -2,44 +2,11 @@
  * Shared log level detection and styling utilities
  */
 
+import { detectLogLevel } from './fiAccel';
+
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
-/**
- * Detect log level from a log line
- */
-export function getLogLevel(line: string): LogLevel {
-  const lower = line.toLowerCase();
-
-  // Error patterns
-  if (
-    lower.includes('error') ||
-    lower.includes('fatal') ||
-    lower.includes('panic') ||
-    lower.includes('exception') ||
-    lower.includes('fail')
-  ) {
-    return 'error';
-  }
-
-  // Warning patterns
-  if (lower.includes('warn') || lower.includes('warning')) {
-    return 'warn';
-  }
-
-  // Debug patterns
-  if (lower.includes('debug') || lower.includes('trace')) {
-    return 'debug';
-  }
-
-  return 'info';
-}
-
-/**
- * Get CSS class for log level styling
- */
-export function getLogLevelClass(line: string): string {
-  const level = getLogLevel(line);
-
+export function getLogLevelClassForLevel(level: LogLevel): string {
   switch (level) {
     case 'error':
       return 'text-status-error';
@@ -52,12 +19,7 @@ export function getLogLevelClass(line: string): string {
   }
 }
 
-/**
- * Get badge info for log level
- */
-export function getLogLevelBadge(line: string): { text: string; class: string } | null {
-  const level = getLogLevel(line);
-
+export function getLogLevelBadgeForLevel(level: LogLevel): { text: string; class: string } | null {
   switch (level) {
     case 'error':
       return {
@@ -75,16 +37,11 @@ export function getLogLevelBadge(line: string): { text: string; class: string } 
         class: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
       };
     default:
-      return null; // No badge for info level
+      return null;
   }
 }
 
-/**
- * Get color for log level (used in visualizations)
- */
-export function getLogLevelColor(line: string): string {
-  const level = getLogLevel(line);
-
+export function getLogLevelColorForLevel(level: LogLevel): string {
   switch (level) {
     case 'error':
       return '#ef4444'; // red-500
@@ -95,4 +52,32 @@ export function getLogLevelColor(line: string): string {
     default:
       return '#00f0ff'; // neon-cyan
   }
+}
+
+/**
+ * Detect log level from a log line
+ */
+export function getLogLevel(line: string): LogLevel {
+  return detectLogLevel(line);
+}
+
+/**
+ * Get CSS class for log level styling
+ */
+export function getLogLevelClass(line: string): string {
+  return getLogLevelClassForLevel(getLogLevel(line));
+}
+
+/**
+ * Get badge info for log level
+ */
+export function getLogLevelBadge(line: string): { text: string; class: string } | null {
+  return getLogLevelBadgeForLevel(getLogLevel(line));
+}
+
+/**
+ * Get color for log level (used in visualizations)
+ */
+export function getLogLevelColor(line: string): string {
+  return getLogLevelColorForLevel(getLogLevel(line));
 }

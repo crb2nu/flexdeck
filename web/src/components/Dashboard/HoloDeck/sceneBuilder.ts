@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
+import { filterLabelSelectorMatches } from '../../../lib/fiAccel';
 import { HOLO_THEME } from './config';
 import { arcRingVertexShader, arcRingFragmentShader } from './shaders';
 import { markShared } from './utils';
@@ -97,6 +98,7 @@ export function buildScene(
 
   // 2. Create Pods
   const podsByNamespace = new Map<string, K8sPod[]>();
+  const podLabelSetsByNamespace = new Map<string, Array<Record<string, string> | undefined>>();
   const podObjectsByName = new Map<string, THREE.Object3D>();
   const podLinePointsByColor = new Map<number, THREE.Vector3[]>();
   const POINTS_PER_POD_CURVE = 16;
@@ -105,6 +107,8 @@ export function buildScene(
     const ns = pod.metadata.namespace || 'default';
     if (!podsByNamespace.has(ns)) podsByNamespace.set(ns, []);
     podsByNamespace.get(ns)!.push(pod);
+    if (!podLabelSetsByNamespace.has(ns)) podLabelSetsByNamespace.set(ns, []);
+    podLabelSetsByNamespace.get(ns)!.push(pod.metadata.labels);
 
     if (i > 150) return;
 
@@ -201,15 +205,17 @@ export function buildScene(
     const matchingPodIds: string[] = [];
     const svcPos = new THREE.Vector3(x, sy, z);
     const namespacePods = podsByNamespace.get(svc.metadata.namespace || 'default') || [];
+    const namespacePodLabelSets = podLabelSetsByNamespace.get(svc.metadata.namespace || 'default') || [];
     const podCandidates: { podId: string; dist: number; obj: THREE.Object3D }[] = [];
-    
-    namespacePods.forEach(pod => {
-      if (podMatchesSelector(pod, svc.spec.selector)) {
-        const podObj = podObjectsByName.get(pod.metadata.name);
-        if (podObj) {
-          const dist = svcPos.distanceTo(podObj.position);
-          podCandidates.push({ podId: `pod-${pod.metadata.name}`, dist, obj: podObj });
-        }
+
+    const matchingIndexes = filterLabelSelectorMatches(svc.spec.selector, namespacePodLabelSets);
+    matchingIndexes.forEach((podIndex) => {
+      const pod = namespacePods[podIndex];
+      if (!pod) return;
+      const podObj = podObjectsByName.get(pod.metadata.name);
+      if (podObj) {
+        const dist = svcPos.distanceTo(podObj.position);
+        podCandidates.push({ podId: `pod-${pod.metadata.name}`, dist, obj: podObj });
       }
     });
 
@@ -308,10 +314,4 @@ function createShaderRing(geometry: THREE.BufferGeometry, height: number, colorH
   const ring = new THREE.Mesh(geometry, material);
   ring.position.y = height;
   return ring;
-}
-
-function podMatchesSelector(pod: K8sPod, selector: Record<string, string> | undefined): boolean {
-  if (!selector) return false;
-  const podLabels = pod.metadata.labels || {};
-  return Object.entries(selector).every(([key, value]) => podLabels[key] === value);
 }

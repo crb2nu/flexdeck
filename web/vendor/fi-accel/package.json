@@ -1,0 +1,22 @@
+{
+  "name": "fi-accel-wasm",
+  "type": "module",
+  "collaborators": [
+    "Cody Blevins"
+  ],
+  "description": "WASM bindings for fi-accel acceleration library",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "fi_accel_wasm_bg.wasm",
+    "fi_accel_wasm.js",
+    "fi_accel_wasm_bg.js",
+    "fi_accel_wasm.d.ts"
+  ],
+  "main": "fi_accel_wasm.js",
+  "types": "fi_accel_wasm.d.ts",
+  "sideEffects": [
+    "./fi_accel_wasm.js",
+    "./snippets/*"
+  ]
+}

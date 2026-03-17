@@ -1,8 +1,10 @@
 import { Component, createMemo } from 'solid-js';
+import type { FiAccelLogAnalysisMatch } from '../../lib/fiAccel';
 import type { LogEntry } from './LogStream';
 
 interface Props {
   logs: LogEntry[];
+  analysis?: FiAccelLogAnalysisMatch[];
 }
 
 const LogStats: Component<Props> = (props) => {
@@ -11,6 +13,22 @@ const LogStats: Component<Props> = (props) => {
     let warnings = 0;
     let info = 0;
     let debug = 0;
+
+    const analysis = props.analysis;
+    if (analysis && analysis.length === props.logs.length) {
+      for (const match of analysis) {
+        if (match.level === 'error') {
+          errors++;
+        } else if (match.level === 'warn') {
+          warnings++;
+        } else if (match.level === 'debug') {
+          debug++;
+        } else {
+          info++;
+        }
+      }
+      return { total: props.logs.length, errors, warnings, info, debug };
+    }
 
     for (const log of props.logs) {
       const lower = log.line.toLowerCase();

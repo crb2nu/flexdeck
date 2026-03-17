@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
+import { filterLabelSelectorMatches } from '../../../lib/fiAccel';
 import type { TopologyNode, TopologyLink } from './types';
 
 export interface BuildInput {
@@ -19,7 +20,8 @@ export interface BuildResult {
 
 interface NamespacePodIndex {
   pods: K8sPod[];
-  labelIndex: Map<string, Map<string, K8sPod[]>>;
+  labelSets: Array<Record<string, string> | undefined>;
+  labelIndex: Map<string, Map<string, number[]>>;
 }
 
 interface CreateSimulationInput {
@@ -65,7 +67,8 @@ const getNamespacePodIndex = (namespaceIndexes: Map<string, NamespacePodIndex>, 
   if (!index) {
     index = {
       pods: [],
-      labelIndex: new Map<string, Map<string, K8sPod[]>>()
+      labelSets: [],
+      labelIndex: new Map<string, Map<string, number[]>>()
     };
     namespaceIndexes.set(namespace, index);
   }
@@ -77,13 +80,15 @@ const buildPodIndexesByNamespace = (pods: K8sPod[]): Map<string, NamespacePodInd
   for (const pod of pods) {
     const namespace = pod.metadata.namespace || 'default';
     const index = getNamespacePodIndex(namespaceIndexes, namespace);
+    const podIndex = index.pods.length;
     index.pods.push(pod);
 
     const labels = pod.metadata.labels || {};
+    index.labelSets.push(pod.metadata.labels);
     for (const [labelKey, labelValue] of Object.entries(labels)) {
       let byValue = index.labelIndex.get(labelKey);
       if (!byValue) {
-        byValue = new Map<string, K8sPod[]>();
+        byValue = new Map<string, number[]>();
         index.labelIndex.set(labelKey, byValue);
       }
 
@@ -92,18 +97,21 @@ const buildPodIndexesByNamespace = (pods: K8sPod[]): Map<string, NamespacePodInd
         labeledPods = [];
         byValue.set(labelValue, labeledPods);
       }
-      labeledPods.push(pod);
+      labeledPods.push(podIndex);
     }
   }
   return namespaceIndexes;
 };
 
-const getServiceCandidatePods = (namespaceIndex: NamespacePodIndex, selectorEntries: [string, string][]): K8sPod[] => {
+const getServiceCandidatePodIndexes = (
+  namespaceIndex: NamespacePodIndex,
+  selectorEntries: [string, string][],
+): number[] => {
   if (selectorEntries.length === 0) {
-    return namespaceIndex.pods;
+    return namespaceIndex.pods.map((_, index) => index);
   }
 
-  let narrowedCandidates: K8sPod[] | null = null;
+  let narrowedCandidates: number[] | null = null;
   for (const [labelKey, labelValue] of selectorEntries) {
     const podsForLabelValue = namespaceIndex.labelIndex.get(labelKey)?.get(labelValue);
     if (!podsForLabelValue || podsForLabelValue.length === 0) {
@@ -114,16 +122,7 @@ const getServiceCandidatePods = (namespaceIndex: NamespacePodIndex, selectorEntr
     }
   }
 
-  return narrowedCandidates || namespaceIndex.pods;
-};
-
-const selectorsMatchPod = (selectorEntries: [string, string][], pod: K8sPod): boolean => {
-  for (const [labelKey, labelValue] of selectorEntries) {
-    if (pod.metadata.labels?.[labelKey] !== labelValue) {
-      return false;
-    }
-  }
-  return true;
+  return narrowedCandidates || namespaceIndex.pods.map((_, index) => index);
 };
 
 const preserveNodePhysics = (target: TopologyNode, previousNode: TopologyNode | undefined): void => {
@@ -219,9 +218,14 @@ export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
     if (!namespaceIndex) continue;
 
     const selectorEntries = Object.entries(service.spec.selector);
-    const candidates = getServiceCandidatePods(namespaceIndex, selectorEntries);
-    for (const pod of candidates) {
-      if (!selectorsMatchPod(selectorEntries, pod)) continue;
+    const candidateIndexes = getServiceCandidatePodIndexes(namespaceIndex, selectorEntries);
+    const matchingIndexes = filterLabelSelectorMatches(
+      service.spec.selector,
+      candidateIndexes.map((index) => namespaceIndex.labelSets[index]),
+    );
+    for (const podIndex of matchingIndexes) {
+      const pod = namespaceIndex.pods[candidateIndexes[podIndex]];
+      if (!pod) continue;
       const podNamespaceForId = pod.metadata.namespace ?? 'undefined';
       const link: TopologyLink = {
         source: serviceId,

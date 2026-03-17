@@ -1,6 +1,7 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, untrack } from 'solid-js';
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../lib/fiAccel';
 import {
   buildTopologyGraphData,
   createTopologySimulation,
@@ -95,6 +96,12 @@ interface PerfSnapshot {
   framesRendered: number;
   denseFrameSkips: number;
   legacyHashEntityVisitsAvoided: number;
+  fiAccelBuildMode: 'main' | 'worker';
+  fiAccelInitState: string;
+  fiAccelSelectorCalls: number;
+  fiAccelSelectorFallbackCalls: number;
+  fiAccelSelectorCandidates: number;
+  fiAccelSelectorMs: number;
 }
 
 interface LiveTopologyStats {
@@ -104,6 +111,20 @@ interface LiveTopologyStats {
   links: number;
   lastBuildMs: number;
   lastSettleMs: number;
+  fiAccelSelectorCalls: number;
+  fiAccelSelectorCandidates: number;
+  fiAccelSelectorMs: number;
+}
+
+interface BuildExecutionMetrics {
+  mode: 'main' | 'worker';
+  buildMs: number;
+  fiAccel: FiAccelMetricsDelta;
+}
+
+interface BuildExecutionResult {
+  graphData: BuildResult;
+  buildMetrics: BuildExecutionMetrics;
 }
 
 interface NamespaceAggregateEntry {
@@ -128,6 +149,7 @@ interface WorkerBuildSuccess {
   type: 'result';
   requestId: number;
   graphData: BuildResult;
+  buildMetrics: BuildExecutionMetrics;
 }
 
 interface WorkerTickMessage {
@@ -163,7 +185,7 @@ interface WorkerResizeRequest {
 type WorkerBuildMessage = WorkerBuildSuccess | WorkerBuildFailure | WorkerTickMessage;
 
 interface WorkerBuildPending {
-  resolve: (graphData: BuildResult) => void;
+  resolve: (result: BuildExecutionResult) => void;
   reject: (error: Error) => void;
 }
 
@@ -201,6 +223,9 @@ const TopologyGraph: Component<Props> = (props) => {
     links: 0,
     lastBuildMs: 0,
     lastSettleMs: 0,
+    fiAccelSelectorCalls: 0,
+    fiAccelSelectorCandidates: 0,
+    fiAccelSelectorMs: 0,
   });
   const [topologySyncing, setTopologySyncing] = createSignal(false);
   const [densityOverviewActive, setDensityOverviewActive] = createSignal(false);
@@ -248,6 +273,18 @@ const TopologyGraph: Component<Props> = (props) => {
   let lastPerfHudUpdate = 0;
   let lastTopologyBuildMs = 0;
   let lastSimulationSettleMs = 0;
+  let lastBuildMode: 'main' | 'worker' = 'main';
+  let lastFiAccelBuildDelta: FiAccelMetricsDelta = {
+    initState: 'loading',
+    logAnalyzeCalls: 0,
+    logAnalyzeFallbackCalls: 0,
+    logAnalyzeLines: 0,
+    logAnalyzeMs: 0,
+    selectorFilterCalls: 0,
+    selectorFilterFallbackCalls: 0,
+    selectorFilterCandidates: 0,
+    selectorFilterMs: 0,
+  };
   let sourceNodeCount = 0;
   let sourcePodCount = 0;
   let sourceServiceCount = 0;
@@ -426,7 +463,13 @@ const TopologyGraph: Component<Props> = (props) => {
       drawStops: perfCounters.drawStops,
       framesRendered: perfCounters.framesRendered,
       denseFrameSkips: perfCounters.denseFrameSkips,
-      legacyHashEntityVisitsAvoided: perfCounters.legacyHashEntityVisitsAvoided
+      legacyHashEntityVisitsAvoided: perfCounters.legacyHashEntityVisitsAvoided,
+      fiAccelBuildMode: lastBuildMode,
+      fiAccelInitState: lastFiAccelBuildDelta.initState,
+      fiAccelSelectorCalls: lastFiAccelBuildDelta.selectorFilterCalls,
+      fiAccelSelectorFallbackCalls: lastFiAccelBuildDelta.selectorFilterFallbackCalls,
+      fiAccelSelectorCandidates: lastFiAccelBuildDelta.selectorFilterCandidates,
+      fiAccelSelectorMs: lastFiAccelBuildDelta.selectorFilterMs,
     };
   };
 
@@ -441,6 +484,9 @@ const TopologyGraph: Component<Props> = (props) => {
       links: densityOverviewActive() ? renderedTopologyLinkCount : (renderedTopologyLinkCount || graphLinks.length),
       lastBuildMs: lastTopologyBuildMs,
       lastSettleMs: lastSimulationSettleMs,
+      fiAccelSelectorCalls: lastFiAccelBuildDelta.selectorFilterCalls,
+      fiAccelSelectorCandidates: lastFiAccelBuildDelta.selectorFilterCandidates,
+      fiAccelSelectorMs: lastFiAccelBuildDelta.selectorFilterMs,
     };
     setLiveTopologyStats(liveStats);
     if (typeof window !== 'undefined') {
@@ -620,16 +666,27 @@ const TopologyGraph: Component<Props> = (props) => {
     setNodeCount(graphNodes.length);
   };
 
-  const buildGraphDirect = (): BuildResult => {
+  const buildGraphDirect = (): BuildExecutionResult => {
     sourceNodeCount = props.nodes.length;
     sourcePodCount = props.pods.length;
     sourceServiceCount = props.services.length;
-    return buildTopologyGraphData({
+    const fiAccelBefore = getFiAccelMetricsSnapshot();
+    const buildStartedAt = performance.now();
+    const graphData = buildTopologyGraphData({
       nodes: props.nodes,
       pods: props.pods,
       services: props.services,
       prevNodes: graphNodes
     });
+
+    return {
+      graphData,
+      buildMetrics: {
+        mode: 'main',
+        buildMs: performance.now() - buildStartedAt,
+        fiAccel: diffFiAccelMetrics(fiAccelBefore, getFiAccelMetricsSnapshot()),
+      },
+    };
   };
 
   const rejectPendingWorkerBuilds = (error: Error) => {
@@ -693,7 +750,10 @@ const TopologyGraph: Component<Props> = (props) => {
       return;
     }
 
-    pending.resolve(message.graphData);
+    pending.resolve({
+      graphData: message.graphData,
+      buildMetrics: message.buildMetrics,
+    });
   };
 
   const handleTopologyWorkerError = (event: ErrorEvent) => {
@@ -720,20 +780,14 @@ const TopologyGraph: Component<Props> = (props) => {
     return topologyWorker;
   };
 
-  const buildGraphWithWorker = (requestId: number, width: number, height: number): Promise<BuildResult> => {
+  const buildGraphWithWorker = (requestId: number, width: number, height: number): Promise<BuildExecutionResult> => {
     sourceNodeCount = props.nodes.length;
     sourcePodCount = props.pods.length;
     sourceServiceCount = props.services.length;
 
     const worker = ensureTopologyWorker();
     if (!worker) {
-      const graphData = buildTopologyGraphData({
-        nodes: props.nodes,
-        pods: props.pods,
-        services: props.services,
-        prevNodes: graphNodes
-      });
-      return Promise.resolve(graphData);
+      return Promise.resolve(buildGraphDirect());
     }
 
     return new Promise((resolve, reject) => {
@@ -1706,7 +1760,6 @@ const TopologyGraph: Component<Props> = (props) => {
   const initializeSimulation = async () => {
     if (!overlayCanvasRef) return;
     markTopologySyncing();
-    const rebuildStartedAt = performance.now();
 
     // Stop any existing simulation before rebuilding
     if (simulation) {
@@ -1724,17 +1777,20 @@ const TopologyGraph: Component<Props> = (props) => {
     const requestId = ++topologyWorkerRequestId;
     pendingBuildRequestId = requestId;
 
-    let graphData: BuildResult;
+    let buildResult: BuildExecutionResult;
     let workerBuildSucceeded = false;
     try {
-      graphData = await buildGraphWithWorker(requestId, width, height);
+      buildResult = await buildGraphWithWorker(requestId, width, height);
       workerBuildSucceeded = ensureTopologyWorker() !== null;
     } catch {
       if (requestId !== pendingBuildRequestId) return;
-      graphData = buildGraphDirect();
+      buildResult = buildGraphDirect();
     }
     if (requestId !== pendingBuildRequestId) return;
-    applyGraphData(graphData);
+    applyGraphData(buildResult.graphData);
+    lastTopologyBuildMs = buildResult.buildMetrics.buildMs;
+    lastBuildMode = buildResult.buildMetrics.mode;
+    lastFiAccelBuildDelta = buildResult.buildMetrics.fiAccel;
 
     // Early exit if no data - just render empty background
     if (graphNodes.length === 0) {
@@ -1743,7 +1799,6 @@ const TopologyGraph: Component<Props> = (props) => {
       activeWorkerRequestId = 0;
       invalidateViewport();
       draw();
-      lastTopologyBuildMs = performance.now() - rebuildStartedAt;
       maybeUpdatePerfHud(performance.now());
       markTopologySynced();
       return;
@@ -1759,7 +1814,6 @@ const TopologyGraph: Component<Props> = (props) => {
       }
       isSimulationActive = true;
       simulationSettledAt = 0;
-      lastTopologyBuildMs = simulationStartedAt - rebuildStartedAt;
       currentSimulationAlpha = 0.2;
       invalidateViewport();
       startAnimationLoop();
@@ -1800,7 +1854,6 @@ const TopologyGraph: Component<Props> = (props) => {
     // NOW start animation loop after warmup
     isSimulationActive = true;
     simulationSettledAt = 0; // Reset idle timeout when simulation starts
-    lastTopologyBuildMs = simulationStartedAt - rebuildStartedAt;
     invalidateViewport();
     startAnimationLoop();
     maybeUpdatePerfHud(simulationStartedAt);
@@ -2038,6 +2091,9 @@ const TopologyGraph: Component<Props> = (props) => {
               <span>frame {liveTopologyStats().avgFrameMs.toFixed(1)}ms</span>
               <span>build {liveTopologyStats().lastBuildMs.toFixed(0)}ms</span>
               <span>settle {liveTopologyStats().lastSettleMs.toFixed(0)}ms</span>
+              <Show when={liveTopologyStats().fiAccelSelectorCalls > 0}>
+                <span>accel {liveTopologyStats().fiAccelSelectorCalls}x/{liveTopologyStats().fiAccelSelectorCandidates} · {liveTopologyStats().fiAccelSelectorMs.toFixed(2)}ms</span>
+              </Show>
             </span>
         </div>
 
@@ -2051,6 +2107,7 @@ const TopologyGraph: Component<Props> = (props) => {
               <div>sim init {snapshot().simulationInits} | settle {snapshot().simulationSettles} | avg settle {snapshot().avgSimulationSettleMs.toFixed(1)}ms</div>
               <div>draw start/stop {snapshot().drawStarts}/{snapshot().drawStops} | skipped {snapshot().denseFrameSkips}</div>
               <div>legacy hash entity visits avoided {snapshot().legacyHashEntityVisitsAvoided.toLocaleString()}</div>
+              <div>fi-accel {snapshot().fiAccelInitState} | last {snapshot().fiAccelBuildMode} build | selector {snapshot().fiAccelSelectorCalls}x/{snapshot().fiAccelSelectorCandidates} candidates | fallback {snapshot().fiAccelSelectorFallbackCalls} | {snapshot().fiAccelSelectorMs.toFixed(3)}ms</div>
             </div>
           )}
         </Show>

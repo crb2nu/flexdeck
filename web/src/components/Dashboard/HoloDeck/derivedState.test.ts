@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { K8sNode, K8sPod } from '../../../lib/types';
-import { computeClusterHealth, nodeMatchesFilter, podMatchesFilter } from './derivedState';
+import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
+import { computeClusterHealth, nodeMatchesFilter, podMatchesFilter, serviceMatchesFilter } from './derivedState';
 
 const buildNode = (name: string, ready: boolean): K8sNode => ({
   metadata: { name },
@@ -17,6 +17,14 @@ const buildPod = (name: string, namespace: string, nodeName: string, phase: K8sP
     containers: [{ name: 'c', image: 'img' }]
   },
   status: { phase }
+});
+
+const buildService = (name: string, namespace: string): K8sService => ({
+  metadata: { name, namespace },
+  spec: {
+    type: 'ClusterIP',
+    selector: { app: name }
+  }
 });
 
 describe('HoloDeck derived state helpers', () => {
@@ -40,6 +48,15 @@ describe('HoloDeck derived state helpers', () => {
     expect(nodeMatchesFilter(node, pods, { namespace: 'payments' })).toBe(false);
     expect(nodeMatchesFilter(node, pods, { searchTerm: 'frontend' })).toBe(true);
     expect(nodeMatchesFilter(node, pods, { nodeName: 'worker-b' })).toBe(false);
+  });
+
+  it('filters services by namespace and search while hiding them for pod-only filters', () => {
+    const service = buildService('payments-api', 'payments');
+    expect(serviceMatchesFilter(service, { namespace: 'payments' })).toBe(true);
+    expect(serviceMatchesFilter(service, { namespace: 'default' })).toBe(false);
+    expect(serviceMatchesFilter(service, { searchTerm: 'payments' })).toBe(true);
+    expect(serviceMatchesFilter(service, { nodeName: 'worker-a' })).toBe(false);
+    expect(serviceMatchesFilter(service, { status: ['Running'] })).toBe(false);
   });
 
   it('computes weighted cluster health from node and pod readiness', () => {

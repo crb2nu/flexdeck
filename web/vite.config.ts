@@ -4,6 +4,9 @@ import solidPlugin from "vite-plugin-solid";
 export default defineConfig({
   base: "./",
   plugins: [solidPlugin()],
+  worker: {
+    format: "es",
+  },
   server: {
     port: 5173,
     proxy: {
