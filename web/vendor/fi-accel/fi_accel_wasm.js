@@ -1,10 +1,13 @@
 /* @ts-self-types="./fi_accel_wasm.d.ts" */
 
 import initWasm from "./fi_accel_wasm_bg.wasm?init";
-import { __wbg_set_wasm } from "./fi_accel_wasm_bg.js";
+import * as wasmBindings from "./fi_accel_wasm_bg.js";
 
-const wasm = await initWasm();
-__wbg_set_wasm(wasm);
+// Vite's `?init` loader expects the full WebAssembly import object.
+// wasm-bindgen names the import module after the JS shim filename, so we
+// explicitly provide that mapping for both the window bundle and the worker bundle.
+const wasm = await initWasm({ "./fi_accel_wasm_bg.js": wasmBindings });
+wasmBindings.__wbg_set_wasm(wasm);
 wasm.__wbindgen_start();
 
 export {

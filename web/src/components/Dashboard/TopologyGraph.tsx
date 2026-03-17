@@ -1323,6 +1323,9 @@ const TopologyGraph: Component<Props> = (props) => {
     const shouldCullLinks = densityOverviewBlend > 0.7 || isDense || zoomLevel > 0.8;
     const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
     const drawStructuralLabels = !underPressure && (overviewOpacity > 0.5 ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1));
+    const hasLargeVisibleSet = lastVisibleNodeCount > 240 || isDense;
+    const renderRawLinks = rawOpacity > (underPressure || hasLargeVisibleSet ? 0.12 : 0.04);
+    const renderRawNodes = rawOpacity > (underPressure || hasLargeVisibleSet ? 0.18 : 0.06);
 
     const rawLinkCount = shouldCullLinks
       ? lastVisibleHostsLinkCount + lastVisibleSelectsLinkCount
@@ -1342,87 +1345,91 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.fillStyle = '#cccccc';
     let lastFont = '';
 
-    if (rawOpacity > 0.001) {
+    if (rawOpacity > 0.001 && (renderRawLinks || renderRawNodes)) {
       ctx.save();
       ctx.globalAlpha = rawOpacity;
 
-      // Use pre-filtered visible link lists (computed in updateVisibleNodes)
-      const hostsCount = shouldCullLinks ? lastVisibleHostsLinkCount : hostsLinks.length;
-      if (hostsCount > 0) {
-        ctx.beginPath();
-        for (let i = 0; i < hostsCount; i++) {
-          const link = shouldCullLinks ? hostsLinks[visibleHostsLinkIndices[i]] : hostsLinks[i];
-          const source = link.source as D3Node;
-          const target = link.target as D3Node;
-          if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-          ctx.moveTo(source.x, source.y);
-          ctx.lineTo(target.x, target.y);
-        }
-        if (!reduceLinks && !isDense) {
-          ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
-          ctx.lineWidth = 5;
+      if (renderRawLinks) {
+        // Use pre-filtered visible link lists (computed in updateVisibleNodes)
+        const hostsCount = shouldCullLinks ? lastVisibleHostsLinkCount : hostsLinks.length;
+        if (hostsCount > 0) {
+          ctx.beginPath();
+          for (let i = 0; i < hostsCount; i++) {
+            const link = shouldCullLinks ? hostsLinks[visibleHostsLinkIndices[i]] : hostsLinks[i];
+            const source = link.source as D3Node;
+            const target = link.target as D3Node;
+            if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
+            ctx.moveTo(source.x, source.y);
+            ctx.lineTo(target.x, target.y);
+          }
+          if (!reduceLinks && !isDense) {
+            ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
+            ctx.lineWidth = 5;
+            ctx.setLineDash([]);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
+          ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
           ctx.stroke();
         }
-        ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
-        ctx.lineWidth = 1.5;
+
+        const selectsCount = shouldCullLinks ? lastVisibleSelectsLinkCount : selectsLinks.length;
+        if (selectsCount > 0) {
+          ctx.beginPath();
+          for (let i = 0; i < selectsCount; i++) {
+            const link = shouldCullLinks ? selectsLinks[visibleSelectsLinkIndices[i]] : selectsLinks[i];
+            const source = link.source as D3Node;
+            const target = link.target as D3Node;
+            if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
+            ctx.moveTo(source.x, source.y);
+            ctx.lineTo(target.x, target.y);
+          }
+          if (!reduceLinks && !isDense) {
+            ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([]);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash(reduceLinks ? [] : [4, 4]);
+          ctx.stroke();
+        }
         ctx.setLineDash([]);
-        ctx.stroke();
       }
 
-      const selectsCount = shouldCullLinks ? lastVisibleSelectsLinkCount : selectsLinks.length;
-      if (selectsCount > 0) {
-        ctx.beginPath();
-        for (let i = 0; i < selectsCount; i++) {
-          const link = shouldCullLinks ? selectsLinks[visibleSelectsLinkIndices[i]] : selectsLinks[i];
-          const source = link.source as D3Node;
-          const target = link.target as D3Node;
-          if (source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) continue;
-          ctx.moveTo(source.x, source.y);
-          ctx.lineTo(target.x, target.y);
+      if (renderRawNodes) {
+        for (let i = 0; i < lastVisibleNodeCount; i++) {
+          const node = graphNodes[visibleNodeIndices[i]];
+          const nodeX = node.x;
+          const nodeY = node.y;
+          if (nodeX === undefined || nodeY === undefined) continue;
+
+          const cached = nodeStylesCache.get(node.id)!;
+          const sprite = getNodeSprite(
+            node.type,
+            cached.r,
+            cached.color,
+            simplifiedNodeRendering ? 'simple' : 'full',
+          );
+          ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
         }
-        if (!reduceLinks && !isDense) {
-          ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
-          ctx.lineWidth = 4;
-          ctx.setLineDash([]);
-          ctx.stroke();
+
+        for (let i = 0; i < lastVisibleNodeCount; i++) {
+          const node = graphNodes[visibleNodeIndices[i]];
+          if (node.x === undefined || node.y === undefined) continue;
+          if (!drawStructuralLabels || (node.type !== 'node' && node.type !== 'service')) continue;
+          if (zoomLevel <= labelZoomThreshold) continue;
+
+          const cached = nodeStylesCache.get(node.id)!;
+          const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
+          if (font !== lastFont) {
+            ctx.font = font;
+            lastFont = font;
+          }
+          ctx.fillText(cached.truncLabel, node.x, node.y + cached.r + 12);
         }
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash(reduceLinks ? [] : [4, 4]);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-
-      for (let i = 0; i < lastVisibleNodeCount; i++) {
-        const node = graphNodes[visibleNodeIndices[i]];
-        const nodeX = node.x;
-        const nodeY = node.y;
-        if (nodeX === undefined || nodeY === undefined) continue;
-
-        const cached = nodeStylesCache.get(node.id)!;
-        const sprite = getNodeSprite(
-          node.type,
-          cached.r,
-          cached.color,
-          simplifiedNodeRendering ? 'simple' : 'full',
-        );
-        ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
-      }
-
-      for (let i = 0; i < lastVisibleNodeCount; i++) {
-        const node = graphNodes[visibleNodeIndices[i]];
-        if (node.x === undefined || node.y === undefined) continue;
-        if (!drawStructuralLabels || (node.type !== 'node' && node.type !== 'service')) continue;
-        if (zoomLevel <= labelZoomThreshold) continue;
-
-        const cached = nodeStylesCache.get(node.id)!;
-        const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
-        if (font !== lastFont) {
-          ctx.font = font;
-          lastFont = font;
-        }
-        ctx.fillText(cached.truncLabel, node.x, node.y + cached.r + 12);
       }
 
       ctx.restore();

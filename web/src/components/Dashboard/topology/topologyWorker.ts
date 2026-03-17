@@ -5,7 +5,6 @@ import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta
 import {
   buildTopologyGraphData,
   createPreparedTopologySimulation,
-  primeTopologyGraphLayout,
   type BuildInput,
   type BuildResult,
 } from './layoutEngine';
@@ -182,13 +181,6 @@ const handleBuild = (message: WorkerBuildRequest): void => {
   const fiAccelBefore = getFiAccelMetricsSnapshot();
 
   const graphData = buildTopologyGraphData(message.input);
-  primeTopologyGraphLayout(
-    graphData.nodes,
-    graphData.links,
-    message.width,
-    message.height,
-    getNodeRadius,
-  );
 
   activeNodes = graphData.nodes;
   activeNodeByID = new Map(graphData.nodes.map((node) => [node.id, node]));
@@ -202,7 +194,6 @@ const handleBuild = (message: WorkerBuildRequest): void => {
       getNodeRadius,
     });
     activeSimulation = prepared.simulation;
-    scheduleStepLoop();
   }
 
   const buildMetrics: WorkerBuildMetrics = {
@@ -223,6 +214,10 @@ const handleBuild = (message: WorkerBuildRequest): void => {
     },
   };
   workerScope.postMessage(response);
+
+  if (activeSimulation) {
+    scheduleStepLoop();
+  }
 };
 
 const handleResize = (message: WorkerResizeRequest): void => {
