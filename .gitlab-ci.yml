@@ -4,6 +4,8 @@ include:
     file:
       - /k3s/ci/caches/gitlab-ci-cache.yml
 
+  - project: 'services/tech-radar'
+    file: '/ci/radar.yml'
 stages:
   - lint
   - test
@@ -293,3 +295,6 @@ deploy:
   environment:
     name: production
     url: https://deck.flexinfer.ai
+
+radar-scan:
+  extends: .radar-scan
