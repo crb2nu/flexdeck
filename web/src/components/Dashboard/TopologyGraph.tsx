@@ -62,6 +62,14 @@ const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
 const PERF_HUD_UPDATE_MS = 500;
 const PERF_FRAME_WINDOW = 180;
 const DENSITY_OVERVIEW_NEAR_FULL_BLEND = 0.98;
+const SIMULATION_REFRESH_MS_RAW = 1000 / 45;
+const SIMULATION_REFRESH_MS_DENSE = 1000 / 26;
+const SIMULATION_REFRESH_MS_OVERVIEW = 1000 / 18;
+const SIMULATION_REFRESH_MS_SETTLED = 1000 / 16;
+const SIMULATION_VISIBILITY_REFRESH_MS_RAW = 1000 / 30;
+const SIMULATION_VISIBILITY_REFRESH_MS_DENSE = 1000 / 18;
+const SIMULATION_VISIBILITY_REFRESH_MS_OVERVIEW = 1000 / 12;
+const FRAME_PRESSURE_SCORE_MAX = 12;
 
 interface PerfCounters {
   effectRuns: number;
@@ -76,6 +84,14 @@ interface PerfCounters {
   denseFrameSkips: number;
   maxFrameMs: number;
   legacyHashEntityVisitsAvoided: number;
+  baseLayerDraws: number;
+  overlayLayerDraws: number;
+  visibilityRefreshes: number;
+  visibilityRefreshTotalMs: number;
+  workerTickMessages: number;
+  simulationVisualRefreshes: number;
+  simulationVisualDeferrals: number;
+  framePressureScore: number;
 }
 
 interface PerfSnapshot {
@@ -96,6 +112,14 @@ interface PerfSnapshot {
   framesRendered: number;
   denseFrameSkips: number;
   legacyHashEntityVisitsAvoided: number;
+  baseLayerDraws: number;
+  overlayLayerDraws: number;
+  visibilityRefreshes: number;
+  avgVisibilityRefreshMs: number;
+  workerTickMessages: number;
+  simulationVisualRefreshes: number;
+  simulationVisualDeferrals: number;
+  framePressureScore: number;
   fiAccelBuildMode: 'main' | 'worker';
   fiAccelInitState: string;
   fiAccelSelectorCalls: number;
@@ -293,6 +317,13 @@ const TopologyGraph: Component<Props> = (props) => {
   let baseLayerDirty = true;
   let overlayLayerDirty = true;
   let viewportCacheDirty = true;
+  let pendingSimulationVisualUpdate = false;
+  let pendingVisibilityRefresh = true;
+  let pendingNamespaceAggregateRefresh = true;
+  let lastSimulationVisualRefreshAt = -Infinity;
+  let lastVisibilityRefreshAt = -Infinity;
+  let framePressureScore = 0;
+  let underFramePressure = false;
   const frameSamples = new Float32Array(PERF_FRAME_WINDOW);
   const perfCounters: PerfCounters = {
     effectRuns: 0,
@@ -306,7 +337,15 @@ const TopologyGraph: Component<Props> = (props) => {
     framesRendered: 0,
     denseFrameSkips: 0,
     maxFrameMs: 0,
-    legacyHashEntityVisitsAvoided: 0
+    legacyHashEntityVisitsAvoided: 0,
+    baseLayerDraws: 0,
+    overlayLayerDraws: 0,
+    visibilityRefreshes: 0,
+    visibilityRefreshTotalMs: 0,
+    workerTickMessages: 0,
+    simulationVisualRefreshes: 0,
+    simulationVisualDeferrals: 0,
+    framePressureScore: 0,
   };
 
   // Node style cache - recomputed only when nodes change, not every frame
@@ -346,13 +385,19 @@ const TopologyGraph: Component<Props> = (props) => {
   };
   const invalidateBaseLayer = (invalidateViewport = false) => {
     baseLayerDirty = true;
-    if (invalidateViewport) viewportCacheDirty = true;
+    if (invalidateViewport) {
+      viewportCacheDirty = true;
+      pendingVisibilityRefresh = true;
+      pendingNamespaceAggregateRefresh = true;
+    }
   };
   const invalidateOverlayLayer = () => {
     overlayLayerDirty = true;
   };
   const invalidateViewport = () => {
     viewportCacheDirty = true;
+    pendingVisibilityRefresh = true;
+    pendingNamespaceAggregateRefresh = true;
     baseLayerDirty = true;
     overlayLayerDirty = true;
   };
@@ -445,6 +490,9 @@ const TopologyGraph: Component<Props> = (props) => {
     const avgSimulationSettleMs = perfCounters.simulationSettles > 0
       ? perfCounters.simulationTotalSettleMs / perfCounters.simulationSettles
       : 0;
+    const avgVisibilityRefreshMs = perfCounters.visibilityRefreshes > 0
+      ? perfCounters.visibilityRefreshTotalMs / perfCounters.visibilityRefreshes
+      : 0;
 
     return {
       fps,
@@ -464,6 +512,14 @@ const TopologyGraph: Component<Props> = (props) => {
       framesRendered: perfCounters.framesRendered,
       denseFrameSkips: perfCounters.denseFrameSkips,
       legacyHashEntityVisitsAvoided: perfCounters.legacyHashEntityVisitsAvoided,
+      baseLayerDraws: perfCounters.baseLayerDraws,
+      overlayLayerDraws: perfCounters.overlayLayerDraws,
+      visibilityRefreshes: perfCounters.visibilityRefreshes,
+      avgVisibilityRefreshMs,
+      workerTickMessages: perfCounters.workerTickMessages,
+      simulationVisualRefreshes: perfCounters.simulationVisualRefreshes,
+      simulationVisualDeferrals: perfCounters.simulationVisualDeferrals,
+      framePressureScore: perfCounters.framePressureScore,
       fiAccelBuildMode: lastBuildMode,
       fiAccelInitState: lastFiAccelBuildDelta.initState,
       fiAccelSelectorCalls: lastFiAccelBuildDelta.selectorFilterCalls,
@@ -699,6 +755,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const handleWorkerTick = (message: WorkerTickMessage) => {
     if (message.requestId !== activeWorkerRequestId) return;
     if (message.positions.byteLength !== graphNodes.length * 2 * Float32Array.BYTES_PER_ELEMENT) return;
+    perfCounters.workerTickMessages++;
 
     const positions = new Float32Array(message.positions);
     for (let i = 0; i < graphNodes.length; i++) {
@@ -709,8 +766,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
     currentSimulationAlpha = message.alpha;
     spatialGridDirty = true;
-    viewportCacheDirty = true;
-    baseLayerDirty = true;
+    pendingSimulationVisualUpdate = true;
     if (hasActiveOverlayState()) {
       overlayLayerDirty = true;
     }
@@ -724,6 +780,7 @@ const TopologyGraph: Component<Props> = (props) => {
     if (!isSimulationActive) return;
     isSimulationActive = false;
     simulationSettledAt = performance.now();
+    invalidateViewport();
     if (simulationStartedAt > 0) {
       lastSimulationSettleMs = simulationSettledAt - simulationStartedAt;
     }
@@ -1025,6 +1082,43 @@ const TopologyGraph: Component<Props> = (props) => {
   const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewBlend: number): boolean =>
     densityOverviewBlend < DENSITY_OVERVIEW_NEAR_FULL_BLEND || node.type === 'node';
 
+  const getSimulationVisualRefreshMs = (
+    isDense: boolean,
+    densityOverviewBlend: number,
+    isUserInteracting: boolean,
+    nearSettled: boolean,
+  ): number => {
+    if (isUserInteracting) return isDense ? SIMULATION_REFRESH_MS_DENSE : SIMULATION_REFRESH_MS_RAW;
+    if (densityOverviewBlend > 0.6) return nearSettled ? SIMULATION_REFRESH_MS_SETTLED : SIMULATION_REFRESH_MS_OVERVIEW;
+    if (isDense) return nearSettled ? SIMULATION_REFRESH_MS_SETTLED : SIMULATION_REFRESH_MS_DENSE;
+    return nearSettled ? SIMULATION_REFRESH_MS_SETTLED : SIMULATION_REFRESH_MS_RAW;
+  };
+
+  const getSimulationVisibilityRefreshMs = (
+    isDense: boolean,
+    densityOverviewBlend: number,
+    isUserInteracting: boolean,
+  ): number => {
+    if (isUserInteracting && densityOverviewBlend < 0.3) return SIMULATION_VISIBILITY_REFRESH_MS_RAW;
+    if (densityOverviewBlend > 0.6) return SIMULATION_VISIBILITY_REFRESH_MS_OVERVIEW;
+    if (isDense) return SIMULATION_VISIBILITY_REFRESH_MS_DENSE;
+    return SIMULATION_VISIBILITY_REFRESH_MS_RAW;
+  };
+
+  const updateFramePressure = (frameMs: number, isDense: boolean) => {
+    const hotFrameMs = isDense ? 24 : 18;
+    const warmFrameMs = isDense ? 18 : 13;
+    if (frameMs >= hotFrameMs) {
+      framePressureScore = Math.min(FRAME_PRESSURE_SCORE_MAX, framePressureScore + 2);
+    } else if (frameMs >= warmFrameMs) {
+      framePressureScore = Math.min(FRAME_PRESSURE_SCORE_MAX, framePressureScore + 1);
+    } else {
+      framePressureScore = Math.max(0, framePressureScore - 2);
+    }
+    underFramePressure = framePressureScore >= 4;
+    perfCounters.framePressureScore = framePressureScore;
+  };
+
   const syncDensityOverviewState = (blend: number) => {
     const active = blend > 0.18;
     const hiddenPods = active ? Math.round(sourcePodCount * blend) : 0;
@@ -1092,10 +1186,12 @@ const TopologyGraph: Component<Props> = (props) => {
       aggregate.x /= aggregate.memberCount;
       aggregate.y /= aggregate.memberCount;
     }
+    pendingNamespaceAggregateRefresh = false;
   };
 
   const updateVisibleNodes = (width: number, height: number, densityOverviewBlend: number, force = false) => {
     if (!force && !viewportCacheDirty) return;
+    const startedAt = performance.now();
 
     if (transform.x !== lastFrustumTransform.x ||
         transform.y !== lastFrustumTransform.y ||
@@ -1154,6 +1250,10 @@ const TopologyGraph: Component<Props> = (props) => {
     lastVisibleSelectsLinkCount = visibleSelectsCount;
 
     viewportCacheDirty = false;
+    pendingVisibilityRefresh = false;
+    lastVisibilityRefreshAt = performance.now();
+    perfCounters.visibilityRefreshes++;
+    perfCounters.visibilityRefreshTotalMs += lastVisibilityRefreshAt - startedAt;
   };
 
   const drawBackground = (
@@ -1162,6 +1262,7 @@ const TopologyGraph: Component<Props> = (props) => {
     height: number,
     isDense: boolean,
     isSimulationActiveNow: boolean,
+    underPressure: boolean,
   ) => {
     ctx.clearRect(0, 0, width, height);
 
@@ -1180,7 +1281,7 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.fillStyle = cachedGradient;
     ctx.fillRect(0, 0, width, height);
 
-    if (!isDense && isSimulationActiveNow && frameCount % 2 === 0) {
+    if (!underPressure && !isDense && isSimulationActiveNow && frameCount % 2 === 0) {
       const scanY = (frameCount * 2) % height;
       ctx.fillStyle = 'rgba(0, 217, 255, 0.015)';
       ctx.fillRect(0, scanY, width, 2);
@@ -1199,22 +1300,29 @@ const TopologyGraph: Component<Props> = (props) => {
     reduceNodeDetail: boolean,
     skipDecorativeNodeEffects: boolean,
     simplifiedNodeRendering: boolean,
+    refreshVisibility: boolean,
+    refreshNamespaceAggregates: boolean,
+    underPressure: boolean,
   ) => {
+    perfCounters.baseLayerDraws++;
     clearBaseCanvasPreview();
-    drawBackground(ctx, width, height, isDense, isSimulationActive);
+    drawBackground(ctx, width, height, isDense, isSimulationActive, underPressure);
     ensureNodeStylesCache();
-    updateVisibleNodes(width, height, densityOverviewBlend, isSimulationActive);
-    if (densityOverviewBlend > 0.001) {
+    updateVisibleNodes(width, height, densityOverviewBlend, refreshVisibility);
+    if (densityOverviewBlend > 0.001 && refreshNamespaceAggregates) {
       updateNamespaceAggregates();
     } else {
-      lastNamespaceAggregateCount = 0;
+      if (densityOverviewBlend <= 0.001) {
+        lastNamespaceAggregateCount = 0;
+        pendingNamespaceAggregateRefresh = false;
+      }
     }
 
     const rawOpacity = clamp01(1 - densityOverviewBlend);
     const overviewOpacity = clamp01(densityOverviewBlend);
     const shouldCullLinks = densityOverviewBlend > 0.7 || isDense || zoomLevel > 0.8;
     const labelZoomThreshold = isDense ? 1 : reduceDetail ? 0.7 : 0.4;
-    const drawStructuralLabels = overviewOpacity > 0.5 ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1);
+    const drawStructuralLabels = !underPressure && (overviewOpacity > 0.5 ? zoomLevel > 0.85 : (!isDense || zoomLevel > 1));
 
     const rawLinkCount = shouldCullLinks
       ? lastVisibleHostsLinkCount + lastVisibleSelectsLinkCount
@@ -1393,6 +1501,7 @@ const TopologyGraph: Component<Props> = (props) => {
     skipDecorativeNodeEffects: boolean,
     allowParticles: boolean,
   ) => {
+    perfCounters.overlayLayerDraws++;
     ctx.clearRect(0, 0, width, height);
     ensureNodeStylesCache();
     updateVisibleNodes(width, height, densityOverviewBlend);
@@ -1613,21 +1722,53 @@ const TopologyGraph: Component<Props> = (props) => {
 
     const { width, height } = dimensions();
     const zoomLevel = transform.k;
-    const reduceDetail = isDense && zoomLevel < 0.85;
-    const reduceLinks = reduceDetail || zoomLevel < 0.5;
-    const reduceNodeDetail = reduceDetail || zoomLevel < 0.6;
     const densityOverviewBlend = getDensityOverviewBlend(zoomLevel);
-    const skipDecorativeNodeEffects = isDense && !isUserInteracting;
+    const forceBudgetMode = underFramePressure && !isUserInteracting;
+    const reduceDetail = (isDense && zoomLevel < 0.85) || (forceBudgetMode && zoomLevel < 1.2);
+    const reduceLinks = reduceDetail || zoomLevel < 0.5 || forceBudgetMode;
+    const reduceNodeDetail = reduceDetail || zoomLevel < 0.6 || forceBudgetMode;
+    const skipDecorativeNodeEffects = (isDense && !isUserInteracting) || forceBudgetMode;
     const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
-    const allowParticles = isSimulationActive && !reduceLinks && !isDense && densityOverviewBlend < 0.15;
+    const allowParticles = isSimulationActive && !reduceLinks && !isDense && densityOverviewBlend < 0.15 && !forceBudgetMode;
     syncDensityOverviewState(densityOverviewBlend);
 
     if (isSimulationActive) {
       spatialGridDirty = true;
-      viewportCacheDirty = true;
-      baseLayerDirty = true;
+      if (activeSimulationMode === 'main') {
+        pendingSimulationVisualUpdate = true;
+      }
       if (hasActiveOverlayState()) {
         overlayLayerDirty = true;
+      }
+    }
+
+    if (isSimulationActive && pendingSimulationVisualUpdate) {
+      const visualRefreshMs = getSimulationVisualRefreshMs(
+        isDense,
+        densityOverviewBlend,
+        isUserInteracting,
+        nearSettled,
+      );
+      const visibilityRefreshMs = getSimulationVisibilityRefreshMs(
+        isDense,
+        densityOverviewBlend,
+        isUserInteracting,
+      );
+      if (now - lastSimulationVisualRefreshAt >= visualRefreshMs) {
+        const visibilityRefreshDue =
+          pendingVisibilityRefresh ||
+          now - lastVisibilityRefreshAt >= visibilityRefreshMs;
+        baseLayerDirty = true;
+        if (visibilityRefreshDue) {
+          viewportCacheDirty = true;
+          pendingVisibilityRefresh = true;
+          pendingNamespaceAggregateRefresh = true;
+        }
+        pendingSimulationVisualUpdate = false;
+        lastSimulationVisualRefreshAt = now;
+        perfCounters.simulationVisualRefreshes++;
+      } else {
+        perfCounters.simulationVisualDeferrals++;
       }
     }
 
@@ -1647,6 +1788,9 @@ const TopologyGraph: Component<Props> = (props) => {
         reduceNodeDetail,
         skipDecorativeNodeEffects,
         simplifiedNodeRendering,
+        viewportCacheDirty || pendingVisibilityRefresh,
+        pendingNamespaceAggregateRefresh || viewportCacheDirty,
+        forceBudgetMode,
       );
     }
 
@@ -1667,7 +1811,9 @@ const TopologyGraph: Component<Props> = (props) => {
       );
     }
 
-    recordFrameSample(performance.now() - frameStart);
+    const frameDuration = performance.now() - frameStart;
+    recordFrameSample(frameDuration);
+    updateFramePressure(frameDuration, isDense);
     maybeUpdatePerfHud(now);
 
     const shouldContinue = isSimulationActive ||
@@ -2106,6 +2252,9 @@ const TopologyGraph: Component<Props> = (props) => {
               <div>effects {snapshot().effectRuns} | rebuilds {snapshot().topologyRebuilds} | style {snapshot().styleRefreshes}</div>
               <div>sim init {snapshot().simulationInits} | settle {snapshot().simulationSettles} | avg settle {snapshot().avgSimulationSettleMs.toFixed(1)}ms</div>
               <div>draw start/stop {snapshot().drawStarts}/{snapshot().drawStops} | skipped {snapshot().denseFrameSkips}</div>
+              <div>base/overlay draws {snapshot().baseLayerDraws}/{snapshot().overlayLayerDraws} | visible {snapshot().visibilityRefreshes}x @ {snapshot().avgVisibilityRefreshMs.toFixed(2)}ms</div>
+              <div>worker ticks {snapshot().workerTickMessages} | visual refresh {snapshot().simulationVisualRefreshes} | deferred {snapshot().simulationVisualDeferrals}</div>
+              <div>pressure score {snapshot().framePressureScore} | budget mode {snapshot().framePressureScore >= 4 ? 'on' : 'off'}</div>
               <div>legacy hash entity visits avoided {snapshot().legacyHashEntityVisitsAvoided.toLocaleString()}</div>
               <div>fi-accel {snapshot().fiAccelInitState} | last {snapshot().fiAccelBuildMode} build | selector {snapshot().fiAccelSelectorCalls}x/{snapshot().fiAccelSelectorCandidates} candidates | fallback {snapshot().fiAccelSelectorFallbackCalls} | {snapshot().fiAccelSelectorMs.toFixed(3)}ms</div>
             </div>
