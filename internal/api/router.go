@@ -319,6 +319,7 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 			r.With(logFunc("models.crd.scale")).Post("/crd/{namespace}/{name}/scale", h.ModelsCRDScale)
 			r.With(logFunc("models.crd.activate")).Post("/crd/{namespace}/{name}/activate", h.ModelsCRDActivate)
 			r.With(logFunc("models.crd.restart")).Post("/crd/{namespace}/{name}/restart", h.ModelsCRDRestart)
+			r.With(logFunc("models.crd.patch")).Patch("/crd/{namespace}/{name}/spec", h.ModelsCRDPatchSpec)
 		}
 
 		r.Get("/{id}", h.ModelsGet)

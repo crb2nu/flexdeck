@@ -1,16 +1,19 @@
-import { Component, For, createEffect, createSignal, Show } from "solid-js";
+import { Component, For, createEffect, createSignal, Show, lazy, Suspense } from "solid-js";
 import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
 import ClustersTab from "./ClustersTab";
 import { getAdminTabs, getDefaultAdminTab } from "../../lib/featureFlags";
 
-type Tab = "users" | "audit" | "clusters";
+const FlexInferTab = lazy(() => import("./FlexInferTab"));
+
+type Tab = "users" | "audit" | "clusters" | "flexinfer";
 
 const Admin: Component = () => {
   const rbacEnabled = () => healthStore.features?.rbac?.enabled ?? false;
   const auditEnabled = () => healthStore.features?.audit?.enabled ?? false;
   const clustersEnabled = () => healthStore.features?.multi_cluster?.enabled ?? false;
+  const flexinferEnabled = () => healthStore.features?.flexinfer_proxy?.enabled ?? false;
 
   // Default to the first enabled tab
   const defaultTab = (): Tab => getDefaultAdminTab(healthStore.features || {});
@@ -67,10 +70,15 @@ const Admin: Component = () => {
         <Show when={activeTab() === "clusters" && clustersEnabled()}>
           <ClustersTab />
         </Show>
+        <Show when={activeTab() === "flexinfer" && flexinferEnabled()}>
+          <Suspense fallback={<div class="text-text-dim animate-pulse p-4">Loading FlexInfer...</div>}>
+            <FlexInferTab />
+          </Suspense>
+        </Show>
       </div>
 
       <Show
-        when={!rbacEnabled() && !auditEnabled() && !clustersEnabled()}
+        when={!rbacEnabled() && !auditEnabled() && !clustersEnabled() && !flexinferEnabled()}
       >
         <div class="flex flex-col items-center justify-center py-16 text-text-dim">
           <div class="text-4xl mb-4 opacity-20">&#9881;</div>

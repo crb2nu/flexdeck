@@ -254,6 +254,28 @@ func (c *Client) RestartFlexInferModel(ctx context.Context, namespace, name stri
 	return nil
 }
 
+// PatchFlexInferModelSpec applies a partial spec update to a Model CRD via MergePatch.
+func (c *Client) PatchFlexInferModelSpec(ctx context.Context, namespace, name string, specPatch map[string]any) error {
+	dynClient, err := c.dynamicClient()
+	if err != nil {
+		return err
+	}
+
+	patchBody := map[string]any{"spec": specPatch}
+	patchBytes, err := json.Marshal(patchBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal spec patch: %w", err)
+	}
+
+	_, err = dynClient.Resource(modelGVR).Namespace(namespace).Patch(
+		ctx, name, types.MergePatchType, patchBytes, metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to patch model spec %s/%s: %w", namespace, name, err)
+	}
+	return nil
+}
+
 // ModelWatchEvent represents a model watch event for SSE streaming.
 type ModelWatchEvent struct {
 	Type  string          `json:"type"` // ADDED, MODIFIED, DELETED

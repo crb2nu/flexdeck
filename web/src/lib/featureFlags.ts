@@ -2,6 +2,7 @@ export interface FeatureState {
   enabled: boolean;
   url?: string;
   readOnly?: boolean;
+  mode?: string;
 }
 
 export type FeatureMap = Record<string, FeatureState | undefined>;
@@ -11,7 +12,7 @@ export interface NavItem {
   path: string;
 }
 
-export type AdminTab = 'users' | 'audit' | 'clusters';
+export type AdminTab = 'users' | 'audit' | 'clusters' | 'flexinfer';
 
 export interface AdminTabDef {
   id: AdminTab;
@@ -44,7 +45,7 @@ function enabled(features: FeatureMap, key: string): boolean {
 }
 
 export function isAdminEnabled(features: FeatureMap): boolean {
-  return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster');
+  return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
 }
 
 export function buildNavItems(features: FeatureMap): NavItem[] {
@@ -60,8 +61,13 @@ export function getAdminTabs(features: FeatureMap): AdminTabDef[] {
     { id: 'users', label: 'Users', enabled: enabled(features, 'rbac') },
     { id: 'audit', label: 'Audit Log', enabled: enabled(features, 'audit') },
     { id: 'clusters', label: 'Clusters', enabled: enabled(features, 'multi_cluster') },
+    { id: 'flexinfer', label: 'FlexInfer', enabled: enabled(features, 'flexinfer_proxy') },
   ];
   return tabs.filter((tab) => tab.enabled);
+}
+
+export function getFlexInferManagementMode(features: FeatureMap): 'gitops' | 'admin' {
+  return (features.flexinfer_proxy?.mode as 'gitops' | 'admin') || 'gitops';
 }
 
 export function getDefaultAdminTab(features: FeatureMap): AdminTab {

@@ -16,12 +16,14 @@ import {
   summarizeLoRA,
 } from './controllerIntegration';
 import { useModelsController, type ModelsTab } from './useModelsController';
+import { healthStore } from '../../stores/health';
 
 const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
 const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
 const InferenceTab = lazy(() => import('./InferenceTab'));
 const CatalogTab = lazy(() => import('./CatalogTab'));
+const ProxyTab = lazy(() => import('./ProxyTab'));
 
 const Models: Component = () => {
   const [activeTab, setActiveTab] = createSignal<ModelsTab>('controller');
@@ -75,6 +77,9 @@ const Models: Component = () => {
               <TabButton active={activeTab() === 'compare'} onClick={() => setActiveTab('compare')} label="Compare" color="neon-purple" />
               <TabButton active={activeTab() === 'inference'} onClick={() => setActiveTab('inference')} label="Inference" color="status-ok" />
               <TabButton active={activeTab() === 'catalog'} onClick={() => setActiveTab('catalog')} label="Catalog" color="blue-400" />
+              <Show when={healthStore.features?.flexinfer_proxy?.enabled}>
+                <TabButton active={activeTab() === 'proxy'} onClick={() => setActiveTab('proxy')} label="Proxy" color="status-ok" />
+              </Show>
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -284,6 +289,15 @@ const Models: Component = () => {
                 </Suspense>
               </ErrorBoundary>
             </Match>
+
+            {/* Proxy Tab */}
+            <Match when={activeTab() === 'proxy'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Proxy error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading proxy metrics...</div>}>
+                  <ProxyTab />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
           </Switch>
         </ErrorBoundary>
       </PageScrollBody>
@@ -420,6 +434,36 @@ const CRDModelCard: Component<{
             {reliability().label}
           </div>
         </div>
+      </div>
+
+      {/* Feature badges */}
+      <div class="mb-2 flex flex-wrap gap-1">
+        <Show when={serverless()?.enabled !== false && serverless()}>
+          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            phase() === 'Idle' ? 'bg-white/10 text-text-dim' : 'bg-status-ok/20 text-status-ok'
+          }`}>
+            Serverless{serverless()?.idleTimeout ? ` ${serverless()!.idleTimeout}` : ''}
+          </span>
+        </Show>
+        <Show when={cache()}>
+          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            cache()!.ready ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-status-warn/20 text-status-warn'
+          }`}>
+            {cache()!.strategy || 'Cache'}{cache()!.ready ? '' : ' ...'}
+          </span>
+        </Show>
+        <Show when={gpuSpec()?.shared}>
+          <span class="rounded-full bg-neon-purple/20 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
+            Shared: {gpuSpec()!.shared}
+          </span>
+        </Show>
+        <Show when={kvCache()}>
+          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            kvCache()!.pressure ? 'bg-status-error/20 text-status-error animate-pulse' : 'bg-white/10 text-text-dim'
+          }`}>
+            KV {kvCache()!.utilization ? `${(parseFloat(kvCache()!.utilization!) * 100).toFixed(0)}%` : '-'}
+          </span>
+        </Show>
       </div>
 
       {/* Source */}

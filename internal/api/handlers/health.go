@@ -17,6 +17,7 @@ type Feature struct {
 	Enabled  bool   `json:"enabled"`
 	URL      string `json:"url,omitempty"`
 	ReadOnly bool   `json:"readOnly,omitempty"`
+	Mode     string `json:"mode,omitempty"`
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +67,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"flexinfer_proxy": {
 				Enabled: !h.cfg.FlexInferProxy.Disabled && h.cfg.FlexInferProxy.URL != "",
 				URL:     h.cfg.FlexInferProxy.URL,
+				Mode:    h.cfg.FlexInferProxy.ManagementMode,
 			},
 			"loom_hud": {
 				Enabled: !h.cfg.LoomHUD.Disabled && h.cfg.LoomHUD.URL != "",

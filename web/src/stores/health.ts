@@ -5,6 +5,7 @@ interface Feature {
   enabled: boolean;
   url?: string;
   readOnly?: boolean;
+  mode?: string;
 }
 
 interface HealthState {

@@ -63,6 +63,11 @@ export const modelsApi = {
     api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/activate`, { method: "POST" }),
   crdRestart: (namespace: string, name: string) =>
     api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/restart`, { method: "POST" }),
+  crdPatchSpec: (namespace: string, name: string, specPatch: Record<string, unknown>) =>
+    api<any>(`/models/crd/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/spec`, {
+      method: "PATCH",
+      body: JSON.stringify(specPatch),
+    }),
   crdWatchSSEUrl: (namespace?: string) => {
     const apiBase = getApiBasePath();
     return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;

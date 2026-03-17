@@ -845,6 +845,63 @@ func (h *Handler) ModelsCRDRestart(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "model": name, "action": "restart"})
 }
 
+// ModelsCRDPatchSpec applies a partial spec update to a Model CRD.
+// Requires FLEXINFER_MANAGEMENT_MODE=admin; returns 403 in gitops mode.
+func (h *Handler) ModelsCRDPatchSpec(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.FlexInferProxy.ManagementMode != "admin" {
+		respondJSON(w, http.StatusForbidden, map[string]any{
+			"error": "CRD mutations disabled in gitops mode. Set FLEXINFER_MANAGEMENT_MODE=admin to enable.",
+		})
+		return
+	}
+
+	kc := h.k8sForRequest(r)
+	if kc == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "k8s client unavailable"})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return
+	}
+
+	// Whitelist allowed spec fields
+	allowed := map[string]bool{
+		"serverless": true, "cache": true, "gpu": true, "kvCache": true,
+	}
+	specPatch := make(map[string]any)
+	for k, v := range body {
+		if allowed[k] {
+			specPatch[k] = v
+		}
+	}
+	if len(specPatch) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "no allowed fields in request body (serverless, cache, gpu, kvCache)",
+		})
+		return
+	}
+
+	if err := kc.PatchFlexInferModelSpec(r.Context(), namespace, name, specPatch); err != nil {
+		slog.Error("ModelsCRDPatchSpec: failed", "error", err, "model", name)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	h.invalidateCRDCache(r.Context(), namespace)
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"model":   name,
+		"patched": specPatch,
+	})
+}
+
 // ModelsCRDWatchSSE streams Model CRD watch events via Server-Sent Events.
 func (h *Handler) ModelsCRDWatchSSE(w http.ResponseWriter, r *http.Request) {
 	kc := h.k8sForRequest(r)

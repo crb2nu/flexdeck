@@ -174,8 +174,9 @@ type LangfuseConfig struct {
 }
 
 type FlexInferProxyConfig struct {
-	Disabled bool
-	URL      string
+	Disabled       bool
+	URL            string
+	ManagementMode string // "gitops" (read-only) or "admin" (read-write CRD patches)
 }
 
 type AlertmanagerConfig struct {
@@ -240,8 +241,9 @@ func Load() (*Config, error) {
 		},
 
 		FlexInferProxy: FlexInferProxyConfig{
-			Disabled: parseBool(getEnv("FLEXINFER_PROXY_DISABLED", "false")),
-			URL:      getEnv("FLEXINFER_PROXY_URL", ""),
+			Disabled:       parseBool(getEnv("FLEXINFER_PROXY_DISABLED", "false")),
+			URL:            getEnv("FLEXINFER_PROXY_URL", ""),
+			ManagementMode: getEnv("FLEXINFER_MANAGEMENT_MODE", "gitops"),
 		},
 
 		Cache: CacheConfig{
