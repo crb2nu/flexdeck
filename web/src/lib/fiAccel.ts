@@ -57,7 +57,6 @@ export interface FiAccelMetricsDelta {
 }
 
 interface FiAccelBindings {
-  __wbg_set_wasm: (wasm: unknown) => void;
   surface_analyze_logs: (payload: unknown) => WasmLogAnalysisMatch[];
   surface_detect_log_level: (line: string) => FiAccelLogLevel;
   surface_filter_label_selector: (payload: unknown) => number[];
@@ -219,19 +218,10 @@ const ensureFiAccel = (): Promise<void> => {
     fiAccelMetrics.initAttempts += 1;
     fiAccelMetrics.initState = 'loading';
     try {
-      const [{ default: initWasm }, wasmModule] = await Promise.all([
-        import('../../vendor/fi-accel/fi_accel_wasm_bg.wasm?init'),
-        import('../../vendor/fi-accel/fi_accel_wasm_bg.js'),
-      ]);
-
-      const wasmInstance = await initWasm();
-      const wasm = (wasmInstance as WebAssembly.Instance).exports as unknown as {
-        __wbindgen_start: () => void;
-      };
-      const bindings = wasmModule as unknown as FiAccelBindings;
-      bindings.__wbg_set_wasm(wasm);
-      wasm.__wbindgen_start();
-      fiAccelBindings = bindings;
+      // Use the generated wrapper module so wasm-bindgen owns the import-object wiring
+      // in both the window and worker bundles.
+      const wasmModule = await import('../../vendor/fi-accel/fi_accel_wasm.js');
+      fiAccelBindings = wasmModule as unknown as FiAccelBindings;
       fiAccelMetrics.initState = 'ready';
     } catch (error) {
       fiAccelMetrics.initFailures += 1;
