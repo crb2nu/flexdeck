@@ -4,6 +4,8 @@ import { HashRouter, Route } from '@solidjs/router';
 import { lazy } from 'solid-js';
 import AppLayout from './AppLayout';
 import './styles/global.css';
+import { installBenchmark } from './lib/perfBenchmark';
+installBenchmark();
 
 // Lazy load route components
 const Dashboard = lazy(() => import('./components/Dashboard'));

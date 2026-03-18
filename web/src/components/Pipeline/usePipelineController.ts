@@ -48,6 +48,27 @@ export function usePipelineController() {
   const onVisibilityChange = () => setTabVisible(!document.hidden);
   document.addEventListener('visibilitychange', onVisibilityChange);
 
+  // Poll telemetry
+  const pollTelemetry = {
+    pollCount: 0,
+    pollErrors: 0,
+    totalFetchMs: 0,
+    maxFetchMs: 0,
+    lastFetchMs: 0,
+    tabHiddenSkips: 0,
+  };
+  const exportPollTelemetry = () => {
+    if (typeof window !== 'undefined') {
+      (window as any).__FLEXDECK_PIPELINE_POLL__ = {
+        ...pollTelemetry,
+        avgFetchMs: pollTelemetry.pollCount > 0 ? pollTelemetry.totalFetchMs / pollTelemetry.pollCount : 0,
+        tabVisible: tabVisible(),
+        autoRefresh: autoRefresh(),
+        isPipelineActive: isPipelineActive(),
+      };
+    }
+  };
+
   const pushActionNotice = (type: ActionNotice['type'], message: string) => {
     setActionNotice({ type, message });
     const id = setTimeout(() => {
@@ -58,8 +79,14 @@ export function usePipelineController() {
   };
 
   const fetchPipelineStatus = async (repoId: number) => {
+    const fetchStart = performance.now();
+    pollTelemetry.pollCount++;
     try {
       const liveData = await ciApi.getPipeline(repoId);
+      const fetchMs = performance.now() - fetchStart;
+      pollTelemetry.lastFetchMs = fetchMs;
+      pollTelemetry.totalFetchMs += fetchMs;
+      pollTelemetry.maxFetchMs = Math.max(pollTelemetry.maxFetchMs, fetchMs);
       if (liveData && liveData.status !== 'none') {
         const normalizedPipeline = normalizePipeline(liveData as VizPipeline);
         setPipelineData(normalizedPipeline);
@@ -75,12 +102,17 @@ export function usePipelineController() {
       setPipelineFetchError(false);
       setLastUpdate(new Date());
     } catch (error) {
+      pollTelemetry.pollErrors++;
+      const fetchMs = performance.now() - fetchStart;
+      pollTelemetry.lastFetchMs = fetchMs;
+      pollTelemetry.totalFetchMs += fetchMs;
       if (!pipelineFetchError()) {
         pushActionNotice('error', 'Live pipeline status unavailable. Showing best available data.');
       }
       setPipelineFetchError(true);
       console.debug('No pipeline data available', error);
     }
+    exportPollTelemetry();
   };
 
   const fetchAllPipelines = async (repoList: RepoInfo[]) => {

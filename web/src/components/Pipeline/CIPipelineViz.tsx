@@ -129,6 +129,52 @@ const CIPipelineViz: Component<{
   let isAnimating = false;
   let demoSettledTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  // Pipeline animation telemetry
+  const PIPELINE_PERF_FRAME_WINDOW = 120;
+  const pipelineFrameSamples = new Float32Array(PIPELINE_PERF_FRAME_WINDOW);
+  let pipelineFrameSampleCursor = 0;
+  let pipelineFrameSampleCount = 0;
+  let pipelineLastHudUpdate = 0;
+  const pipelinePerfCounters = {
+    framesRendered: 0,
+    maxFrameMs: 0,
+    animationStarts: 0,
+    animationStops: 0,
+    particleSpawns: 0,
+    demoAdvances: 0,
+    demoSettledAt: 0,
+  };
+  const updatePipelinePerfHud = (now: number) => {
+    if (now - pipelineLastHudUpdate < 500) return;
+    pipelineLastHudUpdate = now;
+    const count = pipelineFrameSampleCount;
+    let total = 0;
+    for (let i = 0; i < count; i++) total += pipelineFrameSamples[i];
+    const avgFrameMs = count > 0 ? total / count : 0;
+    const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+    let activeParticleCount = 0;
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (particlePool[i].active) activeParticleCount++;
+    }
+    const snapshot = {
+      fps,
+      avgFrameMs,
+      maxFrameMs: pipelinePerfCounters.maxFrameMs,
+      framesRendered: pipelinePerfCounters.framesRendered,
+      activeParticles: activeParticleCount,
+      animationStarts: pipelinePerfCounters.animationStarts,
+      animationStops: pipelinePerfCounters.animationStops,
+      particleSpawns: pipelinePerfCounters.particleSpawns,
+      demoAdvances: pipelinePerfCounters.demoAdvances,
+      demoSettled: demoSettled(),
+      isAnimating,
+      isDemoMode: isDemoMode(),
+    };
+    if (typeof window !== 'undefined') {
+      (window as any).__FLEXDECK_PIPELINE_PERF__ = snapshot;
+    }
+  };
+
   const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
   const [demoSettled, setDemoSettled] = createSignal(false);
 
@@ -618,7 +664,10 @@ const CIPipelineViz: Component<{
         updated.status = 'success';
         // Allow particles to drain, then signal settled
         if (!demoSettledTimeout) {
-          demoSettledTimeout = setTimeout(() => setDemoSettled(true), 2000);
+          demoSettledTimeout = setTimeout(() => {
+            setDemoSettled(true);
+            pipelinePerfCounters.demoSettledAt = performance.now();
+          }, 2000);
         }
       }
 
@@ -632,23 +681,39 @@ const CIPipelineViz: Component<{
     }
   };
 
+  let lastAnimateTime = 0;
+
   const animate = (now: number) => {
+    const frameMs = lastAnimateTime > 0 ? now - lastAnimateTime : 0;
+    lastAnimateTime = now;
+    if (frameMs > 0) {
+      pipelinePerfCounters.framesRendered++;
+      pipelinePerfCounters.maxFrameMs = Math.max(pipelinePerfCounters.maxFrameMs, frameMs);
+      pipelineFrameSamples[pipelineFrameSampleCursor] = frameMs;
+      pipelineFrameSampleCursor = (pipelineFrameSampleCursor + 1) % PIPELINE_PERF_FRAME_WINDOW;
+      pipelineFrameSampleCount = Math.min(pipelineFrameSampleCount + 1, PIPELINE_PERF_FRAME_WINDOW);
+    }
+
     cleanupTransitions();
 
     if (isDemoMode()) {
       demoFrameCount += 1;
       if (demoFrameCount % DEMO_ADVANCE_FRAME_INTERVAL === 0) {
         advanceDemoPipeline();
+        pipelinePerfCounters.demoAdvances++;
       }
     }
 
     if (hasRunningJobs() && Math.random() < PARTICLE_SPAWN_CHANCE) {
       spawnParticle(now);
+      pipelinePerfCounters.particleSpawns++;
     }
 
     const activeParticles = particleCtx
       ? renderParticles(particleCtx, canvasWidth, canvasHeight)
       : 0;
+
+    updatePipelinePerfHud(now);
 
     const keepAnimating =
       (isDemoMode() && !demoSettled()) ||
@@ -659,6 +724,9 @@ const CIPipelineViz: Component<{
     if (!keepAnimating) {
       isAnimating = false;
       animationId = null;
+      lastAnimateTime = 0;
+      pipelinePerfCounters.animationStops++;
+      updatePipelinePerfHud(now); // Force final snapshot
       clearParticleCanvas();
       return;
     }
@@ -669,6 +737,8 @@ const CIPipelineViz: Component<{
   const startAnimationLoop = () => {
     if (isAnimating) return;
     isAnimating = true;
+    lastAnimateTime = 0;
+    pipelinePerfCounters.animationStarts++;
     animationId = requestAnimationFrame(animate);
   };
 
@@ -678,6 +748,8 @@ const CIPipelineViz: Component<{
       animationId = null;
     }
     isAnimating = false;
+    lastAnimateTime = 0;
+    pipelinePerfCounters.animationStops++;
     clearParticleCanvas();
   };
 

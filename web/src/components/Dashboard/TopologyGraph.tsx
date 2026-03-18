@@ -75,6 +75,7 @@ interface PerfCounters {
   effectRuns: number;
   topologyRebuilds: number;
   styleRefreshes: number;
+  styleDebounceCoalesces: number;
   simulationInits: number;
   simulationSettles: number;
   simulationTotalSettleMs: number;
@@ -85,9 +86,13 @@ interface PerfCounters {
   maxFrameMs: number;
   legacyHashEntityVisitsAvoided: number;
   baseLayerDraws: number;
+  baseLayerDrawTotalMs: number;
   overlayLayerDraws: number;
+  overlayLayerDrawTotalMs: number;
   visibilityRefreshes: number;
   visibilityRefreshTotalMs: number;
+  styleCacheRebuilds: number;
+  styleCacheRebuildTotalMs: number;
   workerTickMessages: number;
   simulationVisualRefreshes: number;
   simulationVisualDeferrals: number;
@@ -104,6 +109,7 @@ interface PerfSnapshot {
   effectRuns: number;
   topologyRebuilds: number;
   styleRefreshes: number;
+  styleDebounceCoalesces: number;
   simulationInits: number;
   simulationSettles: number;
   avgSimulationSettleMs: number;
@@ -113,9 +119,13 @@ interface PerfSnapshot {
   denseFrameSkips: number;
   legacyHashEntityVisitsAvoided: number;
   baseLayerDraws: number;
+  avgBaseLayerDrawMs: number;
   overlayLayerDraws: number;
+  avgOverlayLayerDrawMs: number;
   visibilityRefreshes: number;
   avgVisibilityRefreshMs: number;
+  styleCacheRebuilds: number;
+  avgStyleCacheRebuildMs: number;
   workerTickMessages: number;
   simulationVisualRefreshes: number;
   simulationVisualDeferrals: number;
@@ -329,6 +339,7 @@ const TopologyGraph: Component<Props> = (props) => {
     effectRuns: 0,
     topologyRebuilds: 0,
     styleRefreshes: 0,
+    styleDebounceCoalesces: 0,
     simulationInits: 0,
     simulationSettles: 0,
     simulationTotalSettleMs: 0,
@@ -339,9 +350,13 @@ const TopologyGraph: Component<Props> = (props) => {
     maxFrameMs: 0,
     legacyHashEntityVisitsAvoided: 0,
     baseLayerDraws: 0,
+    baseLayerDrawTotalMs: 0,
     overlayLayerDraws: 0,
+    overlayLayerDrawTotalMs: 0,
     visibilityRefreshes: 0,
     visibilityRefreshTotalMs: 0,
+    styleCacheRebuilds: 0,
+    styleCacheRebuildTotalMs: 0,
     workerTickMessages: 0,
     simulationVisualRefreshes: 0,
     simulationVisualDeferrals: 0,
@@ -493,6 +508,15 @@ const TopologyGraph: Component<Props> = (props) => {
     const avgVisibilityRefreshMs = perfCounters.visibilityRefreshes > 0
       ? perfCounters.visibilityRefreshTotalMs / perfCounters.visibilityRefreshes
       : 0;
+    const avgBaseLayerDrawMs = perfCounters.baseLayerDraws > 0
+      ? perfCounters.baseLayerDrawTotalMs / perfCounters.baseLayerDraws
+      : 0;
+    const avgOverlayLayerDrawMs = perfCounters.overlayLayerDraws > 0
+      ? perfCounters.overlayLayerDrawTotalMs / perfCounters.overlayLayerDraws
+      : 0;
+    const avgStyleCacheRebuildMs = perfCounters.styleCacheRebuilds > 0
+      ? perfCounters.styleCacheRebuildTotalMs / perfCounters.styleCacheRebuilds
+      : 0;
 
     return {
       fps,
@@ -504,6 +528,7 @@ const TopologyGraph: Component<Props> = (props) => {
       effectRuns: perfCounters.effectRuns,
       topologyRebuilds: perfCounters.topologyRebuilds,
       styleRefreshes: perfCounters.styleRefreshes,
+      styleDebounceCoalesces: perfCounters.styleDebounceCoalesces,
       simulationInits: perfCounters.simulationInits,
       simulationSettles: perfCounters.simulationSettles,
       avgSimulationSettleMs,
@@ -513,9 +538,13 @@ const TopologyGraph: Component<Props> = (props) => {
       denseFrameSkips: perfCounters.denseFrameSkips,
       legacyHashEntityVisitsAvoided: perfCounters.legacyHashEntityVisitsAvoided,
       baseLayerDraws: perfCounters.baseLayerDraws,
+      avgBaseLayerDrawMs,
       overlayLayerDraws: perfCounters.overlayLayerDraws,
+      avgOverlayLayerDrawMs,
       visibilityRefreshes: perfCounters.visibilityRefreshes,
       avgVisibilityRefreshMs,
+      styleCacheRebuilds: perfCounters.styleCacheRebuilds,
+      avgStyleCacheRebuildMs,
       workerTickMessages: perfCounters.workerTickMessages,
       simulationVisualRefreshes: perfCounters.simulationVisualRefreshes,
       simulationVisualDeferrals: perfCounters.simulationVisualDeferrals,
@@ -1045,6 +1074,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const ensureNodeStylesCache = () => {
     if (nodeStylesCacheValid) return;
+    const cacheStart = perfEnabled ? performance.now() : 0;
     // Incremental update: only recompute entries for nodes whose style changed
     const staleIds = new Set(nodeStylesCache.keys());
     for (const node of graphNodes) {
@@ -1059,6 +1089,10 @@ const TopologyGraph: Component<Props> = (props) => {
     // Remove entries for nodes no longer in the graph
     for (const id of staleIds) nodeStylesCache.delete(id);
     nodeStylesCacheValid = true;
+    if (perfEnabled) {
+      perfCounters.styleCacheRebuilds++;
+      perfCounters.styleCacheRebuildTotalMs += performance.now() - cacheStart;
+    }
   };
 
   const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -1795,6 +1829,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const shouldDrawOverlay = overlayLayerDirty || hasActiveOverlayState() || allowParticles;
 
     if (shouldDrawBase) {
+      const baseStart = perfEnabled ? performance.now() : 0;
       drawBaseLayer(
         baseCtx,
         width,
@@ -1811,9 +1846,11 @@ const TopologyGraph: Component<Props> = (props) => {
         pendingNamespaceAggregateRefresh || viewportCacheDirty,
         forceBudgetMode,
       );
+      if (perfEnabled) perfCounters.baseLayerDrawTotalMs += performance.now() - baseStart;
     }
 
     if (shouldDrawOverlay) {
+      const overlayStart = perfEnabled ? performance.now() : 0;
       drawOverlayLayer(
         overlayCtx,
         width,
@@ -1828,6 +1865,7 @@ const TopologyGraph: Component<Props> = (props) => {
         skipDecorativeNodeEffects,
         allowParticles,
       );
+      if (perfEnabled) perfCounters.overlayLayerDrawTotalMs += performance.now() - overlayStart;
     }
 
     const frameDuration = performance.now() - frameStart;
@@ -2197,7 +2235,10 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Style-only updates (statuses, readiness) should not re-run simulation
     if (perfEnabled) perfCounters.styleRefreshes++;
-    if (styleRefreshTimeoutId) clearTimeout(styleRefreshTimeoutId);
+    if (styleRefreshTimeoutId) {
+      clearTimeout(styleRefreshTimeoutId);
+      if (perfEnabled) perfCounters.styleDebounceCoalesces++;
+    }
     styleRefreshTimeoutId = setTimeout(() => {
       styleRefreshTimeoutId = null;
       untrack(() => refreshNodeData());
