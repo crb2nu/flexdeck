@@ -356,8 +356,8 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Frustum bounds cache - recomputed only when transform/dimensions change
   const cachedFrustum = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
-  let lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
-  let lastFrustumDims = { width: -1, height: -1 };
+  const lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
+  const lastFrustumDims = { width: -1, height: -1 };
 
   // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
   const GRID_CELL_SIZE = 50; // Pixels per cell
@@ -1204,8 +1204,11 @@ const TopologyGraph: Component<Props> = (props) => {
       cachedFrustum.maxX = (width - transform.x) / transform.k + margin;
       cachedFrustum.minY = -transform.y / transform.k - margin;
       cachedFrustum.maxY = (height - transform.y) / transform.k + margin;
-      lastFrustumTransform = { x: transform.x, y: transform.y, k: transform.k };
-      lastFrustumDims = { width, height };
+      lastFrustumTransform.x = transform.x;
+      lastFrustumTransform.y = transform.y;
+      lastFrustumTransform.k = transform.k;
+      lastFrustumDims.width = width;
+      lastFrustumDims.height = height;
     }
 
     const minX = cachedFrustum.minX;
@@ -1549,35 +1552,44 @@ const TopologyGraph: Component<Props> = (props) => {
     if (particleCount > 0 && rawOpacity > 0.001) {
       ctx.save();
       ctx.globalAlpha = rawOpacity;
-      // Single-pass: batch particles by color using two paths per render layer (glow + core)
-      const glowCyan = new Path2D();
-      const glowPurple = new Path2D();
-      const coreCyan = new Path2D();
-      const corePurple = new Path2D();
+      const TAU = 2 * Math.PI;
 
-      for (let i = 0; i < particleCount; i++) {
-        const particle = particlePositionsPool[i];
-        if (particle.colorIdx === 0) {
-          glowCyan.moveTo(particle.x + 4, particle.y);
-          glowCyan.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
-          coreCyan.moveTo(particle.x + 1.5, particle.y);
-          coreCyan.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
-        } else {
-          glowPurple.moveTo(particle.x + 4, particle.y);
-          glowPurple.arc(particle.x, particle.y, 4, 0, 2 * Math.PI);
-          corePurple.moveTo(particle.x + 1.5, particle.y);
-          corePurple.arc(particle.x, particle.y, 1.5, 0, 2 * Math.PI);
-        }
-      }
-
+      // Glow layer - cyan
       ctx.fillStyle = 'rgba(0,217,255,0.25)';
-      ctx.fill(glowCyan);
+      ctx.beginPath();
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
+        if (p.colorIdx === 0) { ctx.moveTo(p.x + 4, p.y); ctx.arc(p.x, p.y, 4, 0, TAU); }
+      }
+      ctx.fill();
+
+      // Glow layer - purple
       ctx.fillStyle = 'rgba(168,85,247,0.25)';
-      ctx.fill(glowPurple);
+      ctx.beginPath();
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
+        if (p.colorIdx !== 0) { ctx.moveTo(p.x + 4, p.y); ctx.arc(p.x, p.y, 4, 0, TAU); }
+      }
+      ctx.fill();
+
+      // Core layer - cyan
       ctx.fillStyle = '#00d9ff';
-      ctx.fill(coreCyan);
+      ctx.beginPath();
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
+        if (p.colorIdx === 0) { ctx.moveTo(p.x + 1.5, p.y); ctx.arc(p.x, p.y, 1.5, 0, TAU); }
+      }
+      ctx.fill();
+
+      // Core layer - purple
       ctx.fillStyle = '#a855f7';
-      ctx.fill(corePurple);
+      ctx.beginPath();
+      for (let i = 0; i < particleCount; i++) {
+        const p = particlePositionsPool[i];
+        if (p.colorIdx !== 0) { ctx.moveTo(p.x + 1.5, p.y); ctx.arc(p.x, p.y, 1.5, 0, TAU); }
+      }
+      ctx.fill();
+
       ctx.restore();
     }
 
@@ -2148,7 +2160,9 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Debounce simulation initialization to prevent rapid re-init during initial data load
   let initTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let styleRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null;
   const INIT_DEBOUNCE_MS = 150;
+  const STYLE_REFRESH_DEBOUNCE_MS = 50;
 
   createEffect(() => {
     const topologyVersion = props.topologyVersion;
@@ -2183,13 +2197,18 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Style-only updates (statuses, readiness) should not re-run simulation
     if (perfEnabled) perfCounters.styleRefreshes++;
-    untrack(() => refreshNodeData());
-    maybeUpdatePerfHud(performance.now());
+    if (styleRefreshTimeoutId) clearTimeout(styleRefreshTimeoutId);
+    styleRefreshTimeoutId = setTimeout(() => {
+      styleRefreshTimeoutId = null;
+      untrack(() => refreshNodeData());
+      maybeUpdatePerfHud(performance.now());
+    }, STYLE_REFRESH_DEBOUNCE_MS);
   });
 
-  // Clean up init timeout on unmount
+  // Clean up init/style timeouts on unmount
   onCleanup(() => {
     if (initTimeoutId) clearTimeout(initTimeoutId);
+    if (styleRefreshTimeoutId) clearTimeout(styleRefreshTimeoutId);
   });
 
   return (

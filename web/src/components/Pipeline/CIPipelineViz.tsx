@@ -127,8 +127,10 @@ const CIPipelineViz: Component<{
   let canvasWidth = 0;
   let canvasHeight = 0;
   let isAnimating = false;
+  let demoSettledTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
+  const [demoSettled, setDemoSettled] = createSignal(false);
 
   createEffect(() => {
     if (props.pipeline) {
@@ -614,6 +616,10 @@ const CIPipelineViz: Component<{
 
       if (allComplete) {
         updated.status = 'success';
+        // Allow particles to drain, then signal settled
+        if (!demoSettledTimeout) {
+          demoSettledTimeout = setTimeout(() => setDemoSettled(true), 2000);
+        }
       }
 
       return updated;
@@ -645,7 +651,7 @@ const CIPipelineViz: Component<{
       : 0;
 
     const keepAnimating =
-      isDemoMode() ||
+      (isDemoMode() && !demoSettled()) ||
       hasRunningJobs() ||
       activeParticles > 0 ||
       statusTransitions().size > 0;
@@ -678,7 +684,7 @@ const CIPipelineViz: Component<{
   createEffect(() => {
     pipeline();
     scheduleNodePositionRefresh();
-    if (hasRunningJobs() || statusTransitions().size > 0 || isDemoMode() || hasActiveParticles()) {
+    if (hasRunningJobs() || statusTransitions().size > 0 || (isDemoMode() && !demoSettled()) || hasActiveParticles()) {
       startAnimationLoop();
     } else {
       stopAnimationLoop();
@@ -687,7 +693,7 @@ const CIPipelineViz: Component<{
 
   // Update demo pipeline status only when demo mode is active.
   createEffect(() => {
-    if (!isDemoMode()) return;
+    if (!isDemoMode() || demoSettled()) return;
     if (statusTransitions().size > 0 || hasRunningJobs()) {
       startAnimationLoop();
     }
@@ -707,6 +713,7 @@ const CIPipelineViz: Component<{
     if (refreshNodePositionsFrame != null) {
       cancelAnimationFrame(refreshNodePositionsFrame);
     }
+    if (demoSettledTimeout) clearTimeout(demoSettledTimeout);
   });
 
   return (

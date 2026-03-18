@@ -44,6 +44,10 @@ export function usePipelineController() {
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
 
+  const [tabVisible, setTabVisible] = createSignal(!document.hidden);
+  const onVisibilityChange = () => setTabVisible(!document.hidden);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
   const pushActionNotice = (type: ActionNotice['type'], message: string) => {
     setActionNotice({ type, message });
     const id = setTimeout(() => {
@@ -136,7 +140,7 @@ export function usePipelineController() {
     }
 
     const repo = selectedRepo();
-    if (repo?.id && isPipelineActive() && autoRefresh() && selectedJob() === null) {
+    if (repo?.id && isPipelineActive() && autoRefresh() && selectedJob() === null && tabVisible()) {
       pollInterval = setInterval(() => {
         void fetchPipelineStatus(repo.id);
       }, PIPELINE_POLL_INTERVAL);
@@ -385,6 +389,7 @@ export function usePipelineController() {
     if (pollInterval) clearInterval(pollInterval);
     pendingTimeouts.forEach(clearTimeout);
     pendingTimeouts.clear();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   });
 
   return {
