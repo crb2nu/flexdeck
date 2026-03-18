@@ -254,8 +254,9 @@ build:
       REF_NAME="${CI_COMMIT_BRANCH:-${CI_COMMIT_REF_NAME:-}}"
 
       if [ "$REF_NAME" = "main" ]; then
-        # Main branch: push SHA + latest tags
-        build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},name=${IMAGE}:latest,push=true"
+        # Main branch: push SHA tag first, then latest (second call hits cache instantly)
+        build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
+        build_with_retry "type=image,name=${IMAGE}:latest,push=true"
       else
         # Feature branches: SHA tag only
         build_with_retry "type=image,name=${IMAGE}:${CI_COMMIT_SHA},push=true"
