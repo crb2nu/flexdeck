@@ -791,6 +791,12 @@ func (h *Handler) GetAllPipelineTrends(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) fetchAllTrends(ctx context.Context) (any, error) {
+	// Try pre-materialized all-projects summary first
+	if materialized, err := h.metricsStore.GetMaterializedAllTrends(ctx); err == nil {
+		return materialized, nil
+	}
+
+	// Fall back to per-project computation
 	ids, err := h.metricsStore.GetAllPipelineProjectIDs(ctx)
 	if err != nil {
 		return nil, err

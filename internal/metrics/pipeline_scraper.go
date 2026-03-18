@@ -138,6 +138,9 @@ func (ps *PipelineScraper) scrape(ctx context.Context) {
 
 	count := stored.Load()
 	slog.Info("pipeline scraper: scrape complete", "projects", len(projects), "stored", count)
+
+	// Refresh materialized all-projects trend summary
+	ps.store.MaterializeAllPipelineTrends(scrapeCtx)
 }
 
 type gitlabProject struct {

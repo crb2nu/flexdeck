@@ -13,6 +13,11 @@ import (
 	"github.com/flexinfer/flexdeck/internal/litellm"
 )
 
+const (
+	throughputSummaryKey = "litellm:summary:throughput"
+	throughputSummaryTTL = 5 * time.Minute
+)
+
 // Store manages metrics storage in Redis
 type Store struct {
 	redis *redis.Client
@@ -114,12 +119,29 @@ func (s *Store) StoreMetrics(ctx context.Context, metrics []litellm.ModelMetrics
 	}
 
 	_, err := pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	s.materializeThroughput(ctx)
+	return nil
 }
 
-// GetThroughput calculates tok/s for all models across time windows
+// GetThroughput returns tok/s for all models, preferring a pre-materialized
+// summary stored by StoreMetrics. Falls back to full computation on miss.
 func (s *Store) GetThroughput(ctx context.Context) ([]ModelThroughput, error) {
-	// Scan model keys incrementally to avoid blocking Redis
+	data, err := s.redis.Get(ctx, throughputSummaryKey).Bytes()
+	if err == nil {
+		var results []ModelThroughput
+		if err := json.Unmarshal(data, &results); err == nil {
+			return results, nil
+		}
+	}
+	return s.computeThroughput(ctx)
+}
+
+// computeThroughput scans all model sorted sets and calculates throughput.
+func (s *Store) computeThroughput(ctx context.Context) ([]ModelThroughput, error) {
 	var keys []string
 	var cursor uint64
 	for {
@@ -141,7 +163,6 @@ func (s *Store) GetThroughput(ctx context.Context) ([]ModelThroughput, error) {
 	for _, key := range keys {
 		model := key[len("litellm:metrics:"):]
 
-		// Get all points for this model (last 15 minutes)
 		points, err := s.redis.ZRangeByScore(ctx, key, &redis.ZRangeBy{
 			Min: fmt.Sprintf("%d", now-900),
 			Max: fmt.Sprintf("%d", now),
@@ -151,19 +172,31 @@ func (s *Store) GetThroughput(ctx context.Context) ([]ModelThroughput, error) {
 		}
 
 		if len(points) < 2 {
-			continue // Need at least 2 points to calculate rate
+			continue
 		}
 
 		throughput := s.calculateThroughput(model, points, now)
 		results = append(results, throughput)
 	}
 
-	// Sort by model name
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Model < results[j].Model
 	})
 
 	return results, nil
+}
+
+// materializeThroughput computes and stores the throughput summary in Redis.
+func (s *Store) materializeThroughput(ctx context.Context) {
+	results, err := s.computeThroughput(ctx)
+	if err != nil {
+		return
+	}
+	data, err := json.Marshal(results)
+	if err != nil {
+		return
+	}
+	s.redis.Set(ctx, throughputSummaryKey, data, throughputSummaryTTL)
 }
 
 // GetModelThroughput returns throughput for a specific model

@@ -88,6 +88,174 @@ func TestStore_Metrics(t *testing.T) {
 	}
 }
 
+func TestStore_MaterializedThroughput(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	m1 := litellm.ModelMetrics{
+		Model: "llama-3", TotalTokens: 1000, OutputTokens: 400,
+		InputTokens: 600, RequestCount: 10, TotalLatencyMs: 500,
+	}
+	m2 := litellm.ModelMetrics{
+		Model: "llama-3", TotalTokens: 2000, OutputTokens: 800,
+		InputTokens: 1200, RequestCount: 20, TotalLatencyMs: 600,
+	}
+
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m1}); err != nil {
+		t.Fatalf("StoreMetrics(1) failed: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m2}); err != nil {
+		t.Fatalf("StoreMetrics(2) failed: %v", err)
+	}
+
+	// StoreMetrics should have materialized the summary
+	exists := client.Exists(ctx, throughputSummaryKey).Val()
+	if exists != 1 {
+		t.Fatalf("expected materialized key %q to exist", throughputSummaryKey)
+	}
+
+	// GetThroughput should read from the materialized key
+	list, err := store.GetThroughput(ctx)
+	if err != nil {
+		t.Fatalf("GetThroughput failed: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(list))
+	}
+	if list[0].Model != "llama-3" {
+		t.Errorf("expected model llama-3, got %q", list[0].Model)
+	}
+}
+
+func TestStore_ThroughputFallbackOnMiss(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	m1 := litellm.ModelMetrics{
+		Model: "mistral", TotalTokens: 500, OutputTokens: 200,
+		InputTokens: 300, RequestCount: 5, TotalLatencyMs: 100,
+	}
+	m2 := litellm.ModelMetrics{
+		Model: "mistral", TotalTokens: 1500, OutputTokens: 600,
+		InputTokens: 900, RequestCount: 15, TotalLatencyMs: 200,
+	}
+
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m1}); err != nil {
+		t.Fatalf("StoreMetrics failed: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m2}); err != nil {
+		t.Fatalf("StoreMetrics failed: %v", err)
+	}
+
+	// Delete the materialized key to simulate cold start
+	client.Del(ctx, throughputSummaryKey)
+
+	// GetThroughput should fall back to computation
+	list, err := store.GetThroughput(ctx)
+	if err != nil {
+		t.Fatalf("GetThroughput fallback failed: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 model on fallback, got %d", len(list))
+	}
+	if list[0].Model != "mistral" {
+		t.Errorf("expected model mistral, got %q", list[0].Model)
+	}
+}
+
+func TestStore_MaterializedPipelineTrends(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	now := time.Now()
+	runs := []PipelineRun{
+		{PipelineID: 1, ProjectID: 42, Status: "success", Duration: 120, CreatedAt: now.Add(-2 * time.Hour)},
+		{PipelineID: 2, ProjectID: 42, Status: "failed", Duration: 90, CreatedAt: now.Add(-1 * time.Hour)},
+		{PipelineID: 3, ProjectID: 42, Status: "success", Duration: 150, CreatedAt: now},
+	}
+
+	for _, r := range runs {
+		if err := store.StorePipelineRun(ctx, r); err != nil {
+			t.Fatalf("StorePipelineRun failed: %v", err)
+		}
+	}
+
+	// Per-project summary should exist
+	summaryKey := pipelineTrendSummaryPrefix + "42"
+	if client.Exists(ctx, summaryKey).Val() != 1 {
+		t.Fatalf("expected per-project summary key to exist")
+	}
+
+	// GetPipelineTrends should read from materialized key
+	trend, err := store.GetPipelineTrends(ctx, 42, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetPipelineTrends failed: %v", err)
+	}
+	if trend.TotalRuns != 3 {
+		t.Errorf("expected 3 runs, got %d", trend.TotalRuns)
+	}
+
+	// Delete summary and verify fallback
+	client.Del(ctx, summaryKey)
+	trend, err = store.GetPipelineTrends(ctx, 42, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetPipelineTrends fallback failed: %v", err)
+	}
+	if trend.TotalRuns != 3 {
+		t.Errorf("expected 3 runs on fallback, got %d", trend.TotalRuns)
+	}
+}
+
+func TestStore_MaterializeAllPipelineTrends(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	now := time.Now()
+	// Two projects
+	for _, pid := range []int{10, 20} {
+		run := PipelineRun{
+			PipelineID: pid*10 + 1, ProjectID: pid,
+			Status: "success", Duration: 60, CreatedAt: now,
+		}
+		if err := store.StorePipelineRun(ctx, run); err != nil {
+			t.Fatalf("StorePipelineRun(%d) failed: %v", pid, err)
+		}
+	}
+
+	store.MaterializeAllPipelineTrends(ctx)
+
+	// All-projects summary should exist
+	if client.Exists(ctx, pipelineAllTrendsSummary).Val() != 1 {
+		t.Fatal("expected all-trends summary key to exist")
+	}
+
+	trends, err := store.GetMaterializedAllTrends(ctx)
+	if err != nil {
+		t.Fatalf("GetMaterializedAllTrends failed: %v", err)
+	}
+	if len(trends) != 2 {
+		t.Errorf("expected 2 project trends, got %d", len(trends))
+	}
+}
+
 func TestStore_Trend(t *testing.T) {
 	store := &Store{}
 

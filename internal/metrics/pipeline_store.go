@@ -44,6 +44,13 @@ type PipelineTrend struct {
 const pipelineKeyPrefix = "ci:pipeline:"
 const pipelineTTL = 8 * 24 * time.Hour // 8 days
 
+const (
+	pipelineTrendSummaryPrefix = "ci:summary:trend:"
+	pipelineAllTrendsSummary   = "ci:summary:trends:all"
+	pipelineTrendSummaryTTL    = 5 * time.Minute
+	pipelineAllTrendsTTL       = 3 * time.Minute
+)
+
 // StorePipelineRun stores a pipeline run in a Redis sorted set keyed by project.
 func (s *Store) StorePipelineRun(ctx context.Context, run PipelineRun) error {
 	key := fmt.Sprintf("%s%d", pipelineKeyPrefix, run.ProjectID)
@@ -60,11 +67,30 @@ func (s *Store) StorePipelineRun(ctx context.Context, run PipelineRun) error {
 	})
 	pipe.Expire(ctx, key, pipelineTTL)
 	_, err = pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	s.materializePipelineTrend(ctx, run.ProjectID, 7*24*time.Hour)
+	return nil
 }
 
-// GetPipelineTrends computes trend data for a project over a time window.
+// GetPipelineTrends returns trend data for a project, preferring a
+// pre-materialized summary. Falls back to full computation on miss.
 func (s *Store) GetPipelineTrends(ctx context.Context, projectID int, window time.Duration) (*PipelineTrend, error) {
+	summaryKey := fmt.Sprintf("%s%d", pipelineTrendSummaryPrefix, projectID)
+	data, err := s.redis.Get(ctx, summaryKey).Bytes()
+	if err == nil {
+		var trend PipelineTrend
+		if err := json.Unmarshal(data, &trend); err == nil {
+			return &trend, nil
+		}
+	}
+	return s.computePipelineTrends(ctx, projectID, window)
+}
+
+// computePipelineTrends computes trend data from raw sorted-set entries.
+func (s *Store) computePipelineTrends(ctx context.Context, projectID int, window time.Duration) (*PipelineTrend, error) {
 	key := fmt.Sprintf("%s%d", pipelineKeyPrefix, projectID)
 	cutoff := time.Now().Add(-window).Unix()
 
@@ -101,7 +127,6 @@ func (s *Store) GetPipelineTrends(ctx context.Context, projectID int, window tim
 		TotalRuns: len(runs),
 	}
 
-	// Calculate avg/p95 duration
 	var durations []float64
 	successCount := 0
 	for _, r := range runs {
@@ -117,7 +142,6 @@ func (s *Store) GetPipelineTrends(ctx context.Context, projectID int, window tim
 		trend.SuccessRate = float64(successCount) / float64(len(runs)) * 100
 	}
 
-	// Build sparkline from durations (last 20 data points)
 	sparklineRuns := runs
 	if len(sparklineRuns) > 20 {
 		sparklineRuns = sparklineRuns[len(sparklineRuns)-20:]
@@ -129,6 +153,68 @@ func (s *Store) GetPipelineTrends(ctx context.Context, projectID int, window tim
 	trend.Trend = s.detectTrend(trend.Sparkline)
 
 	return trend, nil
+}
+
+// materializePipelineTrend computes and stores a single project's trend summary.
+func (s *Store) materializePipelineTrend(ctx context.Context, projectID int, window time.Duration) {
+	trend, err := s.computePipelineTrends(ctx, projectID, window)
+	if err != nil || trend.TotalRuns == 0 {
+		return
+	}
+	data, err := json.Marshal(trend)
+	if err != nil {
+		return
+	}
+	summaryKey := fmt.Sprintf("%s%d", pipelineTrendSummaryPrefix, projectID)
+	s.redis.Set(ctx, summaryKey, data, pipelineTrendSummaryTTL)
+}
+
+// MaterializeAllPipelineTrends iterates all projects and stores an all-projects
+// summary at a single Redis key, plus refreshes per-project summaries.
+func (s *Store) MaterializeAllPipelineTrends(ctx context.Context) {
+	ids, err := s.GetAllPipelineProjectIDs(ctx)
+	if err != nil {
+		return
+	}
+
+	var trends []*PipelineTrend
+	window := 7 * 24 * time.Hour
+	for _, id := range ids {
+		t, err := s.computePipelineTrends(ctx, id, window)
+		if err != nil || t.TotalRuns == 0 {
+			continue
+		}
+		trends = append(trends, t)
+
+		// Also refresh per-project summary
+		if data, err := json.Marshal(t); err == nil {
+			summaryKey := fmt.Sprintf("%s%d", pipelineTrendSummaryPrefix, id)
+			s.redis.Set(ctx, summaryKey, data, pipelineTrendSummaryTTL)
+		}
+	}
+
+	if trends == nil {
+		trends = []*PipelineTrend{}
+	}
+	data, err := json.Marshal(trends)
+	if err != nil {
+		return
+	}
+	s.redis.Set(ctx, pipelineAllTrendsSummary, data, pipelineAllTrendsTTL)
+}
+
+// GetMaterializedAllTrends returns the pre-computed all-projects trend summary.
+// Returns nil, err if the key is missing or corrupt (caller should fall back).
+func (s *Store) GetMaterializedAllTrends(ctx context.Context) ([]*PipelineTrend, error) {
+	data, err := s.redis.Get(ctx, pipelineAllTrendsSummary).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var trends []*PipelineTrend
+	if err := json.Unmarshal(data, &trends); err != nil {
+		return nil, err
+	}
+	return trends, nil
 }
 
 // GetPipelineHistory returns the most recent pipeline runs for a project.
