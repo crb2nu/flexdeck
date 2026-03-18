@@ -1,7 +1,8 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createSignal, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import AgentChat from './AgentChat';
 import AgentFlowGraph from './AgentFlowGraph';
 import AgentSessionPanel from './AgentSessionPanel';
@@ -99,16 +100,11 @@ const Agents: Component = () => {
     }
   };
 
-  createEffect(() => {
-    fetchAgents();
-    fetchGraph();
-    const interval = setInterval(() => {
-      fetchAgents();
-      fetchGraph();
-      checkHealth();
-    }, 10000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('agents-main', () => {
+    void fetchAgents();
+    void fetchGraph();
+    void checkHealth();
+  }, 10000);
 
   const openCreateForm = () => {
     setEditingAgent(null);
