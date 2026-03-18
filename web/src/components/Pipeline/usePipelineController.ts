@@ -82,6 +82,7 @@ export function usePipelineController() {
   const fetchAllPipelines = async (repoList: RepoInfo[]) => {
     setOverviewLoading(true);
     const batchSize = 5;
+    const accumulated: Array<{ id: number; pipeline: VizPipeline }> = [];
 
     for (let i = 0; i < repoList.length; i += batchSize) {
       const batch = repoList.slice(i, i + batchSize);
@@ -100,13 +101,20 @@ export function usePipelineController() {
         }),
       );
 
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          accumulated.push(result.value);
+        }
+      }
+    }
+
+    // Single Map update with all results
+    if (accumulated.length > 0) {
       setPipelinesCache((prev) => {
         const next = new Map(prev);
-        results.forEach((result) => {
-          if (result.status === 'fulfilled' && result.value) {
-            next.set(result.value.id, result.value.pipeline);
-          }
-        });
+        for (const entry of accumulated) {
+          next.set(entry.id, entry.pipeline);
+        }
         return next;
       });
     }

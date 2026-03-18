@@ -153,45 +153,41 @@ const CIPipelineViz: Component<{
   // Node positions for particle animation (cached)
   const nodePositionsCache = new Map<string, { x: number; y: number }>();
 
-  // Compute stage progress
-  const getStageProgress = (stage: PipelineStage): { completed: number; total: number; percent: number } => {
-    const total = stage.jobs.length;
-    const completed = stage.jobs.filter(j =>
-      j.status === 'success' || j.status === 'skipped'
-    ).length;
-    return { completed, total, percent: total > 0 ? (completed / total) * 100 : 0 };
-  };
-
-  // Detect status transitions and trigger animations
-  const checkStatusTransitions = () => {
+  // Detect status transitions reactively when pipeline changes (not per-frame)
+  createEffect(() => {
+    const p = pipeline();
     const now = performance.now();
-    const newTransitions = new Map(statusTransitions());
+    let changed = false;
+    const current = statusTransitions();
+    const next = new Map(current);
 
-    for (const stage of pipeline().stages) {
+    for (const stage of p.stages) {
       for (const job of stage.jobs) {
         const prevStatus = prevStatusRef.get(job.id);
         if (prevStatus && prevStatus !== job.status) {
-          // Status changed - record transition
-          newTransitions.set(job.id, {
-            from: prevStatus,
-            to: job.status,
-            startTime: now
-          });
+          next.set(job.id, { from: prevStatus, to: job.status, startTime: now });
+          changed = true;
         }
         prevStatusRef.set(job.id, job.status);
       }
     }
 
-    // Clean up old transitions (older than 500ms)
-    newTransitions.forEach((transition, id) => {
-      if (now - transition.startTime > 500) {
-        newTransitions.delete(id);
-      }
-    });
+    if (changed) setStatusTransitions(next);
+  });
 
-    if (newTransitions.size !== statusTransitions().size) {
-      setStatusTransitions(newTransitions);
-    }
+  // Clean up expired transitions periodically (called from animation loop)
+  const cleanupTransitions = () => {
+    const current = statusTransitions();
+    if (current.size === 0) return;
+
+    const now = performance.now();
+    let expired = false;
+    current.forEach((t) => { if (now - t.startTime > 500) expired = true; });
+    if (!expired) return;
+
+    const next = new Map<string, { from: string; to: string; startTime: number }>();
+    current.forEach((t, id) => { if (now - t.startTime <= 500) next.set(id, t); });
+    setStatusTransitions(next);
   };
 
   // Get transition animation class for a job
@@ -328,13 +324,24 @@ const CIPipelineViz: Component<{
   });
 
   const stageViewModels = createMemo<StageViewModel[]>(() =>
-    pipeline().stages.map((stage) => ({
-      ...stage,
-      sortedJobs: sortJobsByStatus(stage.jobs),
-      progress: getStageProgress(stage),
-      isRunning: stage.jobs.some((job) => job.status === 'running'),
-      isComplete: stage.jobs.every((job) => job.status === 'success' || job.status === 'skipped'),
-    })),
+    pipeline().stages.map((stage) => {
+      let completed = 0;
+      let isRunning = false;
+      let isComplete = true;
+      for (const job of stage.jobs) {
+        if (job.status === 'success' || job.status === 'skipped') completed++;
+        if (job.status === 'running') isRunning = true;
+        if (job.status !== 'success' && job.status !== 'skipped') isComplete = false;
+      }
+      const total = stage.jobs.length;
+      return {
+        ...stage,
+        sortedJobs: sortJobsByStatus(stage.jobs),
+        progress: { completed, total, percent: total > 0 ? (completed / total) * 100 : 0 },
+        isRunning,
+        isComplete,
+      };
+    }),
   );
 
   const hasRunningJobs = createMemo(() =>
@@ -620,7 +627,7 @@ const CIPipelineViz: Component<{
   };
 
   const animate = (now: number) => {
-    checkStatusTransitions();
+    cleanupTransitions();
 
     if (isDemoMode()) {
       demoFrameCount += 1;

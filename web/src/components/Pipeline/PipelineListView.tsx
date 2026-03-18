@@ -32,15 +32,19 @@ const PipelineListView: Component<{
     return sortPipelines(reposWithPipelines(), props.sort);
   });
 
-  // Count stats
+  // Count stats (single pass)
   const stats = createMemo(() => {
     const items = reposWithPipelines();
-    return {
-      total: items.length,
-      running: items.filter(i => i.pipeline?.status === 'running').length,
-      failed: items.filter(i => i.pipeline?.status === 'failed').length,
-      success: items.filter(i => i.pipeline?.status === 'success').length,
-    };
+    let running = 0;
+    let failed = 0;
+    let success = 0;
+    for (const item of items) {
+      const s = item.pipeline?.status;
+      if (s === 'running') running++;
+      else if (s === 'failed') failed++;
+      else if (s === 'success') success++;
+    }
+    return { total: items.length, running, failed, success };
   });
 
   const handleSortFieldChange = (field: PipelineSortField) => {
