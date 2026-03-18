@@ -91,6 +91,13 @@ func main() {
 		slog.Info("pipeline scraper started")
 	}
 
+	// Background materializer keeps Redis summary keys warm
+	var materializer *metrics.Materializer
+	if metricsStore != nil {
+		materializer = metrics.NewMaterializer(metricsStore)
+		go materializer.Start(context.Background())
+	}
+
 	// Initialize models subsystem
 	var handlerDeps *handlers.HandlerDeps
 	if sharedCache != nil {
@@ -262,6 +269,12 @@ func main() {
 	if pipelineScraper != nil {
 		slog.Info("stopping pipeline scraper")
 		pipelineScraper.Stop()
+	}
+
+	// Stop the materializer
+	if materializer != nil {
+		slog.Info("stopping materializer")
+		materializer.Stop()
 	}
 
 	// Close the metrics store

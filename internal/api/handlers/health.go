@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/flexinfer/flexdeck/internal/cache"
 )
 
 type HealthResponse struct {
-	OK       bool               `json:"ok"`
-	Service  string             `json:"service"`
-	Time     string             `json:"time"`
-	Features map[string]Feature `json:"features"`
+	OK         bool               `json:"ok"`
+	Service    string             `json:"service"`
+	Time       string             `json:"time"`
+	Features   map[string]Feature `json:"features"`
+	CacheStats *cache.Stats       `json:"cache,omitempty"`
 }
 
 type Feature struct {
@@ -89,6 +92,11 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Enabled: !h.cfg.K8s.Disabled,
 			},
 		},
+	}
+
+	if h.cache != nil {
+		stats := h.cache.Stats()
+		resp.CacheStats = &stats
 	}
 
 	w.Header().Set("Content-Type", "application/json")

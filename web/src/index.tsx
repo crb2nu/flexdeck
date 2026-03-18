@@ -5,7 +5,11 @@ import { lazy } from 'solid-js';
 import AppLayout from './AppLayout';
 import './styles/global.css';
 import { installBenchmark } from './lib/perfBenchmark';
+import { initPerfObserver } from './lib/perfObserver';
 installBenchmark();
+if (import.meta.env.DEV) {
+  initPerfObserver();
+}
 
 // Lazy load route components
 const Dashboard = lazy(() => import('./components/Dashboard'));

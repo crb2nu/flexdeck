@@ -1,5 +1,7 @@
-import { Component, createSignal, onMount, onCleanup, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
+import { resolveFreshness } from '../../lib/freshness';
 
 interface TrendData {
   project_id: number;
@@ -15,12 +17,15 @@ const PipelineTrends: Component = () => {
   const [trends, setTrends] = createSignal<TrendData[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  const [lastUpdated, setLastUpdated] = createSignal(0);
+  const freshness = () => resolveFreshness(lastUpdated(), 60_000);
 
   const fetchTrends = async () => {
     try {
       const data = await ciApi.getTrends();
       setTrends(data || []);
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load trends');
     } finally {
@@ -28,11 +33,7 @@ const PipelineTrends: Component = () => {
     }
   };
 
-  onMount(() => {
-    fetchTrends();
-    const interval = setInterval(fetchTrends, 60000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('pipeline-trends', fetchTrends, 60_000);
 
   const formatDuration = (secs: number): string => {
     if (secs < 60) return `${Math.round(secs)}s`;

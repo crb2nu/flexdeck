@@ -6,12 +6,21 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"sync/atomic"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
+
+// Stats holds atomic cache operation counters.
+type Stats struct {
+	Hits      int64 `json:"hits"`
+	Misses    int64 `json:"misses"`
+	StaleHits int64 `json:"stale_hits"`
+	Errors    int64 `json:"errors"`
+}
 
 const staleKeySuffix = ":stale"
 
@@ -28,6 +37,11 @@ type Cache struct {
 	redis  *redis.Client
 	prefix string
 	group  singleflight.Group
+
+	hits      atomic.Int64
+	misses    atomic.Int64
+	staleHits atomic.Int64
+	errors    atomic.Int64
 }
 
 // New creates a new Cache using an existing Redis client.
@@ -35,6 +49,16 @@ func New(client *redis.Client, prefix string) *Cache {
 	return &Cache{
 		redis:  client,
 		prefix: prefix,
+	}
+}
+
+// Stats returns a snapshot of cache hit/miss counters.
+func (c *Cache) Stats() Stats {
+	return Stats{
+		Hits:      c.hits.Load(),
+		Misses:    c.misses.Load(),
+		StaleHits: c.staleHits.Load(),
+		Errors:    c.errors.Load(),
 	}
 }
 
@@ -89,15 +113,18 @@ func (c *Cache) GetOrFetchWithOptions(ctx context.Context, key string, opts Fetc
 func (c *Cache) GetOrFetchBytesWithOptions(ctx context.Context, key string, opts FetchOptions, fetch func(context.Context) ([]byte, error)) ([]byte, error) {
 	fullKey := c.prefix + key
 	if cached, found := c.readValue(ctx, fullKey); found {
+		c.hits.Add(1)
 		return cached, nil
 	}
 
 	staleKey := fullKey + staleKeySuffix
 	if stale, found := c.readValue(ctx, staleKey); found && opts.useStale() {
+		c.staleHits.Add(1)
 		c.refreshInBackground(fullKey, staleKey, opts, fetch)
 		return stale, nil
 	}
 
+	c.misses.Add(1)
 	value, err, _ := c.group.Do(fullKey, func() (any, error) {
 		if cached, found := c.readValue(ctx, fullKey); found {
 			return cached, nil
@@ -105,6 +132,7 @@ func (c *Cache) GetOrFetchBytesWithOptions(ctx context.Context, key string, opts
 
 		data, err := fetch(ctx)
 		if err != nil {
+			c.errors.Add(1)
 			return nil, err
 		}
 

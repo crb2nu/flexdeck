@@ -1,5 +1,7 @@
-import { Component, createSignal, For, Show, onMount, onCleanup } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
 import { flexinferProxyApi } from '../../lib/api/infrastructure';
+import { createPolling } from '../../hooks/createPolling';
+import { resolveFreshness } from '../../lib/freshness';
 import type { FlexInferProxyMetricsResponse, FlexInferProxyModelMetrics } from '../../lib/types';
 
 const ProxyTab: Component = () => {
@@ -7,6 +9,8 @@ const ProxyTab: Component = () => {
   const [health, setHealth] = createSignal<any>(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  const [lastUpdated, setLastUpdated] = createSignal(0);
+  const freshness = () => resolveFreshness(lastUpdated(), 15_000);
 
   const fetchData = async () => {
     try {
@@ -17,6 +21,7 @@ const ProxyTab: Component = () => {
       setMetrics(metricsData);
       setHealth(healthData);
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch proxy metrics');
     } finally {
@@ -24,11 +29,7 @@ const ProxyTab: Component = () => {
     }
   };
 
-  onMount(() => {
-    void fetchData();
-    const interval = setInterval(() => void fetchData(), 15000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('models-proxy-metrics', fetchData, 15_000);
 
   const modelEntries = () => {
     const m = metrics();

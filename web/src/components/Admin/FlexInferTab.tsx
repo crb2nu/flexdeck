@@ -1,7 +1,9 @@
-import { Component, createSignal, For, Show, onMount, onCleanup, createMemo } from 'solid-js';
+import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { modelsApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
+import { createPolling } from '../../hooks/createPolling';
+import { resolveFreshness } from '../../lib/freshness';
 import type { FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 
 type Section = 'serverless' | 'gpu' | 'cache' | 'kvcache';
@@ -12,6 +14,8 @@ const FlexInferTab: Component = () => {
   const [error, setError] = createSignal('');
   const [patchLoading, setPatchLoading] = createSignal<string | null>(null);
   const [activeSection, setActiveSection] = createSignal<Section>('serverless');
+  const [lastUpdated, setLastUpdated] = createSignal(0);
+  const freshness = () => resolveFreshness(lastUpdated(), 15_000);
 
   const isAdmin = () => getFlexInferManagementMode(healthStore.features || {}) === 'admin';
 
@@ -20,6 +24,7 @@ const FlexInferTab: Component = () => {
       const data: FlexInferModelListResponse = await modelsApi.crd();
       setModels(data.models || []);
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch models');
     } finally {
@@ -27,11 +32,7 @@ const FlexInferTab: Component = () => {
     }
   };
 
-  onMount(() => {
-    void fetchModels();
-    const interval = setInterval(() => void fetchModels(), 15000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling('admin-flexinfer-models', fetchModels, 15_000);
 
   const patchModel = async (ns: string, name: string, patch: Record<string, unknown>) => {
     const key = `${ns}/${name}`;

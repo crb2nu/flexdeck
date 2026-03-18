@@ -186,6 +186,12 @@ func (s *Store) computeThroughput(ctx context.Context) ([]ModelThroughput, error
 	return results, nil
 }
 
+// MaterializeThroughput computes and stores the throughput summary in Redis.
+// Exported so the background Materializer can call it on a timer.
+func (s *Store) MaterializeThroughput(ctx context.Context) {
+	s.materializeThroughput(ctx)
+}
+
 // materializeThroughput computes and stores the throughput summary in Redis.
 func (s *Store) materializeThroughput(ctx context.Context) {
 	results, err := s.computeThroughput(ctx)

@@ -311,3 +311,74 @@ func TestApplyTTLJitterStaysWithinExpectedBounds(t *testing.T) {
 		t.Fatalf("expected unchanged TTL when fraction is zero, got %s", got)
 	}
 }
+
+func TestStatsCountersIncrementCorrectly(t *testing.T) {
+	t.Parallel()
+
+	c, server := newTestCache(t)
+	ctx := context.Background()
+
+	fetchCalls := 0
+	fetch := func(context.Context) ([]byte, error) {
+		fetchCalls++
+		return []byte(`{"n":1}`), nil
+	}
+
+	// Miss → fetch
+	_, err := c.GetOrFetchBytesWithOptions(ctx, "stats-key", FetchOptions{TTL: time.Minute}, fetch)
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+
+	s := c.Stats()
+	if s.Misses != 1 {
+		t.Fatalf("expected 1 miss, got %d", s.Misses)
+	}
+
+	// Hit from cache
+	_, err = c.GetOrFetchBytesWithOptions(ctx, "stats-key", FetchOptions{TTL: time.Minute}, fetch)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	s = c.Stats()
+	if s.Hits != 1 {
+		t.Fatalf("expected 1 hit, got %d", s.Hits)
+	}
+	if fetchCalls != 1 {
+		t.Fatalf("expected fetch called once, got %d", fetchCalls)
+	}
+
+	// Stale hit path: short TTL, longer stale TTL
+	staleFetchCalls := 0
+	staleFetch := func(context.Context) ([]byte, error) {
+		staleFetchCalls++
+		return []byte(`{"stale":true}`), nil
+	}
+
+	_, err = c.GetOrFetchBytesWithOptions(ctx, "stale-stats", FetchOptions{
+		TTL:                      time.Second,
+		StaleTTL:                 10 * time.Second,
+		BackgroundRefreshTimeout: time.Second,
+	}, staleFetch)
+	if err != nil {
+		t.Fatalf("stale initial: %v", err)
+	}
+
+	// Expire primary TTL but keep stale
+	server.FastForward(2 * time.Second)
+
+	_, err = c.GetOrFetchBytesWithOptions(ctx, "stale-stats", FetchOptions{
+		TTL:                      time.Second,
+		StaleTTL:                 10 * time.Second,
+		BackgroundRefreshTimeout: time.Second,
+	}, staleFetch)
+	if err != nil {
+		t.Fatalf("stale read: %v", err)
+	}
+
+	s = c.Stats()
+	if s.StaleHits < 1 {
+		t.Fatalf("expected at least 1 stale hit, got %d", s.StaleHits)
+	}
+}

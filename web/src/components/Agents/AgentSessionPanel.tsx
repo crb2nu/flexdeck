@@ -1,6 +1,8 @@
-import { Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
 import type { Agent, AgentSession } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
+import { resolveFreshness } from '../../lib/freshness';
 
 interface AgentSessionPanelProps {
   agent: Agent;
@@ -49,6 +51,8 @@ function presenceStatusDot(status?: string): string {
 const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
   const [sessions, setSessions] = createSignal<AgentSession[]>([]);
   const [loadingSessions, setLoadingSessions] = createSignal(true);
+  const [lastUpdated, setLastUpdated] = createSignal(0);
+  const freshness = () => resolveFreshness(lastUpdated(), 15_000);
 
   const meta = () => props.agent.metadata || {};
   const presenceStatus = () => (meta().presence_status as string) || 'unknown';
@@ -63,6 +67,7 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
     try {
       const data = await agentsApi.sessions(props.agent.id);
       setSessions(data.sessions || []);
+      setLastUpdated(Date.now());
     } catch {
       setSessions([]);
     } finally {
@@ -70,11 +75,7 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
     }
   };
 
-  createEffect(() => {
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 15000);
-    onCleanup(() => clearInterval(interval));
-  });
+  createPolling(() => 'agent-sessions-' + props.agent.id, fetchSessions, 15_000);
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
