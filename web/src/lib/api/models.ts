@@ -1,10 +1,12 @@
 import { api } from "./client";
 import { getApiBasePath } from "./base";
-import type { 
-  InferenceMetrics, 
-  LoRAAdapter, 
-  ModelCatalogEntry, 
-  ModelEvent 
+import type {
+  InferenceMetrics,
+  LoRAAdapter,
+  ModelCache,
+  ModelCacheListResponse,
+  ModelCatalogEntry,
+  ModelEvent
 } from "../types";
 
 export const modelsApi = {
@@ -86,4 +88,16 @@ export const modelsApi = {
     ),
   catalogs: () =>
     api<{ catalogs: ModelCatalogEntry[]; namespace: string }>("/models/catalogs"),
+  cacheList: (namespace?: string) =>
+    api<ModelCacheListResponse>(`/models/cache${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  cacheGet: (namespace: string, name: string) =>
+    api<ModelCache>(`/models/cache/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`),
+  cacheWatchSSEUrl: (namespace?: string) => {
+    const apiBase = getApiBasePath();
+    return `${apiBase}/models/cache/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
+  },
+  cachePodLogsUrl: (namespace: string, name: string) => {
+    const apiBase = getApiBasePath();
+    return `${apiBase}/models/cache/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`;
+  },
 };

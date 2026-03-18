@@ -312,6 +312,10 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/crd/{namespace}/{name}/inference", h.ModelsInferenceMetrics)
 		r.Get("/lora/{namespace}/{name}", h.ModelsLoRA)
 		r.Get("/catalogs", h.ModelsCatalog)
+		r.Get("/cache", h.ModelCacheList)
+		r.Get("/cache/watch-sse", h.ModelCacheWatchSSE)
+		r.Get("/cache/{namespace}/{name}", h.ModelCacheGet)
+		r.Get("/cache/{namespace}/{name}/logs", h.ModelCachePodLogs)
 		r.Get("/search/huggingface", h.ModelsSearchHuggingFace)
 		r.Get("/search/civitai", h.ModelsSearchCivitAI)
 

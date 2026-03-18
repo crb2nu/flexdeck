@@ -29,7 +29,8 @@ export type ModelsTab =
   | 'compare'
   | 'inference'
   | 'catalog'
-  | 'proxy';
+  | 'proxy'
+  | 'pipelines';
 
 export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab: (tab: ModelsTab) => void) {
   const [loading, setLoading] = createSignal(true);

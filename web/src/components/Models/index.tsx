@@ -24,6 +24,7 @@ const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
 const InferenceTab = lazy(() => import('./InferenceTab'));
 const CatalogTab = lazy(() => import('./CatalogTab'));
 const ProxyTab = lazy(() => import('./ProxyTab'));
+const PipelinesTab = lazy(() => import('./PipelinesTab'));
 
 const Models: Component = () => {
   const [activeTab, setActiveTab] = createSignal<ModelsTab>('controller');
@@ -79,6 +80,9 @@ const Models: Component = () => {
               <TabButton active={activeTab() === 'catalog'} onClick={() => setActiveTab('catalog')} label="Catalog" color="blue-400" />
               <Show when={healthStore.features?.flexinfer_proxy?.enabled}>
                 <TabButton active={activeTab() === 'proxy'} onClick={() => setActiveTab('proxy')} label="Proxy" color="status-ok" />
+              </Show>
+              <Show when={healthStore.features?.modelcache?.enabled}>
+                <TabButton active={activeTab() === 'pipelines'} onClick={() => setActiveTab('pipelines')} label="Pipelines" color="neon-purple" />
               </Show>
             </div>
           </div>
@@ -295,6 +299,15 @@ const Models: Component = () => {
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Proxy error: {err.message}</div>}>
                 <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading proxy metrics...</div>}>
                   <ProxyTab />
+                </Suspense>
+              </ErrorBoundary>
+            </Match>
+
+            {/* Pipelines Tab */}
+            <Match when={activeTab() === 'pipelines'}>
+              <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Pipelines error: {err.message}</div>}>
+                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading pipelines...</div>}>
+                  <PipelinesTab />
                 </Suspense>
               </ErrorBoundary>
             </Match>

@@ -85,6 +85,9 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"multi_cluster": {
 				Enabled: !h.cfg.MultiCluster.Disabled,
 			},
+			"modelcache": {
+				Enabled: !h.cfg.K8s.Disabled,
+			},
 		},
 	}
 

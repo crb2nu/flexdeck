@@ -121,6 +121,28 @@ func (c *Client) GetJobs(ctx context.Context, namespace string) (*batchv1.JobLis
 	return c.clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 }
 
+// ListJobsByLabel lists jobs matching a label selector in the given namespace.
+func (c *Client) ListJobsByLabel(ctx context.Context, namespace, labelSelector string) ([]batchv1.Job, error) {
+	list, err := c.clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// ListPodsByLabel lists pods matching a label selector in the given namespace.
+func (c *Client) ListPodsByLabel(ctx context.Context, namespace, labelSelector string) ([]corev1.Pod, error) {
+	list, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
 func (c *Client) GetCronJobs(ctx context.Context, namespace string) (*batchv1.CronJobList, error) {
 	if namespace == "" {
 		return c.clientset.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
