@@ -172,6 +172,7 @@ const ServerlessSection: Component<{
               <th class="px-4 py-2 font-medium">Min Replicas</th>
               <th class="px-4 py-2 font-medium">Phase</th>
               <th class="px-4 py-2 font-medium">Last Active</th>
+              <th class="px-4 py-2 font-medium">Idle For</th>
               <Show when={props.isAdmin}><th class="px-4 py-2 font-medium">Actions</th></Show>
             </tr>
           </thead>
@@ -202,6 +203,14 @@ const ServerlessSection: Component<{
                       </span>
                     </td>
                     <td class="px-4 py-2 text-[10px] text-text-dim font-mono">{model.status?.lastActiveTime || '-'}</td>
+                    <td class="px-4 py-2 text-[10px] font-mono">
+                      <Show
+                        when={model.status?.phase === 'Idle' && model.status?.lastActiveTime}
+                        fallback={<span class="text-text-dim">-</span>}
+                      >
+                        <span class="text-status-warn">{idleFor(model.status?.lastActiveTime)}</span>
+                      </Show>
+                    </td>
                     <Show when={props.isAdmin}>
                       <td class="px-4 py-2">
                         <div class="flex gap-1">
@@ -255,6 +264,7 @@ const GPUGroupsSection: Component<{
                   <th class="px-4 py-2 font-medium">State</th>
                   <th class="px-4 py-2 font-medium">Queue Pos</th>
                   <th class="px-4 py-2 font-medium">Preempted By</th>
+                  <th class="px-4 py-2 font-medium">Preempted At</th>
                   <Show when={props.isAdmin}><th class="px-4 py-2 font-medium">Actions</th></Show>
                 </tr>
               </thead>
@@ -281,6 +291,7 @@ const GPUGroupsSection: Component<{
                         </td>
                         <td class="px-4 py-2 font-mono text-text-muted">{sg()?.queuePosition ?? '-'}</td>
                         <td class="px-4 py-2 font-mono text-status-error">{sg()?.preemptedBy || '-'}</td>
+                        <td class="px-4 py-2 text-[10px] font-mono text-text-dim">{sg()?.preemptedAt ? formatTimestamp(sg()!.preemptedAt) : '-'}</td>
                         <Show when={props.isAdmin}>
                           <td class="px-4 py-2">
                             <div class="flex gap-1">
@@ -522,6 +533,24 @@ const KVCacheSection: Component<{
 );
 
 // ─── Helpers ───
+
+function idleFor(lastActiveTime?: string): string {
+  if (!lastActiveTime) return '-';
+  const last = new Date(lastActiveTime).getTime();
+  if (isNaN(last)) return '-';
+  const seconds = Math.floor((Date.now() - last) / 1000);
+  if (seconds < 0) return '-';
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function formatTimestamp(ts?: string): string {
+  if (!ts) return '-';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
 function phaseClasses(phase?: string): string {
   switch (phase) {

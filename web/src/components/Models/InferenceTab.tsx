@@ -200,6 +200,7 @@ const InferenceTab: Component = () => {
                   <th class="px-4 py-2 text-right font-normal">Active Conn</th>
                   <th class="px-4 py-2 text-right font-normal">Error %</th>
                   <th class="px-4 py-2 text-right font-normal">Queue Wait p95</th>
+                  <th class="px-4 py-2 text-right font-normal">Cold Start p95</th>
                   <th class="px-4 py-2 text-right font-normal">Rejected/s</th>
                   <th class="px-4 py-2 text-right font-normal">Retries 5m</th>
                   <th class="px-4 py-2 text-center font-normal">Reliability</th>
@@ -226,6 +227,9 @@ const InferenceTab: Component = () => {
                         <td class="px-4 py-2 text-right font-mono text-text-muted">{(errorRateFor(model) * 100).toFixed(2)}%</td>
                         <td class="px-4 py-2 text-right font-mono text-text-muted">
                           {detail()?.queueWaitP95Ms != null ? `${detail()!.queueWaitP95Ms!.toFixed(0)} ms` : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {detail()?.coldStartP95Ms != null ? `${detail()!.coldStartP95Ms!.toFixed(0)} ms` : '-'}
                         </td>
                         <td class="px-4 py-2 text-right font-mono text-text-muted">
                           {detail()?.rejectedRequestsPerSec != null ? detail()!.rejectedRequestsPerSec!.toFixed(3) : '-'}
@@ -257,12 +261,17 @@ const InferenceTab: Component = () => {
             </div>
 
             <Show when={selectedDetail()} fallback={<div class="text-xs text-text-dim">No Prometheus metrics available for this model</div>}>
-              <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Metric label="TPS" value={`${(selectedDetail()?.tps ?? 0).toFixed(2)}`} />
                 <Metric label="p95 Latency" value={`${(selectedDetail()?.p95LatencyMs ?? 0).toFixed(1)} ms`} />
                 <Metric label="Error Rate" value={`${((selectedDetail()?.errorRate ?? 0) * 100).toFixed(2)}%`} />
                 <Metric label="Queue Wait p95" value={`${(selectedDetail()?.queueWaitP95Ms ?? 0).toFixed(0)} ms`} />
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 pt-3 border-t border-white/5">
                 <Metric label="Scale Ups (5m)" value={`${(selectedDetail()?.scaleUps5m ?? 0).toFixed(2)}`} />
+                <Metric label="Cold Start p95" value={selectedDetail()?.coldStartP95Ms != null ? `${selectedDetail()!.coldStartP95Ms!.toFixed(0)} ms` : '-'} />
+                <Metric label="Activation Retries (5m)" value={`${(selectedDetail()?.activationRetries5m ?? 0).toFixed(2)}`} />
+                <Metric label="Idle For" value={selectedDetail()?.idleSeconds != null && selectedDetail()!.idleSeconds! > 0 ? formatIdleDuration(selectedDetail()!.idleSeconds!) : '-'} />
               </div>
               <Show when={selectedDetail()?.partial}>
                 <div class="mt-3 rounded border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-[11px] text-status-warn">
@@ -315,5 +324,11 @@ const Metric: Component<{ label: string; value: string }> = (props) => (
     <div class="text-sm font-mono text-text-main">{props.value}</div>
   </div>
 );
+
+function formatIdleDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.floor(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
 
 export default InferenceTab;

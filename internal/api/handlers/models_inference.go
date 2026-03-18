@@ -70,6 +70,8 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any,
 		"rejected_rps":          fmt.Sprintf(`sum(rate(flexinfer_proxy_queue_rejected_total{model="%s"}[5m]))`, model),
 		"scale_ups_5m":          fmt.Sprintf(`sum(increase(flexinfer_proxy_scale_ups_total{model="%s"}[5m]))`, model),
 		"activation_retries_5m": fmt.Sprintf(`sum(increase(flexinfer_proxy_activation_retries_total{model="%s"}[5m]))`, model),
+		"cold_start_p95":        fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_cold_start_duration_seconds_bucket{model="%s"}[5m])))`, model),
+		"idle_seconds":          fmt.Sprintf(`time() - flexinfer_proxy_last_active_timestamp{model="%s"}`, model),
 	}
 
 	results := make(map[string]float64)
@@ -109,6 +111,8 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, model string) (any,
 		"rejectedRequestsPerSec": results["rejected_rps"],
 		"scaleUps5m":             results["scale_ups_5m"],
 		"activationRetries5m":    results["activation_retries_5m"],
+		"coldStartP95Ms":         results["cold_start_p95"] * 1000,
+		"idleSeconds":            results["idle_seconds"],
 		"partial":                len(missing) > 0,
 		"missingMetrics":         missing,
 	}, nil

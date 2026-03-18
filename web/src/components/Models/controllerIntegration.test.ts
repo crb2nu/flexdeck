@@ -18,6 +18,8 @@ const baseMetrics: InferenceMetrics = {
   rejectedRequestsPerSec: 0,
   scaleUps5m: 0,
   activationRetries5m: 0,
+  coldStartP95Ms: null,
+  idleSeconds: null,
 };
 
 describe("controllerIntegration", () => {

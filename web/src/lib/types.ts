@@ -657,6 +657,8 @@ export interface InferenceMetrics {
   rejectedRequestsPerSec: number | null;
   scaleUps5m: number | null;
   activationRetries5m: number | null;
+  coldStartP95Ms: number | null;
+  idleSeconds: number | null;
   partial?: boolean;
   missingMetrics?: string[];
 }
