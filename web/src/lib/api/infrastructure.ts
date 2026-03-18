@@ -7,6 +7,12 @@ import type {
   AlertmanagerSilence,
 } from "../types";
 
+import type { InfraSnapshot } from '../../components/Infra/types';
+
+export const infraApi = {
+  snapshot: () => api<InfraSnapshot>('/infra/snapshot'),
+};
+
 export const litellm = {
   health: () => api<any>("/litellm/health"),
   metrics: (model?: string) =>

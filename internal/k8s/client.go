@@ -371,6 +371,13 @@ func (c *Client) GetStorageClasses(ctx context.Context) (*storagev1.StorageClass
 	return c.clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 }
 
+func (c *Client) GetNetworkPolicies(ctx context.Context, namespace string) (*networkingv1.NetworkPolicyList, error) {
+	if namespace == "" {
+		return c.clientset.NetworkingV1().NetworkPolicies("").List(ctx, metav1.ListOptions{})
+	}
+	return c.clientset.NetworkingV1().NetworkPolicies(namespace).List(ctx, metav1.ListOptions{})
+}
+
 func (c *Client) GetConfigMaps(ctx context.Context, namespace string) (*corev1.ConfigMapList, error) {
 	if namespace == "" {
 		return c.clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})

@@ -39,6 +39,8 @@ export const k8s = {
   getPVCs: (ns?: string) => api<any>(`/k8s/pvcs${ns ? `?ns=${ns}` : ""}`),
   getPVs: () => api<any>("/k8s/pvs"),
   getStorageClasses: () => api<any>("/k8s/storageclasses"),
+  getNetworkPolicies: (ns?: string) =>
+    api<any>(`/k8s/network-policies${ns ? `?ns=${ns}` : ""}`),
   getConfigMaps: (ns?: string) => api<any>(`/k8s/configmaps${ns ? `?ns=${ns}` : ""}`),
   getConfigMap: (ns: string, name: string) => api<any>(`/k8s/configmaps/${ns}/${name}`),
   getSecrets: (ns?: string) => api<any>(`/k8s/secrets${ns ? `?ns=${ns}` : ""}`),

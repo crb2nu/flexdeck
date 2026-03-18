@@ -8,6 +8,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/cluster"
 	"github.com/flexinfer/flexdeck/internal/config"
+	"github.com/flexinfer/flexdeck/internal/infra"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
@@ -21,6 +22,9 @@ type Handler struct {
 	litellm      *litellm.Client
 	metricsStore *metrics.Store
 	cache        *cache.Cache
+
+	// Infrastructure cache worker
+	infraWorker *infra.Worker
 
 	// Models management
 	modelsRegistry   *models.Registry
@@ -54,6 +58,7 @@ type HandlerDeps struct {
 	CivitClient      *models.CivitAIClient
 	GitOpsGen        *models.GitOpsGenerator
 	Cache            *cache.Cache
+	InfraWorker      *infra.Worker
 	AgentsRegistry   *agents.Registry
 	AgentsProxy      *agents.Proxy
 	HUDClient        *agents.HUDClient
@@ -94,6 +99,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 	}
 
 	if deps != nil {
+		h.infraWorker = deps.InfraWorker
 		h.modelsRegistry = deps.ModelsRegistry
 		h.modelsDownloader = deps.ModelsDownloader
 		h.hfClient = deps.HFClient

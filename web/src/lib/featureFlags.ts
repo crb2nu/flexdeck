@@ -32,6 +32,7 @@ export interface HudModeState {
 const baseNavItems: NavItem[] = [
   { label: 'Dashboard', path: '/' },
   { label: 'Services', path: '/services' },
+  { label: 'Infra', path: '/infra' },
   { label: 'Flux', path: '/flux' },
   { label: 'Pipeline', path: '/pipeline' },
   { label: 'Logs', path: '/logs' },

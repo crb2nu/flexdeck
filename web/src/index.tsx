@@ -17,6 +17,7 @@ const Agents = lazy(() => import('./components/Agents'));
 const Pipeline = lazy(() => import('./components/Pipeline'));
 const FluxStatus = lazy(() => import('./components/FluxStatus'));
 const Admin = lazy(() => import('./components/Admin'));
+const Infra = lazy(() => import('./components/Infra'));
 
 const root = document.getElementById('root');
 
@@ -36,6 +37,7 @@ render(
       <Route path="/pipeline" component={Pipeline} />
       <Route path="/flux" component={FluxStatus} />
       <Route path="/admin" component={Admin} />
+      <Route path="/infra" component={Infra} />
     </HashRouter>
   ),
   root

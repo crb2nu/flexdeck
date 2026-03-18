@@ -16,6 +16,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/cluster"
 	"github.com/flexinfer/flexdeck/internal/config"
+	"github.com/flexinfer/flexdeck/internal/infra"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
@@ -209,6 +210,15 @@ func main() {
 		} else {
 			slog.Info("loom HUD push mode initialized (no pull URL)")
 		}
+	}
+
+	// Initialize infra cache worker (requires k8s + Redis cache)
+	if k8sClient != nil && sharedCache != nil {
+		if handlerDeps == nil {
+			handlerDeps = &handlers.HandlerDeps{}
+		}
+		handlerDeps.InfraWorker = infra.NewWorker(k8sClient, sharedCache, cfg)
+		slog.Info("infra cache worker initialized")
 	}
 
 	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)

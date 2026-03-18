@@ -59,6 +59,14 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)
 
+	// Start infra cache worker on startup (non-blocking)
+	if deps != nil && deps.InfraWorker != nil {
+		go func() {
+			time.Sleep(3 * time.Second)
+			deps.InfraWorker.Start(context.Background())
+		}()
+	}
+
 	// Auto-discover models from K8s on startup (non-blocking)
 	if k8sClient != nil && deps != nil && deps.ModelsRegistry != nil {
 		go func() {
@@ -182,6 +190,8 @@ func registerCIRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) fu
 }
 
 func registerInfrastructureRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler, cfg *config.Config) {
+	r.Get("/api/infra/snapshot", h.InfraSnapshot)
+
 	r.Route("/api/grafana", func(r chi.Router) {
 		r.Get("/dashboards", h.GrafanaDashboards)
 		r.Get("/dashboards/{uid}", h.GrafanaDashboardDetail)
@@ -209,6 +219,7 @@ func registerInfrastructureRoutes(r chi.Router, h *handlers.Handler, logFunc fun
 		r.Get("/pvcs", h.K8sPVCs)
 		r.Get("/pvs", h.K8sPVs)
 		r.Get("/storageclasses", h.K8sStorageClasses)
+		r.Get("/network-policies", h.K8sNetworkPolicies)
 		r.Get("/configmaps", h.K8sConfigMaps)
 		r.Get("/configmaps/{ns}/{name}", h.K8sConfigMapDetail)
 		r.Get("/secrets", h.K8sSecrets)
