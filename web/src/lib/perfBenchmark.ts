@@ -5,11 +5,13 @@
  * summary statistics. Attach to window for console use.
  *
  * Usage (browser console):
- *   __flexBench.start()          // begin 10s collection
- *   __flexBench.start(30000)     // begin 30s collection
- *   __flexBench.stop()           // stop early and print results
- *   __flexBench.report()         // print latest report
- *   __flexBench.raw()            // return raw sample arrays
+ *   window.__flexBench.start()          // begin 10s collection
+ *   window.__flexBench.start(30000)     // begin 30s collection
+ *   window.__flexBench.stop()           // stop early and print results
+ *   window.__flexBench.report()         // print latest report
+ *   window.__flexBench.raw()            // return raw sample arrays
+ *
+ * Safari note: use window.__flexBench (not bare __flexBench)
  */
 
 interface TopologyLive {
@@ -312,4 +314,5 @@ function createBenchmark() {
 export function installBenchmark() {
   if (typeof window === 'undefined') return;
   w.__flexBench = createBenchmark();
+  console.debug('[flexdeck] perf benchmark ready → window.__flexBench.start()');
 }
