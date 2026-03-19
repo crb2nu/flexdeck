@@ -74,7 +74,7 @@ const AppLayout: Component<ParentProps> = (props) => {
   return (
     <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
       {/* Scanline Overlay */}
-      <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden opacity-[0.03]">
+      <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden opacity-[0.03]" style={{ "will-change": "transform" }}>
         <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]" />
       </div>
       
@@ -111,7 +111,7 @@ const AppLayout: Component<ParentProps> = (props) => {
             <div class="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
               <span class="font-mono text-xl font-bold text-white">F</span>
               {/* Breathing border */}
-              <div class="absolute inset-0 rounded-lg border border-neon-cyan/40 animate-breathe" />
+              <div class="absolute inset-0 rounded-lg border border-neon-cyan/40 animate-breathe" style={{ "will-change": "opacity" }} />
             </div>
             <h1 class="text-xl font-bold tracking-tight text-white hidden sm:block">
               Flex<span class="text-neon-cyan">Deck</span>
@@ -183,11 +183,12 @@ const AppLayout: Component<ParentProps> = (props) => {
         </Show>
 
         {/* Sentient Health Glow Bar */}
-        <div class="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden">
+        <div class="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden" style={{ "will-change": "transform, opacity" }}>
           {/* Base glow that breathes */}
           <div
-            class="absolute inset-0 animate-breathe"
+            class="absolute inset-0 animate-breathe motion-reduce:animate-none"
             style={{
+              "will-change": "opacity",
               background: healthStore.error
                 ? 'linear-gradient(90deg, transparent, #ef4444, transparent)'
                 : healthStore.ok
@@ -197,8 +198,9 @@ const AppLayout: Component<ParentProps> = (props) => {
           />
           {/* Scan line sweep */}
           <div
-            class="absolute inset-y-0 w-24 animate-scan-line"
+            class="absolute inset-y-0 w-24 animate-scan-line motion-reduce:animate-none"
             style={{
+              "will-change": "transform",
               background: 'linear-gradient(90deg, transparent, rgba(0,217,255,0.6), transparent)',
             }}
           />

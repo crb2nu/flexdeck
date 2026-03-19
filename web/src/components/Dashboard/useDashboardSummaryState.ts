@@ -7,6 +7,24 @@ import { metricsStore } from '../../stores/metrics';
 import { buildInferenceHealthSummary } from './inferenceHealth';
 import { resolveDashboardDataState } from './statusSemantics';
 
+class RingBuffer {
+  private buf: number[];
+  private pos = 0;
+  private full = false;
+  constructor(private cap: number) {
+    this.buf = new Array(cap);
+  }
+  push(val: number) {
+    this.buf[this.pos] = val;
+    this.pos = (this.pos + 1) % this.cap;
+    if (!this.full && this.pos === 0) this.full = true;
+  }
+  toArray(): number[] {
+    if (!this.full) return this.buf.slice(0, this.pos);
+    return [...this.buf.slice(this.pos), ...this.buf.slice(0, this.pos)];
+  }
+}
+
 export interface ModelCountState {
   deployed: number;
   total: number;
@@ -42,15 +60,20 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
   const memUsed = () => metricsStore().clusterMemory;
   const resourceLoading = () => metricsStore().loading;
 
-  const [cpuHistory, setCpuHistory] = createSignal<number[]>([]);
-  const [memHistory, setMemHistory] = createSignal<number[]>([]);
+  const cpuRing = new RingBuffer(20);
+  const memRing = new RingBuffer(20);
+  const [cpuHistoryVersion, setCpuHistoryVersion] = createSignal(0);
+  const [memHistoryVersion, setMemHistoryVersion] = createSignal(0);
 
   createEffect(() => {
     const cpu = cpuPercent();
     const mem = memUsed();
-    if (cpu > 0) setCpuHistory((prev) => [...prev.slice(-19), cpu]);
-    if (mem > 0) setMemHistory((prev) => [...prev.slice(-19), mem]);
+    if (cpu > 0) { cpuRing.push(cpu); setCpuHistoryVersion((v) => v + 1); }
+    if (mem > 0) { memRing.push(mem); setMemHistoryVersion((v) => v + 1); }
   });
+
+  const cpuHistory = createMemo(() => { cpuHistoryVersion(); return cpuRing.toArray(); });
+  const memHistory = createMemo(() => { memHistoryVersion(); return memRing.toArray(); });
 
   const [modelCount, setModelCount] = createSignal<ModelCountState>({
     deployed: 0,
@@ -82,7 +105,9 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
     error: '',
   });
   const [inferenceLastUpdateMs, setInferenceLastUpdateMs] = createSignal(0);
-  const [tpsHistory, setTpsHistory] = createSignal<number[]>([]);
+  const tpsRing = new RingBuffer(20);
+  const [tpsHistoryVersion, setTpsHistoryVersion] = createSignal(0);
+  const tpsHistory = createMemo(() => { tpsHistoryVersion(); return tpsRing.toArray(); });
 
   const fetchInferenceHealth = async () => {
     if (!healthStore.features.flexinfer_proxy?.enabled) return;
@@ -99,7 +124,8 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
       });
       setInferenceLastUpdateMs(Date.now());
       if (summary.totalTps > 0) {
-        setTpsHistory((prev) => [...prev.slice(-19), summary.totalTps]);
+        tpsRing.push(summary.totalTps);
+        setTpsHistoryVersion((v) => v + 1);
       }
     } catch {
       setInferenceHealth((prev) => ({ ...prev, loading: false, error: 'offline' }));

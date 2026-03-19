@@ -92,6 +92,7 @@ body::after {
     border: var(--glass-border);
     border-radius: var(--radius-m);
     box-shadow: var(--glass-shadow);
+    will-change: transform;
   }
 
   .glass-panel-hover {

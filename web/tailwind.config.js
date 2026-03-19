@@ -55,7 +55,7 @@ export default {
         xl: 'var(--space-xl)',
       },
       backdropBlur: {
-        glass: '12px',
+        glass: '4px',
       },
       boxShadow: {
         glass: '0 4px 12px rgba(0, 0, 0, 0.4)',
@@ -97,5 +97,15 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function ({ addUtilities }) {
+      addUtilities({
+        '.motion-reduce\\:animate-none': {
+          '@media (prefers-reduced-motion: reduce)': {
+            animation: 'none',
+          },
+        },
+      });
+    },
+  ],
 };

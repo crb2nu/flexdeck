@@ -91,6 +91,20 @@ const [store, setStore] = createStore<K8sStore>({
   error: null,
 });
 
+// UID-keyed indexes for O(1) lookup during SSE watch events
+const nodesByUid = new Map<string, number>();
+const podsByUid = new Map<string, number>();
+const servicesByUid = new Map<string, number>();
+
+const rebuildIndexes = (nodes: K8sNode[], pods: K8sPod[], services: K8sService[]) => {
+  nodesByUid.clear();
+  podsByUid.clear();
+  servicesByUid.clear();
+  for (let i = 0; i < nodes.length; i++) nodesByUid.set(nodes[i].metadata.uid, i);
+  for (let i = 0; i < pods.length; i++) podsByUid.set(pods[i].metadata.uid, i);
+  for (let i = 0; i < services.length; i++) servicesByUid.set(services[i].metadata.uid, i);
+};
+
 // Connection state
 const [connectionStatus, setConnectionStatus] = createSignal<
   "disconnected" | "connecting" | "connected" | "error"
@@ -186,17 +200,23 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
 
   if (objectType === "node") {
     const node = object as K8sNode;
+    const uid = node.metadata.uid;
+    const index = nodesByUid.get(uid);
+
     setStore("nodes", (nodes) => {
-      const index = nodes.findIndex(
-        (n) => n.metadata.uid === node.metadata.uid
-      );
       if (type === "DELETED") {
-        if (index >= 0) {
+        if (index !== undefined) {
           flags.topologyChanged = true;
           flags.styleChanged = true;
+          nodesByUid.delete(uid);
+          const filtered = nodes.filter((n) => n.metadata.uid !== uid);
+          // Rebuild node index after delete (indexes shift)
+          nodesByUid.clear();
+          for (let i = 0; i < filtered.length; i++) nodesByUid.set(filtered[i].metadata.uid, i);
+          return filtered;
         }
-        return nodes.filter((n) => n.metadata.uid !== node.metadata.uid);
-      } else if (index >= 0) {
+        return nodes;
+      } else if (index !== undefined) {
         const previous = nodes[index];
         if (previous.metadata.name !== node.metadata.name) {
           flags.topologyChanged = true;
@@ -210,20 +230,28 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
       } else {
         flags.topologyChanged = true;
         flags.styleChanged = true;
+        nodesByUid.set(uid, nodes.length);
         return [...nodes, node];
       }
     });
   } else if (objectType === "pod") {
     const pod = object as K8sPod;
+    const uid = pod.metadata.uid;
+    const index = podsByUid.get(uid);
+
     setStore("pods", (pods) => {
-      const index = pods.findIndex((p) => p.metadata.uid === pod.metadata.uid);
       if (type === "DELETED") {
-        if (index >= 0) {
+        if (index !== undefined) {
           flags.topologyChanged = true;
           flags.styleChanged = true;
+          podsByUid.delete(uid);
+          const filtered = pods.filter((p) => p.metadata.uid !== uid);
+          podsByUid.clear();
+          for (let i = 0; i < filtered.length; i++) podsByUid.set(filtered[i].metadata.uid, i);
+          return filtered;
         }
-        return pods.filter((p) => p.metadata.uid !== pod.metadata.uid);
-      } else if (index >= 0) {
+        return pods;
+      } else if (index !== undefined) {
         const previous = pods[index];
         if (
           previous.metadata.name !== pod.metadata.name ||
@@ -241,21 +269,27 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
       } else {
         flags.topologyChanged = true;
         flags.styleChanged = true;
+        podsByUid.set(uid, pods.length);
         return [...pods, pod];
       }
     });
   } else if (objectType === "service") {
     const service = object as K8sService;
+    const uid = service.metadata.uid;
+    const index = servicesByUid.get(uid);
+
     setStore("services", (services) => {
-      const index = services.findIndex(
-        (s) => s.metadata.uid === service.metadata.uid
-      );
       if (type === "DELETED") {
-        if (index >= 0) {
+        if (index !== undefined) {
           flags.topologyChanged = true;
+          servicesByUid.delete(uid);
+          const filtered = services.filter((s) => s.metadata.uid !== uid);
+          servicesByUid.clear();
+          for (let i = 0; i < filtered.length; i++) servicesByUid.set(filtered[i].metadata.uid, i);
+          return filtered;
         }
-        return services.filter((s) => s.metadata.uid !== service.metadata.uid);
-      } else if (index >= 0) {
+        return services;
+      } else if (index !== undefined) {
         const previous = services[index];
         if (
           previous.metadata.name !== service.metadata.name ||
@@ -270,6 +304,7 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
         return updated;
       } else {
         flags.topologyChanged = true;
+        servicesByUid.set(uid, services.length);
         return [...services, service];
       }
     });
@@ -358,6 +393,7 @@ async function fetchInitialData() {
         setStore("nodes", reconcile(nodes));
         setStore("pods", reconcile(pods));
         setStore("services", reconcile(services));
+        rebuildIndexes(nodes, pods, services);
         if (topologyChanged) bumpTopologyVersion();
         if (styleChanged) bumpStyleVersion();
         setStore("lastUpdate", Date.now());
@@ -407,6 +443,7 @@ async function fetchInitialData() {
     setStore("nodes", reconcile(nextNodes));
     setStore("pods", reconcile(nextPods));
     setStore("services", reconcile(nextServices));
+    rebuildIndexes(nextNodes, nextPods, nextServices);
     if (topologyChanged) bumpTopologyVersion();
     if (styleChanged) bumpStyleVersion();
     setStore("lastUpdate", Date.now());

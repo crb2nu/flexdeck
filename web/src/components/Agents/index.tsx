@@ -109,10 +109,8 @@ const Agents: Component = () => {
     }
   };
 
-  createPolling('agents-main', () => {
-    void fetchAgents();
-    void fetchGraph();
-    void checkHealth();
+  createPolling('agents-main', async () => {
+    await Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
   }, 10000);
 
   const openCreateForm = () => {
