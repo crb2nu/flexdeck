@@ -233,12 +233,18 @@ const ensureFiAccel = (): Promise<void> => {
   return fiAccelInitPromise;
 };
 
-if (import.meta.env.MODE !== 'test') {
-  void ensureFiAccel();
+let initTriggered = false;
+function triggerInitOnce() {
+  if (!initTriggered && import.meta.env.MODE !== 'test') {
+    initTriggered = true;
+    void ensureFiAccel();
+  }
 }
 
-export const detectLogLevel = (line: string): FiAccelLogLevel =>
-  fiAccelBindings?.surface_detect_log_level(line) ?? fallbackDetectLogLevel(line);
+export const detectLogLevel = (line: string): FiAccelLogLevel => {
+  triggerInitOnce();
+  return fiAccelBindings?.surface_detect_log_level(line) ?? fallbackDetectLogLevel(line);
+};
 
 export const getFiAccelMetricsSnapshot = (): FiAccelMetricsSnapshot => ({ ...fiAccelMetrics });
 
@@ -266,6 +272,7 @@ export const analyzeLogLines = (
   lines: string[],
   filter?: FiAccelLogFilter,
 ): FiAccelLogAnalysisMatch[] => {
+  triggerInitOnce();
   if (lines.length === 0) return [];
 
   const bindings = fiAccelBindings;
@@ -306,6 +313,7 @@ export const matchesLabelSelector = (
   selector: Record<string, string> | undefined | null,
   labels: Record<string, string> | undefined | null,
 ): boolean => {
+  triggerInitOnce();
   const normalizedSelector = normalizeLabelSet(selector);
   if (Object.keys(normalizedSelector).length === 0) return true;
 
@@ -318,6 +326,7 @@ export const filterLabelSelectorMatches = (
   selector: Record<string, string> | undefined | null,
   labelSets: Array<Record<string, string> | undefined | null>,
 ): number[] => {
+  triggerInitOnce();
   const normalizedSelector = normalizeLabelSet(selector);
   if (Object.keys(normalizedSelector).length === 0) {
     return labelSets.map((_, index) => index);
@@ -346,8 +355,12 @@ export const filterLabelSelectorMatches = (
   return result;
 };
 
-export const normalizeCiJobStatus = (status: string | undefined | null): FiAccelCiStatus =>
-  fiAccelBindings?.surface_normalize_ci_job_status(status ?? '') ?? fallbackNormalizeCiJobStatus(status);
+export const normalizeCiJobStatus = (status: string | undefined | null): FiAccelCiStatus => {
+  triggerInitOnce();
+  return fiAccelBindings?.surface_normalize_ci_job_status(status ?? '') ?? fallbackNormalizeCiJobStatus(status);
+};
 
-export const normalizeCiPipelineStatus = (status: string | undefined | null): FiAccelCiStatus =>
-  fiAccelBindings?.surface_normalize_ci_pipeline_status(status ?? '') ?? fallbackNormalizeCiPipelineStatus(status);
+export const normalizeCiPipelineStatus = (status: string | undefined | null): FiAccelCiStatus => {
+  triggerInitOnce();
+  return fiAccelBindings?.surface_normalize_ci_pipeline_status(status ?? '') ?? fallbackNormalizeCiPipelineStatus(status);
+};
