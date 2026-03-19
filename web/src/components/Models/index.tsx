@@ -22,6 +22,7 @@ import { healthStore } from '../../stores/health';
 const LiteLLMRouterPanel = lazy(() => import('./LiteLLMRouterPanel'));
 const ModelComparison = lazy(() => import('./ModelComparison'));
 const ModelEventsTimeline = lazy(() => import('./ModelEventsTimeline'));
+const ModelSwapTimeline = lazy(() => import('./ModelSwapTimeline'));
 const InferenceTab = lazy(() => import('./InferenceTab'));
 const CatalogTab = lazy(() => import('./CatalogTab'));
 const ProxyTab = lazy(() => import('./ProxyTab'));
@@ -371,6 +372,7 @@ const CRDModelCard: Component<{
   onRestart: () => void;
 }> = (props) => {
   const [showEvents, setShowEvents] = createSignal(false);
+  const [showSwapHistory, setShowSwapHistory] = createSignal(false);
   const phase = () => props.model.status?.phase || 'Unknown';
   const gpu = () => props.model.status?.gpu;
   const metrics = () => props.model.status?.metrics;
@@ -879,12 +881,31 @@ const CRDModelCard: Component<{
         >
           Events
         </button>
+        <Show when={gpuSpec()?.shared}>
+          <button
+            onClick={() => setShowSwapHistory(!showSwapHistory())}
+            class={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none ${
+              showSwapHistory()
+                ? 'bg-neon-purple/20 text-neon-purple'
+                : 'bg-white/10 text-text-muted hover:bg-white/20'
+            }`}
+          >
+            Swaps
+          </button>
+        </Show>
       </div>
 
       {/* Events Timeline */}
       <Show when={showEvents()}>
         <Suspense fallback={<div class="py-2 text-xs text-text-dim animate-pulse">Loading events...</div>}>
           <ModelEventsTimeline namespace={props.model.namespace} name={props.model.name} />
+        </Suspense>
+      </Show>
+
+      {/* GPU Swap History Timeline */}
+      <Show when={showSwapHistory()}>
+        <Suspense fallback={<div class="py-2 text-xs text-text-dim animate-pulse">Loading swap history...</div>}>
+          <ModelSwapTimeline namespace={props.model.namespace} name={props.model.name} />
         </Suspense>
       </Show>
     </div>
