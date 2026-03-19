@@ -175,6 +175,7 @@ func registerCIRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) fu
 	r.Get("/api/ci/repos", h.ListRepositories)
 	r.Get("/api/ci/repos/{id}/config", h.GetRepoConfig)
 	r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
+	r.Get("/api/ci/pipelines/batch", h.BatchPipelines)
 	r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
 	r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
 	r.With(logFunc("ci.retry")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -96,7 +97,7 @@ func TestFetchRepoPipeline_UsesStageOrderFromGitLabCI(t *testing.T) {
 	cfg.GitLab.Token = "test-token"
 	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient()}
 
-	resp, err := h.fetchRepoPipeline("1")
+	resp, err := h.fetchRepoPipeline(context.Background(), "1")
 	if err != nil {
 		t.Fatalf("fetchRepoPipeline returned error: %v", err)
 	}
