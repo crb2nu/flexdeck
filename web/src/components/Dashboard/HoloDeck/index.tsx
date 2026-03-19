@@ -395,7 +395,12 @@ const HoloDeck: Component<Props> = (props) => {
     containerRef.addEventListener('mousemove', onMouseMove);
     containerRef.addEventListener('click', onClick);
 
+    let loopRunning = true;
     const animate = () => {
+      if (engine.paused) {
+        loopRunning = false;
+        return;
+      }
       const delta = Math.min(clock.getDelta(), 0.1);
       const time = clock.getElapsedTime();
       engine.gridMaterial.uniforms.uTime.value = time;
@@ -455,10 +460,27 @@ const HoloDeck: Component<Props> = (props) => {
     };
     animate();
 
+    let mounted = true;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        engine.pause();
+      } else if (mounted) {
+        engine.resume();
+        if (!loopRunning) {
+          loopRunning = true;
+          clock.getDelta(); // Discard elapsed time while hidden
+          animate();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     const handleResize = () => engine.resize();
     window.addEventListener('resize', handleResize);
 
     onCleanup(() => {
+      mounted = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('resize', handleResize);
       containerRef?.removeEventListener('touchstart', onTouchStart);
       containerRef?.removeEventListener('mousemove', onMouseMove);

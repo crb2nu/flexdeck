@@ -17,6 +17,7 @@ export class HoloEngine {
   public dustParticles!: THREE.Points;
   public raycaster = new THREE.Raycaster();
   public mouse = new THREE.Vector2();
+  public paused = false;
 
   constructor(private container: HTMLDivElement, qualityLevel: QualityLevel) {
     this.init(qualityLevel);
@@ -113,6 +114,14 @@ export class HoloEngine {
     });
     this.dustParticles = new THREE.Points(geom, mat);
     this.scene.add(this.dustParticles);
+  }
+
+  pause() {
+    this.paused = true;
+  }
+
+  resume() {
+    this.paused = false;
   }
 
   resize() {
