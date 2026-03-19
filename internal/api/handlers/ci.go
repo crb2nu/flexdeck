@@ -252,20 +252,7 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	ctx := r.Context()
 
-	// Try cache (30s TTL for pipeline status)
-	if h.cache != nil {
-		cacheKey := fmt.Sprintf("ci:pipeline:%s", idStr)
-		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchRepoPipeline(ctx, idStr)
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(cached)
-			return
-		}
-	}
-
-	data, err := h.fetchRepoPipeline(ctx, idStr)
+	data, err := h.fetchOrCachePipeline(ctx, idStr)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -501,15 +488,25 @@ func (h *Handler) BatchPipelines(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"pipelines": results})
 }
 
-// fetchOrCachePipeline fetches a single pipeline through the cache layer.
+// fetchOrCachePipeline returns pipeline data from the Redis store first,
+// falling back to a direct GitLab API call on miss.
 func (h *Handler) fetchOrCachePipeline(ctx context.Context, idStr string) (any, error) {
+	// Try the metrics store first — the scraper pre-populates this every 60s.
+	if h.metricsStore != nil {
+		if id, err := strconv.Atoi(idStr); err == nil {
+			if runs, err := h.metricsStore.GetPipelineHistory(ctx, id, 1); err == nil && len(runs) > 0 {
+				return h.pipelineRunToResponse(runs[0]), nil
+			}
+		}
+	}
+
+	// Fall back to cache-aside → GitLab API.
 	if h.cache != nil {
-		cacheKey := fmt.Sprintf("ci:pipeline:%s", idStr)
+		cacheKey := fmt.Sprintf("ci:pipeline:api:%s", idStr)
 		cachedBytes, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
 			return h.fetchRepoPipeline(ctx, idStr)
 		})
 		if err == nil {
-			// GetOrFetch returns []byte; decode back to structured data for the batch response
 			var decoded any
 			if jsonErr := json.Unmarshal(cachedBytes, &decoded); jsonErr == nil {
 				return decoded, nil
@@ -517,6 +514,51 @@ func (h *Handler) fetchOrCachePipeline(ctx context.Context, idStr string) (any, 
 		}
 	}
 	return h.fetchRepoPipeline(ctx, idStr)
+}
+
+// pipelineRunToResponse converts a store PipelineRun to the handler response format.
+func (h *Handler) pipelineRunToResponse(run metrics.PipelineRun) any {
+	type Job struct {
+		ID       string  `json:"id"`
+		Name     string  `json:"name"`
+		Stage    string  `json:"stage"`
+		Status   string  `json:"status"`
+		Duration float64 `json:"duration"`
+	}
+	type Stage struct {
+		Name string `json:"name"`
+		Jobs []Job  `json:"jobs"`
+	}
+	type PipelineResponse struct {
+		ID        string  `json:"id"`
+		Ref       string  `json:"ref"`
+		Status    string  `json:"status"`
+		CreatedAt string  `json:"createdAt"`
+		Stages    []Stage `json:"stages"`
+		Source    string  `json:"source,omitempty"`
+	}
+
+	stages := make([]Stage, 0, len(run.Stages))
+	for _, s := range run.Stages {
+		stages = append(stages, Stage{
+			Name: s.Name,
+			Jobs: []Job{{
+				Name:     s.Name,
+				Stage:    s.Name,
+				Status:   s.Status,
+				Duration: s.Duration,
+			}},
+		})
+	}
+
+	return PipelineResponse{
+		ID:        fmt.Sprintf("%d", run.PipelineID),
+		Ref:       run.Ref,
+		Status:    run.Status,
+		CreatedAt: run.CreatedAt.Format(time.RFC3339),
+		Stages:    stages,
+		Source:    "store",
+	}
 }
 
 func fetchGitLabStageOrder(client *http.Client, gitlabURL, token, projectID, ref string) ([]string, error) {
