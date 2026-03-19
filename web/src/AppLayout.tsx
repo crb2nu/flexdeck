@@ -73,11 +73,6 @@ const AppLayout: Component<ParentProps> = (props) => {
 
   return (
     <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
-      {/* Scanline Overlay */}
-      <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden opacity-[0.03]" style={{ "will-change": "transform" }}>
-        <div class="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]" />
-      </div>
-      
       {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
         <header class="border-b border-white/5 bg-[rgba(11,16,32,0.74)] backdrop-blur-md relative z-40">
