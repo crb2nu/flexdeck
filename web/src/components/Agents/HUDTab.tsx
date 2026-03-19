@@ -1,4 +1,4 @@
-import { Component, createMemo, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
@@ -126,10 +126,7 @@ const HUDTab: Component = () => {
 
   createPolling('agents-hud-pull', fetchAll, 15000);
 
-  createEffect(() => {
-    const ticker = setInterval(() => setNow(Date.now()), 5000);
-    onCleanup(() => clearInterval(ticker));
-  });
+  createPolling('hud-now-ticker', () => { setNow(Date.now()); }, 5000);
 
   const statusColor = (status: string) => {
     switch (status) {

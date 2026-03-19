@@ -1,4 +1,5 @@
-import { batch, createEffect, createSignal, onCleanup, onMount, on, type Accessor } from 'solid-js';
+import { batch, createEffect, createSignal, onCleanup, on, type Accessor } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 
 export interface MetricValue {
   time: number;
@@ -100,16 +101,8 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
   const [timeRange, setTimeRange] = createSignal('1h');
   const [lastUpdated, setLastUpdated] = createSignal<Date | null>(null);
 
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
   let currentAbortController: AbortController | null = null;
   let fetchGeneration = 0;
-
-  const stopPolling = () => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-  };
 
   const fetchMetrics = async () => {
     const generation = ++fetchGeneration;
@@ -170,35 +163,12 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
     }
   };
 
-  const startPolling = () => {
-    if (refreshInterval || !isPrometheusActive()) return;
-    refreshInterval = setInterval(() => {
-      if (!document.hidden) {
-        void fetchMetrics();
-      }
-    }, 30000);
-  };
-
-  onMount(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) return;
-      if (isPrometheusActive()) {
-        void fetchMetrics();
-        startPolling();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    onCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
-  });
+  createPolling('prometheus-metrics', fetchMetrics, 30000, isPrometheusActive);
 
   createEffect(() => {
     if (isPrometheusActive()) {
       void fetchMetrics();
-      startPolling();
-      return;
     }
-    stopPolling();
   });
 
   createEffect(
@@ -214,7 +184,6 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
   );
 
   onCleanup(() => {
-    stopPolling();
     currentAbortController?.abort();
   });
 

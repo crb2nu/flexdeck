@@ -1,6 +1,7 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { createEffect, createMemo, createSignal } from 'solid-js';
 import { healthStore } from '../../stores/health';
 import { api } from '../../lib/api';
+import { createPolling } from '../../hooks/createPolling';
 import type {
   K8sDaemonSet,
   K8sDeployment,
@@ -44,8 +45,6 @@ export function useServicesController() {
   const [namespaceFilter, setNamespaceFilter] = createSignal('');
   const [searchTerm, setSearchTerm] = createSignal('');
   const [activeTab, setActiveTab] = createSignal<TabType>('deployments');
-
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   const isK8sEnabled = () => healthStore.features?.k8s?.enabled ?? false;
   const isReadOnly = () => healthStore.features?.k8s?.readOnly ?? true;
@@ -210,23 +209,11 @@ export function useServicesController() {
     { id: 'secrets' as const, label: 'Secrets', count: () => filteredSecrets().length },
   ] satisfies { id: TabType; label: string; count: () => number }[];
 
-  onMount(() => {
-    refreshInterval = setInterval(() => {
-      if (!healthStore.loading) {
-        void fetchData();
-      }
-    }, REFRESH_INTERVAL);
-  });
+  createPolling('services-refresh', async () => { if (!healthStore.loading) await fetchData(); }, REFRESH_INTERVAL);
 
   createEffect(() => {
     if (!healthStore.loading && healthStore.ok) {
       void fetchData();
-    }
-  });
-
-  onCleanup(() => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
     }
   });
 

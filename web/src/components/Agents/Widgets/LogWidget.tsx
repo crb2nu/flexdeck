@@ -1,5 +1,6 @@
-import { Component, createSignal, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
 import { loki } from '../../../lib/api';
+import { createPolling } from '../../../hooks/createPolling';
 
 interface LogWidgetProps {
   data: {
@@ -69,14 +70,7 @@ const LogWidget: Component<LogWidgetProps> = (props) => {
     }
   };
 
-  let pollTimer: ReturnType<typeof setInterval>;
-
-  onMount(() => {
-    fetchLogs();
-    pollTimer = setInterval(fetchLogs, 5000);
-  });
-
-  onCleanup(() => clearInterval(pollTimer));
+  createPolling('log-widget', fetchLogs, 5000);
 
   const levelColor = (level?: string) => {
     switch (level) {

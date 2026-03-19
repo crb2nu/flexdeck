@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import { parse } from 'yaml';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import type { Pipeline as VizPipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
@@ -44,12 +45,7 @@ export function usePipelineController() {
   const [pipelineFetchError, setPipelineFetchError] = createSignal(false);
   const [actionNotice, setActionNotice] = createSignal<ActionNotice | null>(null);
 
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
   const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
-
-  const [tabVisible, setTabVisible] = createSignal(!document.hidden);
-  const onVisibilityChange = () => setTabVisible(!document.hidden);
-  document.addEventListener('visibilitychange', onVisibilityChange);
 
   // Poll telemetry
   const pollTelemetry = {
@@ -65,7 +61,7 @@ export function usePipelineController() {
       (window as any).__FLEXDECK_PIPELINE_POLL__ = {
         ...pollTelemetry,
         avgFetchMs: pollTelemetry.pollCount > 0 ? pollTelemetry.totalFetchMs / pollTelemetry.pollCount : 0,
-        tabVisible: tabVisible(),
+        tabVisible: !document.hidden,
         autoRefresh: autoRefresh(),
         isPipelineActive: isPipelineActive(),
         pollIntervalMs: effectiveInterval(),
@@ -183,20 +179,17 @@ export function usePipelineController() {
     return PIPELINE_POLL_IDLE;
   });
 
-  createEffect(() => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-
-    const repo = selectedRepo();
-    const interval = effectiveInterval();
-    if (repo?.id && autoRefresh() && selectedJob() === null && tabVisible()) {
-      pollInterval = setInterval(() => {
-        void fetchPipelineStatus(repo.id);
-      }, interval);
-    }
-  });
+  createPolling(
+    'pipeline-poll',
+    async () => {
+      const repo = selectedRepo();
+      if (repo?.id && selectedJob() === null) {
+        await fetchPipelineStatus(repo.id);
+      }
+    },
+    effectiveInterval,
+    autoRefresh,
+  );
 
   const scheduleRefresh = (fn: () => void, delay: number) => {
     const id = setTimeout(() => {
@@ -437,10 +430,8 @@ export function usePipelineController() {
   });
 
   onCleanup(() => {
-    if (pollInterval) clearInterval(pollInterval);
     pendingTimeouts.forEach(clearTimeout);
     pendingTimeouts.clear();
-    document.removeEventListener('visibilitychange', onVisibilityChange);
   });
 
   return {

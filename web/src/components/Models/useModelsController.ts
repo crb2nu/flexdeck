@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, type Accessor } from 'solid-js';
+import { createPolling } from '../../hooks/createPolling';
 import type {
   RegisteredModel,
   ModelSearchResult,
@@ -216,11 +217,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   onMount(() => {
     void refreshModels().finally(() => setLoading(false));
     void discoverModels();
-    const interval = setInterval(() => {
-      void refreshModels();
-    }, 15000);
-    onCleanup(() => clearInterval(interval));
   });
+
+  createPolling('models-refresh', async () => { await refreshModels(); }, 15000);
 
   createEffect(() => {
     if (activeTab() !== 'controller') return;
