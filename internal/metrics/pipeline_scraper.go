@@ -71,16 +71,31 @@ func (ps *PipelineScraper) Stop() {
 }
 
 func (ps *PipelineScraper) scrape(ctx context.Context) {
+	scrapeStart := time.Now()
+
 	scrapeCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	projects, err := ps.fetchProjects(scrapeCtx)
 	if err != nil {
 		slog.Warn("pipeline scraper: failed to fetch projects", "error", err)
+		PipelineScrapeErrors.Inc()
+		PipelineScrapeDuration.Observe(time.Since(scrapeStart).Seconds())
 		return
 	}
 
 	slog.Info("pipeline scraper: fetched projects", "count", len(projects))
+
+	// Cache project ID → path_with_namespace for display in trend cards.
+	names := make(map[string]interface{}, len(projects))
+	for _, p := range projects {
+		if p.PathWithNamespace != "" {
+			names[fmt.Sprintf("%d", p.ID)] = p.PathWithNamespace
+		}
+	}
+	if len(names) > 0 {
+		ps.store.StoreProjectNames(scrapeCtx, names)
+	}
 
 	var stored atomic.Int64
 	sem := make(chan struct{}, 5) // max 5 concurrent project scrapes
@@ -139,12 +154,17 @@ func (ps *PipelineScraper) scrape(ctx context.Context) {
 	count := stored.Load()
 	slog.Info("pipeline scraper: scrape complete", "projects", len(projects), "stored", count)
 
+	PipelineScrapeProjects.Set(float64(len(projects)))
+	PipelineScrapePipelinesStored.Set(float64(count))
+	PipelineScrapeDuration.Observe(time.Since(scrapeStart).Seconds())
+
 	// Refresh materialized all-projects trend summary
 	ps.store.MaterializeAllPipelineTrends(scrapeCtx)
 }
 
 type gitlabProject struct {
-	ID int `json:"id"`
+	ID                int    `json:"id"`
+	PathWithNamespace string `json:"path_with_namespace"`
 }
 
 type gitlabPipeline struct {

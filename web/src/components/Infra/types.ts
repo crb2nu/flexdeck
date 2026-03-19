@@ -1,10 +1,17 @@
 // TypeScript mirror of internal/infra/snapshot.go
 
+export interface NodeCondition {
+  type: string;
+  status: 'True' | 'False' | 'Unknown';
+  message?: string;
+}
+
 export interface NodeInfo {
   name: string;
   status: 'Ready' | 'NotReady';
   roles: string[];
   labels?: Record<string, string>;
+  conditions?: NodeCondition[];
   memCapacityMi: number;
   cpuPct: number;
   memPct: number;
@@ -12,6 +19,15 @@ export interface NodeInfo {
   gpuVramUsedMi: number;
   gpuVramTotalMi: number;
   podCount: number;
+}
+
+export interface OOMKilledPod {
+  name: string;
+  namespace: string;
+  container: string;
+  restartCount: number;
+  lastOOM?: string;
+  nodeName: string;
 }
 
 export interface ComputeSnapshot {
@@ -23,6 +39,8 @@ export interface ComputeSnapshot {
   readyNodes: number;
   totalPods: number;
   runningPods: number;
+  oomKilledPods?: OOMKilledPod[];
+  oomKilledCount: number;
 }
 
 export interface PVCInfo {

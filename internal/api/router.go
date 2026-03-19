@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/flexinfer/flexdeck/internal/api/handlers"
 	apimiddleware "github.com/flexinfer/flexdeck/internal/api/middleware"
@@ -92,6 +93,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	}
 
 	r.Get("/api/health", h.Health)
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Public API routes - no auth required, sanitized read-only data
 	registerPublicRoutes(r, h)
@@ -178,6 +180,8 @@ func registerCIRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) fu
 	r.With(logFunc("ci.cancel")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/cancel", h.CancelJob)
 	r.With(logFunc("ci.play")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/play", h.PlayJob)
 
+	// CI dashboard summary
+	r.Get("/api/ci/summary", h.GetCISummary)
 	// Pipeline trends & history
 	r.Get("/api/ci/trends", h.GetAllPipelineTrends)
 	r.Get("/api/ci/projects/{id}/trends", h.GetPipelineTrends)

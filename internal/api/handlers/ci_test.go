@@ -28,7 +28,7 @@ func TestCIHandlers(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.GitLab.URL = ts.URL
 	cfg.GitLab.Token = "test-token"
-	h := &Handler{cfg: cfg}
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient()}
 
 	t.Run("ListRepositories", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/ci/repos", nil)
@@ -94,7 +94,7 @@ func TestFetchRepoPipeline_UsesStageOrderFromGitLabCI(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.GitLab.URL = ts.URL
 	cfg.GitLab.Token = "test-token"
-	h := &Handler{cfg: cfg}
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient()}
 
 	resp, err := h.fetchRepoPipeline("1")
 	if err != nil {

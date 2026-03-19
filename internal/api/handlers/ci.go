@@ -67,7 +67,7 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 		return []RepoInfo{}, nil
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 	var projects []struct {
 		ID                int    `json:"id"`
 		PathWithNamespace string `json:"path_with_namespace"`
@@ -241,7 +241,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		return nil, fmt.Errorf("GitLab token not configured")
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 
 	pipelineURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=1", gitlabURL, idStr)
 	req, err := http.NewRequest("GET", pipelineURL, nil)
@@ -435,7 +435,7 @@ func (h *Handler) GetJobTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := h.gitlabClient
 
 	// Fetch job trace from GitLab
 	traceURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/trace", gitlabURL, projectID, jobID)
@@ -497,7 +497,7 @@ func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 
 	// POST to GitLab job retry endpoint
 	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/retry", gitlabURL, projectID, jobID)
@@ -559,7 +559,7 @@ func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 
 	// POST to GitLab job cancel endpoint
 	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/cancel", gitlabURL, projectID, jobID)
@@ -621,7 +621,7 @@ func (h *Handler) PlayJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 
 	// POST to GitLab job play endpoint
 	playURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/play", gitlabURL, projectID, jobID)
@@ -683,7 +683,7 @@ func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 
 	// Fetch job details from GitLab
 	jobURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s", gitlabURL, projectID, jobID)
@@ -759,6 +759,21 @@ func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 		"runner":     job.Runner,
 		"artifacts":  job.Artifacts,
 	})
+}
+
+// GetCISummary returns the materialized CI health summary for the dashboard.
+func (h *Handler) GetCISummary(w http.ResponseWriter, r *http.Request) {
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+
+	summary, err := h.metricsStore.GetCISummary(r.Context())
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+	respondJSON(w, http.StatusOK, summary)
 }
 
 // --- Pipeline Trends & History ---
@@ -916,7 +931,7 @@ func (h *Handler) RetryPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/retry", gitlabURL, projectID, pipelineID)
 	req, err := http.NewRequest("POST", retryURL, nil)
 	if err != nil {
@@ -964,7 +979,7 @@ func (h *Handler) CancelPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/cancel", gitlabURL, projectID, pipelineID)
 	req, err := http.NewRequest("POST", cancelURL, nil)
 	if err != nil {
@@ -1019,7 +1034,7 @@ func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 	triggerURL := fmt.Sprintf("%s/api/v4/projects/%s/pipeline?ref=%s", gitlabURL, projectID, body.Ref)
 	req, err := http.NewRequest("POST", triggerURL, nil)
 	if err != nil {
@@ -1079,7 +1094,7 @@ func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
 		limit = gitlabPipelineListLimit
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := h.gitlabClient
 	var pipelines []struct {
 		ID        int       `json:"id"`
 		Status    string    `json:"status"`

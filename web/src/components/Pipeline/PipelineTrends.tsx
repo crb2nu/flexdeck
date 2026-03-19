@@ -5,6 +5,7 @@ import { resolveFreshness } from '../../lib/freshness';
 
 interface TrendData {
   project_id: number;
+  project_name?: string;
   avg_duration_s: number;
   p95_duration_s: number;
   success_rate: number;
@@ -95,8 +96,8 @@ const PipelineTrends: Component = () => {
             <div class="glass-panel-hover p-4 flex flex-col gap-3">
               {/* Header */}
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-text-main font-mono">
-                  Project #{trend.project_id}
+                <span class="text-sm font-medium text-text-main font-mono truncate" title={trend.project_name || `Project #${trend.project_id}`}>
+                  {trend.project_name || `Project #${trend.project_id}`}
                 </span>
                 <span class={`text-sm ${getTrendColor(trend.trend)}`}>
                   {getTrendIcon(trend.trend)}

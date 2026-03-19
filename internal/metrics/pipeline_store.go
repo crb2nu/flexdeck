@@ -33,6 +33,7 @@ type StageRun struct {
 // PipelineTrend holds computed trend data for a project's pipelines.
 type PipelineTrend struct {
 	ProjectID   int       `json:"project_id"`
+	ProjectName string    `json:"project_name,omitempty"`
 	AvgDuration float64   `json:"avg_duration_s"`
 	P95Duration float64   `json:"p95_duration_s"`
 	SuccessRate float64   `json:"success_rate"`
@@ -43,13 +44,28 @@ type PipelineTrend struct {
 
 const pipelineKeyPrefix = "ci:pipeline:"
 const pipelineTTL = 8 * 24 * time.Hour // 8 days
+const projectNamesKey = "ci:project:names"
+const dirtyProjectsKey = "ci:dirty:projects"
 
 const (
 	pipelineTrendSummaryPrefix = "ci:summary:trend:"
 	pipelineAllTrendsSummary   = "ci:summary:trends:all"
 	pipelineTrendSummaryTTL    = 5 * time.Minute
 	pipelineAllTrendsTTL       = 3 * time.Minute
+	ciDashboardSummaryKey      = "ci:summary:dashboard"
+	ciDashboardSummaryTTL      = 3 * time.Minute
 )
+
+// CISummary holds aggregated CI health metrics for the dashboard landing page.
+type CISummary struct {
+	ActivePipelines int     `json:"active_pipelines"`
+	FailedLast24h   int     `json:"failed_last_24h"`
+	SuccessLast24h  int     `json:"success_last_24h"`
+	SuccessRate24h  float64 `json:"success_rate_24h"`
+	AvgDuration24h  float64 `json:"avg_duration_24h_s"`
+	SlowestProject  string  `json:"slowest_project,omitempty"`
+	SlowestDuration float64 `json:"slowest_duration_s"`
+}
 
 // StorePipelineRun stores a pipeline run in a Redis sorted set keyed by project.
 func (s *Store) StorePipelineRun(ctx context.Context, run PipelineRun) error {
@@ -66,6 +82,7 @@ func (s *Store) StorePipelineRun(ctx context.Context, run PipelineRun) error {
 		Member: string(data),
 	})
 	pipe.Expire(ctx, key, pipelineTTL)
+	pipe.SAdd(ctx, dirtyProjectsKey, run.ProjectID)
 	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return err
@@ -123,8 +140,9 @@ func (s *Store) computePipelineTrends(ctx context.Context, projectID int, window
 	})
 
 	trend := &PipelineTrend{
-		ProjectID: projectID,
-		TotalRuns: len(runs),
+		ProjectID:   projectID,
+		ProjectName: s.GetProjectName(ctx, projectID),
+		TotalRuns:   len(runs),
 	}
 
 	var durations []float64
@@ -203,6 +221,69 @@ func (s *Store) MaterializeAllPipelineTrends(ctx context.Context) {
 	s.redis.Set(ctx, pipelineAllTrendsSummary, data, pipelineAllTrendsTTL)
 }
 
+// MaterializeDirtyPipelineTrends recomputes trends only for projects that received
+// new data since the last call, then merges the results into the all-projects summary.
+func (s *Store) MaterializeDirtyPipelineTrends(ctx context.Context) {
+	// Atomically fetch and clear the dirty set.
+	dirtyRaw, err := s.redis.SMembers(ctx, dirtyProjectsKey).Result()
+	if err != nil || len(dirtyRaw) == 0 {
+		return
+	}
+	s.redis.Del(ctx, dirtyProjectsKey)
+
+	var dirtyIDs []int
+	for _, raw := range dirtyRaw {
+		var id int
+		if _, err := fmt.Sscanf(raw, "%d", &id); err == nil {
+			dirtyIDs = append(dirtyIDs, id)
+		}
+	}
+	if len(dirtyIDs) == 0 {
+		return
+	}
+
+	window := 7 * 24 * time.Hour
+	updatedTrends := make(map[int]*PipelineTrend, len(dirtyIDs))
+	for _, id := range dirtyIDs {
+		t, err := s.computePipelineTrends(ctx, id, window)
+		if err != nil || t.TotalRuns == 0 {
+			continue
+		}
+		// Refresh per-project summary.
+		if data, err := json.Marshal(t); err == nil {
+			summaryKey := fmt.Sprintf("%s%d", pipelineTrendSummaryPrefix, id)
+			s.redis.Set(ctx, summaryKey, data, pipelineTrendSummaryTTL)
+		}
+		updatedTrends[id] = t
+	}
+
+	// Merge into existing all-projects summary.
+	existing, err := s.GetMaterializedAllTrends(ctx)
+	if err != nil {
+		// Fall back to full recompute if all-projects key is missing.
+		s.MaterializeAllPipelineTrends(ctx)
+		return
+	}
+
+	merged := make(map[int]*PipelineTrend, len(existing))
+	for _, t := range existing {
+		merged[t.ProjectID] = t
+	}
+	for id, t := range updatedTrends {
+		merged[id] = t
+	}
+
+	result := make([]*PipelineTrend, 0, len(merged))
+	for _, t := range merged {
+		if t.TotalRuns > 0 {
+			result = append(result, t)
+		}
+	}
+	if data, err := json.Marshal(result); err == nil {
+		s.redis.Set(ctx, pipelineAllTrendsSummary, data, pipelineAllTrendsTTL)
+	}
+}
+
 // GetMaterializedAllTrends returns the pre-computed all-projects trend summary.
 // Returns nil, err if the key is missing or corrupt (caller should fall back).
 func (s *Store) GetMaterializedAllTrends(ctx context.Context) ([]*PipelineTrend, error) {
@@ -268,6 +349,113 @@ func (s *Store) GetAllPipelineProjectIDs(ctx context.Context) ([]int, error) {
 		}
 	}
 	return ids, nil
+}
+
+// MaterializeCISummary scans pipeline data from the last 24h and writes an
+// aggregated CI health summary to Redis.
+func (s *Store) MaterializeCISummary(ctx context.Context) {
+	ids, err := s.GetAllPipelineProjectIDs(ctx)
+	if err != nil {
+		return
+	}
+
+	cutoff := time.Now().Add(-24 * time.Hour).Unix()
+	summary := CISummary{}
+
+	var totalDuration float64
+	var totalCompleted int
+	projectAvgDurations := make(map[int]float64)
+
+	for _, id := range ids {
+		key := fmt.Sprintf("%s%d", pipelineKeyPrefix, id)
+		members, err := s.redis.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+			Min: fmt.Sprintf("%d", cutoff),
+			Max: "+inf",
+		}).Result()
+		if err != nil {
+			continue
+		}
+
+		var projectDurationSum float64
+		var projectCount int
+		for _, m := range members {
+			var r PipelineRun
+			if err := json.Unmarshal([]byte(m), &r); err != nil {
+				continue
+			}
+			switch r.Status {
+			case "running", "pending":
+				summary.ActivePipelines++
+			case "success":
+				summary.SuccessLast24h++
+				totalDuration += r.Duration
+				totalCompleted++
+				projectDurationSum += r.Duration
+				projectCount++
+			case "failed":
+				summary.FailedLast24h++
+				totalDuration += r.Duration
+				totalCompleted++
+				projectDurationSum += r.Duration
+				projectCount++
+			}
+		}
+		if projectCount > 0 {
+			projectAvgDurations[id] = projectDurationSum / float64(projectCount)
+		}
+	}
+
+	if totalCompleted > 0 {
+		summary.AvgDuration24h = totalDuration / float64(totalCompleted)
+		summary.SuccessRate24h = float64(summary.SuccessLast24h) / float64(totalCompleted) * 100
+	}
+
+	// Find slowest project by average duration.
+	for id, avgDur := range projectAvgDurations {
+		if avgDur > summary.SlowestDuration {
+			summary.SlowestDuration = avgDur
+			summary.SlowestProject = s.GetProjectName(ctx, id)
+			if summary.SlowestProject == "" {
+				summary.SlowestProject = fmt.Sprintf("Project #%d", id)
+			}
+		}
+	}
+
+	data, err := json.Marshal(summary)
+	if err != nil {
+		return
+	}
+	s.redis.Set(ctx, ciDashboardSummaryKey, data, ciDashboardSummaryTTL)
+}
+
+// GetCISummary returns the pre-materialized CI dashboard summary.
+func (s *Store) GetCISummary(ctx context.Context) (*CISummary, error) {
+	data, err := s.redis.Get(ctx, ciDashboardSummaryKey).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var summary CISummary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+// StoreProjectNames stores a batch of project ID → path_with_namespace mappings.
+func (s *Store) StoreProjectNames(ctx context.Context, names map[string]interface{}) {
+	if len(names) == 0 {
+		return
+	}
+	s.redis.HSet(ctx, projectNamesKey, names)
+}
+
+// GetProjectName returns the cached path_with_namespace for a project ID.
+func (s *Store) GetProjectName(ctx context.Context, projectID int) string {
+	name, err := s.redis.HGet(ctx, projectNamesKey, fmt.Sprintf("%d", projectID)).Result()
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 func avg(vals []float64) float64 {

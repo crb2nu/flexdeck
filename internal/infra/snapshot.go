@@ -14,14 +14,23 @@ type InfraSnapshot struct {
 
 // ComputeSnapshot holds per-node resource utilization and cluster-level KPIs.
 type ComputeSnapshot struct {
-	Nodes         []NodeInfo `json:"nodes"`
-	ClusterCpuPct float64    `json:"clusterCpuPct"`
-	ClusterMemPct float64    `json:"clusterMemPct"`
-	GpuVramPct    float64    `json:"gpuVramPct"`
-	TotalNodes    int        `json:"totalNodes"`
-	ReadyNodes    int        `json:"readyNodes"`
-	TotalPods     int        `json:"totalPods"`
-	RunningPods   int        `json:"runningPods"`
+	Nodes          []NodeInfo     `json:"nodes"`
+	ClusterCpuPct  float64        `json:"clusterCpuPct"`
+	ClusterMemPct  float64        `json:"clusterMemPct"`
+	GpuVramPct     float64        `json:"gpuVramPct"`
+	TotalNodes     int            `json:"totalNodes"`
+	ReadyNodes     int            `json:"readyNodes"`
+	TotalPods      int            `json:"totalPods"`
+	RunningPods    int            `json:"runningPods"`
+	OOMKilledPods  []OOMKilledPod `json:"oomKilledPods,omitempty"`
+	OOMKilledCount int            `json:"oomKilledCount"`
+}
+
+// NodeCondition represents a K8s node condition (Ready, MemoryPressure, etc.).
+type NodeCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"` // "True" | "False" | "Unknown"
+	Message string `json:"message,omitempty"`
 }
 
 // NodeInfo describes a single cluster node with live Prometheus metrics.
@@ -30,6 +39,7 @@ type NodeInfo struct {
 	Status         string            `json:"status"` // "Ready" | "NotReady"
 	Roles          []string          `json:"roles"`
 	Labels         map[string]string `json:"labels,omitempty"`
+	Conditions     []NodeCondition   `json:"conditions,omitempty"`
 	MemCapacityMi  int64             `json:"memCapacityMi"`
 	CpuPct         float64           `json:"cpuPct"`
 	MemPct         float64           `json:"memPct"`
@@ -37,6 +47,16 @@ type NodeInfo struct {
 	GpuVramUsedMi  int64             `json:"gpuVramUsedMi"`
 	GpuVramTotalMi int64             `json:"gpuVramTotalMi"`
 	PodCount       int               `json:"podCount"`
+}
+
+// OOMKilledPod represents a pod with at least one OOMKilled container.
+type OOMKilledPod struct {
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	Container    string `json:"container"`
+	RestartCount int32  `json:"restartCount"`
+	LastOOM      string `json:"lastOOM,omitempty"` // RFC3339 timestamp
+	NodeName     string `json:"nodeName"`
 }
 
 // --- Storage ---

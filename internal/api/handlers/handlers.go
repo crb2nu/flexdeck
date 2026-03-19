@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"crypto/tls"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/audit"
@@ -16,12 +19,31 @@ import (
 	"github.com/flexinfer/flexdeck/internal/rbac"
 )
 
+// newGitLabClient creates a shared HTTP client for GitLab API requests
+// with connection pooling and sensible timeouts.
+func newGitLabClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		},
+	}
+}
+
 type Handler struct {
 	cfg          *config.Config
 	k8s          *k8s.Client
 	litellm      *litellm.Client
 	metricsStore *metrics.Store
 	cache        *cache.Cache
+	gitlabClient *http.Client
 
 	// Infrastructure cache worker
 	infraWorker *infra.Worker
@@ -75,6 +97,7 @@ func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Clien
 		k8s:          k8sClient,
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
+		gitlabClient: newGitLabClient(),
 	}
 	if metricsStore != nil {
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
@@ -89,6 +112,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		k8s:          k8sClient,
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
+		gitlabClient: newGitLabClient(),
 	}
 
 	if deps != nil && deps.Cache != nil {

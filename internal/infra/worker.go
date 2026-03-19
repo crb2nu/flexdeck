@@ -20,6 +20,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -147,9 +148,13 @@ func (w *Worker) mergeAndStore(ctx context.Context) {
 // ---- Compute ticker ----
 
 func (w *Worker) runCompute(ctx context.Context) {
+	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("compute"))
+	defer timer.ObserveDuration()
+
 	nodeList, err := w.k8s.GetNodes(ctx)
 	if err != nil {
 		slog.Warn("infra worker: get nodes", "error", err)
+		InfraSnapshotErrors.WithLabelValues("compute").Inc()
 		return
 	}
 	podList, err := w.k8s.GetPods(ctx, "")
@@ -222,12 +227,17 @@ func (w *Worker) runCompute(ctx context.Context) {
 	for i := range nodeList.Items {
 		n := &nodeList.Items[i]
 		status := "NotReady"
+		var conditions []NodeCondition
 		for _, c := range n.Status.Conditions {
 			if c.Type == "Ready" && c.Status == "True" {
 				status = "Ready"
 				readyNodes++
-				break
 			}
+			conditions = append(conditions, NodeCondition{
+				Type:    string(c.Type),
+				Status:  string(c.Status),
+				Message: c.Message,
+			})
 		}
 
 		roles := extractNodeRoles(n.Labels)
@@ -274,6 +284,7 @@ func (w *Worker) runCompute(ctx context.Context) {
 			Status:         status,
 			Roles:          roles,
 			Labels:         n.Labels,
+			Conditions:     conditions,
 			MemCapacityMi:  memCapMi,
 			CpuPct:         cpuPct,
 			MemPct:         memPct,
@@ -282,6 +293,29 @@ func (w *Worker) runCompute(ctx context.Context) {
 			GpuVramTotalMi: gpuVramTotalByNode[n.Name],
 			PodCount:       podCounts[n.Name],
 		})
+	}
+
+	// Detect OOMKilled containers across all pods.
+	var oomKilledPods []OOMKilledPod
+	for i := range podList.Items {
+		p := &podList.Items[i]
+		for _, cs := range p.Status.ContainerStatuses {
+			if cs.LastTerminationState.Terminated != nil &&
+				cs.LastTerminationState.Terminated.Reason == "OOMKilled" {
+				lastOOM := ""
+				if !cs.LastTerminationState.Terminated.FinishedAt.IsZero() {
+					lastOOM = cs.LastTerminationState.Terminated.FinishedAt.Format(time.RFC3339)
+				}
+				oomKilledPods = append(oomKilledPods, OOMKilledPod{
+					Name:         p.Name,
+					Namespace:    p.Namespace,
+					Container:    cs.Name,
+					RestartCount: cs.RestartCount,
+					LastOOM:      lastOOM,
+					NodeName:     p.Spec.NodeName,
+				})
+			}
+		}
 	}
 
 	total := float64(len(nodeList.Items))
@@ -295,14 +329,16 @@ func (w *Worker) runCompute(ctx context.Context) {
 	}
 
 	snap := ComputeSnapshot{
-		Nodes:         nodes,
-		ClusterCpuPct: clusterCPU,
-		ClusterMemPct: clusterMem,
-		GpuVramPct:    clusterGPU,
-		TotalNodes:    len(nodeList.Items),
-		ReadyNodes:    readyNodes,
-		TotalPods:     len(podList.Items),
-		RunningPods:   runningPods,
+		Nodes:          nodes,
+		ClusterCpuPct:  clusterCPU,
+		ClusterMemPct:  clusterMem,
+		GpuVramPct:     clusterGPU,
+		TotalNodes:     len(nodeList.Items),
+		ReadyNodes:     readyNodes,
+		TotalPods:      len(podList.Items),
+		RunningPods:    runningPods,
+		OOMKilledPods:  oomKilledPods,
+		OOMKilledCount: len(oomKilledPods),
 	}
 	w.mu.Lock()
 	w.compute = snap
@@ -312,9 +348,13 @@ func (w *Worker) runCompute(ctx context.Context) {
 // ---- Storage ticker ----
 
 func (w *Worker) runStorage(ctx context.Context) {
+	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("storage"))
+	defer timer.ObserveDuration()
+
 	pvcList, err := w.k8s.GetPVCs(ctx, "")
 	if err != nil {
 		slog.Warn("infra worker: get pvcs", "error", err)
+		InfraSnapshotErrors.WithLabelValues("storage").Inc()
 		return
 	}
 
@@ -398,9 +438,13 @@ func (w *Worker) runStorage(ctx context.Context) {
 // ---- Network ticker ----
 
 func (w *Worker) runNetwork(ctx context.Context) {
+	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("network"))
+	defer timer.ObserveDuration()
+
 	ingressList, err := w.k8s.GetIngresses(ctx, "")
 	if err != nil {
 		slog.Warn("infra worker: get ingresses", "error", err)
+		InfraSnapshotErrors.WithLabelValues("network").Inc()
 		return
 	}
 	npList, err := w.k8s.GetNetworkPolicies(ctx, "")
@@ -532,9 +576,13 @@ var (
 )
 
 func (w *Worker) runGitOps(ctx context.Context) {
+	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("gitops"))
+	defer timer.ObserveDuration()
+
 	dynClient, err := dynamic.NewForConfig(w.k8s.Config())
 	if err != nil {
 		slog.Warn("infra worker: dynamic client", "error", err)
+		InfraSnapshotErrors.WithLabelValues("gitops").Inc()
 		return
 	}
 
@@ -630,6 +678,9 @@ func (w *Worker) runGitOps(ctx context.Context) {
 // ---- Capacity ticker ----
 
 func (w *Worker) runCapacity(ctx context.Context) {
+	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("capacity"))
+	defer timer.ObserveDuration()
+
 	if w.prom == nil {
 		return
 	}

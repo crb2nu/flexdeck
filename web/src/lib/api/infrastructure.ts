@@ -180,7 +180,18 @@ export interface RepoInfo {
   configContent?: string;
 }
 
+export interface CISummary {
+  active_pipelines: number;
+  failed_last_24h: number;
+  success_last_24h: number;
+  success_rate_24h: number;
+  avg_duration_24h_s: number;
+  slowest_project?: string;
+  slowest_duration_s: number;
+}
+
 export const ciApi = {
+  getSummary: () => api<CISummary>("/ci/summary"),
   listRepos: () => api<RepoInfo[]>("/ci/repos"),
   getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
   getJobTrace: (projectId: number, jobId: string) =>

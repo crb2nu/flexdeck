@@ -374,6 +374,72 @@ func TestStore_MaterializeDashboardSummary(t *testing.T) {
 
 func float64Ptr(v float64) *float64 { return &v }
 
+func TestStore_DirtyProjectsSet(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	now := time.Now()
+	// Store runs for project 100 and 200
+	for _, pid := range []int{100, 200} {
+		run := PipelineRun{
+			PipelineID: pid*10 + 1, ProjectID: pid,
+			Status: "success", Duration: 60, CreatedAt: now,
+		}
+		if err := store.StorePipelineRun(ctx, run); err != nil {
+			t.Fatalf("StorePipelineRun(%d) failed: %v", pid, err)
+		}
+	}
+
+	// dirty set should contain both project IDs
+	members, err := client.SMembers(ctx, dirtyProjectsKey).Result()
+	if err != nil {
+		t.Fatalf("SMembers failed: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 dirty projects, got %d", len(members))
+	}
+
+	// Seed the all-projects summary first so dirty materialization can merge
+	store.MaterializeAllPipelineTrends(ctx)
+
+	// Add one more run for project 100 only
+	run := PipelineRun{
+		PipelineID: 1099, ProjectID: 100,
+		Status: "failed", Duration: 120, CreatedAt: now.Add(time.Minute),
+	}
+	if err := store.StorePipelineRun(ctx, run); err != nil {
+		t.Fatalf("StorePipelineRun(100) failed: %v", err)
+	}
+
+	store.MaterializeDirtyPipelineTrends(ctx)
+
+	// dirty set should be cleared
+	remaining, _ := client.SMembers(ctx, dirtyProjectsKey).Result()
+	if len(remaining) != 0 {
+		t.Errorf("expected dirty set to be empty, got %v", remaining)
+	}
+
+	// All-projects summary should still have both projects
+	trends, err := store.GetMaterializedAllTrends(ctx)
+	if err != nil {
+		t.Fatalf("GetMaterializedAllTrends failed: %v", err)
+	}
+	if len(trends) != 2 {
+		t.Errorf("expected 2 projects in merged summary, got %d", len(trends))
+	}
+
+	// Project 100 should now have 2 runs (the original + the new one)
+	for _, tr := range trends {
+		if tr.ProjectID == 100 && tr.TotalRuns != 2 {
+			t.Errorf("expected project 100 to have 2 runs, got %d", tr.TotalRuns)
+		}
+	}
+}
+
 func TestStore_Trend(t *testing.T) {
 	store := &Store{}
 

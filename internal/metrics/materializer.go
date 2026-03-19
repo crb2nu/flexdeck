@@ -9,10 +9,11 @@ import (
 // Materializer periodically refreshes pre-computed Redis summaries so
 // dashboard reads never fall back to full SCAN+compute loops.
 type Materializer struct {
-	store   *Store
-	promURL string
-	stopCh  chan struct{}
-	doneCh  chan struct{}
+	store     *Store
+	promURL   string
+	stopCh    chan struct{}
+	doneCh    chan struct{}
+	slowCycle int // counts slow-ticker cycles for full vs incremental
 }
 
 // NewMaterializer creates a Materializer that refreshes summary keys using store.
@@ -79,8 +80,19 @@ func (m *Materializer) Stop() {
 
 func (m *Materializer) refreshSlow(ctx context.Context) {
 	m.store.MaterializeThroughput(ctx)
-	m.store.MaterializeAllPipelineTrends(ctx)
-	slog.Debug("materializer refreshed slow summaries")
+
+	m.slowCycle++
+	if m.slowCycle%10 == 0 {
+		// Full recompute every 10th cycle for consistency.
+		m.store.MaterializeAllPipelineTrends(ctx)
+		slog.Debug("materializer refreshed slow summaries (full)")
+	} else {
+		// Incremental: only recompute dirty projects.
+		m.store.MaterializeDirtyPipelineTrends(ctx)
+		slog.Debug("materializer refreshed slow summaries (incremental)")
+	}
+
+	m.store.MaterializeCISummary(ctx)
 }
 
 func (m *Materializer) refreshFast(ctx context.Context) {

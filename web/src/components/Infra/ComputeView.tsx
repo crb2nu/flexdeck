@@ -1,6 +1,6 @@
 import { Component, For, Show, createMemo } from 'solid-js';
 import PulseCard from '../shared/PulseCard';
-import type { ComputeSnapshot, NodeInfo } from './types';
+import type { ComputeSnapshot, NodeCondition } from './types';
 
 interface Props {
   snapshot: ComputeSnapshot;
@@ -29,45 +29,26 @@ function UtilBar(props: { value: number; max?: number }) {
   );
 }
 
-const NodeRow: Component<{ node: NodeInfo }> = (props) => (
-  <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-    <td class="py-2 pr-3">
-      <div class="flex items-center gap-2">
-        <span
-          class={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${props.node.status === 'Ready' ? 'bg-status-ok' : 'bg-status-error'}`}
-        />
-        <span class="font-mono text-xs text-text-main truncate max-w-[140px]" title={props.node.name}>
-          {props.node.name}
-        </span>
-      </div>
-    </td>
-    <td class="py-2 pr-3 w-24">
-      <div class="flex flex-col gap-0.5">
-        <span class="font-mono text-[11px] text-text-muted">{pct(props.node.cpuPct)}</span>
-        <UtilBar value={props.node.cpuPct} />
-      </div>
-    </td>
-    <td class="py-2 pr-3 w-24">
-      <div class="flex flex-col gap-0.5">
-        <span class="font-mono text-[11px] text-text-muted">{pct(props.node.memPct)}</span>
-        <UtilBar value={props.node.memPct} />
-      </div>
-    </td>
-    <td class="py-2 pr-3 w-24">
-      <div class="flex flex-col gap-0.5">
-        <span class="font-mono text-[11px] text-text-muted">
-          {props.node.gpuVramTotalMi > 0 ? pct(props.node.gpuVramPct) : '—'}
-        </span>
-        <Show when={props.node.gpuVramTotalMi > 0}>
-          <UtilBar value={props.node.gpuVramPct} />
-        </Show>
-      </div>
-    </td>
-    <td class="py-2 text-right">
-      <span class="font-mono text-[11px] text-text-dim">{props.node.podCount}</span>
-    </td>
-  </tr>
-);
+function pressureBadges(conditions?: NodeCondition[]) {
+  if (!conditions) return null;
+  const pressureTypes: Record<string, string> = {
+    MemoryPressure: 'bg-status-warn text-black',
+    DiskPressure: 'bg-status-error text-white',
+    PIDPressure: 'bg-status-warn text-black',
+  };
+  const active = conditions.filter(
+    (c) => pressureTypes[c.type] && c.status === 'True',
+  );
+  if (active.length === 0) return null;
+  return active.map((c) => (
+    <span
+      class={`inline-flex items-center rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${pressureTypes[c.type]}`}
+      title={c.message || c.type}
+    >
+      {c.type.replace('Pressure', '')}
+    </span>
+  ));
+}
 
 const ComputeView: Component<Props> = (props) => {
   const snap = () => props.snapshot;
@@ -99,6 +80,28 @@ const ComputeView: Component<Props> = (props) => {
         />
       </div>
 
+      {/* OOM banner */}
+      <Show when={snap().oomKilledCount > 0}>
+        <div class="glass-panel flex items-start gap-3 border border-status-error/30 bg-status-error/5 p-3">
+          <span class="text-status-error text-lg leading-none">!</span>
+          <div>
+            <div class="text-sm font-semibold text-status-error">
+              {snap().oomKilledCount} OOMKilled container{snap().oomKilledCount > 1 ? 's' : ''} detected
+            </div>
+            <div class="mt-1 flex flex-wrap gap-1.5">
+              <For each={snap().oomKilledPods ?? []}>
+                {(pod) => (
+                  <span class="inline-flex items-center gap-1 rounded bg-status-error/10 px-1.5 py-0.5 text-[10px] font-mono text-status-error">
+                    {pod.namespace}/{pod.name}:{pod.container}
+                    <span class="text-text-dim">on {pod.nodeName}</span>
+                  </span>
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+      </Show>
+
       {/* Node table */}
       <div class="glass-panel overflow-hidden">
         <div class="border-b border-white/5 px-4 py-2.5">
@@ -127,9 +130,10 @@ const ComputeView: Component<Props> = (props) => {
                           <span
                             class={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${node.status === 'Ready' ? 'bg-status-ok' : 'bg-status-error'}`}
                           />
-                          <span class="font-mono text-xs text-text-main truncate max-w-[160px]" title={node.name}>
+                          <span class="font-mono text-xs text-text-main truncate max-w-[140px]" title={node.name}>
                             {node.name}
                           </span>
+                          {pressureBadges(node.conditions)}
                         </div>
                       </td>
                       <td class="py-2 pr-3 w-28">

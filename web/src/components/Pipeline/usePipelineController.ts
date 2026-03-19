@@ -11,8 +11,11 @@ import {
   type PipelineSortConfig,
 } from './utils';
 
-export const PIPELINE_POLL_INTERVAL = 10000;
-export const PIPELINE_STALE_AFTER_MS = PIPELINE_POLL_INTERVAL * 3;
+export const PIPELINE_POLL_ACTIVE = 10_000;   // Running/pending pipelines
+export const PIPELINE_POLL_RECENT = 30_000;   // Terminal <5min
+export const PIPELINE_POLL_IDLE = 60_000;     // Terminal >5min or no pipeline
+export const PIPELINE_POLL_INTERVAL = PIPELINE_POLL_ACTIVE; // legacy alias
+export const PIPELINE_STALE_AFTER_MS = PIPELINE_POLL_ACTIVE * 3;
 
 export type ActionNotice = {
   type: 'info' | 'success' | 'error';
@@ -65,6 +68,7 @@ export function usePipelineController() {
         tabVisible: tabVisible(),
         autoRefresh: autoRefresh(),
         isPipelineActive: isPipelineActive(),
+        pollIntervalMs: effectiveInterval(),
       };
     }
   };
@@ -165,6 +169,20 @@ export function usePipelineController() {
     return hasActiveJobs(pipeline);
   });
 
+  const effectiveInterval = createMemo(() => {
+    const pipeline = pipelineData();
+    if (!pipeline || !isLivePipelineId(pipeline.id)) return PIPELINE_POLL_IDLE;
+    if (hasActiveJobs(pipeline)) return PIPELINE_POLL_ACTIVE;
+
+    // Terminal pipeline — check how recently it finished.
+    const last = lastUpdate();
+    if (last) {
+      const ageMs = Date.now() - last.getTime();
+      if (ageMs < 5 * 60_000) return PIPELINE_POLL_RECENT;
+    }
+    return PIPELINE_POLL_IDLE;
+  });
+
   createEffect(() => {
     if (pollInterval) {
       clearInterval(pollInterval);
@@ -172,10 +190,11 @@ export function usePipelineController() {
     }
 
     const repo = selectedRepo();
-    if (repo?.id && isPipelineActive() && autoRefresh() && selectedJob() === null && tabVisible()) {
+    const interval = effectiveInterval();
+    if (repo?.id && autoRefresh() && selectedJob() === null && tabVisible()) {
       pollInterval = setInterval(() => {
         void fetchPipelineStatus(repo.id);
-      }, PIPELINE_POLL_INTERVAL);
+      }, interval);
     }
   });
 
