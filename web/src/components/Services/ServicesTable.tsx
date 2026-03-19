@@ -18,7 +18,7 @@ const ServicesTable: Component<{ services: K8sService[] }> = (props) => (
     }
   >
     <table class="w-full text-sm">
-      <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-surface-dark/95 backdrop-blur">
+      <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-[#0b1020]">
         <tr>
           <th class="px-4 py-3">Name</th>
           <th class="px-4 py-3">Namespace</th>

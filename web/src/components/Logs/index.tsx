@@ -360,7 +360,7 @@ const Logs: Component = () => {
                 }
               >
                 <table class="w-full">
-                  <thead class="sticky top-0 bg-surface-dark/95 backdrop-blur border-b border-white/10 z-10">
+                  <thead class="sticky top-0 bg-[#0b1020] border-b border-white/10 z-10">
                     <tr class="text-text-dim text-[10px] uppercase tracking-wider">
                       <th class="text-left px-3 py-2 font-medium w-24">Time</th>
                       <th class="text-left px-3 py-2 font-medium w-32">Source</th>
