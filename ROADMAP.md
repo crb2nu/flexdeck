@@ -96,8 +96,8 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 #### Track 1: FlexInfer Inference Metrics
 - [x] **Inference Metrics Tab**: Per-model TPS, p95 latency, error rate, queue depth, active connections from FlexInfer proxy Prometheus metrics.
-- ◐ **Scale-to-Zero Visibility**: Cold start activations and queue wait metrics are surfaced; richer idle-timeout state remains to expand.
-- ◐ **GPU Sharing State**: Active/shared state is surfaced; dedicated swap-history visualization remains limited.
+- [x] **Scale-to-Zero Visibility**: Cold start p95 latency (Prometheus), idle-for duration (from lastActiveTime), and preemption timestamps are all surfaced. InferenceTab detail panel shows scaling row; Serverless admin section shows live idle countdown.
+- [x] **GPU Sharing State**: Active/shared/preempted state per model, per-model swap timeline, group Gantt chart with configurable time windows (6/12/24/48h), and per-model stats.
 - [x] **KV-Cache Pressure**: Utilization gauge, pressure events, eviction policy for vLLM models.
 - [x] **LoRA Adapter Status**: Per-model loaded adapters with lifecycle state (Pending/Loaded/Unloading).
 - [x] **Model Catalog Browser**: Registry entries from ModelCatalog CRDs (HuggingFace, OCI, Ollama sources).

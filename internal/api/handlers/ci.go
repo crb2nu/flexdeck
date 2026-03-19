@@ -8,10 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 
 	"github.com/flexinfer/flexdeck/internal/metrics"
@@ -130,10 +133,10 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 		projects = projects[:gitlabMaxProjects]
 	}
 
-	// Fetch .gitlab-ci.yml for each project in parallel (fixes N+1)
+	// Map projects to RepoInfo without fetching config content.
+	// HasConfig is left false; the frontend can fetch config on demand
+	// via GET /api/ci/repos/{id}/config.
 	repos := make([]RepoInfo, len(projects))
-	var wg sync.WaitGroup
-
 	for i, p := range projects {
 		repos[i] = RepoInfo{
 			ID:   p.ID,
@@ -141,68 +144,115 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 			Path: p.WebURL,
 			Type: "gitlab",
 		}
-
-		wg.Add(1)
-		go func(idx int, proj struct {
-			ID                int    `json:"id"`
-			PathWithNamespace string `json:"path_with_namespace"`
-			Name              string `json:"name"`
-			DefaultBranch     string `json:"default_branch"`
-			WebURL            string `json:"web_url"`
-		}) {
-			defer wg.Done()
-
-			ref := proj.DefaultBranch
-			if ref == "" {
-				ref = "main"
-			}
-
-			fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
-				gitlabURL, proj.ID, ".gitlab-ci.yml", ref)
-			fileReq, err := http.NewRequest("GET", fileURL, nil)
-			if err != nil {
-				return
-			}
-			fileReq.Header.Set("PRIVATE-TOKEN", token)
-
-			fileResp, err := client.Do(fileReq)
-			if err != nil {
-				return
-			}
-			defer func() { _ = fileResp.Body.Close() }()
-
-			if fileResp.StatusCode == http.StatusOK {
-				content, readErr := io.ReadAll(fileResp.Body)
-				if readErr == nil {
-					repos[idx].HasConfig = true
-					repos[idx].ConfigContent = string(content)
-				}
-			}
-		}(i, p)
 	}
 
-	wg.Wait()
 	return repos, nil
+}
+
+// GetRepoConfig returns the .gitlab-ci.yml content for a single repo on demand.
+// GET /api/ci/repos/{id}/config
+func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
+		return
+	}
+
+	ctx := r.Context()
+	cacheKey := fmt.Sprintf("ci:config:%d", id)
+
+	if h.cache != nil {
+		cached, cacheErr := h.cache.GetOrFetch(ctx, cacheKey, 5*time.Minute, func() (any, error) {
+			return h.fetchRepoConfig(id)
+		})
+		if cacheErr == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(cached)
+			return
+		}
+		slog.Warn("ci config cache miss with error, falling through", "error", cacheErr, "project", id)
+	}
+
+	data, fetchErr := h.fetchRepoConfig(id)
+	if fetchErr != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": fetchErr.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) fetchRepoConfig(projectID int) (map[string]any, error) {
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+	if token == "" {
+		return nil, fmt.Errorf("GitLab token not configured")
+	}
+
+	// Fetch the project's default branch first.
+	projURL := fmt.Sprintf("%s/api/v4/projects/%d?simple=true", gitlabURL, projectID)
+	projReq, err := http.NewRequest("GET", projURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create project request: %w", err)
+	}
+	projReq.Header.Set("PRIVATE-TOKEN", token)
+
+	projResp, err := h.gitlabClient.Do(projReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch project: %w", err)
+	}
+	defer func() { _ = projResp.Body.Close() }()
+
+	ref := "main"
+	if projResp.StatusCode == http.StatusOK {
+		var proj struct {
+			DefaultBranch string `json:"default_branch"`
+		}
+		if decErr := json.NewDecoder(projResp.Body).Decode(&proj); decErr == nil && proj.DefaultBranch != "" {
+			ref = proj.DefaultBranch
+		}
+	}
+
+	// Fetch .gitlab-ci.yml from the repository.
+	fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
+		gitlabURL, projectID, ".gitlab-ci.yml", ref)
+	fileReq, err := http.NewRequest("GET", fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file request: %w", err)
+	}
+	fileReq.Header.Set("PRIVATE-TOKEN", token)
+
+	fileResp, err := h.gitlabClient.Do(fileReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch config file: %w", err)
+	}
+	defer func() { _ = fileResp.Body.Close() }()
+
+	if fileResp.StatusCode != http.StatusOK {
+		return map[string]any{
+			"id":            projectID,
+			"hasConfig":     false,
+			"configContent": "",
+		}, nil
+	}
+
+	content, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config content: %w", err)
+	}
+
+	return map[string]any{
+		"id":            projectID,
+		"hasConfig":     true,
+		"configContent": string(content),
+	}, nil
 }
 
 func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	ctx := r.Context()
 
-	// Try cache (30s TTL for pipeline status)
-	if h.cache != nil {
-		cacheKey := fmt.Sprintf("ci:pipeline:%s", idStr)
-		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchRepoPipeline(idStr)
-		})
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(cached)
-			return
-		}
-	}
-
-	data, err := h.fetchRepoPipeline(idStr)
+	data, err := h.fetchOrCachePipeline(ctx, idStr)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -210,7 +260,7 @@ func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, data)
 }
 
-func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
+func (h *Handler) fetchRepoPipeline(ctx context.Context, idStr string) (any, error) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
@@ -243,8 +293,9 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 
 	client := h.gitlabClient
 
+	// Step 1: Fetch latest pipeline (must be first — we need pipeline ID and ref)
 	pipelineURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=1", gitlabURL, idStr)
-	req, err := http.NewRequest("GET", pipelineURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", pipelineURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -273,26 +324,10 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 	}
 	latest := pipelines[0]
 
-	stageOrder, err := fetchGitLabStageOrder(client, gitlabURL, token, idStr, latest.Ref)
-	if err != nil {
-		slog.Debug("failed to fetch pipeline stage order from gitlab-ci", "project_id", idStr, "ref", latest.Ref, "error", err)
-	}
-
-	jobsURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", gitlabURL, idStr, latest.ID)
-	jReq, _ := http.NewRequest("GET", jobsURL, nil)
-	jReq.Header.Set("PRIVATE-TOKEN", token)
-
-	jResp, err := client.Do(jReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch jobs: %w", err)
-	}
-	defer func() { _ = jResp.Body.Close() }()
-
-	if jResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch jobs: status %d", jResp.StatusCode)
-	}
-
-	var jobs []struct {
+	// Steps 2 & 3: Fetch stage order and jobs in parallel (both depend on step 1 only)
+	g, gctx := errgroup.WithContext(ctx)
+	var stageOrder []string
+	var rawJobs []struct {
 		ID         int     `json:"id"`
 		Name       string  `json:"name"`
 		Stage      string  `json:"stage"`
@@ -301,8 +336,48 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		StartedAt  string  `json:"started_at"`
 		FinishedAt string  `json:"finished_at"`
 	}
-	_ = json.NewDecoder(jResp.Body).Decode(&jobs)
 
+	// Step 2: Fetch stage order from .gitlab-ci.yml
+	g.Go(func() error {
+		var fetchErr error
+		stageOrder, fetchErr = fetchGitLabStageOrder(client, gitlabURL, token, idStr, latest.Ref)
+		if fetchErr != nil {
+			slog.Debug("failed to fetch pipeline stage order from gitlab-ci",
+				"project_id", idStr, "ref", latest.Ref, "error", fetchErr)
+			// Non-fatal: stage order is best-effort, fall back to job-derived order
+			return nil
+		}
+		return nil
+	})
+
+	// Step 3: Fetch pipeline jobs
+	g.Go(func() error {
+		jobsURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", gitlabURL, idStr, latest.ID)
+		jReq, reqErr := http.NewRequestWithContext(gctx, "GET", jobsURL, nil)
+		if reqErr != nil {
+			return fmt.Errorf("failed to create jobs request: %w", reqErr)
+		}
+		jReq.Header.Set("PRIVATE-TOKEN", token)
+
+		jResp, doErr := client.Do(jReq)
+		if doErr != nil {
+			return fmt.Errorf("failed to fetch jobs: %w", doErr)
+		}
+		defer func() { _ = jResp.Body.Close() }()
+
+		if jResp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to fetch jobs: status %d", jResp.StatusCode)
+		}
+
+		_ = json.NewDecoder(jResp.Body).Decode(&rawJobs)
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Assemble stages from stageOrder + jobs (same logic as before)
 	stageMap := make(map[string][]Job)
 	seenStages := make([]string, 0, len(stageOrder))
 	seenStagesSet := make(map[string]struct{}, len(stageOrder))
@@ -322,7 +397,7 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		appendStage(stageName)
 	}
 
-	for _, j := range jobs {
+	for _, j := range rawJobs {
 		jobFormatted := Job{
 			ID:         fmt.Sprintf("%d", j.ID),
 			Name:       j.Name,
@@ -354,6 +429,136 @@ func (h *Handler) fetchRepoPipeline(idStr string) (any, error) {
 		CreatedAt: latest.CreatedAt.Format(time.RFC3339),
 		Stages:    stages,
 	}, nil
+}
+
+// BatchPipelines returns pipeline data for multiple projects in one request.
+// GET /api/ci/pipelines/batch?ids=1,2,3
+func (h *Handler) BatchPipelines(w http.ResponseWriter, r *http.Request) {
+	idsParam := r.URL.Query().Get("ids")
+	if idsParam == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "ids parameter is required"})
+		return
+	}
+
+	ids := strings.Split(idsParam, ",")
+
+	// Limit to 20 IDs max to prevent abuse
+	if len(ids) > 20 {
+		ids = ids[:20]
+	}
+
+	// Filter out empty strings
+	filtered := ids[:0]
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			filtered = append(filtered, id)
+		}
+	}
+	ids = filtered
+
+	if len(ids) == 0 {
+		respondJSON(w, http.StatusOK, map[string]any{"pipelines": map[string]any{}})
+		return
+	}
+
+	ctx := r.Context()
+	results := make(map[string]any, len(ids))
+	var mu sync.Mutex
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(5) // Concurrency limit to avoid hammering GitLab
+
+	for _, id := range ids {
+		id := id
+		g.Go(func() error {
+			data, err := h.fetchOrCachePipeline(gctx, id)
+			mu.Lock()
+			if err != nil {
+				results[id] = map[string]string{"error": err.Error()}
+			} else {
+				results[id] = data
+			}
+			mu.Unlock()
+			return nil // Don't fail the whole batch on individual errors
+		})
+	}
+	_ = g.Wait()
+
+	respondJSON(w, http.StatusOK, map[string]any{"pipelines": results})
+}
+
+// fetchOrCachePipeline returns pipeline data from the Redis store first,
+// falling back to a direct GitLab API call on miss.
+func (h *Handler) fetchOrCachePipeline(ctx context.Context, idStr string) (any, error) {
+	// Try the metrics store first — the scraper pre-populates this every 60s.
+	if h.metricsStore != nil {
+		if id, err := strconv.Atoi(idStr); err == nil {
+			if runs, err := h.metricsStore.GetPipelineHistory(ctx, id, 1); err == nil && len(runs) > 0 {
+				return h.pipelineRunToResponse(runs[0]), nil
+			}
+		}
+	}
+
+	// Fall back to cache-aside → GitLab API.
+	if h.cache != nil {
+		cacheKey := fmt.Sprintf("ci:pipeline:api:%s", idStr)
+		cachedBytes, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+			return h.fetchRepoPipeline(ctx, idStr)
+		})
+		if err == nil {
+			var decoded any
+			if jsonErr := json.Unmarshal(cachedBytes, &decoded); jsonErr == nil {
+				return decoded, nil
+			}
+		}
+	}
+	return h.fetchRepoPipeline(ctx, idStr)
+}
+
+// pipelineRunToResponse converts a store PipelineRun to the handler response format.
+func (h *Handler) pipelineRunToResponse(run metrics.PipelineRun) any {
+	type Job struct {
+		ID       string  `json:"id"`
+		Name     string  `json:"name"`
+		Stage    string  `json:"stage"`
+		Status   string  `json:"status"`
+		Duration float64 `json:"duration"`
+	}
+	type Stage struct {
+		Name string `json:"name"`
+		Jobs []Job  `json:"jobs"`
+	}
+	type PipelineResponse struct {
+		ID        string  `json:"id"`
+		Ref       string  `json:"ref"`
+		Status    string  `json:"status"`
+		CreatedAt string  `json:"createdAt"`
+		Stages    []Stage `json:"stages"`
+		Source    string  `json:"source,omitempty"`
+	}
+
+	stages := make([]Stage, 0, len(run.Stages))
+	for _, s := range run.Stages {
+		stages = append(stages, Stage{
+			Name: s.Name,
+			Jobs: []Job{{
+				Name:     s.Name,
+				Stage:    s.Name,
+				Status:   s.Status,
+				Duration: s.Duration,
+			}},
+		})
+	}
+
+	return PipelineResponse{
+		ID:        fmt.Sprintf("%d", run.PipelineID),
+		Ref:       run.Ref,
+		Status:    run.Status,
+		CreatedAt: run.CreatedAt.Format(time.RFC3339),
+		Stages:    stages,
+		Source:    "store",
+	}
 }
 
 func fetchGitLabStageOrder(client *http.Client, gitlabURL, token, projectID, ref string) ([]string, error) {
