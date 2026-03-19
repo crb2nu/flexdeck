@@ -485,6 +485,37 @@ export interface ModelCacheListResponse {
   count: number;
 }
 
+// GPU Swap History types (group-level contention timeline)
+export interface GPUSwapEvent {
+  ts: string;
+  model: string;
+  ns: string;
+  group: string;
+  oldState: string;
+  newState: string;
+  preemptedBy?: string;
+  durationSec?: number;
+}
+
+export interface GroupSwapHistoryResponse {
+  events: GPUSwapEvent[];
+  group: string;
+  models: string[];
+  summary: GroupSwapSummary;
+}
+
+export interface GroupSwapSummary {
+  totalSwaps: number;
+  avgQueueWaitSec: number;
+  modelStats: Record<string, ModelSwapStats>;
+}
+
+export interface ModelSwapStats {
+  swapCount: number;
+  totalActiveSec: number;
+  totalQueuedSec: number;
+}
+
 // Model Management types
 export type ModelSource = "huggingface" | "civitai" | "local";
 export type ModelType = "llm" | "diffusion" | "embedding" | "other";
