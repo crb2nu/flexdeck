@@ -190,10 +190,26 @@ export interface CISummary {
   slowest_duration_s: number;
 }
 
+export interface BatchPipelinesResponse {
+  pipelines: Record<string, unknown>;
+}
+
+export interface RepoConfigResponse {
+  id: number;
+  configContent: string;
+  hasConfig: boolean;
+}
+
 export const ciApi = {
   getSummary: () => api<CISummary>("/ci/summary"),
   listRepos: () => api<RepoInfo[]>("/ci/repos"),
   getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
+  batchPipelines: (ids: number[]) =>
+    api<BatchPipelinesResponse>(
+      `/ci/pipelines/batch?ids=${ids.join(",")}`,
+    ),
+  repoConfig: (id: number) =>
+    api<RepoConfigResponse>(`/ci/repos/${id}/config`),
   getJobTrace: (projectId: number, jobId: string) =>
     api<{ jobId: string; trace: string }>(
       `/ci/projects/${projectId}/jobs/${jobId}/trace`,
