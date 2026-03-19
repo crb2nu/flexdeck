@@ -54,9 +54,6 @@ export default {
         l: 'var(--space-l)',
         xl: 'var(--space-xl)',
       },
-      backdropBlur: {
-        glass: '4px',
-      },
       boxShadow: {
         glass: '0 4px 12px rgba(0, 0, 0, 0.4)',
       },

@@ -162,7 +162,7 @@ const CommandPalette: Component = () => {
         onClick={() => setIsOpen(false)}
       >
         <div 
-          class="w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-[#0a1020]/95 shadow-2xl backdrop-blur-md animate-fade-in-scale"
+          class="w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-[#0a1020]/95 shadow-2xl animate-fade-in-scale"
           onClick={e => e.stopPropagation()}
         >
           {/* Input Area */}

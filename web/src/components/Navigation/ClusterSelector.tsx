@@ -101,7 +101,7 @@ const ClusterSelector: Component = () => {
           >
             <div class="md:hidden absolute inset-0 z-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
             
-            <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-xl md:backdrop-blur-md shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
+            <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-sm shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
               <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
                 <div class="text-[10px] text-neon-cyan/50 tracking-widest px-2 font-bold">
                   CLUSTERS

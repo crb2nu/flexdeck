@@ -374,7 +374,7 @@ const Pipeline: Component = () => {
                     {/* Job Details Panel */}
                     <Show when={selectedJob()}>
                       {(job) => (
-                        <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-col animate-slide-up">
+                        <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 backdrop-blur-sm flex flex-col animate-slide-up">
                             {/* Header */}
                             <div class="flex flex-col gap-3 p-4 border-b border-white/5 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="flex min-w-0 items-center gap-3">

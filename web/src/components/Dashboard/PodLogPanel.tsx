@@ -189,7 +189,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
          style={{
            background: 'linear-gradient(180deg, rgba(10, 16, 32, 0.98) 0%, rgba(5, 10, 20, 0.99) 100%)',
            'border-left': '1px solid rgba(0, 240, 255, 0.2)',
-           'backdrop-filter': 'blur(20px)',
+           'backdrop-filter': 'blur(4px)',
            'box-shadow': '-10px 0 40px rgba(0, 0, 0, 0.5)'
          }}>
       {/* Header */}

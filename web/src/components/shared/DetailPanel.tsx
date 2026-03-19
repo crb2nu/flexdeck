@@ -64,7 +64,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
   return (
     <div
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-[rgba(8,14,28,0.96)] backdrop-blur-xl border-t border-neon-cyan/20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-[rgba(8,14,28,0.96)] backdrop-blur-sm border-t border-neon-cyan/20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
     >
       {/* Header */}
       <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">

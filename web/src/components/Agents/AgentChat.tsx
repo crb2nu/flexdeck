@@ -304,7 +304,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
       <div class="flex h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-neon-cyan/30 bg-[#060a14] shadow-[0_0_60px_rgba(0,217,255,0.15)]">
         
         {/* Header */}
-        <div class="flex items-center justify-between border-b border-neon-cyan/20 bg-[#030508]/95 px-6 py-4 backdrop-blur-sm">
+        <div class="flex items-center justify-between border-b border-neon-cyan/20 bg-[#030508]/95 px-6 py-4">
             <div class="flex items-center gap-4">
                 <div class="relative flex h-12 w-12 items-center justify-center rounded-lg border border-neon-cyan/50 bg-neon-cyan/10">
                     <span class="text-2xl">{props.agent.metadata?.backend === 'flexinfer' ? '\u2B22' : '\u2B21'}</span>
