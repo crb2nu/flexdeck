@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { parse } from 'yaml';
 import { ciApi, type RepoInfo } from '../../lib/api';
@@ -115,15 +115,63 @@ export function usePipelineController() {
     exportPollTelemetry();
   };
 
+  const BATCH_CHUNK_SIZE = 20;
+
+  /** Fetch pipelines for all repos using the batch endpoint, with individual-fetch fallback. */
   const fetchAllPipelines = async (repoList: RepoInfo[]) => {
     setOverviewLoading(true);
-    const batchSize = 5;
+    const ids = repoList.map((r) => r.id).filter(Boolean);
+    if (ids.length === 0) {
+      setOverviewLoading(false);
+      return;
+    }
+
+    try {
+      await fetchAllPipelinesBatch(ids);
+    } catch {
+      // Batch endpoint unavailable — fall back to individual fetches
+      await fetchAllPipelinesIndividual(repoList);
+    }
+
+    setOverviewLoading(false);
+    setLastUpdate(new Date());
+  };
+
+  /** Fetch pipelines via batch endpoint, chunking to BATCH_CHUNK_SIZE per request. */
+  const fetchAllPipelinesBatch = async (ids: number[]) => {
     const accumulated: Array<{ id: number; pipeline: VizPipeline }> = [];
 
-    for (let i = 0; i < repoList.length; i += batchSize) {
-      const batch = repoList.slice(i, i + batchSize);
+    for (let i = 0; i < ids.length; i += BATCH_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + BATCH_CHUNK_SIZE);
+      const resp = await ciApi.batchPipelines(chunk);
+      for (const [id, data] of Object.entries(resp.pipelines)) {
+        const pipelineData = data as VizPipeline;
+        if (pipelineData && pipelineData.status !== 'none') {
+          accumulated.push({ id: Number(id), pipeline: normalizePipeline(pipelineData) });
+        }
+      }
+    }
+
+    if (accumulated.length > 0) {
+      setPipelinesCache((prev) => {
+        const next = new Map(prev);
+        for (const entry of accumulated) {
+          next.set(entry.id, entry.pipeline);
+        }
+        return next;
+      });
+    }
+  };
+
+  /** Legacy individual-fetch path (fallback when batch endpoint is unavailable). */
+  const fetchAllPipelinesIndividual = async (repoList: RepoInfo[]) => {
+    const individualBatchSize = 5;
+    const accumulated: Array<{ id: number; pipeline: VizPipeline }> = [];
+
+    for (let i = 0; i < repoList.length; i += individualBatchSize) {
+      const group = repoList.slice(i, i + individualBatchSize);
       const results = await Promise.allSettled(
-        batch.map(async (repo) => {
+        group.map(async (repo) => {
           if (!repo.id) return null;
           try {
             const data = await ciApi.getPipeline(repo.id);
@@ -144,7 +192,6 @@ export function usePipelineController() {
       }
     }
 
-    // Single Map update with all results
     if (accumulated.length > 0) {
       setPipelinesCache((prev) => {
         const next = new Map(prev);
@@ -154,9 +201,6 @@ export function usePipelineController() {
         return next;
       });
     }
-
-    setOverviewLoading(false);
-    setLastUpdate(new Date());
   };
 
   const isPipelineActive = createMemo(() => {
@@ -304,13 +348,46 @@ export function usePipelineController() {
     };
   };
 
-  const selectRepo = async (repo: RepoInfo) => {
-    setSelectedRepo(repo);
-    setSelectedJob(null);
-    setJobTrace('');
+  /** Lazy-load config content for a repo and update its entry in the repo list. */
+  const fetchConfig = async (repoId: number) => {
+    try {
+      const data = await ciApi.repoConfig(repoId);
+      if (data.hasConfig && data.configContent) {
+        setRepos((prev) =>
+          prev.map((r) =>
+            r.id === repoId
+              ? { ...r, configContent: data.configContent, hasConfig: data.hasConfig }
+              : r,
+          ),
+        );
+        // If this repo is currently selected, update the pipeline preview
+        const current = selectedRepo();
+        if (current?.id === repoId) {
+          const updated = repos().find((r) => r.id === repoId);
+          if (updated) {
+            setSelectedRepo(updated);
+            setPipelineData(parseGitLabCi(data.configContent, updated.name));
+          }
+        }
+      }
+    } catch (error) {
+      console.debug('Failed to fetch repo config', repoId, error);
+    }
+  };
 
+  const selectRepo = async (repo: RepoInfo) => {
+    batch(() => {
+      setSelectedRepo(repo);
+      setSelectedJob(null);
+      setJobTrace('');
+    });
+
+    // Use already-loaded configContent if available; otherwise lazy-load it
     if (repo.hasConfig && repo.configContent) {
       setPipelineData(parseGitLabCi(repo.configContent, repo.name));
+    } else if (repo.hasConfig && repo.id) {
+      setPipelineData(undefined);
+      void fetchConfig(repo.id);
     } else {
       setPipelineData(undefined);
     }
@@ -413,12 +490,29 @@ export function usePipelineController() {
 
   onMount(async () => {
     try {
-      const data = await ciApi.listRepos();
-      const normalizedRepos = Array.isArray(data) ? data : [];
-      if (!Array.isArray(data)) {
-        console.warn('Unexpected /api/ci/repos payload shape; expected array', data);
+      // Parallel fetch: repos + trends (eliminate sequential waterfall)
+      const [reposResult, trendsResult] = await Promise.allSettled([
+        ciApi.listRepos(),
+        ciApi.getTrends(),
+      ]);
+
+      let normalizedRepos: RepoInfo[] = [];
+      if (reposResult.status === 'fulfilled') {
+        const data = reposResult.value;
+        normalizedRepos = Array.isArray(data) ? data : [];
+        if (!Array.isArray(data)) {
+          console.warn('Unexpected /api/ci/repos payload shape; expected array', data);
+        }
+        setRepos(normalizedRepos);
+      } else {
+        console.error('Failed to fetch repos', reposResult.reason);
       }
-      setRepos(normalizedRepos);
+
+      if (trendsResult.status === 'rejected') {
+        console.debug('Trends pre-fetch failed (non-critical)', trendsResult.reason);
+      }
+
+      // Use batch endpoint for initial pipeline load
       if (normalizedRepos.length > 0) {
         void fetchAllPipelines(normalizedRepos);
       }
@@ -438,6 +532,7 @@ export function usePipelineController() {
     actionNotice,
     autoRefresh,
     dataStateMeta,
+    fetchConfig,
     fetchPipelineStatus,
     formatTimeAgo,
     handleCancelPipeline,
