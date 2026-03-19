@@ -75,7 +75,7 @@ func TestMaterializer_StartStop(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	store := NewStoreWithClient(client)
 
-	m := NewMaterializer(store)
+	m := NewMaterializer(store, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,6 +87,39 @@ func TestMaterializer_StartStop(t *testing.T) {
 	}()
 
 	// Give it a moment to start, then stop gracefully.
+	time.Sleep(50 * time.Millisecond)
+	m.Stop()
+
+	select {
+	case <-done:
+		// Success — the goroutine exited.
+	case <-time.After(2 * time.Second):
+		t.Fatal("materializer did not stop within 2 seconds")
+	}
+}
+
+func TestMaterializer_StartStopWithPromURL(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := NewStoreWithClient(client)
+
+	// Pass a non-empty promURL to enable the fast ticker
+	m := NewMaterializer(store, "http://localhost:9090")
+	if m.promURL == "" {
+		t.Fatal("expected promURL to be set")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		m.Start(ctx)
+		close(done)
+	}()
+
 	time.Sleep(50 * time.Millisecond)
 	m.Stop()
 

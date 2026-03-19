@@ -1,6 +1,5 @@
-import { Component, createMemo, createSignal, For, Show } from 'solid-js';
-import { createPolling } from '../../hooks/createPolling';
-import { prom } from '../../lib/api';
+import { Component, createMemo, createSignal, createEffect, For, Show } from 'solid-js';
+import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from '../../stores/dashboardSummary';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
@@ -23,7 +22,6 @@ interface NodeResources {
   gpu: NodeGPU | null;
 }
 
-const POLL_INTERVAL = 15_000;
 const HISTORY_SIZE = 12;
 
 function pushHist(arr: number[], val: number | null): number[] {
@@ -35,8 +33,8 @@ function pushHist(arr: number[], val: number | null): number[] {
 const NodeResourcePanel: Component = () => {
   const [nodes, setNodes] = createSignal<NodeResources[]>([]);
   const [gpuHistory, setGpuHistory] = createSignal<Record<string, number[]>>({});
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal(false);
+  const loading = () => dashboardSummaryLoading();
+  const error = () => dashboardSummaryError() != null && nodes().every((n) => n.cpuPercent == null && n.memPercent == null);
   const stablePanel = useStablePanelState({
     value: () => ({
       nodes: nodes(),
@@ -51,103 +49,48 @@ const NodeResourcePanel: Component = () => {
   const displayNodes = createMemo(() => stablePanel.effectiveValue().nodes);
   const displayGpuHistory = createMemo(() => stablePanel.effectiveValue().gpuHistory);
 
-  const queryProm = async (query: string) => {
-    try {
-      const data = await prom.query(query);
-      const result = data?.data?.result;
-      if (!Array.isArray(result)) {
-        return [];
-      }
-      return result.map((r: any) => ({
-        metric: r.metric || {},
-        value: parseFloat(r.value?.[1] ?? '0'),
-      }));
-    } catch {
-      return [];
-    }
-  };
-
-  const fetchResources = async () => {
+  // Derive node resources from the server-side dashboard summary
+  createEffect(() => {
+    const summary = dashboardSummary();
     const k8sNodes = Array.isArray(k8sStore.nodes) ? k8sStore.nodes : [];
-    if (k8sNodes.length === 0) {
-      setLoading(false);
-      return;
-    }
+    if (!summary || k8sNodes.length === 0) return;
 
-    const [cpuResults, memResults, gpuUtilResults, vramUsedResults, vramTotalResults, tempResults, powerResults] =
-      await Promise.all([
-        queryProm('100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'),
-        queryProm('(1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100'),
-        queryProm('avg by (instance) (amdgpu_gpu_busy_percent)'),
-        queryProm('sum by (instance) (amdgpu_vram_used_bytes)'),
-        queryProm('sum by (instance) (amdgpu_vram_total_bytes)'),
-        queryProm('max by (instance) (amdgpu_temperature_edge)'),
-        queryProm('sum by (instance) (amdgpu_power_average_watts)'),
-      ]);
-
-    // Count GPUs per node
-    const gpuCountResults = await queryProm('count by (instance) (amdgpu_gpu_busy_percent)');
-
-    const normalizeNodeName = (value: string): string => {
-      return value.toLowerCase().trim().split(':')[0].split('.')[0];
-    };
-
-    const metricNodeName = (metric: Record<string, string>): string => {
-      return (
-        metric.node ||
-        metric.nodename ||
-        metric.kubernetes_node ||
-        metric.exported_node ||
-        metric.instance ||
-        ''
-      );
-    };
+    const normalizeNodeName = (value: string): string =>
+      value.toLowerCase().trim().split(':')[0].split('.')[0];
 
     const matchNode = (metricNode: string, nodeName: string): boolean => {
       const metricNorm = normalizeNodeName(metricNode);
       const nodeNorm = normalizeNodeName(nodeName);
-      return (
-        metricNorm === nodeNorm ||
-        metricNorm.includes(nodeNorm) ||
-        nodeNorm.includes(metricNorm)
-      );
+      return metricNorm === nodeNorm || metricNorm.includes(nodeNorm) || nodeNorm.includes(metricNorm);
     };
 
-    const findVal = (results: any[], nodeName: string): number | null => {
-      const match = results.find((r: any) => matchNode(metricNodeName(r.metric || {}), nodeName));
-      return match ? match.value : null;
-    };
+    const findSummaryNode = (nodeName: string) =>
+      summary.nodes.find((sn) => matchNode(sn.node, nodeName));
 
     const nextNodes: NodeResources[] = k8sNodes.map((n) => {
       const name = n.metadata.name;
-      const cpuPct = findVal(cpuResults, name);
-      const memPct = findVal(memResults, name);
-
-      const gpuUtil = findVal(gpuUtilResults, name);
-      const hasGPU = gpuUtil != null;
+      const sn = findSummaryNode(name);
 
       return {
         node: name,
         ready: isNodeReady(n),
-        cpuPercent: cpuPct,
-        memPercent: memPct,
-        gpu: hasGPU
+        cpuPercent: sn?.cpu_percent ?? null,
+        memPercent: sn?.mem_percent ?? null,
+        gpu: sn?.gpu
           ? {
               node: name,
-              gpuCount: findVal(gpuCountResults, name) ?? 1,
-              utilization: gpuUtil,
-              vramUsed: findVal(vramUsedResults, name),
-              vramTotal: findVal(vramTotalResults, name),
-              temperature: findVal(tempResults, name),
-              powerWatts: findVal(powerResults, name),
+              gpuCount: sn.gpu.count,
+              utilization: sn.gpu.utilization,
+              vramUsed: sn.gpu.vram_used,
+              vramTotal: sn.gpu.vram_total,
+              temperature: sn.gpu.temperature,
+              powerWatts: sn.gpu.power_watts,
             }
           : null,
       };
     });
 
     setNodes(nextNodes);
-    setLoading(false);
-    setError(nextNodes.every((n) => n.cpuPercent == null && n.memPercent == null));
 
     // Update GPU utilization history
     setGpuHistory((prev) => {
@@ -159,9 +102,7 @@ const NodeResourcePanel: Component = () => {
       }
       return next;
     });
-  };
-
-  createPolling('dashboard-node-resources', fetchResources, POLL_INTERVAL);
+  });
 
   const formatBytes = (bytes: number) => {
     const gb = bytes / (1024 * 1024 * 1024);

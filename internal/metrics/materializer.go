@@ -9,31 +9,51 @@ import (
 // Materializer periodically refreshes pre-computed Redis summaries so
 // dashboard reads never fall back to full SCAN+compute loops.
 type Materializer struct {
-	store  *Store
-	stopCh chan struct{}
-	doneCh chan struct{}
+	store   *Store
+	promURL string
+	stopCh  chan struct{}
+	doneCh  chan struct{}
 }
 
 // NewMaterializer creates a Materializer that refreshes summary keys using store.
-func NewMaterializer(store *Store) *Materializer {
+// If promURL is non-empty, a fast 15s ticker also materializes the dashboard
+// resource summary from Prometheus.
+func NewMaterializer(store *Store, promURL string) *Materializer {
 	return &Materializer{
-		store:  store,
-		stopCh: make(chan struct{}),
-		doneCh: make(chan struct{}),
+		store:   store,
+		promURL: promURL,
+		stopCh:  make(chan struct{}),
+		doneCh:  make(chan struct{}),
 	}
 }
 
-// Start runs a 2-minute ticker that refreshes throughput and pipeline trend
-// summaries. It blocks until Stop is called or ctx is cancelled.
+// Start runs two tickers:
+//   - Slow (2min): throughput + pipeline trend summaries
+//   - Fast (15s):  dashboard resource summary (only when promURL is set)
+//
+// It blocks until Stop is called or ctx is cancelled.
 func (m *Materializer) Start(ctx context.Context) {
-	slog.Info("starting summary materializer", "interval", 2*time.Minute)
+	slog.Info("starting summary materializer",
+		"slow_interval", 2*time.Minute,
+		"fast_interval", 15*time.Second,
+		"prom_enabled", m.promURL != "",
+	)
 
-	ticker := time.NewTicker(2 * time.Minute)
-	defer ticker.Stop()
+	slowTicker := time.NewTicker(2 * time.Minute)
+	defer slowTicker.Stop()
 	defer close(m.doneCh)
 
 	// Initial refresh.
-	m.refresh(ctx)
+	m.refreshSlow(ctx)
+
+	var fastTickerC <-chan time.Time
+	var fastTicker *time.Ticker
+	if m.promURL != "" {
+		fastTicker = time.NewTicker(15 * time.Second)
+		fastTickerC = fastTicker.C
+		defer fastTicker.Stop()
+		m.refreshFast(ctx)
+	}
 
 	for {
 		select {
@@ -43,8 +63,10 @@ func (m *Materializer) Start(ctx context.Context) {
 		case <-m.stopCh:
 			slog.Info("materializer stopping")
 			return
-		case <-ticker.C:
-			m.refresh(ctx)
+		case <-slowTicker.C:
+			m.refreshSlow(ctx)
+		case <-fastTickerC:
+			m.refreshFast(ctx)
 		}
 	}
 }
@@ -55,8 +77,16 @@ func (m *Materializer) Stop() {
 	<-m.doneCh
 }
 
-func (m *Materializer) refresh(ctx context.Context) {
+func (m *Materializer) refreshSlow(ctx context.Context) {
 	m.store.MaterializeThroughput(ctx)
 	m.store.MaterializeAllPipelineTrends(ctx)
-	slog.Debug("materializer refreshed summaries")
+	slog.Debug("materializer refreshed slow summaries")
+}
+
+func (m *Materializer) refreshFast(ctx context.Context) {
+	if m.promURL == "" {
+		return
+	}
+	m.store.MaterializeDashboardSummary(ctx, m.promURL)
+	slog.Debug("materializer refreshed dashboard summary")
 }

@@ -1,7 +1,8 @@
 import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
 import { PulseCard } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
-import { startMetricsPolling, stopMetricsPolling, getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
+import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
+import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import TopologyGraph from './TopologyGraph';
@@ -134,13 +135,13 @@ const Dashboard: Component = () => {
     // Connect to K8s SSE stream for real-time updates
     connectK8sStream();
 
-    // Start metrics polling (for node/pod resource metrics)
-    startMetricsPolling();
+    // Start dashboard summary polling (server-side materialized resource metrics)
+    startDashboardSummaryPolling();
   });
 
   onCleanup(() => {
     disconnectK8sStream();
-    stopMetricsPolling();
+    stopDashboardSummaryPolling();
   });
 
   return (

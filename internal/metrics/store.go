@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,8 +17,11 @@ import (
 )
 
 const (
-	throughputSummaryKey = "litellm:summary:throughput"
-	throughputSummaryTTL = 5 * time.Minute
+	throughputSummaryKey     = "litellm:summary:throughput"
+	throughputSummaryTTL     = 5 * time.Minute
+	dashboardSummaryKey      = "dashboard:summary:resources"
+	dashboardSummaryTTL      = 30 * time.Second
+	dashboardSummaryMaxStale = 45 * time.Second
 )
 
 // Store manages metrics storage in Redis
@@ -425,4 +431,232 @@ func (s *Store) detectTrend(sparkline []float64) string {
 		return "down"
 	}
 	return "stable"
+}
+
+// --- Dashboard summary (server-side Prometheus aggregation) ---
+
+// PromQL queries that the frontend previously fired individually.
+var dashboardQueries = map[string]string{
+	// Cluster (3)
+	"clusterCpu":      `sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / sum(rate(node_cpu_seconds_total[5m])) * 100`,
+	"clusterMemUsed":  `sum(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)`,
+	"clusterMemTotal": `sum(node_memory_MemTotal_bytes)`,
+	// Node (9)
+	"nodeCpu":      `100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`,
+	"nodeMemPct":   `(1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100`,
+	"nodeMemTotal": `node_memory_MemTotalBytes`,
+	"gpuUtil":      `avg by (instance) (amdgpu_gpu_busy_percent)`,
+	"vramUsed":     `sum by (instance) (amdgpu_vram_used_bytes)`,
+	"vramTotal":    `sum by (instance) (amdgpu_vram_total_bytes)`,
+	"gpuTemp":      `max by (instance) (amdgpu_temperature_edge)`,
+	"gpuPower":     `sum by (instance) (amdgpu_power_average_watts)`,
+	"gpuCount":     `count by (instance) (amdgpu_gpu_busy_percent)`,
+	// Pod (3)
+	"podCpu":      `sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, namespace) * 100`,
+	"podMem":      `sum(container_memory_working_set_bytes{container!=""}) by (pod, namespace)`,
+	"podMemLimit": `sum(container_spec_memory_limit_bytes{container!=""}) by (pod, namespace)`,
+}
+
+// computeDashboardSummary fires all PromQL queries in parallel and assembles a DashboardSummary.
+func (s *Store) computeDashboardSummary(ctx context.Context, promURL string) (*DashboardSummary, error) {
+	pc := newPromClient(promURL)
+
+	type queryResult struct {
+		name    string
+		samples []promSample
+		err     error
+	}
+
+	results := make(map[string][]promSample, len(dashboardQueries))
+	ch := make(chan queryResult, len(dashboardQueries))
+	var wg sync.WaitGroup
+
+	for name, query := range dashboardQueries {
+		wg.Add(1)
+		go func(n, q string) {
+			defer wg.Done()
+			samples, err := pc.queryInstant(ctx, q)
+			ch <- queryResult{name: n, samples: samples, err: err}
+		}(name, query)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	for qr := range ch {
+		if qr.err != nil {
+			slog.Warn("dashboard summary query failed", "query", qr.name, "error", qr.err)
+			continue
+		}
+		results[qr.name] = qr.samples
+	}
+
+	summary := &DashboardSummary{UpdatedAt: time.Now()}
+
+	// Cluster
+	summary.Cluster.CPUPercent = singleVal(results["clusterCpu"])
+	summary.Cluster.MemoryUsed = singleVal(results["clusterMemUsed"])
+	summary.Cluster.MemoryTotal = singleVal(results["clusterMemTotal"])
+
+	// Nodes — collect all node names from CPU or mem queries
+	nodeNames := collectNodeNames(results["nodeCpu"], results["nodeMemPct"])
+	for _, nodeName := range nodeNames {
+		nr := NodeResources{Node: nodeName}
+		if v, ok := findNodeVal(results["nodeCpu"], nodeName); ok {
+			nr.CPUPercent = &v
+		}
+		if v, ok := findNodeVal(results["nodeMemPct"], nodeName); ok {
+			nr.MemPercent = &v
+		}
+		if v, ok := findNodeVal(results["nodeMemTotal"], nodeName); ok {
+			nr.MemTotal = &v
+			if nr.MemPercent != nil {
+				used := v * (*nr.MemPercent / 100)
+				nr.MemUsed = &used
+			}
+		}
+		if gpuUtil, ok := findNodeVal(results["gpuUtil"], nodeName); ok {
+			gpu := &NodeGPU{Utilization: &gpuUtil}
+			if c, ok := findNodeVal(results["gpuCount"], nodeName); ok {
+				gpu.Count = int(c)
+			}
+			if v, ok := findNodeVal(results["vramUsed"], nodeName); ok {
+				gpu.VRAMUsed = &v
+			}
+			if v, ok := findNodeVal(results["vramTotal"], nodeName); ok {
+				gpu.VRAMTotal = &v
+			}
+			if v, ok := findNodeVal(results["gpuTemp"], nodeName); ok {
+				gpu.Temperature = &v
+			}
+			if v, ok := findNodeVal(results["gpuPower"], nodeName); ok {
+				gpu.PowerWatts = &v
+			}
+			nr.GPU = gpu
+		}
+		summary.Nodes = append(summary.Nodes, nr)
+	}
+
+	// Pods
+	for _, s := range results["podCpu"] {
+		pod := s.Metric["pod"]
+		ns := s.Metric["namespace"]
+		if pod == "" {
+			continue
+		}
+		pr := PodResources{
+			Namespace:  ns,
+			Pod:        pod,
+			CPUPercent: s.Value,
+		}
+		if mem := findPodVal(results["podMem"], ns, pod); mem > 0 {
+			pr.MemoryUsed = mem
+		}
+		if limit := findPodVal(results["podMemLimit"], ns, pod); limit > 0 {
+			pr.MemoryLimit = limit
+		}
+		summary.Pods = append(summary.Pods, pr)
+	}
+
+	return summary, nil
+}
+
+// MaterializeDashboardSummary computes and stores the dashboard summary in Redis.
+func (s *Store) MaterializeDashboardSummary(ctx context.Context, promURL string) {
+	summary, err := s.computeDashboardSummary(ctx, promURL)
+	if err != nil {
+		slog.Warn("failed to compute dashboard summary", "error", err)
+		return
+	}
+	data, err := json.Marshal(summary)
+	if err != nil {
+		slog.Warn("failed to marshal dashboard summary", "error", err)
+		return
+	}
+	s.redis.Set(ctx, dashboardSummaryKey, data, dashboardSummaryTTL)
+}
+
+// GetDashboardSummary reads the pre-materialized dashboard summary from Redis.
+// Returns nil if not found or expired beyond the max stale window.
+func (s *Store) GetDashboardSummary(ctx context.Context) (*DashboardSummary, error) {
+	data, err := s.redis.Get(ctx, dashboardSummaryKey).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("dashboard summary not available: %w", err)
+	}
+	var summary DashboardSummary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return nil, fmt.Errorf("dashboard summary unmarshal: %w", err)
+	}
+	if time.Since(summary.UpdatedAt) > dashboardSummaryMaxStale {
+		return nil, fmt.Errorf("dashboard summary stale (updated %s ago)", time.Since(summary.UpdatedAt).Round(time.Second))
+	}
+	return &summary, nil
+}
+
+// --- helpers for Prometheus result parsing ---
+
+func singleVal(samples []promSample) float64 {
+	if len(samples) == 0 {
+		return 0
+	}
+	return samples[0].Value
+}
+
+// normalizeNodeName strips port and domain suffix from a Prometheus instance label.
+func normalizeNodeName(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	v = strings.Split(v, ":")[0]
+	v = strings.Split(v, ".")[0]
+	return v
+}
+
+// metricNodeName extracts the best node identifier from a Prometheus metric map.
+func metricNodeName(m map[string]string) string {
+	for _, k := range []string{"node", "nodename", "kubernetes_node", "exported_node", "instance"} {
+		if v := m[k]; v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// collectNodeNames returns a deduplicated sorted list of node names.
+func collectNodeNames(sets ...[]promSample) []string {
+	seen := map[string]struct{}{}
+	for _, samples := range sets {
+		for _, s := range samples {
+			name := normalizeNodeName(metricNodeName(s.Metric))
+			if name != "" {
+				seen[name] = struct{}{}
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// findNodeVal finds a metric value matching a node name (fuzzy hostname match).
+func findNodeVal(samples []promSample, nodeName string) (float64, bool) {
+	nodeNorm := normalizeNodeName(nodeName)
+	for _, s := range samples {
+		metricNorm := normalizeNodeName(metricNodeName(s.Metric))
+		if metricNorm == nodeNorm || strings.Contains(metricNorm, nodeNorm) || strings.Contains(nodeNorm, metricNorm) {
+			return s.Value, true
+		}
+	}
+	return 0, false
+}
+
+// findPodVal finds a metric value for a specific pod in a namespace.
+func findPodVal(samples []promSample, ns, pod string) float64 {
+	for _, s := range samples {
+		if s.Metric["pod"] == pod && s.Metric["namespace"] == ns {
+			return s.Value
+		}
+	}
+	return 0
 }

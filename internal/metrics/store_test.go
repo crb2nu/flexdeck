@@ -2,6 +2,10 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -255,6 +259,120 @@ func TestStore_MaterializeAllPipelineTrends(t *testing.T) {
 		t.Errorf("expected 2 project trends, got %d", len(trends))
 	}
 }
+
+func TestStore_GetDashboardSummary(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	// No key → error
+	_, err := store.GetDashboardSummary(ctx)
+	if err == nil {
+		t.Fatal("expected error when summary key missing")
+	}
+
+	// Write a valid summary
+	summary := DashboardSummary{
+		Cluster: ClusterResources{CPUPercent: 42.5, MemoryUsed: 1e10, MemoryTotal: 3.2e10},
+		Nodes: []NodeResources{
+			{Node: "node-1", CPUPercent: float64Ptr(60)},
+		},
+		UpdatedAt: time.Now(),
+	}
+	data, _ := json.Marshal(summary)
+	client.Set(ctx, dashboardSummaryKey, data, dashboardSummaryTTL)
+
+	got, err := store.GetDashboardSummary(ctx)
+	if err != nil {
+		t.Fatalf("GetDashboardSummary failed: %v", err)
+	}
+	if got.Cluster.CPUPercent != 42.5 {
+		t.Errorf("expected cluster cpu 42.5, got %f", got.Cluster.CPUPercent)
+	}
+	if len(got.Nodes) != 1 || got.Nodes[0].Node != "node-1" {
+		t.Errorf("unexpected nodes: %+v", got.Nodes)
+	}
+}
+
+func TestStore_GetDashboardSummary_Stale(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	// Write a summary with old timestamp
+	summary := DashboardSummary{
+		Cluster:   ClusterResources{CPUPercent: 10},
+		UpdatedAt: time.Now().Add(-2 * time.Minute), // well past 45s stale window
+	}
+	data, _ := json.Marshal(summary)
+	client.Set(ctx, dashboardSummaryKey, data, 5*time.Minute)
+
+	_, err := store.GetDashboardSummary(ctx)
+	if err == nil {
+		t.Fatal("expected stale error")
+	}
+}
+
+func TestStore_MaterializeDashboardSummary(t *testing.T) {
+	// Start a mock Prometheus server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		var result string
+		switch {
+		case query == dashboardQueries["clusterCpu"]:
+			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"55.5"]}]}}`
+		case query == dashboardQueries["clusterMemUsed"]:
+			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"8000000000"]}]}}`
+		case query == dashboardQueries["clusterMemTotal"]:
+			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"16000000000"]}]}}`
+		default:
+			result = `{"status":"success","data":{"resultType":"vector","result":[]}}`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, result)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	// Key should not exist yet
+	if client.Exists(ctx, dashboardSummaryKey).Val() != 0 {
+		t.Fatal("expected key absent before materialization")
+	}
+
+	store.MaterializeDashboardSummary(ctx, ts.URL)
+
+	// Key should now exist
+	if client.Exists(ctx, dashboardSummaryKey).Val() != 1 {
+		t.Fatal("expected key present after materialization")
+	}
+
+	got, err := store.GetDashboardSummary(ctx)
+	if err != nil {
+		t.Fatalf("GetDashboardSummary after materialize: %v", err)
+	}
+	if got.Cluster.CPUPercent != 55.5 {
+		t.Errorf("expected cluster cpu 55.5, got %f", got.Cluster.CPUPercent)
+	}
+	if got.Cluster.MemoryUsed != 8e9 {
+		t.Errorf("expected cluster mem used 8e9, got %f", got.Cluster.MemoryUsed)
+	}
+}
+
+func float64Ptr(v float64) *float64 { return &v }
 
 func TestStore_Trend(t *testing.T) {
 	store := &Store{}
