@@ -415,6 +415,24 @@ export interface FlexInferModelListResponse {
   count: number;
 }
 
+// GPU Swap History types (Phase 3: GPU Sharing State / group contention)
+export interface GPUSwapEvent {
+  ts: string;
+  model: string;
+  ns: string;
+  group: string;
+  oldState: string;
+  newState: string;
+  preemptedBy?: string;
+  durationSec?: number;
+}
+
+export interface SwapHistoryResponse {
+  events: GPUSwapEvent[];
+  model: string;
+  namespace: string;
+}
+
 // ModelCache Pipeline types (ai.flexinfer/v1alpha1)
 export type ModelCachePhase =
   | "Pending" | "Initializing" | "Provisioning"
@@ -465,6 +483,25 @@ export interface ModelCacheListResponse {
   caches: ModelCache[];
   namespace: string;
   count: number;
+}
+
+export interface GroupSwapHistoryResponse {
+  events: GPUSwapEvent[];
+  group: string;
+  models: string[];
+  summary: GroupSwapSummary;
+}
+
+export interface GroupSwapSummary {
+  totalSwaps: number;
+  avgQueueWaitSec: number;
+  modelStats: Record<string, ModelSwapStats>;
+}
+
+export interface ModelSwapStats {
+  swapCount: number;
+  totalActiveSec: number;
+  totalQueuedSec: number;
 }
 
 // Model Management types

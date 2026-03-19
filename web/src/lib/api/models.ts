@@ -1,12 +1,14 @@
 import { api } from "./client";
 import { getApiBasePath } from "./base";
 import type {
+  GroupSwapHistoryResponse,
   InferenceMetrics,
   LoRAAdapter,
   ModelCache,
   ModelCacheListResponse,
   ModelCatalogEntry,
-  ModelEvent
+  ModelEvent,
+  SwapHistoryResponse,
 } from "../types";
 
 export const modelsApi = {
@@ -78,6 +80,10 @@ export const modelsApi = {
     api<{ events: ModelEvent[]; model: string; namespace: string }>(
       `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/events`
     ),
+  swapHistory: (ns: string, name: string, hours?: number) =>
+    api<SwapHistoryResponse>(
+      `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/swap-history${hours ? `?hours=${hours}` : ''}`
+    ),
   crdInference: (ns: string, name: string) =>
     api<InferenceMetrics>(
       `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/inference`
@@ -100,4 +106,8 @@ export const modelsApi = {
     const apiBase = getApiBasePath();
     return `${apiBase}/models/cache/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`;
   },
+  groupSwapHistory: (group: string, namespace: string, hours?: number) =>
+    api<GroupSwapHistoryResponse>(
+      `/models/crd/groups/${encodeURIComponent(group)}/swap-history?namespace=${encodeURIComponent(namespace)}${hours ? `&hours=${hours}` : ''}`
+    ),
 };

@@ -228,6 +228,18 @@ func main() {
 		slog.Info("infra cache worker initialized")
 	}
 
+	// Start GPU swap observer (requires k8s + Redis)
+	swapCtx, swapCancel := context.WithCancel(context.Background())
+	defer swapCancel()
+	if k8sClient != nil && metricsStore != nil {
+		aiNS := cfg.Models.AINamespace
+		if aiNS == "" {
+			aiNS = "ai"
+		}
+		go metrics.StartSwapObserver(swapCtx, k8sClient, metricsStore, aiNS, logger)
+		slog.Info("GPU swap observer started", "namespace", aiNS)
+	}
+
 	router := api.NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, handlerDeps)
 
 	server := &http.Server{
@@ -258,6 +270,9 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 	}
+
+	// Stop the swap observer
+	swapCancel()
 
 	// Stop the metrics scraper
 	if metricsScraper != nil {
