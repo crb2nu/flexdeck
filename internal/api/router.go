@@ -174,6 +174,7 @@ func registerPublicRoutes(r chi.Router, h *handlers.Handler) {
 func registerCIRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler) {
 	r.Get("/api/ci/repos", h.ListRepositories)
 	r.Get("/api/ci/pipeline/{id}", h.GetRepoPipeline)
+	r.Get("/api/ci/pipelines/batch", h.BatchPipelines)
 	r.Get("/api/ci/projects/{projectId}/jobs/{jobId}/trace", h.GetJobTrace)
 	r.Get("/api/ci/projects/{projectId}/jobs/{jobId}", h.GetJobInfo)
 	r.With(logFunc("ci.retry")).Post("/api/ci/projects/{projectId}/jobs/{jobId}/retry", h.RetryJob)
