@@ -2,14 +2,27 @@ type PollingTask = () => Promise<void> | void;
 
 interface TaskEntry {
   task: PollingTask;
-  interval: number;
+  baseInterval: number; // original interval for jitter calculations
+  interval: number;     // current jittered interval
   timer?: any;
   running?: boolean;
+}
+
+/** Stagger delay: index * step + random(0..jitter) */
+function staggerDelay(index: number, step: number, jitter: number): number {
+  return index * step + Math.random() * jitter;
+}
+
+/** Apply ±10% jitter to a base interval */
+function jitteredInterval(base: number): number {
+  const factor = 0.9 + Math.random() * 0.2; // [0.9, 1.1)
+  return Math.round(base * factor);
 }
 
 class PollingScheduler {
   private tasks: Map<string, TaskEntry> = new Map();
   private isPaused = false;
+  private registrationIndex = 0;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -26,17 +39,28 @@ class PollingScheduler {
   /**
    * Register a new polling task.
    * If a task with the same ID already exists, it will be replaced.
+   * Immediate fires are staggered by registration order to avoid burst requests.
    */
   register(id: string, task: PollingTask, interval: number, immediate = true) {
     this.unregister(id);
 
-    const entry: TaskEntry = { task, interval };
+    const entry: TaskEntry = {
+      task,
+      baseInterval: interval,
+      interval: jitteredInterval(interval),
+    };
     this.tasks.set(id, entry);
 
     if (!this.isPaused) {
       this.startTask(id, entry);
       if (immediate) {
-        this.runTask(id, entry);
+        const idx = this.registrationIndex++;
+        const delay = staggerDelay(idx, 20, 50);
+        setTimeout(() => {
+          if (this.tasks.has(id) && !this.isPaused) {
+            this.runTask(id, entry);
+          }
+        }, delay);
       }
     }
   }
@@ -68,6 +92,8 @@ class PollingScheduler {
     if (entry.timer) {
       clearInterval(entry.timer);
     }
+    // Apply fresh jitter each time the interval restarts
+    entry.interval = jitteredInterval(entry.baseInterval);
     entry.timer = setInterval(() => this.runTask(id, entry), entry.interval);
   }
 
@@ -95,10 +121,16 @@ class PollingScheduler {
 
   private resume() {
     this.isPaused = false;
+    let idx = 0;
     for (const [id, entry] of this.tasks.entries()) {
       this.startTask(id, entry);
-      // Run immediately on resume to refresh stale data
-      this.runTask(id, entry);
+      // Stagger resume fires to avoid burst
+      const delay = staggerDelay(idx++, 30, 50);
+      setTimeout(() => {
+        if (this.tasks.has(id) && !this.isPaused) {
+          this.runTask(id, entry);
+        }
+      }, delay);
     }
   }
 }

@@ -94,7 +94,7 @@ func main() {
 	// Background materializer keeps Redis summary keys warm
 	var materializer *metrics.Materializer
 	if metricsStore != nil {
-		materializer = metrics.NewMaterializer(metricsStore)
+		materializer = metrics.NewMaterializer(metricsStore, cfg.Prom.URL)
 		go materializer.Start(context.Background())
 	}
 

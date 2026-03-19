@@ -13,6 +13,49 @@ export const infraApi = {
   snapshot: () => api<InfraSnapshot>('/infra/snapshot'),
 };
 
+// --- Dashboard summary (server-side materialized resource metrics) ---
+
+export interface DashboardSummaryNodeGPU {
+  count: number;
+  utilization: number | null;
+  vram_used: number | null;
+  vram_total: number | null;
+  temperature: number | null;
+  power_watts: number | null;
+}
+
+export interface DashboardSummaryNode {
+  node: string;
+  cpu_percent: number | null;
+  mem_percent: number | null;
+  mem_used: number | null;
+  mem_total: number | null;
+  gpu: DashboardSummaryNodeGPU | null;
+}
+
+export interface DashboardSummaryPod {
+  namespace: string;
+  pod: string;
+  cpu_percent: number;
+  memory_used: number;
+  memory_limit: number;
+}
+
+export interface DashboardSummaryResponse {
+  cluster: {
+    cpu_percent: number;
+    memory_used: number;
+    memory_total: number;
+  };
+  nodes: DashboardSummaryNode[];
+  pods: DashboardSummaryPod[];
+  updated_at: string;
+}
+
+export const dashboardApi = {
+  summary: () => api<DashboardSummaryResponse>('/dashboard/summary'),
+};
+
 export const litellm = {
   health: () => api<any>("/litellm/health"),
   metrics: (model?: string) =>
