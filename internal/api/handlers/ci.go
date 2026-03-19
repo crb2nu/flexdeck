@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sync"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -130,10 +130,10 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 		projects = projects[:gitlabMaxProjects]
 	}
 
-	// Fetch .gitlab-ci.yml for each project in parallel (fixes N+1)
+	// Map projects to RepoInfo without fetching config content.
+	// HasConfig is left false; the frontend can fetch config on demand
+	// via GET /api/ci/repos/{id}/config.
 	repos := make([]RepoInfo, len(projects))
-	var wg sync.WaitGroup
-
 	for i, p := range projects {
 		repos[i] = RepoInfo{
 			ID:   p.ID,
@@ -141,48 +141,108 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 			Path: p.WebURL,
 			Type: "gitlab",
 		}
-
-		wg.Add(1)
-		go func(idx int, proj struct {
-			ID                int    `json:"id"`
-			PathWithNamespace string `json:"path_with_namespace"`
-			Name              string `json:"name"`
-			DefaultBranch     string `json:"default_branch"`
-			WebURL            string `json:"web_url"`
-		}) {
-			defer wg.Done()
-
-			ref := proj.DefaultBranch
-			if ref == "" {
-				ref = "main"
-			}
-
-			fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
-				gitlabURL, proj.ID, ".gitlab-ci.yml", ref)
-			fileReq, err := http.NewRequest("GET", fileURL, nil)
-			if err != nil {
-				return
-			}
-			fileReq.Header.Set("PRIVATE-TOKEN", token)
-
-			fileResp, err := client.Do(fileReq)
-			if err != nil {
-				return
-			}
-			defer func() { _ = fileResp.Body.Close() }()
-
-			if fileResp.StatusCode == http.StatusOK {
-				content, readErr := io.ReadAll(fileResp.Body)
-				if readErr == nil {
-					repos[idx].HasConfig = true
-					repos[idx].ConfigContent = string(content)
-				}
-			}
-		}(i, p)
 	}
 
-	wg.Wait()
 	return repos, nil
+}
+
+// GetRepoConfig returns the .gitlab-ci.yml content for a single repo on demand.
+// GET /api/ci/repos/{id}/config
+func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid project id"})
+		return
+	}
+
+	ctx := r.Context()
+	cacheKey := fmt.Sprintf("ci:config:%d", id)
+
+	if h.cache != nil {
+		cached, cacheErr := h.cache.GetOrFetch(ctx, cacheKey, 5*time.Minute, func() (any, error) {
+			return h.fetchRepoConfig(id)
+		})
+		if cacheErr == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(cached)
+			return
+		}
+		slog.Warn("ci config cache miss with error, falling through", "error", cacheErr, "project", id)
+	}
+
+	data, fetchErr := h.fetchRepoConfig(id)
+	if fetchErr != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": fetchErr.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) fetchRepoConfig(projectID int) (map[string]any, error) {
+	gitlabURL := h.cfg.GitLab.URL
+	token := h.cfg.GitLab.Token
+	if token == "" {
+		return nil, fmt.Errorf("GitLab token not configured")
+	}
+
+	// Fetch the project's default branch first.
+	projURL := fmt.Sprintf("%s/api/v4/projects/%d?simple=true", gitlabURL, projectID)
+	projReq, err := http.NewRequest("GET", projURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create project request: %w", err)
+	}
+	projReq.Header.Set("PRIVATE-TOKEN", token)
+
+	projResp, err := h.gitlabClient.Do(projReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch project: %w", err)
+	}
+	defer func() { _ = projResp.Body.Close() }()
+
+	ref := "main"
+	if projResp.StatusCode == http.StatusOK {
+		var proj struct {
+			DefaultBranch string `json:"default_branch"`
+		}
+		if decErr := json.NewDecoder(projResp.Body).Decode(&proj); decErr == nil && proj.DefaultBranch != "" {
+			ref = proj.DefaultBranch
+		}
+	}
+
+	// Fetch .gitlab-ci.yml from the repository.
+	fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
+		gitlabURL, projectID, ".gitlab-ci.yml", ref)
+	fileReq, err := http.NewRequest("GET", fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file request: %w", err)
+	}
+	fileReq.Header.Set("PRIVATE-TOKEN", token)
+
+	fileResp, err := h.gitlabClient.Do(fileReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch config file: %w", err)
+	}
+	defer func() { _ = fileResp.Body.Close() }()
+
+	if fileResp.StatusCode != http.StatusOK {
+		return map[string]any{
+			"id":            projectID,
+			"hasConfig":     false,
+			"configContent": "",
+		}, nil
+	}
+
+	content, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config content: %w", err)
+	}
+
+	return map[string]any{
+		"id":            projectID,
+		"hasConfig":     true,
+		"configContent": string(content),
+	}, nil
 }
 
 func (h *Handler) GetRepoPipeline(w http.ResponseWriter, r *http.Request) {
