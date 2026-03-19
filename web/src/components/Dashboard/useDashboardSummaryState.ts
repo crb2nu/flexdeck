@@ -56,9 +56,9 @@ interface UseDashboardSummaryStateInput {
 export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
   const { metricsRefreshInterval, staleAfterMs } = input;
 
-  const cpuPercent = () => metricsStore().clusterCpu;
-  const memUsed = () => metricsStore().clusterMemory;
-  const resourceLoading = () => metricsStore().loading;
+  const cpuPercent = () => metricsStore.clusterCpu;
+  const memUsed = () => metricsStore.clusterMemory;
+  const resourceLoading = () => metricsStore.loading;
 
   const cpuRing = new RingBuffer(20);
   const memRing = new RingBuffer(20);
@@ -210,13 +210,13 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
   const resourceDataState = createMemo(() =>
     resolveDashboardDataState({
       loading: resourceLoading(),
-      error: metricsStore().error || '',
-      lastUpdateMs: metricsStore().lastUpdate,
+      error: metricsStore.error || '',
+      lastUpdateMs: metricsStore.lastUpdate,
       staleAfterMs,
     }),
   );
   const resourceCardError = createMemo(() =>
-    resourceDataState() === 'offline' ? (metricsStore().error || 'offline') : '',
+    resourceDataState() === 'offline' ? (metricsStore.error || 'offline') : '',
   );
 
   const modelDataState = createMemo(() =>

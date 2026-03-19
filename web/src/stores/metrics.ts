@@ -1,4 +1,5 @@
-import { createSignal, createEffect } from "solid-js";
+import { createEffect } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from "./dashboardSummary";
 
 // Resource metrics for nodes and pods
@@ -22,7 +23,7 @@ interface MetricsStore {
 }
 
 // Reactive store — populated from the server-side dashboard summary
-const [metricsStore, setMetricsStore] = createSignal<MetricsStore>({
+const [metricsStore, setMetricsStore] = createStore<MetricsStore>({
   nodes: new Map(),
   pods: new Map(),
   clusterCpu: 0,
@@ -40,11 +41,8 @@ createEffect(() => {
   const error = dashboardSummaryError();
 
   if (!summary) {
-    setMetricsStore((prev) => ({
-      ...prev,
-      loading,
-      error: error || prev.error,
-    }));
+    setMetricsStore('loading', loading);
+    setMetricsStore('error', error || metricsStore.error);
     return;
   }
 
@@ -78,16 +76,14 @@ createEffect(() => {
     });
   }
 
-  setMetricsStore({
-    nodes: nodeMetrics,
-    pods: podMetrics,
-    clusterCpu: summary.cluster.cpu_percent,
-    clusterMemory: summary.cluster.memory_used,
-    clusterMemoryTotal: summary.cluster.memory_total,
-    loading: false,
-    error: null,
-    lastUpdate: Date.now(),
-  });
+  setMetricsStore('nodes', reconcile(nodeMetrics));
+  setMetricsStore('pods', reconcile(podMetrics));
+  setMetricsStore('clusterCpu', summary.cluster.cpu_percent);
+  setMetricsStore('clusterMemory', summary.cluster.memory_used);
+  setMetricsStore('clusterMemoryTotal', summary.cluster.memory_total);
+  setMetricsStore('loading', false);
+  setMetricsStore('error', null);
+  setMetricsStore('lastUpdate', Date.now());
 });
 
 // Start/stop are now no-ops — polling is managed by dashboardSummary store.
@@ -102,7 +98,7 @@ export function stopMetricsPolling() {
 
 // Get metrics for a specific node
 export function getNodeMetrics(nodeName: string): ResourceMetrics | undefined {
-  return metricsStore().nodes.get(nodeName);
+  return metricsStore.nodes.get(nodeName);
 }
 
 // Get metrics for a specific pod
@@ -110,7 +106,7 @@ export function getPodMetrics(
   namespace: string,
   podName: string
 ): ResourceMetrics | undefined {
-  return metricsStore().pods.get(`${namespace}/${podName}`);
+  return metricsStore.pods.get(`${namespace}/${podName}`);
 }
 
 // Get color for resource usage (green -> yellow -> red)
