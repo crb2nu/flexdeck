@@ -1,22 +1,22 @@
 import { Component, createSignal, For, Show, createMemo, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { TabBar, LoadingState, ErrorState, EmptyState } from '../shared';
+import type { TabDef } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
 import {
   PROMETHEUS_TIME_RANGES,
   type MetricPanel,
-  type MetricValue,
   usePrometheusMetricsController,
 } from './usePrometheusMetricsController';
+import EnhancedChart from './EnhancedChart';
 
 const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
 const Alerts = lazy(() => import('../Alerts'));
-const CHART_STROKE_COLORS: Record<string, string> = {
-  cyan: '#00d9ff',
-  purple: '#a855f7',
-  green: '#22c55e',
-  orange: '#f97316',
-  blue: '#60a5fa',
-  pink: '#ec4899',
-};
+
+const METRICS_TABS: TabDef<'prometheus' | 'grafana' | 'alerts'>[] = [
+  { id: 'prometheus', label: 'Prometheus', color: 'neon-cyan' },
+  { id: 'grafana', label: 'Grafana', color: 'neon-cyan' },
+  { id: 'alerts', label: 'Alerts', color: 'neon-cyan' },
+];
 
 const Metrics: Component = () => {
   const [metricsTab, setMetricsTab] = createSignal<'prometheus' | 'grafana' | 'alerts'>('prometheus');
@@ -30,44 +30,25 @@ const Metrics: Component = () => {
     fetchMetrics,
   } = usePrometheusMetricsController(() => metricsTab() === 'prometheus');
 
+  const timeRangeTabs = createMemo<TabDef[]>(() =>
+    PROMETHEUS_TIME_RANGES.map((range) => ({
+      id: range.value,
+      label: range.label,
+      color: 'neon-cyan',
+    }))
+  );
+
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
       <div class="glass-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Tab bar */}
-          <div class="flex max-w-full overflow-x-auto rounded-lg bg-surface-raised p-0.5 no-scrollbar">
-            <button
-              onClick={() => setMetricsTab('prometheus')}
-              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                metricsTab() === 'prometheus'
-                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
-                  : 'text-text-muted hover:text-text-main'
-              }`}
-            >
-              Prometheus
-            </button>
-            <button
-              onClick={() => setMetricsTab('grafana')}
-              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                metricsTab() === 'grafana'
-                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
-                  : 'text-text-muted hover:text-text-main'
-              }`}
-            >
-              Grafana
-            </button>
-            <button
-              onClick={() => setMetricsTab('alerts')}
-              class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                metricsTab() === 'alerts'
-                  ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
-                  : 'text-text-muted hover:text-text-main'
-              }`}
-            >
-              Alerts
-            </button>
-          </div>
+          <TabBar
+            tabs={METRICS_TABS}
+            active={metricsTab()}
+            onChange={setMetricsTab}
+          />
           <Show when={metricsTab() === 'prometheus' && lastUpdated()}>
             <span class="text-xs text-text-dim">
               Updated {lastUpdated()?.toLocaleTimeString()}
@@ -77,22 +58,11 @@ const Metrics: Component = () => {
 
         <Show when={metricsTab() === 'prometheus'}>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div class="flex max-w-full overflow-x-auto rounded-lg bg-surface-raised p-0.5 no-scrollbar">
-              <For each={PROMETHEUS_TIME_RANGES}>
-                {(range) => (
-                  <button
-                    onClick={() => setTimeRange(range.value)}
-                    class={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                      timeRange() === range.value
-                        ? 'bg-neon-cyan/20 text-neon-cyan shadow-sm'
-                        : 'text-text-muted hover:text-text-main'
-                    }`}
-                  >
-                    {range.label}
-                  </button>
-                )}
-              </For>
-            </div>
+            <TabBar
+              tabs={timeRangeTabs()}
+              active={timeRange()}
+              onChange={setTimeRange}
+            />
 
             <button
               onClick={fetchMetrics}
@@ -110,10 +80,7 @@ const Metrics: Component = () => {
         {/* Prometheus tab content */}
         <Show when={metricsTab() === 'prometheus'}>
           <Show when={error()}>
-            <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-              <span class="text-lg">!</span>
-              {error()}
-            </div>
+            <ErrorState message={error()!} variant="banner" onRetry={fetchMetrics} />
           </Show>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -131,15 +98,9 @@ const Metrics: Component = () => {
         {/* Grafana tab content */}
         <Show when={metricsTab() === 'grafana'}>
           <ErrorBoundary fallback={(err) => (
-            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-              Failed to load Grafana dashboards: {err.message}
-            </div>
+            <ErrorState message={`Failed to load Grafana dashboards: ${err.message}`} variant="banner" />
           )}>
-            <Suspense fallback={
-              <div class="flex items-center justify-center py-12">
-                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-              </div>
-            }>
+            <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
               <GrafanaDashboards />
             </Suspense>
           </ErrorBoundary>
@@ -148,13 +109,9 @@ const Metrics: Component = () => {
         {/* Alerts tab content */}
         <Show when={metricsTab() === 'alerts'}>
           <ErrorBoundary fallback={(err) => (
-            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-              {err.message}
-            </div>
+            <ErrorState message={err.message} variant="banner" />
           )}>
-            <Suspense fallback={
-              <div class="glass-panel p-4 text-text-dim animate-pulse">Loading alerts...</div>
-            }>
+            <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading alerts..." />}>
               <Alerts />
             </Suspense>
           </ErrorBoundary>
@@ -269,13 +226,11 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
           when={props.panel.values.length > 1}
           fallback={
             <div class="flex h-full items-center justify-center">
-              <div class="text-center">
-                {props.loading ? (
-                  <div class="h-5 w-5 mx-auto animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-                ) : (
-                  <span class="text-xs text-text-dim">No data available</span>
-                )}
-              </div>
+              {props.loading ? (
+                <LoadingState variant="inline" size="sm" />
+              ) : (
+                <EmptyState title="No data available" size="sm" />
+              )}
             </div>
           }
         >
@@ -311,196 +266,6 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
         </div>
       </div>
     </div>
-  );
-};
-
-// Enhanced sparkline chart with grid and hover
-const EnhancedChart: Component<{
-  values: MetricValue[];
-  color: string;
-  unit: string;
-  onHover: (index: number | null) => void;
-}> = (props) => {
-  const width = 300;
-  const height = 100;
-  const padding = { top: 8, right: 8, bottom: 4, left: 35 };
-
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
-  const chartModel = createMemo(() => {
-    const values = props.values;
-    if (values.length < 2) return null;
-
-    let min = values[0].value;
-    let max = values[0].value;
-    for (let i = 1; i < values.length; i++) {
-      const currentValue = values[i].value;
-      if (currentValue < min) min = currentValue;
-      if (currentValue > max) max = currentValue;
-    }
-
-    const range = max - min || 1;
-    const paddedMin = min - range * 0.1;
-    const paddedMax = max + range * 0.1;
-
-    const domain = paddedMax - paddedMin || 1;
-    const xStep = chartWidth / (values.length - 1);
-    const points = new Array<{ x: number; y: number }>(values.length);
-    let linePath = '';
-
-    for (let i = 0; i < values.length; i++) {
-      const x = padding.left + xStep * i;
-      const y =
-        padding.top + chartHeight - (chartHeight * (values[i].value - paddedMin)) / domain;
-      points[i] = { x, y };
-      linePath += `${i === 0 ? 'M' : ' L'} ${x},${y}`;
-    }
-
-    const areaPath = `${linePath} L ${padding.left + chartWidth},${padding.top + chartHeight} L ${padding.left},${padding.top + chartHeight} Z`;
-    const ticks = [];
-    const tickStep = (paddedMax - paddedMin) / 4;
-    for (let i = 0; i <= 4; i++) {
-      const value = paddedMin + tickStep * i;
-      const y =
-        padding.top + chartHeight - (chartHeight * (value - paddedMin)) / domain;
-      ticks.push({ value, y });
-    }
-
-    return {
-      min: paddedMin,
-      max: paddedMax,
-      range: paddedMax - paddedMin,
-      points,
-      linePath,
-      areaPath,
-      ticks,
-      lastPoint: points[points.length - 1],
-    };
-  });
-
-  const strokeColor = () => CHART_STROKE_COLORS[props.color] || '#888';
-
-  const handleMouseMove = (e: MouseEvent) => {
-    const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const svgX = (x / rect.width) * width;
-    const relativeX = svgX - padding.left;
-    const index = Math.round((relativeX / chartWidth) * (props.values.length - 1));
-    if (index >= 0 && index < props.values.length) {
-      props.onHover(index);
-    }
-  };
-
-  return (
-    <svg
-      class="h-full w-full"
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => props.onHover(null)}
-    >
-      <defs>
-        <linearGradient id={`chart-gradient-${props.color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color={strokeColor()} stop-opacity="0.4" />
-          <stop offset="100%" stop-color={strokeColor()} stop-opacity="0" />
-        </linearGradient>
-        <filter id={`chart-glow-${props.color}`}>
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      {/* Grid lines */}
-      <For each={chartModel()?.ticks || []}>
-        {(tick) => (
-          <>
-            <line
-              x1={padding.left}
-              y1={tick.y}
-              x2={padding.left + chartWidth}
-              y2={tick.y}
-              stroke="rgba(255,255,255,0.05)"
-              stroke-width="1"
-            />
-            <text
-              x={padding.left - 4}
-              y={tick.y}
-              text-anchor="end"
-              dominant-baseline="middle"
-              font-size="8"
-              fill="rgba(255,255,255,0.3)"
-            >
-              {props.unit === 'MB/s' && Math.abs(tick.value) < 0.1 && Math.abs(tick.value) > 0
-                ? `${(tick.value * 1024).toFixed(0)}`
-                : (chartModel()?.range || 0) < 10
-                  ? tick.value.toFixed(1)
-                  : tick.value.toFixed(0)}
-            </text>
-          </>
-        )}
-      </For>
-
-      {/* Area fill */}
-      <path
-        d={chartModel()?.areaPath || ''}
-        fill={`url(#chart-gradient-${props.color})`}
-        class="transition-all duration-300"
-      />
-
-      {/* Line */}
-      <path
-        d={chartModel()?.linePath || ''}
-        fill="none"
-        stroke={strokeColor()}
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        filter={`url(#chart-glow-${props.color})`}
-        class="transition-all duration-300"
-      />
-
-      {/* Endpoint dot with pulse */}
-      <Show when={chartModel()?.lastPoint} keyed>
-        {(lastPoint) => {
-          return (
-            <>
-              <circle
-                cx={lastPoint.x}
-                cy={lastPoint.y}
-                r={6}
-                fill={strokeColor()}
-                opacity={0.3}
-              >
-                <animate
-                  attributeName="r"
-                  values="4;8;4"
-                  dur="2s"
-                  repeatCount="indefinite"
-                />
-                <animate
-                  attributeName="opacity"
-                  values="0.3;0.1;0.3"
-                  dur="2s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-              <circle
-                cx={lastPoint.x}
-                cy={lastPoint.y}
-                r={3}
-                fill={strokeColor()}
-                stroke="rgba(0,0,0,0.3)"
-                stroke-width={1}
-              />
-            </>
-          );
-        }}
-      </Show>
-    </svg>
   );
 };
 

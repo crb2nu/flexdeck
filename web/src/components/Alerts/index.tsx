@@ -3,6 +3,7 @@ import { alertmanagerApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import type { AlertmanagerAlert, AlertmanagerSilence } from '../../lib/types';
 import { formatRelativeTime } from '../../lib/format';
+import { TabBar, LoadingState, ErrorState, EmptyState } from '../shared';
 
 const Alerts: Component = () => {
   const [alerts, setAlerts] = createSignal<AlertmanagerAlert[]>([]);
@@ -119,34 +120,30 @@ const Alerts: Component = () => {
         </div>
 
         {/* Tabs */}
-        <div class="flex gap-1 ml-auto">
-          <button
-            class={`px-3 py-1 text-xs rounded-md ${tab() === 'alerts' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-dim'}`}
-            onClick={() => setTab('alerts')}
-          >Alerts</button>
-          <button
-            class={`px-3 py-1 text-xs rounded-md ${tab() === 'silences' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-dim'}`}
-            onClick={() => setTab('silences')}
-          >Silences</button>
+        <div class="ml-auto">
+          <TabBar
+            tabs={[
+              { id: 'alerts' as const, label: 'Alerts', count: alerts().length, color: 'status-error' },
+              { id: 'silences' as const, label: 'Silences', count: activeSilences().length },
+            ]}
+            active={tab()}
+            onChange={setTab}
+          />
         </div>
       </div>
 
       <Show when={error()}>
-        <div class="glass-panel p-3 text-sm text-status-error">{error()}</div>
+        <ErrorState message={error()!} variant="banner" onRetry={fetchAll} />
       </Show>
 
       <Show when={loading()}>
-        <div class="glass-panel flex items-center justify-center py-8">
-          <div class="text-text-dim animate-pulse">Loading alerts...</div>
-        </div>
+        <LoadingState message="Loading alerts..." />
       </Show>
 
       {/* Alerts tab */}
       <Show when={!loading() && tab() === 'alerts'}>
         <Show when={groupedAlerts().length === 0}>
-          <div class="glass-panel flex items-center justify-center py-8">
-            <div class="text-text-dim">No alerts</div>
-          </div>
+          <EmptyState title="No alerts" size="sm" />
         </Show>
         <div class="space-y-2">
           <For each={groupedAlerts()}>
@@ -316,9 +313,7 @@ const Alerts: Component = () => {
             )}
           </For>
           <Show when={silences().length === 0}>
-            <div class="glass-panel flex items-center justify-center py-8">
-              <div class="text-text-dim">No silences</div>
-            </div>
+            <EmptyState title="No silences" size="sm" />
           </Show>
         </div>
       </Show>

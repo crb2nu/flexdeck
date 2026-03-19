@@ -3,6 +3,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 import { computeFluxSyncState, type FluxSyncState } from './syncState';
+import { PageHeader, LoadingState, EmptyState, ErrorState } from '../shared';
 
 const POLL_INTERVAL = 15_000;
 
@@ -93,47 +94,34 @@ const FluxStatus: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
-      <div class="glass-panel flex items-center justify-between px-4 py-3">
-        <div class="flex items-center gap-4">
-          <h2 class="text-lg font-medium text-text-main">Flux GitOps</h2>
-          <Show when={!loading()}>
-            <span class="text-sm text-text-dim">{readyCount()}/{totalCount()} in sync</span>
-          </Show>
-        </div>
-        <button
-          onClick={fetchAll}
-          disabled={loading()}
-          class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
-        >
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        title="Flux GitOps"
+        onRefresh={fetchAll}
+        refreshDisabled={loading()}
+      >
+        <Show when={!loading()}>
+          <span class="text-sm text-text-dim">{readyCount()}/{totalCount()} in sync</span>
+        </Show>
+      </PageHeader>
 
       <Show when={error()}>
-        <div class="glass-panel p-4 text-sm text-status-error">{error()}</div>
+        <ErrorState message={error()!} variant="banner" />
       </Show>
 
       <Show
         when={!loading()}
         fallback={
-          <div class="glass-panel flex flex-1 items-center justify-center">
-            <div class="text-center">
-              <div class="mb-4 text-4xl animate-pulse-glow text-neon-cyan">&#10227;</div>
-              <p class="text-text-dim">Loading Flux resources...</p>
-            </div>
-          </div>
+          <LoadingState message="Loading Flux resources..." />
         }
       >
         <Show
           when={totalCount() > 0 || sources().length > 0}
           fallback={
-            <div class="glass-panel flex flex-1 items-center justify-center">
-              <div class="text-center">
-                <div class="mb-4 text-6xl text-neon-purple/30">&#9032;</div>
-                <h3 class="mb-2 text-xl font-medium text-text-main">No Flux Resources</h3>
-                <p class="text-text-dim">No Kustomizations or HelmReleases found in the cluster.</p>
-              </div>
-            </div>
+            <EmptyState
+              icon="&#9032;"
+              title="No Flux Resources"
+              subtitle="No Kustomizations or HelmReleases found in the cluster."
+            />
           }
         >
           <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">

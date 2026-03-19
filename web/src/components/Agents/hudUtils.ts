@@ -1,4 +1,9 @@
-import type { HUDAgentPresence, HUDClaim, HUDWorkflow } from '../../lib/types';
+import type { Agent, HUDAgentPresence, HUDClaim, HUDWorkflow } from '../../lib/types';
+
+/** Check whether an agent is a HUD/CLI agent (vs registry agent). */
+export function isHUDAgent(agent: Agent): boolean {
+  return agent.type === 'cli-agent' || agent.metadata?.source === 'hud';
+}
 
 export function toErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;

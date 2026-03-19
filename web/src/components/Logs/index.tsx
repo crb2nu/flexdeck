@@ -14,6 +14,7 @@ import {
   getLogLevelClassForLevel,
 } from '../../lib/logUtils';
 import { ToastContainer } from '../shared/Toast';
+import { TabBar, ErrorState } from '../shared';
 import { LOG_TIME_RANGES, useLogsController } from './useLogsController';
 
 const Logs: Component = () => {
@@ -182,7 +183,9 @@ const Logs: Component = () => {
         </div>
 
         <Show when={error()}>
-          <div class="mt-3 text-sm text-status-error">{error()}</div>
+          <div class="mt-3">
+            <ErrorState message={error()!} variant="inline" />
+          </div>
         </Show>
       </div>
 
@@ -314,26 +317,16 @@ const Logs: Component = () => {
               </Show>
 
               {/* View Mode Toggle */}
-              <div class="flex flex-wrap items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1">
-                <button
-                  onClick={() => setViewMode('list')}
-                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'list' ? 'bg-white/20 text-white' : 'text-text-dim hover:text-text-main'}`}
-                >
-                  TERMINAL
-                </button>
-                <button
-                  onClick={() => setViewMode('flow')}
-                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'flow' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
-                >
-                  FLOW
-                </button>
-                <button
-                  onClick={() => setViewMode('rain')}
-                  class={`px-2 sm:px-3 py-1 text-xs font-mono rounded transition-colors ${viewMode() === 'rain' ? 'bg-neon-green/20 text-green-400' : 'text-text-dim hover:text-text-main'}`}
-                >
-                  MATRIX
-                </button>
-              </div>
+              <TabBar
+                tabs={[
+                  { id: 'list', label: 'TERMINAL' },
+                  { id: 'flow', label: 'FLOW', color: 'neon-cyan' },
+                  { id: 'rain', label: 'MATRIX', color: 'neon-green' },
+                ]}
+                active={viewMode()}
+                onChange={setViewMode}
+                size="sm"
+              />
 
               {/* Clear button */}
               <button

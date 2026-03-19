@@ -4,6 +4,7 @@ import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
 import ClustersTab from "./ClustersTab";
 import { getAdminTabs, getDefaultAdminTab } from "../../lib/featureFlags";
+import { PageHeader, TabBar, LoadingState } from "../shared";
 
 const FlexInferTab = lazy(() => import("./FlexInferTab"));
 
@@ -34,30 +35,14 @@ const Admin: Component = () => {
   return (
     <div class="h-full min-h-0 overflow-y-auto space-y-4">
       {/* Page header */}
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-bold tracking-tight text-white">
-          Admin<span class="text-neon-cyan">Panel</span>
-        </h2>
-      </div>
+      <PageHeader title="Admin" accent="Panel" />
 
       {/* Tab bar */}
-      <div class="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5 w-fit">
-        <For each={tabs()}>
-          {(tab) => (
-            <button
-              class="rounded-md px-4 py-1.5 text-xs font-mono transition-all duration-200"
-              classList={{
-                "bg-white/10 text-white shadow-sm": activeTab() === tab.id,
-                "text-text-muted hover:text-white hover:bg-white/5":
-                  activeTab() !== tab.id,
-              }}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          )}
-        </For>
-      </div>
+      <TabBar
+        tabs={tabs().map(t => ({ id: t.id, label: t.label }))}
+        active={activeTab()}
+        onChange={setActiveTab}
+      />
 
       {/* Tab content */}
       <div class="min-h-0">
@@ -71,7 +56,7 @@ const Admin: Component = () => {
           <ClustersTab />
         </Show>
         <Show when={activeTab() === "flexinfer" && flexinferEnabled()}>
-          <Suspense fallback={<div class="text-text-dim animate-pulse p-4">Loading FlexInfer...</div>}>
+          <Suspense fallback={<LoadingState message="Loading FlexInfer..." />}>
             <FlexInferTab />
           </Suspense>
         </Show>

@@ -1,5 +1,5 @@
 import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
-import { PulseCard } from '../shared';
+import { PulseCard, TabBar, LoadingState } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
@@ -297,20 +297,15 @@ const Dashboard: Component = () => {
              </button>
            </Show>
 
-           <div class="flex rounded-lg border border-white/10 bg-black/40 p-1 backdrop-blur">
-               <button
-                onClick={() => setViewMode('2d')}
-                class={`rounded px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-mono transition-colors ${viewMode() === '2d' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-dim hover:text-text-main'}`}
-               >
-                   2D
-               </button>
-               <button
-                onClick={() => setViewMode('3d')}
-                class={`rounded px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-mono transition-colors ${viewMode() === '3d' ? 'bg-neon-purple/20 text-neon-purple' : 'text-text-dim hover:text-text-main'}`}
-               >
-                   3D
-               </button>
-           </div>
+           <TabBar
+             tabs={[
+               { id: '2d', label: '2D' },
+               { id: '3d', label: '3D', color: 'neon-purple' },
+             ]}
+             active={viewMode()}
+             onChange={setViewMode}
+             size="sm"
+           />
         </div>
 
         {/* Mobile Observability Toggle */}
@@ -434,15 +429,15 @@ const Dashboard: Component = () => {
         <Show
           when={nodes().length > 0 || pods().length > 0}
           fallback={
-            <div class="flex h-full items-center justify-center">
-              <div class="text-center">
-                <div class="mb-4 text-6xl text-neon-cyan/30 animate-pulse">⬡</div>
-                <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
-                <p class="text-sm text-text-muted">
-                  {isLoading() ? 'Loading cluster data...' : 'No resources found'}
-                </p>
-              </div>
-            </div>
+            isLoading()
+              ? <LoadingState message="Loading cluster data..." />
+              : <div class="flex h-full items-center justify-center">
+                  <div class="text-center">
+                    <div class="mb-4 text-6xl text-neon-cyan/30">⬡</div>
+                    <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
+                    <p class="text-sm text-text-muted">No resources found</p>
+                  </div>
+                </div>
           }
         >
           <Show when={viewMode() === '2d'} fallback={

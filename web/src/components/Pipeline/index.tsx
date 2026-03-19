@@ -7,6 +7,8 @@ import {
   isLivePipelineId,
 } from './utils';
 import { usePipelineController } from './usePipelineController';
+import { TabBar, LoadingState } from '../shared';
+import type { TabDef } from '../shared';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
@@ -96,73 +98,32 @@ const Pipeline: Component = () => {
                     </button>
                 </div>
                 {/* Page tabs */}
-                <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
-                    <button
-                        onClick={() => {
-                            setPageTab('pipelines');
-                            closeSidebarOnMobile();
-                        }}
-                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                            pageTab() === 'pipelines'
-                                ? 'bg-neon-cyan/20 text-neon-cyan'
-                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
-                        }`}
-                    >
-                        Pipelines
-                    </button>
-                    <button
-                        onClick={() => {
-                            setPageTab('trends');
-                            closeSidebarOnMobile();
-                        }}
-                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                            pageTab() === 'trends'
-                                ? 'bg-neon-cyan/20 text-neon-cyan'
-                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
-                        }`}
-                    >
-                        Trends
-                    </button>
-                    <button
-                        onClick={() => {
-                            setPageTab('history');
-                            closeSidebarOnMobile();
-                        }}
-                        class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                            pageTab() === 'history'
-                                ? 'bg-neon-cyan/20 text-neon-cyan'
-                                : 'text-text-dim hover:text-text-main hover:bg-white/5'
-                        }`}
-                    >
-                        History
-                    </button>
-                </div>
+                <TabBar
+                  tabs={[
+                    { id: 'pipelines', label: 'Pipelines' },
+                    { id: 'trends', label: 'Trends' },
+                    { id: 'history', label: 'History' },
+                  ] as TabDef<'pipelines' | 'trends' | 'history'>[]}
+                  active={pageTab()}
+                  onChange={(id) => {
+                    setPageTab(id);
+                    closeSidebarOnMobile();
+                  }}
+                  size="sm"
+                />
 
                 {/* Show sidebar controls only in Pipelines tab */}
                 <Show when={pageTab() === 'pipelines'}>
                     {/* View toggle */}
-                    <div class="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/10">
-                        <button
-                            onClick={() => setViewMode('overview')}
-                            class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                                viewMode() === 'overview'
-                                    ? 'bg-neon-cyan/20 text-neon-cyan'
-                                    : 'text-text-dim hover:text-text-main hover:bg-white/5'
-                            }`}
-                        >
-                            Overview
-                        </button>
-                        <button
-                            onClick={() => setViewMode('detail')}
-                            class={`flex-1 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded transition-all ${
-                                viewMode() === 'detail'
-                                    ? 'bg-neon-cyan/20 text-neon-cyan'
-                                    : 'text-text-dim hover:text-text-main hover:bg-white/5'
-                            }`}
-                        >
-                            Detail
-                        </button>
-                    </div>
+                    <TabBar
+                      tabs={[
+                        { id: 'overview', label: 'Overview' },
+                        { id: 'detail', label: 'Detail' },
+                      ] as TabDef<'overview' | 'detail'>[]}
+                      active={viewMode()}
+                      onChange={setViewMode}
+                      size="sm"
+                    />
                     <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
                     <input
                         type="text"
@@ -178,7 +139,7 @@ const Pipeline: Component = () => {
             <Show when={pageTab() === 'pipelines'}>
                 <div class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
                     <Show when={loading()}>
-                        <div class="px-3 py-2 text-xs text-text-dim">Loading...</div>
+                        <LoadingState variant="inline" size="sm" message="Loading..." />
                     </Show>
                     <For each={filteredRepos()}>
                         {(repo) => (
@@ -232,11 +193,7 @@ const Pipeline: Component = () => {
                         Failed to load Trends: {err.message}
                     </div>
                 )}>
-                    <Suspense fallback={
-                        <div class="flex items-center justify-center py-12">
-                            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-                        </div>
-                    }>
+                    <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
                         <PipelineTrends />
                     </Suspense>
                 </ErrorBoundary>
@@ -249,11 +206,7 @@ const Pipeline: Component = () => {
                         Failed to load History: {err.message}
                     </div>
                 )}>
-                    <Suspense fallback={
-                        <div class="flex items-center justify-center py-12">
-                            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-                        </div>
-                    }>
+                    <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
                         <PipelineHistory repos={repos()} />
                     </Suspense>
                 </ErrorBoundary>
@@ -450,24 +403,15 @@ const Pipeline: Component = () => {
                                 </div>
                                 <div class="flex items-center justify-between gap-2 sm:justify-end">
                                     {/* Tabs */}
-                                    <div class="flex gap-1 bg-black/40 rounded p-0.5">
-                                        <button
-                                            class={`px-3 py-1 text-xs rounded transition-colors ${
-                                                activeTab() === 'logs' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-muted hover:text-white'
-                                            }`}
-                                            onClick={() => setActiveTab('logs')}
-                                        >
-                                            Logs
-                                        </button>
-                                        <button
-                                            class={`px-3 py-1 text-xs rounded transition-colors ${
-                                                activeTab() === 'config' ? 'bg-neon-cyan/20 text-neon-cyan' : 'text-text-muted hover:text-white'
-                                            }`}
-                                            onClick={() => setActiveTab('config')}
-                                        >
-                                            Config
-                                        </button>
-                                    </div>
+                                    <TabBar
+                                      tabs={[
+                                        { id: 'logs', label: 'Logs' },
+                                        { id: 'config', label: 'Config' },
+                                      ] as TabDef<'config' | 'logs'>[]}
+                                      active={activeTab()}
+                                      onChange={setActiveTab}
+                                      size="sm"
+                                    />
                                     <button 
                                         class="text-text-muted hover:text-white ml-2"
                                         onClick={() => setSelectedJob(null)}
@@ -481,10 +425,7 @@ const Pipeline: Component = () => {
                             <div class="flex-1 overflow-y-auto p-4">
                                 <Show when={activeTab() === 'logs'}>
                                     <Show when={traceLoading()}>
-                                        <div class="flex items-center gap-2 text-text-muted">
-                                            <div class="w-4 h-4 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
-                                            Loading job logs...
-                                        </div>
+                                        <LoadingState variant="inline" size="sm" message="Loading job logs..." />
                                     </Show>
                                     <Show when={!traceLoading() && jobTrace()}>
                                         <pre class="font-mono text-xs text-text-dim whitespace-pre-wrap break-all leading-relaxed">

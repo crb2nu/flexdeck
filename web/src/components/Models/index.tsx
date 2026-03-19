@@ -8,7 +8,8 @@ import type {
 import type { LiteLLMModelThroughput } from '../../lib/api/infrastructure';
 import GPUMetricsPanel from './GPUMetricsPanel';
 import ModelGPUTable from './ModelGPUTable';
-import PageScrollBody from '../shared/PageScrollBody';
+import { PageScrollBody, TabBar, LoadingState, EmptyState } from '../shared';
+import type { TabDef } from '../shared';
 import {
   getReliabilityClasses,
   getReliabilityStatus,
@@ -63,6 +64,25 @@ const Models: Component = () => {
 
   const modelKey = (namespace: string, name: string) => `${namespace}/${name}`;
 
+  const tabs = createMemo<TabDef<ModelsTab>[]>(() => {
+    const base: TabDef<ModelsTab>[] = [
+      { id: 'controller', label: 'Controller', count: () => crdModels().length, color: 'neon-cyan' },
+      { id: 'registry', label: 'Registry', count: () => registryModels().length, color: 'neon-purple' },
+      { id: 'search', label: 'Search', color: 'status-ok' },
+      { id: 'router', label: 'Router', color: 'neon-cyan' },
+      { id: 'compare', label: 'Compare', color: 'neon-purple' },
+      { id: 'inference', label: 'Inference', color: 'status-ok' },
+      { id: 'catalog', label: 'Catalog', color: 'blue-400' },
+    ];
+    if (healthStore.features?.flexinfer_proxy?.enabled) {
+      base.push({ id: 'proxy', label: 'Proxy', color: 'status-ok' });
+    }
+    if (healthStore.features?.modelcache?.enabled) {
+      base.push({ id: 'pipelines', label: 'Pipelines', color: 'neon-purple' });
+    }
+    return base;
+  });
+
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
@@ -70,21 +90,13 @@ const Models: Component = () => {
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <h2 class="text-lg font-medium text-text-main">AI Models</h2>
-            <div class="flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-1 no-scrollbar">
-              <TabButton active={activeTab() === 'controller'} onClick={() => setActiveTab('controller')} label="Controller" count={crdModels().length} color="neon-cyan" />
-              <TabButton active={activeTab() === 'registry'} onClick={() => setActiveTab('registry')} label="Registry" count={registryModels().length} color="neon-purple" />
-              <TabButton active={activeTab() === 'search'} onClick={() => setActiveTab('search')} label="Search" color="status-ok" />
-              <TabButton active={activeTab() === 'router'} onClick={() => setActiveTab('router')} label="Router" color="neon-cyan" />
-              <TabButton active={activeTab() === 'compare'} onClick={() => setActiveTab('compare')} label="Compare" color="neon-purple" />
-              <TabButton active={activeTab() === 'inference'} onClick={() => setActiveTab('inference')} label="Inference" color="status-ok" />
-              <TabButton active={activeTab() === 'catalog'} onClick={() => setActiveTab('catalog')} label="Catalog" color="blue-400" />
-              <Show when={healthStore.features?.flexinfer_proxy?.enabled}>
-                <TabButton active={activeTab() === 'proxy'} onClick={() => setActiveTab('proxy')} label="Proxy" color="status-ok" />
-              </Show>
-              <Show when={healthStore.features?.modelcache?.enabled}>
-                <TabButton active={activeTab() === 'pipelines'} onClick={() => setActiveTab('pipelines')} label="Pipelines" color="neon-purple" />
-              </Show>
-            </div>
+            <TabBar<ModelsTab>
+              tabs={tabs()}
+              active={activeTab()}
+              onChange={setActiveTab}
+              size="sm"
+              class="p-1"
+            />
           </div>
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Phase summary pills */}
@@ -261,7 +273,7 @@ const Models: Component = () => {
             {/* Router Tab */}
             <Match when={activeTab() === 'router'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Router panel error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading router...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading router..." />}>
                   <LiteLLMRouterPanel />
                 </Suspense>
               </ErrorBoundary>
@@ -270,7 +282,7 @@ const Models: Component = () => {
             {/* Compare Tab */}
             <Match when={activeTab() === 'compare'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Compare error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading comparison...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading comparison..." />}>
                   <ModelComparison />
                 </Suspense>
               </ErrorBoundary>
@@ -279,7 +291,7 @@ const Models: Component = () => {
             {/* Inference Tab */}
             <Match when={activeTab() === 'inference'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Inference error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading inference metrics...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading inference metrics..." />}>
                   <InferenceTab />
                 </Suspense>
               </ErrorBoundary>
@@ -288,7 +300,7 @@ const Models: Component = () => {
             {/* Catalog Tab */}
             <Match when={activeTab() === 'catalog'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Catalog error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading catalogs...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading catalogs..." />}>
                   <CatalogTab />
                 </Suspense>
               </ErrorBoundary>
@@ -297,7 +309,7 @@ const Models: Component = () => {
             {/* Proxy Tab */}
             <Match when={activeTab() === 'proxy'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Proxy error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading proxy metrics...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading proxy metrics..." />}>
                   <ProxyTab />
                 </Suspense>
               </ErrorBoundary>
@@ -306,7 +318,7 @@ const Models: Component = () => {
             {/* Pipelines Tab */}
             <Match when={activeTab() === 'pipelines'}>
               <ErrorBoundary fallback={(err) => <div class="glass-panel p-4 text-status-error text-sm">Pipelines error: {err.message}</div>}>
-                <Suspense fallback={<div class="glass-panel p-4 text-text-dim animate-pulse">Loading pipelines...</div>}>
+                <Suspense fallback={<LoadingState variant="inline" size="sm" message="Loading pipelines..." />}>
                   <PipelinesTab />
                 </Suspense>
               </ErrorBoundary>
@@ -317,45 +329,6 @@ const Models: Component = () => {
     </div>
   );
 };
-
-// ─── Subcomponents ───
-
-const TabButton: Component<{
-  active: boolean; onClick: () => void; label: string; count?: number; color: string;
-}> = (props) => (
-  <button
-    onClick={() => props.onClick()}
-    class={`rounded px-3 py-1 text-sm transition-colors ${
-      props.active
-        ? `bg-${props.color}/20 text-${props.color}`
-        : 'text-text-dim hover:text-text-main'
-    }`}
-  >
-    {props.label}
-    <Show when={props.count != null && props.count > 0}>
-      <span class="ml-1.5 text-[10px] opacity-60">{props.count}</span>
-    </Show>
-  </button>
-);
-
-const LoadingState: Component<{ message: string }> = (props) => (
-  <div class="glass-panel flex flex-1 items-center justify-center">
-    <div class="text-center">
-      <div class="mb-4 text-4xl animate-pulse text-neon-cyan">⬡</div>
-      <p class="text-text-dim">{props.message}</p>
-    </div>
-  </div>
-);
-
-const EmptyState: Component<{ icon: string; title: string; subtitle: string }> = (props) => (
-  <div class="glass-panel flex flex-1 items-center justify-center">
-    <div class="text-center">
-      <div class="mb-4 text-6xl text-neon-purple/30">{props.icon}</div>
-      <h3 class="mb-2 text-xl font-medium text-text-main">{props.title}</h3>
-      <p class="text-text-dim">{props.subtitle}</p>
-    </div>
-  </div>
-);
 
 // ─── Phase helpers ───
 
