@@ -11,6 +11,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 // Client interacts with LiteLLM's metrics and health endpoints
@@ -193,7 +194,7 @@ func (c *Client) probe(ctx context.Context, path string) (int, error) {
 
 // parsePrometheusMetrics parses Prometheus text format into ModelMetrics
 func parsePrometheusMetrics(body io.Reader) ([]ModelMetrics, error) {
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	metricFamilies, err := parser.TextToMetricFamilies(body)
 	if err != nil {
 		return nil, fmt.Errorf("parse metrics: %w", err)
