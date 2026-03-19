@@ -1,6 +1,7 @@
 import { api } from "./client";
 import { getApiBasePath } from "./base";
 import type {
+  GroupSwapHistoryResponse,
   InferenceMetrics,
   LoRAAdapter,
   ModelCache,
@@ -100,4 +101,8 @@ export const modelsApi = {
     const apiBase = getApiBasePath();
     return `${apiBase}/models/cache/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`;
   },
+  groupSwapHistory: (group: string, namespace: string, hours?: number) =>
+    api<GroupSwapHistoryResponse>(
+      `/models/crd/groups/${encodeURIComponent(group)}/swap-history?namespace=${encodeURIComponent(namespace)}${hours ? `&hours=${hours}` : ''}`
+    ),
 };

@@ -4,6 +4,7 @@ import { healthStore } from '../../stores/health';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
 import { createPolling } from '../../hooks/createPolling';
 import { resolveFreshness } from '../../lib/freshness';
+import GPUGroupTimeline from './GPUGroupTimeline';
 import type { FlexInferModel, FlexInferModelListResponse } from '../../lib/types';
 
 type Section = 'serverless' | 'gpu' | 'cache' | 'kvcache';
@@ -246,102 +247,118 @@ const GPUGroupsSection: Component<{
   isAdmin: boolean;
   onPatch: (ns: string, name: string, patch: Record<string, unknown>) => Promise<void>;
   patchLoading: string | null;
-}> = (props) => (
-  <div class="space-y-4">
-    <For each={Object.entries(props.groups)}>
-      {([groupName, models]) => (
-        <div class="glass-panel overflow-hidden">
-          <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-            <span class="rounded-full bg-neon-purple/20 px-2.5 py-0.5 text-xs font-medium text-neon-purple">{groupName}</span>
-            <span class="text-xs text-text-dim">{models.length} model{models.length > 1 ? 's' : ''}</span>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-xs">
-              <thead>
-                <tr class="border-b border-white/5 text-left text-text-dim">
-                  <th class="px-4 py-2 font-medium">Model</th>
-                  <th class="px-4 py-2 font-medium">Priority</th>
-                  <th class="px-4 py-2 font-medium">Phase</th>
-                  <th class="px-4 py-2 font-medium">State</th>
-                  <th class="px-4 py-2 font-medium">Queue Pos</th>
-                  <th class="px-4 py-2 font-medium">Preempted By</th>
-                  <th class="px-4 py-2 font-medium">Preempted At</th>
-                  <Show when={props.isAdmin}><th class="px-4 py-2 font-medium">Actions</th></Show>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={models}>
-                  {(model) => {
-                    const sg = () => model.status?.sharedGroup;
-                    const busy = () => props.patchLoading === `${model.namespace}/${model.name}`;
+}> = (props) => {
+  const [showTimeline, setShowTimeline] = createSignal<string | null>(null);
+  const toggleTimeline = (group: string) => setShowTimeline((prev) => (prev === group ? null : group));
 
-                    return (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
-                        <td class="px-4 py-2 font-mono text-text-main">{model.name}</td>
-                        <td class="px-4 py-2 font-mono text-text-muted">{model.spec.gpu?.priority ?? '-'}</td>
-                        <td class="px-4 py-2">
-                          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${phaseClasses(model.status?.phase)}`}>
-                            {model.status?.phase || 'Unknown'}
-                          </span>
-                        </td>
-                        <td class="px-4 py-2">
-                          <span class={`font-medium ${
-                            sg()?.state === 'Active' ? 'text-status-ok' :
-                            sg()?.state === 'Queued' ? 'text-status-warn' : 'text-neon-purple'
-                          }`}>{sg()?.state || '-'}</span>
-                        </td>
-                        <td class="px-4 py-2 font-mono text-text-muted">{sg()?.queuePosition ?? '-'}</td>
-                        <td class="px-4 py-2 font-mono text-status-error">{sg()?.preemptedBy || '-'}</td>
-                        <td class="px-4 py-2 text-[10px] font-mono text-text-dim">{sg()?.preemptedAt ? formatTimestamp(sg()!.preemptedAt) : '-'}</td>
-                        <Show when={props.isAdmin}>
+  return (
+    <div class="space-y-4">
+      <For each={Object.entries(props.groups)}>
+        {([groupName, models]) => (
+          <div class="glass-panel overflow-hidden">
+            <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+              <span class="rounded-full bg-neon-purple/20 px-2.5 py-0.5 text-xs font-medium text-neon-purple">{groupName}</span>
+              <span class="text-xs text-text-dim">{models.length} model{models.length > 1 ? 's' : ''}</span>
+              <div class="ml-auto">
+                <button
+                  class="rounded bg-white/10 px-2 py-1 text-[10px] text-text-muted hover:bg-white/20 transition-colors"
+                  onClick={() => toggleTimeline(groupName)}
+                >
+                  {showTimeline() === groupName ? 'Hide Timeline' : 'Swap History'}
+                </button>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="border-b border-white/5 text-left text-text-dim">
+                    <th class="px-4 py-2 font-medium">Model</th>
+                    <th class="px-4 py-2 font-medium">Priority</th>
+                    <th class="px-4 py-2 font-medium">Phase</th>
+                    <th class="px-4 py-2 font-medium">State</th>
+                    <th class="px-4 py-2 font-medium">Queue Pos</th>
+                    <th class="px-4 py-2 font-medium">Preempted By</th>
+                    <th class="px-4 py-2 font-medium">Preempted At</th>
+                    <Show when={props.isAdmin}><th class="px-4 py-2 font-medium">Actions</th></Show>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={models}>
+                    {(model) => {
+                      const sg = () => model.status?.sharedGroup;
+                      const busy = () => props.patchLoading === `${model.namespace}/${model.name}`;
+
+                      return (
+                        <tr class="border-b border-white/5 hover:bg-white/5">
+                          <td class="px-4 py-2 font-mono text-text-main">{model.name}</td>
+                          <td class="px-4 py-2 font-mono text-text-muted">{model.spec.gpu?.priority ?? '-'}</td>
                           <td class="px-4 py-2">
-                            <div class="flex gap-1">
-                              <button
-                                disabled={busy()}
-                                class="rounded bg-white/10 px-2 py-1 text-[10px] text-text-muted hover:bg-white/20 disabled:opacity-50"
-                                onClick={() => {
-                                  const current = model.spec.gpu?.priority ?? 50;
-                                  const input = prompt('Set priority (0=highest):', String(current));
-                                  if (input != null) {
-                                    const p = parseInt(input, 10);
-                                    if (!isNaN(p)) props.onPatch(model.namespace, model.name, { gpu: { ...model.spec.gpu, priority: p } });
-                                  }
-                                }}
-                              >
-                                {busy() ? '...' : 'Priority'}
-                              </button>
-                            </div>
+                            <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${phaseClasses(model.status?.phase)}`}>
+                              {model.status?.phase || 'Unknown'}
+                            </span>
                           </td>
-                        </Show>
-                      </tr>
-                    );
-                  }}
-                </For>
-              </tbody>
-            </table>
+                          <td class="px-4 py-2">
+                            <span class={`font-medium ${
+                              sg()?.state === 'Active' ? 'text-status-ok' :
+                              sg()?.state === 'Queued' ? 'text-status-warn' : 'text-neon-purple'
+                            }`}>{sg()?.state || '-'}</span>
+                          </td>
+                          <td class="px-4 py-2 font-mono text-text-muted">{sg()?.queuePosition ?? '-'}</td>
+                          <td class="px-4 py-2 font-mono text-status-error">{sg()?.preemptedBy || '-'}</td>
+                          <td class="px-4 py-2 text-[10px] font-mono text-text-dim">{sg()?.preemptedAt ? formatTimestamp(sg()!.preemptedAt) : '-'}</td>
+                          <Show when={props.isAdmin}>
+                            <td class="px-4 py-2">
+                              <div class="flex gap-1">
+                                <button
+                                  disabled={busy()}
+                                  class="rounded bg-white/10 px-2 py-1 text-[10px] text-text-muted hover:bg-white/20 disabled:opacity-50"
+                                  onClick={() => {
+                                    const current = model.spec.gpu?.priority ?? 50;
+                                    const input = prompt('Set priority (0=highest):', String(current));
+                                    if (input != null) {
+                                      const p = parseInt(input, 10);
+                                      if (!isNaN(p)) props.onPatch(model.namespace, model.name, { gpu: { ...model.spec.gpu, priority: p } });
+                                    }
+                                  }}
+                                >
+                                  {busy() ? '...' : 'Priority'}
+                                </button>
+                              </div>
+                            </td>
+                          </Show>
+                        </tr>
+                      );
+                    }}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+            <Show when={showTimeline() === groupName}>
+              <GPUGroupTimeline group={groupName} namespace={models[0]?.namespace || 'ai'} />
+            </Show>
+          </div>
+        )}
+      </For>
+
+      <Show when={props.ungrouped.length > 0}>
+        <div class="glass-panel p-4">
+          <h4 class="mb-2 text-xs font-medium text-text-dim uppercase tracking-wider">Ungrouped Models</h4>
+          <div class="flex flex-wrap gap-2">
+            <For each={props.ungrouped}>
+              {(m) => (
+                <span class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-text-muted font-mono">{m.name}</span>
+              )}
+            </For>
           </div>
         </div>
-      )}
-    </For>
+      </Show>
 
-    <Show when={props.ungrouped.length > 0}>
-      <div class="glass-panel p-4">
-        <h4 class="mb-2 text-xs font-medium text-text-dim uppercase tracking-wider">Ungrouped Models</h4>
-        <div class="flex flex-wrap gap-2">
-          <For each={props.ungrouped}>
-            {(m) => (
-              <span class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-text-muted font-mono">{m.name}</span>
-            )}
-          </For>
-        </div>
-      </div>
-    </Show>
-
-    <Show when={Object.keys(props.groups).length === 0 && props.ungrouped.length === 0}>
-      <div class="glass-panel p-6 text-center text-sm text-text-dim">No GPU group configuration found</div>
-    </Show>
-  </div>
-);
+      <Show when={Object.keys(props.groups).length === 0 && props.ungrouped.length === 0}>
+        <div class="glass-panel p-6 text-center text-sm text-text-dim">No GPU group configuration found</div>
+      </Show>
+    </div>
+  );
+};
 
 // ─── Cache Section ───
 
