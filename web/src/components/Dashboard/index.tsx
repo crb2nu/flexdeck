@@ -267,7 +267,7 @@ const Dashboard: Component = () => {
         {/* Controls */}
         <div class="absolute left-2 right-2 top-2 z-10 flex flex-col items-end gap-2 sm:left-auto sm:right-4 sm:top-4 sm:flex-row sm:items-center">
            {/* Connection status indicator */}
-           <div class="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur sm:px-3">
+           <div class="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-[#0a1020]/85 px-2.5 py-1 sm:px-3">
              <div class={`w-2 h-2 rounded-full ${
                connectionStatus() === 'connected' ? 'bg-neon-green animate-pulse' :
                connectionStatus() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
@@ -285,7 +285,7 @@ const Dashboard: Component = () => {
            <Show when={viewMode() === '3d'}>
              <button
                onClick={() => setShowFilters(!showFilters())}
-               class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors backdrop-blur ${
+               class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors ${
                  hasActiveFilter()
                    ? 'bg-neon-purple/20 border-neon-purple/50 text-neon-purple'
                    : showFilters()
@@ -311,7 +311,7 @@ const Dashboard: Component = () => {
         {/* Mobile Observability Toggle */}
         <button
           onClick={() => setShowObservability(true)}
-          class="lg:hidden absolute left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-neon-purple/20 border border-neon-purple/40 text-neon-purple backdrop-blur-md shadow-lg shadow-neon-purple/20 animate-pulse-glow"
+          class="lg:hidden absolute left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-[#0a1020]/85 border border-neon-purple/40 text-neon-purple shadow-lg shadow-neon-purple/20 animate-pulse-glow"
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <span class="text-lg">◈</span>
@@ -320,7 +320,7 @@ const Dashboard: Component = () => {
 
         {/* Filter Panel */}
         <Show when={viewMode() === '3d' && showFilters()}>
-          <div class="absolute left-2 right-2 top-[92px] sm:left-4 sm:right-auto sm:top-4 z-10 rounded-lg border border-white/10 bg-black/60 p-3 backdrop-blur min-w-0 sm:min-w-[240px] sm:w-auto">
+          <div class="absolute left-2 right-2 top-[92px] sm:left-4 sm:right-auto sm:top-4 z-10 rounded-lg border border-white/10 bg-[#0a1020]/90 p-3 min-w-0 sm:min-w-[240px] sm:w-auto">
             <div class="flex items-center justify-between mb-3">
               <span class="text-xs font-mono text-text-main uppercase tracking-wider">Filters</span>
               <Show when={hasActiveFilter()}>

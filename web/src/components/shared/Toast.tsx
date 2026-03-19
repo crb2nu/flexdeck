@@ -52,7 +52,7 @@ const Toast: Component<ToastProps> = (props) => {
 
   return (
     <div
-      class={`flex items-center gap-3 px-4 py-3 rounded-lg border backdrop-blur-md shadow-lg transition-all duration-200 ${style.bg} ${style.border} ${
+      class={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg transition-all duration-200 ${style.bg} ${style.border} ${
         exiting() ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
       }`}
       style={{

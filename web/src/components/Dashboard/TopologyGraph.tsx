@@ -2281,7 +2281,7 @@ const TopologyGraph: Component<Props> = (props) => {
         />
         
         {/* Stats Overlay */}
-        <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-surface/60 px-3 py-1.5 text-xs backdrop-blur pointer-events-none border border-white/5">
+        <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-[#0a1020]/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
             <span class="text-text-dim">Nodes:</span>
             <span class="font-mono text-neon-cyan">{liveTopologyStats().nodes || nodeCount()}</span>
             <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
@@ -2312,7 +2312,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
         <Show when={perfSnapshot()}>
           {(snapshot) => (
-            <div class="absolute right-4 bottom-4 rounded-md border border-amber-300/40 bg-black/70 p-3 text-[10px] font-mono text-amber-100 backdrop-blur pointer-events-none">
+            <div class="absolute right-4 bottom-4 rounded-md border border-amber-300/40 bg-black/90 p-3 text-[10px] font-mono text-amber-100 pointer-events-none">
               <div class="mb-1 text-amber-300 uppercase tracking-wider">Perf HUD</div>
               <div>fps {snapshot().fps.toFixed(1)} | avg {snapshot().avgFrameMs.toFixed(2)}ms | p95 {snapshot().p95FrameMs.toFixed(2)}ms</div>
               <div>max {snapshot().maxFrameMs.toFixed(2)}ms | nodes {snapshot().nodes} | links {snapshot().links}</div>
@@ -2329,7 +2329,7 @@ const TopologyGraph: Component<Props> = (props) => {
         </Show>
 
         {/* Legend */}
-        <div class="absolute bottom-4 left-4 rounded-lg bg-surface/70 p-3 text-xs backdrop-blur-md border border-white/5 pointer-events-none">
+        <div class="absolute bottom-4 left-4 rounded-lg bg-[#0a1020]/90 p-3 text-xs border border-white/5 pointer-events-none">
             <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
             <div class="flex flex-col gap-2">
                 <div class="flex items-center gap-2">
@@ -2360,7 +2360,7 @@ const TopologyGraph: Component<Props> = (props) => {
         {/* Selected Node Info */}
         <Show when={selectedNode()}>
             {(node) => (
-                <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-surface/80 p-4 backdrop-blur-md border border-white/10 shadow-xl z-10 transition-all duration-200">
+                <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-[#0a1020]/95 p-4 border border-white/10 shadow-xl z-10 transition-all duration-200">
                     <div class="mb-3 flex items-center gap-3">
                         <div class={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
                             node().type === 'node' ? 'border-neon-cyan bg-neon-cyan/20' :

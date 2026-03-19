@@ -74,7 +74,7 @@ const ComingSoon: Component = () => {
     <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
       <canvas ref={canvasRef} class="absolute inset-0 z-0 opacity-30" />
       
-      <div class="glass-panel relative z-10 flex h-full items-center justify-center bg-transparent backdrop-blur-sm">
+      <div class="glass-panel relative z-10 flex h-full items-center justify-center bg-transparent">
         <div class="text-center p-12 border border-neon-cyan/20 bg-[#050a14]/80 rounded-2xl shadow-[0_0_50px_rgba(0,217,255,0.1)]">
           <div class="mb-6 flex justify-center">
              <div class="relative h-20 w-20 flex items-center justify-center rounded-full border-2 border-neon-cyan/50 bg-neon-cyan/10 animate-pulse">

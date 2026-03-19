@@ -109,7 +109,7 @@ const SystemCore: Component = () => {
 
       {/* Hover Tooltip — real health breakdown */}
       <div class="absolute right-full top-1/2 -translate-y-1/2 mr-4 hidden w-56 group-hover:block animate-fade-in-scale">
-        <div class="bg-[#050a14]/90 border border-neon-cyan/30 rounded-lg p-3 backdrop-blur-md shadow-[0_0_20px_rgba(0,217,255,0.1)]">
+        <div class="bg-[#050a14]/90 border border-neon-cyan/30 rounded-lg p-3 shadow-[0_0_20px_rgba(0,217,255,0.1)]">
           <div class="text-[10px] text-neon-cyan/50 tracking-widest mb-1">SYSTEM STATUS</div>
           <div class={`text-xs font-mono mb-2 ${coreColor()}`}>{statusLabel()}</div>
 

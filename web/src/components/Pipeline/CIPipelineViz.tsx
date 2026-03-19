@@ -1139,7 +1139,7 @@ const CIPipelineViz: Component<{
       </div>
 
       {/* Footer stats */}
-      <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/5 bg-black/30 backdrop-blur-sm">
+      <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/5 bg-black/85">
         <div class="flex justify-around text-center">
           <div>
             <div class="text-2xl font-bold text-neon-cyan font-mono">

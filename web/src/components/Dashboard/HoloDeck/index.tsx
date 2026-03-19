@@ -537,7 +537,7 @@ const HoloDeck: Component<Props> = (props) => {
                 <div class="absolute pointer-events-none z-20" style={{ left: `${info().x}px`, top: `${info().y}px` }}>
                     <div class="relative ml-4 mt-4">
                         <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-neon-cyan/50" />
-                        <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs backdrop-blur-md shadow-[0_0_15px_rgba(0,240,255,0.2)] min-w-[140px]">
+                        <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs shadow-[0_0_15px_rgba(0,240,255,0.2)] min-w-[140px]">
                             <div class="flex items-center gap-2 mb-1 border-b border-white/10 pb-1">
                                 <div class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
                                 <div class="font-bold text-neon-cyan uppercase tracking-wider">{info().type}</div>
@@ -563,7 +563,7 @@ const HoloDeck: Component<Props> = (props) => {
         </Show>
 
         <div class="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
-            <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/50 px-5 py-4 backdrop-blur-md shadow-[0_0_25px_rgba(0,240,255,0.18)]">
+            <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/85 px-5 py-4 shadow-[0_0_25px_rgba(0,240,255,0.18)]">
                 <div class="text-[9px] uppercase tracking-[0.4em] text-neon-cyan/70">Cluster Core</div>
                 <div class="flex items-end gap-2">
                     <span class={`text-3xl font-semibold ${healthState() === 'healthy' ? 'text-status-ok' : (healthState() === 'warning' ? 'text-status-warn' : 'text-status-error')}`}>{formatPercent(clusterHealth().healthPercent * 100, 0)}</span>
@@ -579,7 +579,7 @@ const HoloDeck: Component<Props> = (props) => {
 
         <Show when={perfEnabled() && perfSnapshot()}>
             {snapshot => (
-                <div class="absolute right-4 top-4 z-10 rounded-md border border-amber-300/40 bg-black/70 p-3 text-[10px] font-mono text-amber-100 backdrop-blur pointer-events-none">
+                <div class="absolute right-4 top-4 z-10 rounded-md border border-amber-300/40 bg-black/90 p-3 text-[10px] font-mono text-amber-100 pointer-events-none">
                     <div class="mb-1 text-amber-300 uppercase tracking-wider">Holo Perf</div>
                     <div>scene {snapshot().sceneBuildMs.toFixed(1)}ms | filter {snapshot().filterApplyMs.toFixed(2)}ms | visible {snapshot().filterMatchCount}</div>
                     <div>objects n{snapshot().renderedNodes} p{snapshot().renderedPods} s{snapshot().renderedServices} | curves {snapshot().podCurves + snapshot().serviceCurves}</div>

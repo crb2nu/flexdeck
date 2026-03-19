@@ -353,7 +353,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       />
 
       {/* Stats overlay */}
-      <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-surface/60 px-3 py-1.5 text-xs backdrop-blur pointer-events-none border border-white/5">
+      <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-[#0a1020]/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
         <span class="text-text-dim">Agents:</span>
         <span class="font-mono text-neon-cyan">{props.nodes.length}</span>
         <span class="text-text-dim ml-2">Edges:</span>
@@ -361,7 +361,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       </div>
 
       {/* Legend */}
-      <div class="absolute bottom-4 left-4 rounded-lg bg-surface/70 p-3 text-xs backdrop-blur-md border border-white/5 pointer-events-none">
+      <div class="absolute bottom-4 left-4 rounded-lg bg-[#0a1020]/90 p-3 text-xs border border-white/5 pointer-events-none">
         <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
@@ -390,7 +390,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       <Show when={hoverNode()}>
         {(node) => (
           <div
-            class="absolute z-50 rounded-lg bg-surface/90 p-3 text-xs backdrop-blur-md border border-white/10 shadow-xl pointer-events-none"
+            class="absolute z-50 rounded-lg bg-[#0a1020]/95 p-3 text-xs border border-white/10 shadow-xl pointer-events-none"
             style={{
               left: `${Math.min(tooltipPos().x, dimensions().width - 200)}px`,
               top: `${Math.max(tooltipPos().y - 80, 8)}px`,
