@@ -6,7 +6,8 @@ import type {
   ModelCache,
   ModelCacheListResponse,
   ModelCatalogEntry,
-  ModelEvent
+  ModelEvent,
+  SwapHistoryResponse,
 } from "../types";
 
 export const modelsApi = {
@@ -77,6 +78,10 @@ export const modelsApi = {
   crdEvents: (ns: string, name: string) =>
     api<{ events: ModelEvent[]; model: string; namespace: string }>(
       `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/events`
+    ),
+  swapHistory: (ns: string, name: string, hours?: number) =>
+    api<SwapHistoryResponse>(
+      `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/swap-history${hours ? `?hours=${hours}` : ''}`
     ),
   crdInference: (ns: string, name: string) =>
     api<InferenceMetrics>(
