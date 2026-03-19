@@ -325,7 +325,9 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/crd", h.ModelsCRD)               // Query flexinfer.ai/v1alpha2 Model CRDs directly
 		r.Get("/crd/watch-sse", h.ModelsCRDWatchSSE)
 		r.Get("/crd/{namespace}/{name}/events", h.ModelsCRDEvents)
+		r.Get("/crd/{namespace}/{name}/swap-history", h.ModelSwapHistory)
 		r.Get("/crd/{namespace}/{name}/inference", h.ModelsInferenceMetrics)
+		r.Get("/crd/groups/{group}/swap-history", h.GroupSwapHistory)
 		r.Get("/lora/{namespace}/{name}", h.ModelsLoRA)
 		r.Get("/catalogs", h.ModelsCatalog)
 		r.Get("/cache", h.ModelCacheList)

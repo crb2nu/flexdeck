@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flexinfer/flexdeck/internal/k8s"
+	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
 )
 
@@ -991,6 +992,91 @@ func (h *Handler) ModelsCRDEvents(w http.ResponseWriter, r *http.Request) {
 		"model":     name,
 		"namespace": namespace,
 	})
+}
+
+// ModelSwapHistory returns swap history for a specific model.
+// GET /models/crd/{namespace}/{name}/swap-history?hours=24
+func (h *Handler) ModelSwapHistory(w http.ResponseWriter, r *http.Request) {
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "metrics store unavailable",
+		})
+		return
+	}
+
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	hours := parseHoursParam(r, 24, 168)
+
+	events, err := h.metricsStore.GetModelSwapHistory(r.Context(), namespace, name, hours)
+	if err != nil {
+		slog.Error("ModelSwapHistory: failed", "error", err, "model", name)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("failed to get swap history: %v", err),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"events":    events,
+		"model":     name,
+		"namespace": namespace,
+	})
+}
+
+// GroupSwapHistory returns swap history for a GPU sharing group.
+// GET /models/crd/groups/{group}/swap-history?hours=24&namespace=ai
+func (h *Handler) GroupSwapHistory(w http.ResponseWriter, r *http.Request) {
+	if h.metricsStore == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": "metrics store unavailable",
+		})
+		return
+	}
+
+	group := chi.URLParam(r, "group")
+	namespace := r.URL.Query().Get("namespace")
+	hours := parseHoursParam(r, 24, 168)
+
+	events, err := h.metricsStore.GetGroupSwapHistory(r.Context(), group, namespace, hours)
+	if err != nil {
+		slog.Error("GroupSwapHistory: failed", "error", err, "group", group)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("failed to get group swap history: %v", err),
+		})
+		return
+	}
+
+	summary := metrics.ComputeGroupSummary(events)
+
+	// Collect unique model names
+	modelSet := make(map[string]struct{})
+	for _, e := range events {
+		modelSet[e.Model] = struct{}{}
+	}
+	modelNames := make([]string, 0, len(modelSet))
+	for m := range modelSet {
+		modelNames = append(modelNames, m)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"events":  events,
+		"group":   group,
+		"models":  modelNames,
+		"summary": summary,
+	})
+}
+
+// parseHoursParam extracts the "hours" query parameter, clamping between 1 and maxHours.
+func parseHoursParam(r *http.Request, defaultHours, maxHours int) int {
+	hours, _ := strconv.Atoi(r.URL.Query().Get("hours"))
+	if hours <= 0 {
+		hours = defaultHours
+	}
+	if hours > maxHours {
+		hours = maxHours
+	}
+	return hours
 }
 
 // ModelsCRD queries flexinfer.ai/v1alpha2 Model CRDs directly from K8s.
