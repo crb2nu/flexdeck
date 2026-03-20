@@ -11,22 +11,26 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/litellm"
 )
 
 const (
-	throughputSummaryKey     = "litellm:summary:throughput"
-	throughputSummaryTTL     = 5 * time.Minute
-	dashboardSummaryKey      = "dashboard:summary:resources"
-	dashboardSummaryTTL      = 30 * time.Second
-	dashboardSummaryMaxStale = 45 * time.Second
+	throughputSummaryKey       = "litellm:summary:throughput"
+	throughputSummaryTTL       = 5 * time.Minute
+	dashboardSummaryKey        = "dashboard:summary:resources"
+	dashboardSummaryTTL        = 30 * time.Second
+	dashboardSummaryMaxStale   = 45 * time.Second
+	dashboardSummaryServeStale = 5 * time.Minute
+	dashboardRefreshTimeout    = 3 * time.Second
 )
 
 // Store manages metrics storage in Redis
 type Store struct {
-	redis *redis.Client
+	redis   *redis.Client
+	refresh singleflight.Group
 }
 
 // MetricPoint represents a single metric sample
@@ -143,7 +147,18 @@ func (s *Store) GetThroughput(ctx context.Context) ([]ModelThroughput, error) {
 			return results, nil
 		}
 	}
-	return s.computeThroughput(ctx)
+
+	data, err = s.refreshThroughputSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []ModelThroughput
+	if err := json.Unmarshal(data, &results); err != nil {
+		return nil, fmt.Errorf("throughput summary unmarshal: %w", err)
+	}
+
+	return results, nil
 }
 
 // computeThroughput scans all model sorted sets and calculates throughput.
@@ -200,15 +215,9 @@ func (s *Store) MaterializeThroughput(ctx context.Context) {
 
 // materializeThroughput computes and stores the throughput summary in Redis.
 func (s *Store) materializeThroughput(ctx context.Context) {
-	results, err := s.computeThroughput(ctx)
-	if err != nil {
-		return
+	if _, err := s.refreshThroughputSummary(ctx); err != nil {
+		slog.Warn("failed to materialize throughput summary", "error", err)
 	}
-	data, err := json.Marshal(results)
-	if err != nil {
-		return
-	}
-	s.redis.Set(ctx, throughputSummaryKey, data, throughputSummaryTTL)
 }
 
 // GetModelThroughput returns throughput for a specific model
@@ -470,6 +479,7 @@ func (s *Store) computeDashboardSummary(ctx context.Context, promURL string) (*D
 	results := make(map[string][]promSample, len(dashboardQueries))
 	ch := make(chan queryResult, len(dashboardQueries))
 	var wg sync.WaitGroup
+	successfulQueries := 0
 
 	for name, query := range dashboardQueries {
 		wg.Add(1)
@@ -488,7 +498,16 @@ func (s *Store) computeDashboardSummary(ctx context.Context, promURL string) (*D
 			slog.Warn("dashboard summary query failed", "query", qr.name, "error", qr.err)
 			continue
 		}
+		successfulQueries++
 		results[qr.name] = qr.samples
+	}
+
+	if successfulQueries == 0 {
+		return nil, fmt.Errorf("dashboard summary refresh failed: no Prometheus queries succeeded")
+	}
+
+	if len(results["clusterCpu"]) == 0 && len(results["clusterMemUsed"]) == 0 && len(results["clusterMemTotal"]) == 0 {
+		return nil, fmt.Errorf("dashboard summary refresh failed: missing core cluster metrics")
 	}
 
 	summary := &DashboardSummary{UpdatedAt: time.Now()}
@@ -563,34 +582,123 @@ func (s *Store) computeDashboardSummary(ctx context.Context, promURL string) (*D
 
 // MaterializeDashboardSummary computes and stores the dashboard summary in Redis.
 func (s *Store) MaterializeDashboardSummary(ctx context.Context, promURL string) {
-	summary, err := s.computeDashboardSummary(ctx, promURL)
-	if err != nil {
+	if _, err := s.refreshDashboardSummary(ctx, promURL); err != nil {
 		slog.Warn("failed to compute dashboard summary", "error", err)
-		return
 	}
-	data, err := json.Marshal(summary)
-	if err != nil {
-		slog.Warn("failed to marshal dashboard summary", "error", err)
-		return
-	}
-	s.redis.Set(ctx, dashboardSummaryKey, data, dashboardSummaryTTL)
 }
 
 // GetDashboardSummary reads the pre-materialized dashboard summary from Redis.
 // Returns nil if not found or expired beyond the max stale window.
 func (s *Store) GetDashboardSummary(ctx context.Context) (*DashboardSummary, error) {
+	summary, age, err := s.readDashboardSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if age > dashboardSummaryMaxStale {
+		return nil, fmt.Errorf("dashboard summary stale (updated %s ago)", age.Round(time.Second))
+	}
+	return summary, nil
+}
+
+// GetDashboardSummaryWithRefresh prefers a fresh materialized summary, but can
+// rebuild from Prometheus on demand and serve a bounded stale value instead of
+// failing outright when refresh is temporarily unavailable.
+func (s *Store) GetDashboardSummaryWithRefresh(ctx context.Context, promURL string) (*DashboardSummary, error) {
+	summary, age, readErr := s.readDashboardSummary(ctx)
+	if readErr == nil && age <= dashboardSummaryMaxStale {
+		return summary, nil
+	}
+
+	if promURL != "" {
+		refreshCtx, cancel := context.WithTimeout(ctx, dashboardRefreshTimeout)
+		defer cancel()
+
+		if _, refreshErr := s.refreshDashboardSummary(refreshCtx, promURL); refreshErr == nil {
+			return s.GetDashboardSummary(ctx)
+		} else if readErr == nil && age <= dashboardSummaryServeStale {
+			slog.Warn("serving stale dashboard summary after refresh failure", "age", age.Round(time.Second), "error", refreshErr)
+			return summary, nil
+		} else if readErr != nil {
+			return nil, fmt.Errorf("dashboard summary unavailable and refresh failed: %w", refreshErr)
+		}
+	}
+
+	if readErr == nil && age <= dashboardSummaryServeStale {
+		slog.Warn("serving stale dashboard summary without refresh", "age", age.Round(time.Second))
+		return summary, nil
+	}
+
+	if readErr != nil {
+		return nil, readErr
+	}
+
+	return nil, fmt.Errorf("dashboard summary stale (updated %s ago)", age.Round(time.Second))
+}
+
+func (s *Store) readDashboardSummary(ctx context.Context) (*DashboardSummary, time.Duration, error) {
 	data, err := s.redis.Get(ctx, dashboardSummaryKey).Bytes()
 	if err != nil {
-		return nil, fmt.Errorf("dashboard summary not available: %w", err)
+		return nil, 0, fmt.Errorf("dashboard summary not available: %w", err)
 	}
 	var summary DashboardSummary
 	if err := json.Unmarshal(data, &summary); err != nil {
-		return nil, fmt.Errorf("dashboard summary unmarshal: %w", err)
+		return nil, 0, fmt.Errorf("dashboard summary unmarshal: %w", err)
 	}
-	if time.Since(summary.UpdatedAt) > dashboardSummaryMaxStale {
-		return nil, fmt.Errorf("dashboard summary stale (updated %s ago)", time.Since(summary.UpdatedAt).Round(time.Second))
+	return &summary, time.Since(summary.UpdatedAt), nil
+}
+
+func (s *Store) refreshThroughputSummary(ctx context.Context) ([]byte, error) {
+	value, err, _ := s.refresh.Do(throughputSummaryKey, func() (any, error) {
+		results, err := s.computeThroughput(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		data, err := json.Marshal(results)
+		if err != nil {
+			return nil, fmt.Errorf("throughput summary marshal: %w", err)
+		}
+
+		if err := s.redis.Set(ctx, throughputSummaryKey, data, throughputSummaryTTL).Err(); err != nil {
+			return nil, fmt.Errorf("throughput summary store: %w", err)
+		}
+
+		return data, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return &summary, nil
+
+	return value.([]byte), nil
+}
+
+func (s *Store) refreshDashboardSummary(ctx context.Context, promURL string) ([]byte, error) {
+	if promURL == "" {
+		return nil, fmt.Errorf("prometheus URL not configured")
+	}
+
+	value, err, _ := s.refresh.Do(dashboardSummaryKey, func() (any, error) {
+		summary, err := s.computeDashboardSummary(ctx, promURL)
+		if err != nil {
+			return nil, err
+		}
+
+		data, err := json.Marshal(summary)
+		if err != nil {
+			return nil, fmt.Errorf("dashboard summary marshal: %w", err)
+		}
+
+		if err := s.redis.Set(ctx, dashboardSummaryKey, data, dashboardSummaryTTL).Err(); err != nil {
+			return nil, fmt.Errorf("dashboard summary store: %w", err)
+		}
+
+		return data, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return value.([]byte), nil
 }
 
 // --- helpers for Prometheus result parsing ---

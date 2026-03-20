@@ -1960,6 +1960,89 @@ const TopologyGraph: Component<Props> = (props) => {
       }
   };
 
+  const bindCanvasInteractions = (width: number, height: number) => {
+    if (!overlayCanvasRef) return;
+
+    const zoom = d3.zoom<HTMLCanvasElement, unknown>()
+      .scaleExtent([0.1, 8])
+      .on('zoom', (e) => {
+        transform = e.transform;
+        bumpInteraction();
+        if (isSimulationActive) {
+          invalidateViewport();
+        } else {
+          applyBaseCanvasPreview(e.transform);
+          invalidateOverlayLayer();
+          scheduleBaseLayerCommit();
+        }
+        // Restart animation if not running (for pan/zoom after settling)
+        startAnimationLoop();
+      });
+
+    const drag = d3.drag<HTMLCanvasElement, unknown>()
+      .subject((e) => {
+        const node = getKeyUnderMouse(e.sourceEvent);
+        return node ? node : null;
+      })
+      .on('start', (e) => {
+        if (activeSimulationMode === 'worker') {
+          isSimulationActive = true;
+          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.3);
+          invalidateViewport();
+          startAnimationLoop();
+        } else if (!e.active) {
+          simulation?.alphaTarget(0.3).restart();
+          isSimulationActive = true;
+          invalidateViewport();
+          startAnimationLoop();
+        }
+        bumpInteraction();
+        const n = e.subject as D3Node;
+        n.x = e.x;
+        n.y = e.y;
+        n.fx = e.x;
+        n.fy = e.y;
+        postWorkerDrag('start', n, e.x, e.y);
+      })
+      .on('drag', (e) => {
+        bumpInteraction();
+        const n = e.subject as D3Node;
+        n.x = e.x;
+        n.y = e.y;
+        n.fx = e.x;
+        n.fy = e.y;
+        postWorkerDrag('move', n, e.x, e.y);
+        invalidateViewport();
+      })
+      .on('end', (e) => {
+        const n = e.subject as D3Node;
+        if (activeSimulationMode === 'worker') {
+          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.14);
+          postWorkerDrag('end', n);
+        } else if (!e.active) {
+          simulation?.alphaTarget(0);
+        }
+        n.fx = null;
+        n.fy = null;
+        invalidateViewport();
+      });
+
+    const selection = d3.select(overlayCanvasRef);
+    selection.on('.zoom', null);
+    selection.on('.drag', null);
+    selection.call(zoom);
+    selection.call(drag);
+    selection.on('dblclick.zoom', null);
+
+    if (graphNodes.length > 0 && !graphNodes[0].x) {
+      const baseZoom = Math.max(0.3, Math.min(0.8, 50 / (graphNodes.length || 1)));
+      selection.call(
+        zoom.transform,
+        d3.zoomIdentity.translate(width / 2, height / 2).scale(baseZoom).translate(-width / 2, -height / 2),
+      );
+    }
+  };
+
   const initializeSimulation = async () => {
     if (!overlayCanvasRef) return;
     markTopologySyncing();
@@ -2021,6 +2104,7 @@ const TopologyGraph: Component<Props> = (props) => {
       invalidateViewport();
       startAnimationLoop();
       maybeUpdatePerfHud(simulationStartedAt);
+      bindCanvasInteractions(width, height);
       markTopologySynced();
       return;
     }
@@ -2060,87 +2144,8 @@ const TopologyGraph: Component<Props> = (props) => {
     invalidateViewport();
     startAnimationLoop();
     maybeUpdatePerfHud(simulationStartedAt);
+    bindCanvasInteractions(width, height);
     markTopologySynced();
-
-    // Zoom behavior
-    const zoom = d3.zoom<HTMLCanvasElement, unknown>()
-      .scaleExtent([0.1, 8])
-      .on('zoom', (e) => {
-        transform = e.transform;
-        bumpInteraction();
-        if (isSimulationActive) {
-          invalidateViewport();
-        } else {
-          applyBaseCanvasPreview(e.transform);
-          invalidateOverlayLayer();
-          scheduleBaseLayerCommit();
-        }
-        // Restart animation if not running (for pan/zoom after settling)
-        startAnimationLoop();
-      });
-        
-    d3.select(overlayCanvasRef)
-        .call(zoom)
-        .on("dblclick.zoom", null);
-
-    // Initial positioning if not defined
-    if (graphNodes.length > 0 && !graphNodes[0].x) {
-        // Apply initial Zoom Fit
-        const baseZoom = Math.max(0.3, Math.min(0.8, 50 / (graphNodes.length || 1)));
-        d3.select(overlayCanvasRef).call(zoom.transform,
-            d3.zoomIdentity.translate(width/2, height/2).scale(baseZoom).translate(-width/2, -height/2));
-    }
-    
-    // Drag behavior
-    const drag = d3.drag<HTMLCanvasElement, unknown>()
-      .subject((e) => {
-        const node = getKeyUnderMouse(e.sourceEvent);
-        return node ? node : null;
-      })
-      .on('start', (e) => {
-        if (activeSimulationMode === 'worker') {
-          isSimulationActive = true;
-          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.3);
-          invalidateViewport();
-          startAnimationLoop();
-        } else if (!e.active) {
-          simulation?.alphaTarget(0.3).restart();
-          isSimulationActive = true;
-          invalidateViewport();
-          startAnimationLoop();
-        }
-        bumpInteraction();
-        const n = e.subject as D3Node;
-        n.x = e.x;
-        n.y = e.y;
-        n.fx = e.x;
-        n.fy = e.y;
-        postWorkerDrag('start', n, e.x, e.y);
-      })
-      .on('drag', (e) => {
-        bumpInteraction();
-        const n = e.subject as D3Node;
-        n.x = e.x;
-        n.y = e.y;
-        n.fx = e.x;
-        n.fy = e.y;
-        postWorkerDrag('move', n, e.x, e.y);
-        invalidateViewport();
-      })
-      .on('end', (e) => {
-        const n = e.subject as D3Node;
-        if (activeSimulationMode === 'worker') {
-          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.14);
-          postWorkerDrag('end', n);
-        } else if (!e.active) {
-          simulation?.alphaTarget(0);
-        }
-        n.fx = null;
-        n.fy = null;
-        invalidateViewport();
-      });
-
-    d3.select(overlayCanvasRef).call(drag);
   };
 
   const handleResize = () => {

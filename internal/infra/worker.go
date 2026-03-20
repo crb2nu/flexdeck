@@ -29,7 +29,8 @@ const (
 )
 
 // Worker is the InfraCacheWorker — a background goroutine that proactively
-// pre-warms the Redis infra snapshot on a regular schedule.
+// pre-warms the Redis infra snapshot on a regular schedule when cache backing
+// is available. It can still build snapshots in-memory without Redis.
 type Worker struct {
 	k8s   *k8s.Client
 	cache *cache.Cache
@@ -133,6 +134,10 @@ func (w *Worker) assembleSnapshot() InfraSnapshot {
 
 // mergeAndStore assembles all sub-snapshots and writes infra:snapshot to Redis.
 func (w *Worker) mergeAndStore(ctx context.Context) {
+	if w.cache == nil {
+		return
+	}
+
 	w.mu.RLock()
 	snap := w.assembleSnapshot()
 	w.mu.RUnlock()

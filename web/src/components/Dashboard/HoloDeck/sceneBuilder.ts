@@ -32,6 +32,9 @@ export function buildScene(
   if (nodes.length === 0) return { curves, serviceCurves };
 
   const nodeRadius = Math.max(HOLO_THEME.dimensions.nodeRadius, nodes.length * 5);
+  const podResourceID = (pod: K8sPod) => `pod-${pod.metadata.namespace || 'default'}-${pod.metadata.name}`;
+  const serviceResourceID = (service: K8sService) => `service-${service.metadata.namespace || 'default'}-${service.metadata.name}`;
+  const cloneMaterial = <T extends THREE.Material>(material: T): T => material.clone() as T;
 
   // 1. Create Nodes
   nodes.forEach((node, i) => {
@@ -44,13 +47,15 @@ export function buildScene(
     
     const group = new THREE.Group();
     group.position.set(x, 0, z);
-    group.userData = { type: 'node', label: node.metadata.name };
+    const nodeID = `node-${node.metadata.name}`;
+    group.userData = { type: 'node', label: node.metadata.name, resourceId: nodeID };
 
     const baseHelper = new THREE.Mesh(sharedGeoms.nodeBase, sharedMats.nodeBase);
     group.add(baseHelper);
 
     const towerH = 6;
-    const tower = new THREE.Mesh(sharedGeoms.nodeTower, sharedMats.nodeTower);
+    const towerMat = cloneMaterial(sharedMats.nodeTower as THREE.MeshStandardMaterial);
+    const tower = new THREE.Mesh(sharedGeoms.nodeTower, towerMat);
     tower.position.y = towerH / 2 + 0.25;
 
     const edges = new THREE.LineSegments(sharedGeoms.nodeEdges, getEdgeMat(ctx, colorHex));
@@ -60,7 +65,8 @@ export function buildScene(
     tower.add(core);
     group.add(tower);
 
-    const scanner = new THREE.Mesh(sharedGeoms.nodeScanner, getScannerMat(ctx, colorHex));
+    const scannerMat = cloneMaterial(getScannerMat(ctx, colorHex));
+    const scanner = new THREE.Mesh(sharedGeoms.nodeScanner, scannerMat);
     scanner.position.y = 0.3;
     group.add(scanner);
 
@@ -84,22 +90,19 @@ export function buildScene(
     group.userData.memRingRef = memRingProgress;
     group.userData.nodeName = node.metadata.name;
 
-    const scannerMat = scanner.material as THREE.MeshBasicMaterial;
-    const towerMat = tower.material as THREE.MeshStandardMaterial;
     scannerMat.userData.originalOpacity = scannerMat.opacity;
     towerMat.userData.originalOpacity = towerMat.opacity;
     group.userData.filterableMaterials = [scannerMat, towerMat];
 
     dataGroup.add(group);
-    const nodeId = `node-${node.metadata.name}`;
-    objectMap.set(nodeId, group);
-    dataMap.set(nodeId, node);
+    objectMap.set(nodeID, group);
+    dataMap.set(nodeID, node);
   });
 
   // 2. Create Pods
   const podsByNamespace = new Map<string, K8sPod[]>();
   const podLabelSetsByNamespace = new Map<string, Array<Record<string, string> | undefined>>();
-  const podObjectsByName = new Map<string, THREE.Object3D>();
+  const podObjectsByID = new Map<string, THREE.Object3D>();
   const podLinePointsByColor = new Map<number, THREE.Vector3[]>();
   const POINTS_PER_POD_CURVE = 16;
 
@@ -116,11 +119,11 @@ export function buildScene(
     const assignedNodeObj = objectMap.get(`node-${assignedNodeName}`);
 
     const angle = (i * 137.5) * (Math.PI / 180);
-    let px = 0, pz = 0, py = 4 + Math.random() * 4;
+    let px = 0, pz = 0, py = 4 + (i % 5) * 0.7;
 
     if (assignedNodeObj) {
       const dist = 3 + (i % 6) * 1.5;
-      const offsetAngle = angle + (Math.random() * 0.5);
+      const offsetAngle = angle + ((i % 7) * 0.08);
       px = assignedNodeObj.position.x + Math.cos(offsetAngle) * dist;
       pz = assignedNodeObj.position.z + Math.sin(offsetAngle) * dist;
     } else {
@@ -131,23 +134,24 @@ export function buildScene(
     const status = pod.status.phase;
     const pColor = status === 'Running' ? HOLO_THEME.colors.pod.running : (status === 'Pending' ? HOLO_THEME.colors.pod.pending : HOLO_THEME.colors.pod.error);
 
-    const podMat = getPodMat(ctx, pColor);
+    const podMat = cloneMaterial(getPodMat(ctx, pColor));
     const mesh = new THREE.Mesh(sharedGeoms.pod, podMat);
     mesh.position.set(px, py, pz);
 
+    const podID = podResourceID(pod);
     podMat.userData.originalOpacity = podMat.opacity ?? 1;
     mesh.userData = {
       type: 'pod',
       label: pod.metadata.name,
+      resourceId: podID,
       initialY: py,
       filterableMaterials: [podMat]
     };
 
     dataGroup.add(mesh);
-    const podId = `pod-${pod.metadata.name}`;
-    objectMap.set(podId, mesh);
-    podObjectsByName.set(pod.metadata.name, mesh);
-    dataMap.set(podId, pod);
+    objectMap.set(podID, mesh);
+    podObjectsByID.set(podID, mesh);
+    dataMap.set(podID, pod);
 
     if (assignedNodeObj) {
       const start = new THREE.Vector3(px, py, pz);
@@ -188,19 +192,31 @@ export function buildScene(
     const z = Math.sin(angle) * serviceRadius;
     const sy = 8 + (i % 3) * 2;
 
-    const hexMesh = new THREE.Mesh(sharedGeoms.hex, sharedMats.hex);
-    hexMesh.add(new THREE.LineSegments(sharedGeoms.hexEdges, sharedMats.hexEdges));
-    const glowRing = new THREE.Mesh(sharedGeoms.glowRing, sharedMats.glowRing);
+    const hexMat = cloneMaterial(sharedMats.hex as THREE.MeshStandardMaterial);
+    const hexEdgeMat = cloneMaterial(sharedMats.hexEdges as THREE.LineBasicMaterial);
+    const glowRingMat = cloneMaterial(sharedMats.glowRing as THREE.MeshBasicMaterial);
+    const hexMesh = new THREE.Mesh(sharedGeoms.hex, hexMat);
+    hexMesh.add(new THREE.LineSegments(sharedGeoms.hexEdges, hexEdgeMat));
+    const glowRing = new THREE.Mesh(sharedGeoms.glowRing, glowRingMat);
     glowRing.position.y = 1.5 + 0.1;
     hexMesh.add(glowRing);
 
+    const serviceID = serviceResourceID(svc);
     hexMesh.position.set(x, sy, z);
-    hexMesh.userData = { type: 'service', label: svc.metadata.name, initialY: sy };
+    hexMat.userData.originalOpacity = hexMat.opacity ?? 1;
+    hexEdgeMat.userData.originalOpacity = hexEdgeMat.opacity ?? 1;
+    glowRingMat.userData.originalOpacity = glowRingMat.opacity ?? 1;
+    hexMesh.userData = {
+      type: 'service',
+      label: svc.metadata.name,
+      resourceId: serviceID,
+      initialY: sy,
+      filterableMaterials: [hexMat, hexEdgeMat, glowRingMat],
+    };
 
     dataGroup.add(hexMesh);
-    const svcId = `service-${svc.metadata.name}`;
-    objectMap.set(svcId, hexMesh);
-    dataMap.set(svcId, svc);
+    objectMap.set(serviceID, hexMesh);
+    dataMap.set(serviceID, svc);
 
     const matchingPodIds: string[] = [];
     const svcPos = new THREE.Vector3(x, sy, z);
@@ -212,10 +228,11 @@ export function buildScene(
     matchingIndexes.forEach((podIndex) => {
       const pod = namespacePods[podIndex];
       if (!pod) return;
-      const podObj = podObjectsByName.get(pod.metadata.name);
+      const podID = podResourceID(pod);
+      const podObj = podObjectsByID.get(podID);
       if (podObj) {
         const dist = svcPos.distanceTo(podObj.position);
-        podCandidates.push({ podId: `pod-${pod.metadata.name}`, dist, obj: podObj });
+        podCandidates.push({ podId: podID, dist, obj: podObj });
       }
     });
 
@@ -229,7 +246,7 @@ export function buildScene(
       serviceCurves.push(new THREE.QuadraticBezierCurve3(svcPos, mid, podPos));
     });
 
-    serviceToPodsMap.set(svcId, matchingPodIds);
+    serviceToPodsMap.set(serviceID, matchingPodIds);
   });
 
   if (serviceCurves.length > 0) {

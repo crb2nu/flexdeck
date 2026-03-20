@@ -219,8 +219,9 @@ func main() {
 		}
 	}
 
-	// Initialize infra cache worker (requires k8s + Redis cache)
-	if k8sClient != nil && sharedCache != nil {
+	// Initialize infra snapshot worker whenever Kubernetes is available.
+	// Redis is optional: the worker can still serve live-built snapshots without cache backing.
+	if k8sClient != nil {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}

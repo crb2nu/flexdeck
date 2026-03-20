@@ -319,6 +319,30 @@ func TestStore_GetDashboardSummary_Stale(t *testing.T) {
 	}
 }
 
+func TestStore_GetDashboardSummaryWithRefresh_ServesStaleOnRefreshFailure(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	summary := DashboardSummary{
+		Cluster:   ClusterResources{CPUPercent: 10},
+		UpdatedAt: time.Now().Add(-2 * time.Minute),
+	}
+	data, _ := json.Marshal(summary)
+	client.Set(ctx, dashboardSummaryKey, data, 5*time.Minute)
+
+	got, err := store.GetDashboardSummaryWithRefresh(ctx, "http://127.0.0.1:1")
+	if err != nil {
+		t.Fatalf("expected stale summary fallback, got error: %v", err)
+	}
+	if got.Cluster.CPUPercent != 10 {
+		t.Fatalf("expected stale cluster cpu 10, got %f", got.Cluster.CPUPercent)
+	}
+}
+
 func TestStore_MaterializeDashboardSummary(t *testing.T) {
 	// Start a mock Prometheus server
 	mux := http.NewServeMux()
@@ -373,6 +397,45 @@ func TestStore_MaterializeDashboardSummary(t *testing.T) {
 }
 
 func float64Ptr(v float64) *float64 { return &v }
+
+func TestStore_GetThroughput_RehydratesSummaryOnMiss(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := &Store{redis: client}
+	ctx := context.Background()
+
+	m1 := litellm.ModelMetrics{
+		Model: "rehydrate", TotalTokens: 500, OutputTokens: 200,
+		InputTokens: 300, RequestCount: 5, TotalLatencyMs: 100,
+	}
+	m2 := litellm.ModelMetrics{
+		Model: "rehydrate", TotalTokens: 1500, OutputTokens: 600,
+		InputTokens: 900, RequestCount: 15, TotalLatencyMs: 200,
+	}
+
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m1}); err != nil {
+		t.Fatalf("StoreMetrics(1) failed: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	if err := store.StoreMetrics(ctx, []litellm.ModelMetrics{m2}); err != nil {
+		t.Fatalf("StoreMetrics(2) failed: %v", err)
+	}
+
+	client.Del(ctx, throughputSummaryKey)
+
+	throughput, err := store.GetThroughput(ctx)
+	if err != nil {
+		t.Fatalf("GetThroughput failed: %v", err)
+	}
+	if len(throughput) != 1 {
+		t.Fatalf("expected 1 throughput entry, got %d", len(throughput))
+	}
+	if client.Exists(ctx, throughputSummaryKey).Val() != 1 {
+		t.Fatal("expected throughput summary key to be re-materialized")
+	}
+}
 
 func TestStore_DirtyProjectsSet(t *testing.T) {
 	mr, _ := miniredis.Run()

@@ -157,11 +157,19 @@ const HoloDeck: Component<Props> = (props) => {
   let lastSceneAccelDelta: FiAccelMetricsDelta = EMPTY_FI_ACCEL_DELTA;
 
   const sceneDataKey = createMemo<string>(() => {
-    const nodeCount = props.nodes.length;
-    const podCount = props.pods.length;
-    const svcCount = props.services.length;
-    const nodeHash = props.nodes.map(n => n.metadata.name).join(',');
-    return `${nodeCount}|${podCount}|${svcCount}|${nodeHash}`;
+    const nodeKey = props.nodes
+      .map((node) => {
+        const ready = node.status.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True') ? '1' : '0';
+        return `${node.metadata.name}:${ready}`;
+      })
+      .join(',');
+    const podKey = props.pods
+      .map((pod) => `${pod.metadata.namespace || 'default'}/${pod.metadata.name}:${pod.spec.nodeName || ''}:${pod.status.phase}`)
+      .join(',');
+    const serviceKey = props.services
+      .map((service) => `${service.metadata.namespace || 'default'}/${service.metadata.name}:${service.spec.type}:${JSON.stringify(service.spec.selector || {})}`)
+      .join(',');
+    return `${nodeKey}|${podKey}|${serviceKey}`;
   });
 
   const clusterHealth = createMemo<ClusterHealthData>(() => computeClusterHealth(props.nodes, props.pods));
@@ -271,9 +279,14 @@ const HoloDeck: Component<Props> = (props) => {
       if (matches) matchCount++;
       const mats = obj.userData.filterableMaterials as THREE.Material[];
       if (mats) {
-        mats.forEach(m => {
-          (m as any).transparent = true;
-          (m as any).opacity = matches ? (m.userData.originalOpacity ?? 1) : 0.15;
+        mats.forEach((material) => {
+          const filterable = material as THREE.Material & {
+            opacity?: number;
+            transparent?: boolean;
+            userData: Record<string, unknown>;
+          };
+          filterable.transparent = true;
+          filterable.opacity = matches ? Number(filterable.userData.originalOpacity ?? 1) : 0.15;
         });
       }
     });
@@ -356,7 +369,8 @@ const HoloDeck: Component<Props> = (props) => {
         let o: any = i.object; while(o && !o.userData?.type) o = o.parent;
         if (o) { hit = o; break; }
       }
-      if (hit && hit.userData.label && (matchesFilterMap.get(hit.userData.type === 'node' ? `node-${hit.userData.label}` : hit.userData.type === 'pod' ? `pod-${hit.userData.label}` : `service-${hit.userData.label}`) ?? true)) {
+      const resourceId = hit?.userData?.resourceId as string | undefined;
+      if (hit && hit.userData.label && (matchesFilterMap.get(resourceId ?? '') ?? true)) {
         containerRef!.style.cursor = 'pointer';
         // Only show hover tooltip for mouse interactions
         if (interactionType() === 'mouse') {
@@ -381,7 +395,8 @@ const HoloDeck: Component<Props> = (props) => {
         if (o) { hit = o; break; }
       }
       if (hit) {
-        const id = `${hit.userData.type}-${hit.userData.label}`;
+        const id = hit.userData.resourceId as string | undefined;
+        if (!id) return;
         setSelectedId(id);
         // Clear hover info immediately on select (especially important for touch)
         setHoverInfo(null);

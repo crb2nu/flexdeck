@@ -103,7 +103,17 @@ func (s *Store) GetPipelineTrends(ctx context.Context, projectID int, window tim
 			return &trend, nil
 		}
 	}
-	return s.computePipelineTrends(ctx, projectID, window)
+
+	trend, err := s.computePipelineTrends(ctx, projectID, window)
+	if err != nil {
+		return nil, err
+	}
+	if trend.TotalRuns > 0 {
+		if data, err := json.Marshal(trend); err == nil {
+			s.redis.Set(ctx, summaryKey, data, pipelineTrendSummaryTTL)
+		}
+	}
+	return trend, nil
 }
 
 // computePipelineTrends computes trend data from raw sorted-set entries.
@@ -289,7 +299,11 @@ func (s *Store) MaterializeDirtyPipelineTrends(ctx context.Context) {
 func (s *Store) GetMaterializedAllTrends(ctx context.Context) ([]*PipelineTrend, error) {
 	data, err := s.redis.Get(ctx, pipelineAllTrendsSummary).Bytes()
 	if err != nil {
-		return nil, err
+		s.MaterializeAllPipelineTrends(ctx)
+		data, err = s.redis.Get(ctx, pipelineAllTrendsSummary).Bytes()
+		if err != nil {
+			return nil, err
+		}
 	}
 	var trends []*PipelineTrend
 	if err := json.Unmarshal(data, &trends); err != nil {
@@ -354,13 +368,26 @@ func (s *Store) GetAllPipelineProjectIDs(ctx context.Context) ([]int, error) {
 // MaterializeCISummary scans pipeline data from the last 24h and writes an
 // aggregated CI health summary to Redis.
 func (s *Store) MaterializeCISummary(ctx context.Context) {
-	ids, err := s.GetAllPipelineProjectIDs(ctx)
+	summary, err := s.computeCISummary(ctx)
 	if err != nil {
 		return
 	}
 
+	data, err := json.Marshal(summary)
+	if err != nil {
+		return
+	}
+	s.redis.Set(ctx, ciDashboardSummaryKey, data, ciDashboardSummaryTTL)
+}
+
+func (s *Store) computeCISummary(ctx context.Context) (*CISummary, error) {
+	ids, err := s.GetAllPipelineProjectIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	cutoff := time.Now().Add(-24 * time.Hour).Unix()
-	summary := CISummary{}
+	summary := &CISummary{}
 
 	var totalDuration float64
 	var totalCompleted int
@@ -420,22 +447,39 @@ func (s *Store) MaterializeCISummary(ctx context.Context) {
 			}
 		}
 	}
-
-	data, err := json.Marshal(summary)
-	if err != nil {
-		return
-	}
-	s.redis.Set(ctx, ciDashboardSummaryKey, data, ciDashboardSummaryTTL)
+	return summary, nil
 }
 
 // GetCISummary returns the pre-materialized CI dashboard summary.
 func (s *Store) GetCISummary(ctx context.Context) (*CISummary, error) {
 	data, err := s.redis.Get(ctx, ciDashboardSummaryKey).Bytes()
-	if err != nil {
-		return nil, err
+	if err == nil {
+		var summary CISummary
+		if err := json.Unmarshal(data, &summary); err == nil {
+			return &summary, nil
+		}
 	}
+
+	value, refreshErr, _ := s.refresh.Do(ciDashboardSummaryKey, func() (any, error) {
+		summary, err := s.computeCISummary(ctx)
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(summary)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.redis.Set(ctx, ciDashboardSummaryKey, data, ciDashboardSummaryTTL).Err(); err != nil {
+			return nil, err
+		}
+		return data, nil
+	})
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+
 	var summary CISummary
-	if err := json.Unmarshal(data, &summary); err != nil {
+	if err := json.Unmarshal(value.([]byte), &summary); err != nil {
 		return nil, err
 	}
 	return &summary, nil
