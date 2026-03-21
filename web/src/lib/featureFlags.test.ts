@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildNavItems,
+  getHudEntryState,
   getAdminTabs,
   getDefaultAdminTab,
   getHudModeState,
   isAdminEnabled,
+  isNavItemActive,
   type FeatureMap,
 } from './featureFlags';
 
@@ -30,6 +32,22 @@ describe('featureFlags', () => {
 
     expect(isAdminEnabled(features)).toBe(true);
     expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(true);
+  });
+
+  it('exposes FlexInfer and Loom HUD as the primary nav labels with legacy aliases', () => {
+    const items = buildNavItems({});
+    const flexInfer = items.find((item) => item.path === '/flexinfer');
+    const loomHud = items.find((item) => item.path === '/loom-hud');
+
+    expect(flexInfer?.label).toBe('FlexInfer');
+    expect(flexInfer?.aliases).toEqual(['/models']);
+    expect(isNavItemActive('/models', flexInfer!)).toBe(true);
+    expect(isNavItemActive('/flexinfer', flexInfer!)).toBe(true);
+
+    expect(loomHud?.label).toBe('Loom HUD');
+    expect(loomHud?.aliases).toEqual(['/agents']);
+    expect(isNavItemActive('/agents', loomHud!)).toBe(true);
+    expect(isNavItemActive('/loom-hud', loomHud!)).toBe(true);
   });
 
   it('filters admin tabs based on enabled flags and picks first enabled default', () => {
@@ -77,5 +95,40 @@ describe('featureFlags', () => {
     expect(state.available).toBe(true);
     expect(state.modeLabel).toBe('Push mode (agent snapshots)');
     expect(state.modeDescription).toBe('Presence snapshots only');
+  });
+
+  it('reports direct HUD entry availability from the configured URL', () => {
+    const features: FeatureMap = {
+      loom_hud: {
+        enabled: true,
+        url: 'https://loom-hud.example.com',
+        directUrl: 'https://loom-hud.example.com',
+        passthroughEnabled: true,
+        directEntryEnabled: true,
+      },
+    };
+
+    const state = getHudEntryState(features);
+    expect(state.available).toBe(true);
+    expect(state.passthroughEnabled).toBe(true);
+    expect(state.directEntryEnabled).toBe(true);
+    expect(state.directUrl).toBe('https://loom-hud.example.com');
+    expect(state.disabledReason).toBeNull();
+  });
+
+  it('keeps the direct HUD URL but disables entry when the feature is off', () => {
+    const features: FeatureMap = {
+      loom_hud: {
+        enabled: false,
+        url: 'https://loom-hud.example.com',
+      },
+    };
+
+    const state = getHudEntryState(features);
+    expect(state.available).toBe(false);
+    expect(state.passthroughEnabled).toBe(false);
+    expect(state.directEntryEnabled).toBe(false);
+    expect(state.directUrl).toBe('https://loom-hud.example.com');
+    expect(state.disabledReason).toBe('Loom HUD is disabled');
   });
 });

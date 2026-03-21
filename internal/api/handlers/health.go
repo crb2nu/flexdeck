@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/cache"
@@ -17,13 +18,18 @@ type HealthResponse struct {
 }
 
 type Feature struct {
-	Enabled  bool   `json:"enabled"`
-	URL      string `json:"url,omitempty"`
-	ReadOnly bool   `json:"readOnly,omitempty"`
-	Mode     string `json:"mode,omitempty"`
+	Enabled            bool   `json:"enabled"`
+	URL                string `json:"url,omitempty"`
+	DirectURL          string `json:"directUrl,omitempty"`
+	PassthroughEnabled bool   `json:"passthroughEnabled,omitempty"`
+	DirectEntryEnabled bool   `json:"directEntryEnabled,omitempty"`
+	ReadOnly           bool   `json:"readOnly,omitempty"`
+	Mode               string `json:"mode,omitempty"`
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	hudURL := h.loomHUDURL()
+	hudPassthroughEnabled := h.loomHUDPassthroughEnabled()
 	resp := HealthResponse{
 		OK:      true,
 		Service: "flexdeck",
@@ -73,8 +79,11 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Mode:    h.cfg.FlexInferProxy.ManagementMode,
 			},
 			"loom_hud": {
-				Enabled: !h.cfg.LoomHUD.Disabled && h.cfg.LoomHUD.URL != "",
-				URL:     h.cfg.LoomHUD.URL,
+				Enabled:            hudPassthroughEnabled,
+				URL:                hudURL,
+				DirectURL:          hudURL,
+				PassthroughEnabled: hudPassthroughEnabled,
+				DirectEntryEnabled: hudPassthroughEnabled,
 			},
 			"loom_hud_push": {
 				Enabled: !h.cfg.LoomHUD.Disabled && h.hudPushStore != nil,
@@ -101,4 +110,18 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) loomHUDURL() string {
+	if h == nil || h.cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(h.cfg.LoomHUD.URL)
+}
+
+func (h *Handler) loomHUDPassthroughEnabled() bool {
+	if h == nil || h.cfg == nil {
+		return false
+	}
+	return !h.cfg.LoomHUD.Disabled && h.loomHUDURL() != ""
 }

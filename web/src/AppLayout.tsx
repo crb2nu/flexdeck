@@ -7,7 +7,7 @@ import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
 import SystemCore from './components/Navigation/SystemCore';
 import ClusterSelector from './components/Navigation/ClusterSelector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { buildNavItems } from './lib/featureFlags';
+import { buildNavItems, isNavItemActive } from './lib/featureFlags';
 
 const AppLayout: Component<ParentProps> = (props) => {
   const location = useLocation();
@@ -120,8 +120,8 @@ const AppLayout: Component<ParentProps> = (props) => {
                 href={item.path}
                 class="rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 hover:text-white min-h-[36px] flex items-center"
                 classList={{
-                  'bg-white/10 text-white shadow-sm': location.pathname === item.path,
-                  'text-text-muted hover:bg-white/5': location.pathname !== item.path,
+                  'bg-white/10 text-white shadow-sm': isNavItemActive(location.pathname, item),
+                  'text-text-muted hover:bg-white/5': !isNavItemActive(location.pathname, item),
                 }}
               >
                 {item.label}
@@ -158,12 +158,12 @@ const AppLayout: Component<ParentProps> = (props) => {
                   onClick={() => closeMobileMenu()}
                   class="flex items-center justify-between rounded-xl px-4 py-3 text-base font-medium transition-all duration-200 border active:scale-[0.98] min-h-[52px]"
                   classList={{
-                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': location.pathname === item.path,
-                    'text-text-muted border-transparent hover:bg-white/5': location.pathname !== item.path,
+                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': isNavItemActive(location.pathname, item),
+                    'text-text-muted border-transparent hover:bg-white/5': !isNavItemActive(location.pathname, item),
                   }}
                 >
                   <span class="tracking-wide">{item.label}</span>
-                  <Show when={location.pathname === item.path}>
+                  <Show when={isNavItemActive(location.pathname, item)}>
                     <div class="w-2 h-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
                   </Show>
                 </A>

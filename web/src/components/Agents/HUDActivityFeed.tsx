@@ -10,6 +10,7 @@ import {
 const HUDActivityFeed: Component<{
   initialEvents?: HUDTimelineEvent[];
   onConnectionStateChange?: (state: FeedConnectionState) => void;
+  emptyMessage?: string;
 }> = (props) => {
   const [events, setEvents] = createSignal<HUDTimelineEvent[]>(props.initialEvents || []);
   const [connectionState, setConnectionState] = createSignal<FeedConnectionState>('connecting');
@@ -99,8 +100,11 @@ const HUDActivityFeed: Component<{
 
   return (
     <div class="glass-panel p-4">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-medium text-text-main">Activity Feed</h3>
+      <div class="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h3 class="text-sm font-medium text-text-main">Live timeline</h3>
+          <p class="text-[11px] text-text-dim">Events from heartbeats, claims, tasks, and workflows.</p>
+        </div>
         <div class="flex items-center gap-2">
           <div class={`w-1.5 h-1.5 rounded-full ${
             connectionState() === 'live'
@@ -116,7 +120,9 @@ const HUDActivityFeed: Component<{
       </div>
 
       <Show when={events().length === 0}>
-        <div class="text-xs text-text-dim py-4 text-center">No activity events yet</div>
+        <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
+          {props.emptyMessage || 'No activity yet. The feed will populate as agents heartbeat, claim files, and advance tasks.'}
+        </div>
       </Show>
 
       <div class="flex flex-col gap-0.5 max-h-80 overflow-y-auto">
@@ -126,7 +132,9 @@ const HUDActivityFeed: Component<{
               <div class="w-1 h-1 rounded-full mt-1.5 bg-white/20 flex-shrink-0" />
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                  <span class={`text-[10px] font-mono ${eventTypeColor(event.type)}`}>{event.type}</span>
+                  <span class={`rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] ${eventTypeColor(event.type)}`}>
+                    {event.type}
+                  </span>
                   <span class="text-[10px] text-text-dim font-mono">{event.agentId}</span>
                   <span class="text-[10px] text-text-dim ml-auto flex-shrink-0">{formatTime(event.timestamp)}</span>
                 </div>

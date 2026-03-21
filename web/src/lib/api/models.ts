@@ -8,8 +8,15 @@ import type {
   ModelCacheListResponse,
   ModelCatalogEntry,
   ModelEvent,
+  FlexInferModelListResponse,
+  ModelSearchResult,
   SwapHistoryResponse,
 } from "../types";
+
+export interface ModelCatalogListResponse {
+  catalogs: ModelCatalogEntry[];
+  namespace: string;
+}
 
 export const modelsApi = {
   list: () => api<any>("/models/"),
@@ -22,13 +29,13 @@ export const modelsApi = {
   delete: (id: string) =>
     api<any>(`/models/${encodeURIComponent(id)}`, { method: "DELETE" }),
   searchHuggingFace: (query: string, filter?: string, limit?: number) =>
-    api<any>(
+    api<ModelSearchResult>(
       `/models/search/huggingface?q=${encodeURIComponent(query)}${
         filter ? `&filter=${encodeURIComponent(filter)}` : ""
       }${limit ? `&limit=${limit}` : ""}`,
     ),
   searchCivitAI: (query: string, type?: string, limit?: number) =>
-    api<any>(
+    api<ModelSearchResult>(
       `/models/search/civitai?q=${encodeURIComponent(query)}${
         type ? `&type=${encodeURIComponent(type)}` : ""
       }${limit ? `&limit=${limit}` : ""}`,
@@ -55,7 +62,7 @@ export const modelsApi = {
       { method: "POST" },
     ),
   crd: (namespace?: string) =>
-    api<any>(
+    api<FlexInferModelListResponse>(
       `/models/crd${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
     ),
   crdScale: (namespace: string, name: string, minReplicas: number) =>
@@ -93,7 +100,7 @@ export const modelsApi = {
       `/models/lora/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`
     ),
   catalogs: () =>
-    api<{ catalogs: ModelCatalogEntry[]; namespace: string }>("/models/catalogs"),
+    api<ModelCatalogListResponse>("/models/catalogs"),
   cacheList: (namespace?: string) =>
     api<ModelCacheListResponse>(`/models/cache${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
   cacheGet: (namespace: string, name: string) =>

@@ -823,6 +823,14 @@ export interface HUDClaim {
   stale?: boolean;
 }
 
+export interface HUDCapabilitiesResponse {
+  available: boolean;
+  passthroughEnabled: boolean;
+  directEntryEnabled: boolean;
+  directUrl?: string;
+  reason?: string;
+}
+
 // Alertmanager (Step 4)
 export interface AlertmanagerAlert {
   labels: Record<string, string>;

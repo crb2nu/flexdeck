@@ -23,6 +23,17 @@ export type ActionNotice = {
   message: string;
 };
 
+type PipelineSnapshot = VizPipeline & { status: VizPipeline['status'] | 'none' };
+
+function isPipelineSnapshot(value: unknown): value is PipelineSnapshot {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const status = (value as { status?: unknown }).status;
+  return typeof status === 'string' && status !== 'none';
+}
+
 export function usePipelineController() {
   const [repos, setRepos] = createSignal<RepoInfo[]>([]);
   const [selectedRepo, setSelectedRepo] = createSignal<RepoInfo | null>(null);
@@ -87,8 +98,8 @@ export function usePipelineController() {
       pollTelemetry.lastFetchMs = fetchMs;
       pollTelemetry.totalFetchMs += fetchMs;
       pollTelemetry.maxFetchMs = Math.max(pollTelemetry.maxFetchMs, fetchMs);
-      if (liveData && liveData.status !== 'none') {
-        const normalizedPipeline = normalizePipeline(liveData as VizPipeline);
+      if (isPipelineSnapshot(liveData)) {
+        const normalizedPipeline = normalizePipeline(liveData);
         setPipelineData(normalizedPipeline);
         setPipelinesCache((prev) => {
           const next = new Map(prev);
@@ -145,9 +156,8 @@ export function usePipelineController() {
       const chunk = ids.slice(i, i + BATCH_CHUNK_SIZE);
       const resp = await ciApi.batchPipelines(chunk);
       for (const [id, data] of Object.entries(resp.pipelines)) {
-        const pipelineData = data as VizPipeline;
-        if (pipelineData && pipelineData.status !== 'none') {
-          accumulated.push({ id: Number(id), pipeline: normalizePipeline(pipelineData) });
+        if (isPipelineSnapshot(data)) {
+          accumulated.push({ id: Number(id), pipeline: normalizePipeline(data) });
         }
       }
     }
@@ -175,8 +185,8 @@ export function usePipelineController() {
           if (!repo.id) return null;
           try {
             const data = await ciApi.getPipeline(repo.id);
-            if (data && data.status !== 'none') {
-              return { id: repo.id, pipeline: normalizePipeline(data as VizPipeline) };
+            if (isPipelineSnapshot(data)) {
+              return { id: repo.id, pipeline: normalizePipeline(data) };
             }
           } catch {
             return null;

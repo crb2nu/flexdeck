@@ -5,6 +5,7 @@ import type {
   FlexInferProxyMetricsResponse,
   AlertmanagerAlert,
   AlertmanagerSilence,
+  LiteLLMRouterResponse,
 } from "../types";
 
 import type { InfraSnapshot } from '../../components/Infra/types';
@@ -65,8 +66,16 @@ export const litellm = {
       `/litellm/metrics/${encodeURIComponent(model)}`,
     ),
   models: () => api<any[]>("/litellm/models"),
-  router: () => api<any>("/litellm/router"),
+  router: () => api<LiteLLMRouterResponse>("/litellm/router"),
 };
+
+export interface FlexInferProxyHealthResponse {
+  healthy?: boolean;
+  status?: string;
+  mode?: string;
+  partial?: boolean;
+  message?: string;
+}
 
 export interface LiteLLMModelThroughput {
   model: string;

@@ -7,8 +7,8 @@ import { useNavigate } from "@solidjs/router";
  *   g then d → Dashboard
  *   g then s → Services
  *   g then l → Logs
- *   g then m → Models
- *   g then a → Agents
+ *   g then m → FlexInfer
+ *   g then a → Loom HUD
  *   g then f → Flux
  *   g then p → Pipeline
  *   g then x → Metrics
@@ -26,8 +26,8 @@ export function useKeyboardShortcuts() {
     d: "/",
     s: "/services",
     l: "/logs",
-    m: "/models",
-    a: "/agents",
+    m: "/flexinfer",
+    a: "/loom-hud",
     f: "/flux",
     p: "/pipeline",
     x: "/metrics",

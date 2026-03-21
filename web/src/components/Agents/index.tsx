@@ -1,10 +1,12 @@
-import { Component, createSignal, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createEffect, createMemo, createSignal, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { TabBar, LoadingState, EmptyState, ErrorState } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
+import { getHudEntryState } from '../../lib/featureFlags';
+import { healthStore } from '../../stores/health';
 import AgentChat from './AgentChat';
 import AgentFlowGraph from './AgentFlowGraph';
 import AgentSessionPanel from './AgentSessionPanel';
@@ -15,16 +17,16 @@ import { isHUDAgent } from './hudUtils';
 
 const HUDTab = lazy(() => import('./HUDTab'));
 
-type ViewMode = 'grid' | 'flow' | 'hud';
+type ViewMode = 'hud' | 'registry' | 'flow';
 type EditableAgentType = 'langgraph' | 'custom';
 
 const toEditableAgentType = (type: Agent['type']): EditableAgentType =>
   type === 'langgraph' ? 'langgraph' : 'custom';
 
 const VIEW_TABS = [
-  { id: 'grid' as const, label: 'Grid' },
-  { id: 'flow' as const, label: 'Flow' },
   { id: 'hud' as const, label: 'HUD' },
+  { id: 'registry' as const, label: 'Registry' },
+  { id: 'flow' as const, label: 'Flow' },
 ];
 
 const Agents: Component = () => {
@@ -32,7 +34,8 @@ const Agents: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
-  const [viewMode, setViewMode] = createSignal<ViewMode>('grid');
+  const [viewMode, setViewMode] = createSignal<ViewMode>('hud');
+  const hudEntry = createMemo(() => getHudEntryState(healthStore.features || {}));
 
   // Graph data
   const [graphNodes, setGraphNodes] = createSignal<AgentNode[]>([]);
@@ -111,7 +114,13 @@ const Agents: Component = () => {
 
   createPolling('agents-main', async () => {
     await Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
-  }, 10000);
+  }, 10000, () => viewMode() !== 'hud');
+
+  createEffect(() => {
+    if (viewMode() !== 'hud') {
+      void Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
+    }
+  });
 
   const openCreateForm = () => {
     setEditingAgent(null);
@@ -223,13 +232,20 @@ const Agents: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      {/* Header */}
-      <div class="glass-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex items-center gap-3 sm:gap-4">
-          <h2 class="text-lg font-medium text-text-main">AI Agents</h2>
-          <span class="text-sm text-text-dim">
-            {agents.filter(a => a.status === 'healthy').length} healthy
-          </span>
+      <div class="glass-panel flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-neon-cyan">
+              Loom HUD
+            </span>
+            <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">
+              Operations console
+            </span>
+          </div>
+          <h2 class="text-xl font-semibold tracking-tight text-text-main">Live agent control plane</h2>
+          <p class="max-w-3xl text-sm text-text-dim">
+            The HUD is the primary surface now. Registry, graph, and manual agent tools remain available, but they sit behind the live operational view.
+          </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -239,109 +255,125 @@ const Agents: Component = () => {
             onChange={(id) => setViewMode(id as ViewMode)}
             size="md"
           />
+          <Show when={hudEntry().directEntryEnabled && hudEntry().directUrl}>
+            <button
+              type="button"
+              onClick={() => window.open(hudEntry().directUrl!, '_blank', 'noopener,noreferrer')}
+              class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+            >
+              Open web HUD
+            </button>
+          </Show>
           <button
             onClick={() => { fetchAgents(); fetchGraph(); }}
-            disabled={loading()}
-            class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:opacity-50"
+            disabled={loading() || viewMode() === 'hud'}
+            class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Refresh
-          </button>
-          <button
-            onClick={openCreateForm}
-            class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
-          >
-            + Add Agent
+            Refresh registry
           </button>
         </div>
       </div>
 
-      <Show when={error()}>
+      <Show when={error() && viewMode() !== 'hud'}>
         <ErrorState message={error()} />
       </Show>
 
-      <PageScrollBody class={viewMode() === 'grid' ? '' : 'overflow-hidden'}>
-      {/* Content area */}
-      <Show
-        when={!loading() || agents.length > 0}
-        fallback={<LoadingState message="Loading agents..." />}
-      >
-        <Show
-          when={agents.length > 0}
-          fallback={
-            <EmptyState
-              icon="🤖"
-              title="No Agents Registered"
-              subtitle="Add your first agent to get started."
-              action={{ label: '+ Add Agent', onClick: openCreateForm }}
-            />
-          }
-        >
-          {/* Flow View */}
-          <Show when={viewMode() === 'flow'}>
-            <div class="flex-1 min-h-[400px]">
-              <AgentFlowGraph
-                nodes={graphNodes()}
-                edges={graphEdges()}
-                onAgentClick={(node) => {
-                  const agent = agents.find(a => a.id === node.id);
-                  if (agent) setChatAgent(agent);
-                }}
-              />
+      <PageScrollBody class={viewMode() === 'flow' ? 'overflow-hidden' : ''}>
+        <Show when={viewMode() === 'hud'}>
+          <ErrorBoundary fallback={(err) => (
+            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+              HUD error: {err.message}
             </div>
-          </Show>
-
-          {/* Grid View */}
-          <Show when={viewMode() === 'grid'}>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <For each={agents}>
-                {(agent) => {
-                  const isBuiltIn = agent.id === 'agent-builder' || agent.tags?.includes('built-in');
-
-                  if (isHUDAgent(agent)) {
-                    return (
-                      <HUDAgentCard
-                        agent={agent}
-                        onOpenSessions={openChat}
-                      />
-                    );
-                  }
-
-                  return (
-                    <StandardAgentCard
-                      agent={agent}
-                      isBuiltIn={isBuiltIn}
-                      onChat={openChat}
-                      onCheckHealth={handleCheckHealth}
-                      onEdit={openEditForm}
-                      onDelete={handleDelete}
-                      actionLoading={actionLoading()}
-                      getStatusColor={getStatusColor}
-                      getStatusDot={getStatusDot}
-                    />
-                  );
-                }}
-              </For>
-            </div>
-          </Show>
-
-          {/* HUD View */}
-          <Show when={viewMode() === 'hud'}>
-            <ErrorBoundary fallback={(err) => (
-              <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
-                HUD error: {err.message}
+          )}>
+            <Suspense fallback={
+              <div class="flex items-center justify-center py-12">
+                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-purple" />
               </div>
-            )}>
-              <Suspense fallback={
-                <div class="flex items-center justify-center py-12">
-                  <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-purple" />
+            }>
+              <HUDTab />
+            </Suspense>
+          </ErrorBoundary>
+        </Show>
+
+        <Show when={viewMode() !== 'hud'}>
+          <Show
+            when={!loading() || agents.length > 0}
+            fallback={<LoadingState message="Loading registry..." />}
+          >
+            <Show
+              when={agents.length > 0}
+              fallback={
+                <EmptyState
+                  icon="◈"
+                  title="Registry utilities are quiet"
+                  subtitle="The HUD is still available. Add an agent only if you need registry, graph, or chat tools."
+                  action={{ label: '+ Add Agent', onClick: openCreateForm }}
+                />
+              }
+            >
+              <Show when={viewMode() === 'flow'}>
+                <div class="flex-1 min-h-[400px]">
+                  <AgentFlowGraph
+                    nodes={graphNodes()}
+                    edges={graphEdges()}
+                    onAgentClick={(node) => {
+                      const agent = agents.find(a => a.id === node.id);
+                      if (agent) setChatAgent(agent);
+                    }}
+                  />
                 </div>
-              }>
-                <HUDTab />
-              </Suspense>
-            </ErrorBoundary>
+              </Show>
+
+              <Show when={viewMode() === 'registry'}>
+                <div class="space-y-4">
+                  <div class="glass-panel flex items-center justify-between px-4 py-3">
+                    <div>
+                      <div class="text-sm font-medium text-text-main">Registry support</div>
+                      <div class="text-xs text-text-dim">Agent definitions, graph relationships, and health checks live here when you need them.</div>
+                    </div>
+                    <button
+                      onClick={openCreateForm}
+                      class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+                    >
+                      + Add Agent
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <For each={agents}>
+                      {(agent) => {
+                        const isBuiltIn = agent.id === 'agent-builder' || agent.tags?.includes('built-in');
+
+                        if (isHUDAgent(agent)) {
+                          return (
+                            <HUDAgentCard
+                              agent={agent}
+                              onOpenSessions={openChat}
+                            />
+                          );
+                        }
+
+                        return (
+                          <StandardAgentCard
+                            agent={agent}
+                            isBuiltIn={isBuiltIn}
+                            onChat={openChat}
+                            onCheckHealth={handleCheckHealth}
+                            onEdit={openEditForm}
+                            onDelete={handleDelete}
+                            actionLoading={actionLoading()}
+                            getStatusColor={getStatusColor}
+                            getStatusDot={getStatusDot}
+                          />
+                        );
+                      }}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+            </Show>
           </Show>
         </Show>
-      </Show>
       </PageScrollBody>
 
       {/* Create/Edit Form Modal */}
