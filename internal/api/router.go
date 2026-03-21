@@ -300,6 +300,7 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 	})
 
 	r.Route("/api/hud", func(r chi.Router) {
+		r.Get("/capabilities", h.HUDCapabilities)
 		r.Get("/fleet", h.HUDFleet)
 		r.Get("/presence", h.HUDPresence)
 		r.Get("/claims", h.HUDClaims)

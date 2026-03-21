@@ -126,3 +126,43 @@ func TestRouter_HUDClaimsUnavailableWhenDisabled(t *testing.T) {
 		t.Fatalf("expected no upstream calls when HUD is disabled, got %d", upstreamCalls)
 	}
 }
+
+func TestRouter_HUDCapabilitiesExposeDirectEntryState(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(&config.Config{
+		AllowedOrigins: []string{"*"},
+		LoomHUD: config.LoomHUDConfig{
+			Disabled: false,
+			URL:      "https://loom-hud.example.com",
+		},
+	}, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hud/capabilities", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var payload struct {
+		Available          bool   `json:"available"`
+		PassthroughEnabled bool   `json:"passthroughEnabled"`
+		DirectEntryEnabled bool   `json:"directEntryEnabled"`
+		DirectURL          string `json:"directUrl"`
+		Reason             string `json:"reason"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("capabilities response is not valid JSON: %v", err)
+	}
+	if !payload.Available || !payload.PassthroughEnabled || !payload.DirectEntryEnabled {
+		t.Fatalf("unexpected capabilities payload: %+v", payload)
+	}
+	if payload.DirectURL != "https://loom-hud.example.com" {
+		t.Fatalf("directUrl = %q, want configured URL", payload.DirectURL)
+	}
+	if payload.Reason != "" {
+		t.Fatalf("expected empty reason when available, got %q", payload.Reason)
+	}
+}

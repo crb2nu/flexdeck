@@ -12,7 +12,7 @@ var sseClient = &http.Client{Timeout: 0}
 
 // HUDEventsSSE proxies the Loom HUD SSE events stream to the browser.
 func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}

@@ -1,6 +1,11 @@
+import { resolveHudEntryState, type HudEntryState } from './hudCapabilities';
+
 export interface FeatureState {
   enabled: boolean;
   url?: string;
+  directUrl?: string;
+  passthroughEnabled?: boolean;
+  directEntryEnabled?: boolean;
   readOnly?: boolean;
   mode?: string;
 }
@@ -10,6 +15,7 @@ export type FeatureMap = Record<string, FeatureState | undefined>;
 export interface NavItem {
   label: string;
   path: string;
+  aliases?: string[];
 }
 
 export type AdminTab = 'users' | 'audit' | 'clusters' | 'flexinfer';
@@ -37,8 +43,8 @@ const baseNavItems: NavItem[] = [
   { label: 'Pipeline', path: '/pipeline' },
   { label: 'Logs', path: '/logs' },
   { label: 'Metrics', path: '/metrics' },
-  { label: 'Models', path: '/models' },
-  { label: 'Agents', path: '/agents' },
+  { label: 'FlexInfer', path: '/flexinfer', aliases: ['/models'] },
+  { label: 'Loom HUD', path: '/loom-hud', aliases: ['/agents'] },
 ];
 
 function enabled(features: FeatureMap, key: string): boolean {
@@ -55,6 +61,10 @@ export function buildNavItems(features: FeatureMap): NavItem[] {
     items.push({ label: 'Admin', path: '/admin' });
   }
   return items;
+}
+
+export function isNavItemActive(pathname: string, item: NavItem): boolean {
+  return pathname === item.path || item.aliases?.includes(pathname) === true;
 }
 
 export function getAdminTabs(features: FeatureMap): AdminTabDef[] {
@@ -110,4 +120,8 @@ export function getHudModeState(features: FeatureMap): HudModeState {
     modeDescription: 'No HUD data',
     disabledReason: 'Loom HUD is disabled',
   };
+}
+
+export function getHudEntryState(features: FeatureMap): HudEntryState {
+  return resolveHudEntryState(features.loom_hud);
 }

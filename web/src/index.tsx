@@ -16,8 +16,8 @@ const Dashboard = lazy(() => import('./components/Dashboard'));
 const Services = lazy(() => import('./components/Services'));
 const Logs = lazy(() => import('./components/Logs'));
 const Metrics = lazy(() => import('./components/Metrics'));
-const Models = lazy(() => import('./components/Models'));
-const Agents = lazy(() => import('./components/Agents'));
+const FlexInfer = lazy(() => import('./components/Models'));
+const LoomHUD = lazy(() => import('./components/Agents'));
 const Pipeline = lazy(() => import('./components/Pipeline'));
 const FluxStatus = lazy(() => import('./components/FluxStatus'));
 const Admin = lazy(() => import('./components/Admin'));
@@ -36,8 +36,10 @@ render(
       <Route path="/services" component={Services} />
       <Route path="/logs" component={Logs} />
       <Route path="/metrics" component={Metrics} />
-      <Route path="/models" component={Models} />
-      <Route path="/agents" component={Agents} />
+      <Route path="/flexinfer" component={FlexInfer} />
+      <Route path="/models" component={FlexInfer} />
+      <Route path="/loom-hud" component={LoomHUD} />
+      <Route path="/agents" component={LoomHUD} />
       <Route path="/pipeline" component={Pipeline} />
       <Route path="/flux" component={FluxStatus} />
       <Route path="/admin" component={Admin} />

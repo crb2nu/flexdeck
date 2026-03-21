@@ -19,7 +19,7 @@ const maxHUDRequestBody = 1 << 20
 
 // HUDFleet returns the full fleet view from the Loom HUD API.
 func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -30,7 +30,7 @@ func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
 
 // HUDPresence returns agent presence data from the Loom HUD API.
 func (h *Handler) HUDPresence(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -41,7 +41,7 @@ func (h *Handler) HUDPresence(w http.ResponseWriter, r *http.Request) {
 
 // HUDTasks returns task data from the Loom HUD API.
 func (h *Handler) HUDTasks(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -52,7 +52,7 @@ func (h *Handler) HUDTasks(w http.ResponseWriter, r *http.Request) {
 
 // HUDWorkflows returns workflow data from the Loom HUD API.
 func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -63,7 +63,7 @@ func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
 
 // HUDTimeline returns timeline events from the Loom HUD API.
 func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -74,7 +74,7 @@ func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
 
 // HUDClaims returns file claim data from the Loom HUD API.
 func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -85,7 +85,7 @@ func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
 
 // HUDWorkflowApprove approves a workflow step that requires human approval.
 func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -115,7 +115,7 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 
 // HUDWorkflowReject rejects a workflow step.
 func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}
@@ -145,7 +145,7 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 
 // HUDWorkflowCancel cancels a workflow.
 func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.LoomHUD.Disabled || h.cfg.LoomHUD.URL == "" {
+	if !h.loomHUDPassthroughEnabled() {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
 		return
 	}

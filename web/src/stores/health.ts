@@ -4,6 +4,9 @@ import { getApiBasePath } from "../lib/api/base";
 interface Feature {
   enabled: boolean;
   url?: string;
+  directUrl?: string;
+  passthroughEnabled?: boolean;
+  directEntryEnabled?: boolean;
   readOnly?: boolean;
   mode?: string;
 }

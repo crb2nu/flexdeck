@@ -42,18 +42,18 @@ const CommandPalette: Component = () => {
       action: () => navigate('/logs'),
     },
     {
-      id: 'nav-models',
-      name: 'Go to Models',
-      description: 'Manage AI models',
-      keywords: ['llm', 'ai', 'inference'],
-      action: () => navigate('/models'),
+      id: 'nav-flexinfer',
+      name: 'Go to FlexInfer',
+      description: 'Manage FlexInfer models and controller',
+      keywords: ['llm', 'ai', 'inference', 'models', 'crd'],
+      action: () => navigate('/flexinfer'),
     },
     {
-      id: 'nav-agents',
-      name: 'Go to Agents',
-      description: 'Manage AI agents',
-      keywords: ['bots', 'assistants'],
-      action: () => navigate('/agents'),
+      id: 'nav-loom-hud',
+      name: 'Go to Loom HUD',
+      description: 'Monitor Loom agents, tasks, and workflows',
+      keywords: ['bots', 'assistants', 'agents', 'hud', 'workflows'],
+      action: () => navigate('/loom-hud'),
     },
     {
       id: 'nav-flux',
@@ -77,10 +77,10 @@ const CommandPalette: Component = () => {
       action: () => navigate('/metrics'),
     },
     {
-      id: 'action-discover-models',
-      name: 'Discover Models',
-      description: 'Sync AI models from FlexInfer controller',
-      keywords: ['sync', 'k8s', 'flexinfer', 'discover', 'refresh models'],
+      id: 'action-discover-flexinfer',
+      name: 'Discover FlexInfer Models',
+      description: 'Sync FlexInfer models from the controller',
+      keywords: ['sync', 'k8s', 'flexinfer', 'discover', 'refresh models', 'crd'],
       action: async () => {
         try {
           await modelsApi.discover();
