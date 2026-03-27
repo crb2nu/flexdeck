@@ -81,7 +81,7 @@ func TestFetchInferenceMetricsMarksPartialWhenAnyQueryFails(t *testing.T) {
 		},
 	}
 
-	data, err := h.fetchInferenceMetrics(context.Background(), "model-a")
+	data, err := h.fetchInferenceMetrics(context.Background(), "flexinfer-system", "model-a")
 	if err != nil {
 		t.Fatalf("fetchInferenceMetrics returned error: %v", err)
 	}
@@ -123,6 +123,8 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 			value = "4"
 		case strings.Contains(q, "activation_retries_total"):
 			value = "1.5"
+		case strings.Contains(q, "flexinfer_model_cold_start_duration_seconds_bucket"):
+			value = "2.5"
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"result":[{"value":[0,"` + value + `"]}]}}`))
@@ -202,5 +204,41 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 	}
 	if payload["activationRetries5m"].(float64) != 1.5 {
 		t.Fatalf("expected activationRetries5m=1.5, got %v", payload["activationRetries5m"])
+	}
+	if payload["coldStartP95Ms"].(float64) != 2500 {
+		t.Fatalf("expected coldStartP95Ms=2500, got %v", payload["coldStartP95Ms"])
+	}
+	if payload["idleSeconds"] != nil {
+		t.Fatalf("expected idleSeconds=nil when no supported idle metric exists, got %v", payload["idleSeconds"])
+	}
+}
+
+func TestFetchInferenceMetricsDoesNotMarkOptionalContractGapsAsPartial(t *testing.T) {
+	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
+	}))
+	defer prom.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			Prom: config.PrometheusConfig{URL: prom.URL},
+		},
+	}
+
+	data, err := h.fetchInferenceMetrics(context.Background(), "flexinfer-system", "model-a")
+	if err != nil {
+		t.Fatalf("fetchInferenceMetrics returned error: %v", err)
+	}
+
+	payload := data.(map[string]any)
+	if payload["partial"].(bool) {
+		t.Fatalf("expected partial=false when only optional metrics are unavailable")
+	}
+	if payload["coldStartP95Ms"] != nil {
+		t.Fatalf("expected coldStartP95Ms=nil when the metric is absent, got %v", payload["coldStartP95Ms"])
+	}
+	if payload["idleSeconds"] != nil {
+		t.Fatalf("expected idleSeconds=nil when no idle metric is supported, got %v", payload["idleSeconds"])
 	}
 }
