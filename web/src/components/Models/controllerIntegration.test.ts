@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getReliabilityStatus,
+  hasObservedInferenceMetrics,
   summarizeIntegrationCoverage,
   summarizeLoRA,
 } from "./controllerIntegration";
@@ -9,6 +10,7 @@ import type { InferenceMetrics, LoRAAdapter } from "../../lib/types";
 
 const baseMetrics: InferenceMetrics = {
   model: "model-a",
+  observed: true,
   tps: 10,
   p95LatencyMs: 100,
   queueDepth: 0,
@@ -25,6 +27,24 @@ const baseMetrics: InferenceMetrics = {
 describe("controllerIntegration", () => {
   it("returns unknown reliability when metrics are unavailable", () => {
     expect(getReliabilityStatus(undefined).level).toBe("unknown");
+  });
+
+  it("returns unknown reliability when the payload has no observed series", () => {
+    const metrics: InferenceMetrics = {
+      ...baseMetrics,
+      observed: false,
+      tps: null,
+      p95LatencyMs: null,
+      queueDepth: null,
+      activeConnections: null,
+      errorRate: null,
+      queueWaitP95Ms: null,
+      rejectedRequestsPerSec: null,
+      scaleUps5m: null,
+      activationRetries5m: null,
+    };
+    expect(hasObservedInferenceMetrics(metrics)).toBe(false);
+    expect(getReliabilityStatus(metrics).level).toBe("unknown");
   });
 
   it("returns partial reliability when payload is partial", () => {
