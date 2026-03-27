@@ -685,6 +685,7 @@ export interface ModelComparisonData {
 // FlexInfer Inference Metrics (Phase 3)
 export interface InferenceMetrics {
   model: string;
+  observed?: boolean;
   tps: number | null;
   p95LatencyMs: number | null;
   queueDepth: number | null;

@@ -7,9 +7,11 @@ import type {
   LoRAAdapter,
 } from '../../lib/types';
 import { fetchModelIntegrationsBatch } from '../../lib/modelIntegration';
+import { hasObservedInferenceMetrics } from './controllerIntegration';
 import {
   activeConnectionsForModel,
   errorRateForModel as proxyErrorRateForModel,
+  hasProxyMetricsForModel,
   listInferenceModels,
   queueDepthForModel,
   requestsForModel,
@@ -119,6 +121,7 @@ const InferenceTab: Component = () => {
   const requestsFor = (model: string) => requestsForModel(proxyMetrics(), model);
   const queueDepthFor = (model: string) => queueDepthForModel(proxyMetrics(), model);
   const activeConnFor = (model: string) => activeConnectionsForModel(proxyMetrics(), model);
+  const hasProxyMetrics = (model: string) => hasProxyMetricsForModel(proxyMetrics(), model);
   const detailFor = (model: string) => modelMetrics()[model];
   const adaptersFor = (model: string) => modelAdapters()[model] || [];
   const errorRateFor = (model: string) => detailFor(model)?.errorRate ?? proxyErrorRateForModel(proxyMetrics(), model);
@@ -130,6 +133,9 @@ const InferenceTab: Component = () => {
     }
     if (detail.partial) {
       return { label: 'Partial', tone: 'bg-status-warn/20 text-status-warn' };
+    }
+    if (!hasObservedInferenceMetrics(detail)) {
+      return { label: 'Unknown', tone: 'bg-white/10 text-text-dim' };
     }
     const err = detail.errorRate ?? 0;
     const rejected = detail.rejectedRequestsPerSec ?? 0;
@@ -208,11 +214,17 @@ const InferenceTab: Component = () => {
               </thead>
               <tbody>
                 <For each={modelNames()} fallback={
-                  <tr><td colspan="9" class="px-4 py-4 text-center text-text-dim">No model metrics available</td></tr>
+                  <tr><td colspan="10" class="px-4 py-4 text-center text-text-dim">No model metrics available</td></tr>
                 }>
                   {(model) => {
                     const detail = () => detailFor(model);
+                    const proxyObserved = () => hasProxyMetrics(model);
                     const reliability = () => reliabilityFor(model);
+                    const errorRate = () => {
+                      if (detail()?.errorRate != null) return detail()!.errorRate!;
+                      if (proxyObserved()) return errorRateFor(model);
+                      return null;
+                    };
                     return (
                       <tr
                         class={`border-b border-white/5 cursor-pointer transition-colors ${
@@ -221,10 +233,18 @@ const InferenceTab: Component = () => {
                         onClick={() => setSelectedModel(selectedModel() === model ? null : model)}
                       >
                         <td class="px-4 py-2 font-mono text-text-main">{model}</td>
-                        <td class="px-4 py-2 text-right font-mono text-text-muted">{requestsFor(model).toFixed(0)}</td>
-                        <td class="px-4 py-2 text-right font-mono text-text-muted">{queueDepthFor(model).toFixed(0)}</td>
-                        <td class="px-4 py-2 text-right font-mono text-text-muted">{activeConnFor(model).toFixed(0)}</td>
-                        <td class="px-4 py-2 text-right font-mono text-text-muted">{(errorRateFor(model) * 100).toFixed(2)}%</td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {proxyObserved() ? requestsFor(model).toFixed(0) : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {proxyObserved() ? queueDepthFor(model).toFixed(0) : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {proxyObserved() ? activeConnFor(model).toFixed(0) : '-'}
+                        </td>
+                        <td class="px-4 py-2 text-right font-mono text-text-muted">
+                          {formatMetricPercent(errorRate())}
+                        </td>
                         <td class="px-4 py-2 text-right font-mono text-text-muted">
                           {detail()?.queueWaitP95Ms != null ? `${detail()!.queueWaitP95Ms!.toFixed(0)} ms` : '-'}
                         </td>
@@ -261,18 +281,23 @@ const InferenceTab: Component = () => {
             </div>
 
             <Show when={selectedDetail()} fallback={<div class="text-xs text-text-dim">No Prometheus metrics available for this model</div>}>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Metric label="TPS" value={`${(selectedDetail()?.tps ?? 0).toFixed(2)}`} />
-                <Metric label="p95 Latency" value={`${(selectedDetail()?.p95LatencyMs ?? 0).toFixed(1)} ms`} />
-                <Metric label="Error Rate" value={`${((selectedDetail()?.errorRate ?? 0) * 100).toFixed(2)}%`} />
-                <Metric label="Queue Wait p95" value={`${(selectedDetail()?.queueWaitP95Ms ?? 0).toFixed(0)} ms`} />
-              </div>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 pt-3 border-t border-white/5">
-                <Metric label="Scale Ups (5m)" value={`${(selectedDetail()?.scaleUps5m ?? 0).toFixed(2)}`} />
-                <Metric label="Cold Start p95" value={selectedDetail()?.coldStartP95Ms != null ? `${selectedDetail()!.coldStartP95Ms!.toFixed(0)} ms` : '-'} />
-                <Metric label="Activation Retries (5m)" value={`${(selectedDetail()?.activationRetries5m ?? 0).toFixed(2)}`} />
-                <Metric label="Idle For" value={selectedDetail()?.idleSeconds != null && selectedDetail()!.idleSeconds! > 0 ? formatIdleDuration(selectedDetail()!.idleSeconds!) : '-'} />
-              </div>
+              <Show
+                when={hasObservedInferenceMetrics(selectedDetail()) || selectedDetail()?.partial}
+                fallback={<div class="text-xs text-text-dim">Prometheus has not emitted inference series for this model yet.</div>}
+              >
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Metric label="TPS" value={formatMetricNumber(selectedDetail()?.tps, 2)} />
+                  <Metric label="p95 Latency" value={formatMetricNumber(selectedDetail()?.p95LatencyMs, 1, ' ms')} />
+                  <Metric label="Error Rate" value={formatMetricPercent(selectedDetail()?.errorRate)} />
+                  <Metric label="Queue Wait p95" value={formatMetricNumber(selectedDetail()?.queueWaitP95Ms, 0, ' ms')} />
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 pt-3 border-t border-white/5">
+                  <Metric label="Scale Ups (5m)" value={formatMetricNumber(selectedDetail()?.scaleUps5m, 2)} />
+                  <Metric label="Cold Start p95" value={formatMetricNumber(selectedDetail()?.coldStartP95Ms, 0, ' ms')} />
+                  <Metric label="Activation Retries (5m)" value={formatMetricNumber(selectedDetail()?.activationRetries5m, 2)} />
+                  <Metric label="Idle For" value={selectedDetail()?.idleSeconds != null && selectedDetail()!.idleSeconds! > 0 ? formatIdleDuration(selectedDetail()!.idleSeconds!) : '-'} />
+                </div>
+              </Show>
               <Show when={selectedDetail()?.partial}>
                 <div class="mt-3 rounded border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-[11px] text-status-warn">
                   Partial model metrics.
@@ -329,6 +354,14 @@ function formatIdleDuration(seconds: number): string {
   if (seconds < 60) return `${Math.floor(seconds)}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function formatMetricNumber(value: number | null | undefined, decimals: number, suffix = ''): string {
+  return value == null ? '-' : `${value.toFixed(decimals)}${suffix}`;
+}
+
+function formatMetricPercent(value: number | null | undefined): string {
+  return value == null ? '-' : `${(value * 100).toFixed(2)}%`;
 }
 
 export default InferenceTab;

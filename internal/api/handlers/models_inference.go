@@ -60,23 +60,24 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 }
 
 type promMetricQuery struct {
-	key      string
+	field    string
 	query    string
 	optional bool
+	scale    float64
 }
 
 func (h *Handler) fetchInferenceMetrics(ctx context.Context, namespace, model string) (any, error) {
 	queries := []promMetricQuery{
-		{key: "tps", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m]))`, model)},
-		{key: "p95_latency", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m])))`, model)},
-		{key: "queue_depth", query: fmt.Sprintf(`sum(flexinfer_proxy_queue_depth{model="%s"})`, model)},
-		{key: "active_conn", query: fmt.Sprintf(`sum(flexinfer_proxy_active_connections{model="%s"})`, model)},
-		{key: "error_rate", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s",status=~"4..|5.."}[5m])) / clamp_min(sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m])), 1e-9)`, model, model)},
-		{key: "queue_wait_p95", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_queue_wait_duration_seconds_bucket{model="%s"}[5m])))`, model)},
-		{key: "rejected_rps", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_queue_rejected_total{model="%s"}[5m]))`, model)},
-		{key: "scale_ups_5m", query: fmt.Sprintf(`sum(increase(flexinfer_proxy_scale_ups_total{model="%s"}[5m]))`, model)},
-		{key: "activation_retries_5m", query: fmt.Sprintf(`sum(increase(flexinfer_proxy_activation_retries_total{model="%s"}[5m]))`, model)},
-		{key: "cold_start_p95", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_model_cold_start_duration_seconds_bucket{model="%s",namespace="%s"}[5m])))`, model, namespace), optional: true},
+		{field: "tps", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m]))`, model), scale: 1},
+		{field: "p95LatencyMs", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m])))`, model), scale: 1000},
+		{field: "queueDepth", query: fmt.Sprintf(`sum(flexinfer_proxy_queue_depth{model="%s"})`, model), scale: 1},
+		{field: "activeConnections", query: fmt.Sprintf(`sum(flexinfer_proxy_active_connections{model="%s"})`, model), scale: 1},
+		{field: "errorRate", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s",status=~"4..|5.."}[5m])) / clamp_min(sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m])), 1e-9)`, model, model), scale: 1},
+		{field: "queueWaitP95Ms", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_queue_wait_duration_seconds_bucket{model="%s"}[5m])))`, model), scale: 1000},
+		{field: "rejectedRequestsPerSec", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_queue_rejected_total{model="%s"}[5m]))`, model), scale: 1},
+		{field: "scaleUps5m", query: fmt.Sprintf(`sum(increase(flexinfer_proxy_scale_ups_total{model="%s"}[5m]))`, model), scale: 1},
+		{field: "activationRetries5m", query: fmt.Sprintf(`sum(increase(flexinfer_proxy_activation_retries_total{model="%s"}[5m]))`, model), scale: 1},
+		{field: "coldStartP95Ms", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_model_cold_start_duration_seconds_bucket{model="%s",namespace="%s"}[5m])))`, model, namespace), optional: true, scale: 1000},
 	}
 
 	results := make(map[string]float64)
@@ -91,18 +92,18 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, namespace, model st
 			defer wg.Done()
 			val, found, err := h.promInstantQuery(ctx, spec.query)
 			if err != nil {
-				slog.Debug("inference metric query failed", "key", spec.key, "error", err)
+				slog.Debug("inference metric query failed", "field", spec.field, "error", err)
 				mu.Lock()
 				if !spec.optional {
-					missing = append(missing, spec.key)
+					missing = append(missing, spec.field)
 				}
 				mu.Unlock()
 				return
 			}
 			mu.Lock()
 			if found {
-				results[spec.key] = val
-				present[spec.key] = true
+				results[spec.field] = val * spec.scale
+				present[spec.field] = true
 			}
 			mu.Unlock()
 		}(spec)
@@ -113,27 +114,28 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, namespace, model st
 
 	return map[string]any{
 		"model":                  model,
-		"tps":                    results["tps"],
-		"p95LatencyMs":           results["p95_latency"] * 1000,
-		"queueDepth":             results["queue_depth"],
-		"activeConnections":      results["active_conn"],
-		"errorRate":              results["error_rate"],
-		"queueWaitP95Ms":         results["queue_wait_p95"] * 1000,
-		"rejectedRequestsPerSec": results["rejected_rps"],
-		"scaleUps5m":             results["scale_ups_5m"],
-		"activationRetries5m":    results["activation_retries_5m"],
-		"coldStartP95Ms":         optionalPromValue(results, present, "cold_start_p95", 1000),
+		"observed":               len(present) > 0,
+		"tps":                    promFieldValue(results, present, "tps"),
+		"p95LatencyMs":           promFieldValue(results, present, "p95LatencyMs"),
+		"queueDepth":             promFieldValue(results, present, "queueDepth"),
+		"activeConnections":      promFieldValue(results, present, "activeConnections"),
+		"errorRate":              promFieldValue(results, present, "errorRate"),
+		"queueWaitP95Ms":         promFieldValue(results, present, "queueWaitP95Ms"),
+		"rejectedRequestsPerSec": promFieldValue(results, present, "rejectedRequestsPerSec"),
+		"scaleUps5m":             promFieldValue(results, present, "scaleUps5m"),
+		"activationRetries5m":    promFieldValue(results, present, "activationRetries5m"),
+		"coldStartP95Ms":         promFieldValue(results, present, "coldStartP95Ms"),
 		"idleSeconds":            nil,
 		"partial":                len(missing) > 0,
 		"missingMetrics":         missing,
 	}, nil
 }
 
-func optionalPromValue(results map[string]float64, present map[string]bool, key string, scale float64) any {
+func promFieldValue(results map[string]float64, present map[string]bool, key string) any {
 	if !present[key] {
 		return nil
 	}
-	return results[key] * scale
+	return results[key]
 }
 
 // promInstantQuery executes a Prometheus instant query and returns the first result value.

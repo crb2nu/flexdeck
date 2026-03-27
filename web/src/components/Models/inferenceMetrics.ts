@@ -15,6 +15,20 @@ export function listInferenceModels(
   return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
+export function hasProxyMetricsForModel(
+  metrics: FlexInferProxyMetricsResponse | null | undefined,
+  model: string
+): boolean {
+  if (!metrics || model === '_total') return false;
+  return (
+    metrics.byModel?.[model] != null ||
+    metrics.requests?.[model] != null ||
+    metrics.queue_depth?.[model] != null ||
+    metrics.active_conn?.[model] != null ||
+    metrics.requestsByStatus?.[model] != null
+  );
+}
+
 export function requestsForModel(
   metrics: FlexInferProxyMetricsResponse | null | undefined,
   model: string

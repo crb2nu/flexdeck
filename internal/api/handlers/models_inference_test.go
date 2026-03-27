@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func TestModelsInferenceMetricsDefaultsToZeroWhenPrometheusReturnsEmpty(t *testing.T) {
+func TestModelsInferenceMetricsMarksNoSeriesAsUnobserved(t *testing.T) {
 	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
@@ -42,7 +42,7 @@ func TestModelsInferenceMetricsDefaultsToZeroWhenPrometheusReturnsEmpty(t *testi
 		t.Fatalf("decode response: %v", err)
 	}
 
-	floatFields := []string{
+	nullFields := []string{
 		"tps",
 		"p95LatencyMs",
 		"queueDepth",
@@ -53,10 +53,13 @@ func TestModelsInferenceMetricsDefaultsToZeroWhenPrometheusReturnsEmpty(t *testi
 		"scaleUps5m",
 		"activationRetries5m",
 	}
-	for _, key := range floatFields {
-		if payload[key].(float64) != 0 {
-			t.Fatalf("expected %s=0, got %v", key, payload[key])
+	for _, key := range nullFields {
+		if payload[key] != nil {
+			t.Fatalf("expected %s=nil when no series exist, got %v", key, payload[key])
 		}
+	}
+	if payload["observed"].(bool) {
+		t.Fatalf("expected observed=false for empty Prometheus result")
 	}
 	if payload["partial"].(bool) {
 		t.Fatalf("expected partial=false for empty Prometheus result")
@@ -90,13 +93,19 @@ func TestFetchInferenceMetricsMarksPartialWhenAnyQueryFails(t *testing.T) {
 	if !payload["partial"].(bool) {
 		t.Fatalf("expected partial=true when one query fails")
 	}
-	if payload["queueWaitP95Ms"].(float64) != 0 {
-		t.Fatalf("expected queueWaitP95Ms=0 when query fails, got %v", payload["queueWaitP95Ms"])
+	if payload["queueWaitP95Ms"] != nil {
+		t.Fatalf("expected queueWaitP95Ms=nil when query fails, got %v", payload["queueWaitP95Ms"])
+	}
+	if !payload["observed"].(bool) {
+		t.Fatalf("expected observed=true when at least one metric query succeeds")
 	}
 
 	missing := payload["missingMetrics"].([]string)
 	if len(missing) == 0 {
 		t.Fatalf("expected missingMetrics to include failed query keys")
+	}
+	if missing[0] != "queueWaitP95Ms" {
+		t.Fatalf("expected queueWaitP95Ms to be marked missing, got %v", missing)
 	}
 }
 
@@ -184,6 +193,9 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 	if payload["model"] != "model-a" {
 		t.Fatalf("expected model=model-a, got %v", payload["model"])
 	}
+	if !payload["observed"].(bool) {
+		t.Fatalf("expected observed=true when Prometheus returns series")
+	}
 	if payload["partial"].(bool) {
 		t.Fatalf("expected partial=false when all reliability queries succeed")
 	}
@@ -232,6 +244,9 @@ func TestFetchInferenceMetricsDoesNotMarkOptionalContractGapsAsPartial(t *testin
 	}
 
 	payload := data.(map[string]any)
+	if payload["observed"].(bool) {
+		t.Fatalf("expected observed=false when Prometheus returns no series")
+	}
 	if payload["partial"].(bool) {
 		t.Fatalf("expected partial=false when only optional metrics are unavailable")
 	}

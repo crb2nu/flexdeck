@@ -25,11 +25,35 @@ export interface IntegrationCoverageSummary {
   loraUnavailable: number;
 }
 
+export function hasObservedInferenceMetrics(
+  metrics: InferenceMetrics | null | undefined,
+): boolean {
+  if (!metrics) return false;
+  if (typeof metrics.observed === "boolean") return metrics.observed;
+
+  return [
+    metrics.tps,
+    metrics.p95LatencyMs,
+    metrics.queueDepth,
+    metrics.activeConnections,
+    metrics.errorRate,
+    metrics.queueWaitP95Ms,
+    metrics.rejectedRequestsPerSec,
+    metrics.scaleUps5m,
+    metrics.activationRetries5m,
+    metrics.coldStartP95Ms,
+    metrics.idleSeconds,
+  ].some((value) => value != null);
+}
+
 export function getReliabilityStatus(
   metrics: InferenceMetrics | null | undefined,
 ): ReliabilityStatus {
   if (!metrics) return { level: "unknown", label: "Unknown" };
   if (metrics.partial) return { level: "partial", label: "Partial" };
+  if (!hasObservedInferenceMetrics(metrics)) {
+    return { level: "unknown", label: "Unknown" };
+  }
 
   const errorRate = metrics.errorRate ?? 0;
   const queueWaitP95Ms = metrics.queueWaitP95Ms ?? 0;

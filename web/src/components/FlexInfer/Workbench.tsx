@@ -21,6 +21,7 @@ import {
 import {
   activeConnectionsForModel,
   errorRateForModel as proxyErrorRateForModel,
+  hasProxyMetricsForModel,
   queueDepthForModel,
   requestsForModel,
 } from '../Models/inferenceMetrics';
@@ -261,6 +262,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const catalogModelCount = () => catalogs().reduce((sum, catalog) => sum + (catalog.models?.length || 0), 0);
   const proxyTotals = () => proxyMetrics()?.totals;
   const routerModels = () => routerInfo()?.modelInfo || [];
+  const reliabilityHeadline = createMemo(() => {
+    const summary = controller.reliabilitySummary();
+    if (summary.degraded > 0) return { level: 'degraded' as const, label: `${summary.degraded} degraded` };
+    if (summary.partial > 0) return { level: 'partial' as const, label: `${summary.partial} partial` };
+    if (summary.unknown > 0) return { level: 'unknown' as const, label: `${summary.unknown} unknown` };
+    return { level: 'healthy' as const, label: `${summary.healthy} healthy` };
+  });
 
   const sections = [
     { id: 'control-plane', label: 'Control plane' },
@@ -291,8 +299,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${proxyHealthClass()}`}>
                 Proxy {proxyHealthLabel()}
               </span>
-              <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${getReliabilityClasses(controller.reliabilitySummary().degraded > 0 ? 'degraded' : controller.reliabilitySummary().partial > 0 ? 'partial' : 'healthy')}`}>
-                {controller.reliabilitySummary().degraded} degraded
+              <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${getReliabilityClasses(reliabilityHeadline().level)}`}>
+                {reliabilityHeadline().label}
               </span>
               <span class="rounded-full bg-neon-purple/20 px-2.5 py-1 text-[10px] font-medium text-neon-purple">
                 Router {proxyEnabled() ? (routerInfo()?.healthy ? 'healthy' : 'watching') : 'disabled'}
@@ -469,12 +477,17 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                           </div>
                         </td>
                         <td class="px-4 py-3">
-                          <div class="space-y-1 font-mono text-[10px] text-text-dim">
-                            <div>Req {requestsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                            <div>Queue {queueDepthForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                            <div>Conn {activeConnectionsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                            <div>Error {(proxyErrorRateForModel(proxyMetrics(), row.model.name) * 100).toFixed(2)}%</div>
-                          </div>
+                          <Show
+                            when={hasProxyMetricsForModel(proxyMetrics(), row.model.name)}
+                            fallback={<div class="font-mono text-[10px] text-text-dim">No proxy series yet</div>}
+                          >
+                            <div class="space-y-1 font-mono text-[10px] text-text-dim">
+                              <div>Req {requestsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
+                              <div>Queue {queueDepthForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
+                              <div>Conn {activeConnectionsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
+                              <div>Error {(proxyErrorRateForModel(proxyMetrics(), row.model.name) * 100).toFixed(2)}%</div>
+                            </div>
+                          </Show>
                         </td>
                         <td class="px-4 py-3">
                           <div class="space-y-1 font-mono text-[10px] text-text-dim">

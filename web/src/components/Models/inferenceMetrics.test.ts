@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeConnectionsForModel,
   errorRateForModel,
+  hasProxyMetricsForModel,
   listInferenceModels,
   queueDepthForModel,
   requestsForModel,
@@ -77,6 +78,12 @@ describe('inferenceMetrics', () => {
     expect(requestsForModel(base, 'legacyOnly')).toBe(2);
     expect(queueDepthForModel(base, 'legacyOnly')).toBe(3);
     expect(activeConnectionsForModel(base, 'legacyOnly')).toBe(1);
+  });
+
+  it('distinguishes missing proxy series from observed zero values', () => {
+    expect(hasProxyMetricsForModel(base, 'alpha')).toBe(true);
+    expect(hasProxyMetricsForModel(base, 'legacyOnly')).toBe(true);
+    expect(hasProxyMetricsForModel(base, 'missing')).toBe(false);
   });
 
   it('derives error rate from status map first, then normalized totals', () => {
