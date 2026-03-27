@@ -60,7 +60,7 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		default:
-			line := scanner.Text()
+			line := normalizeHUDSSEDataLine(scanner.Text())
 			_, _ = w.Write([]byte(line + "\n"))
 			// Flush on empty line (end of SSE event) or data lines
 			if line == "" || strings.HasPrefix(line, "data:") {

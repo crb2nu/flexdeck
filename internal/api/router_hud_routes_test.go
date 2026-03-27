@@ -65,6 +65,9 @@ func TestRouter_HUDClaimsAndCancelRoutesProxyThrough(t *testing.T) {
 		if len(payload) != 1 {
 			t.Fatalf("claims payload length = %d, want 1", len(payload))
 		}
+		if payload[0]["agentId"] != "codex" || payload[0]["filePath"] != "internal/api/router.go" {
+			t.Fatalf("claims payload was not normalized: %#v", payload[0])
+		}
 	}
 
 	{

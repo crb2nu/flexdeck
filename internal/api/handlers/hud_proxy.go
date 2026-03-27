@@ -24,7 +24,11 @@ func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:fleet", 15*time.Second, "hud fleet", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/fleet")
+		raw, err := h.fetchHUD(r.Context(), "/api/fleet")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDFleetResponse(raw)
 	})
 }
 
@@ -35,7 +39,11 @@ func (h *Handler) HUDPresence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:presence", 10*time.Second, "hud presence", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/presence")
+		raw, err := h.fetchHUD(r.Context(), "/api/presence")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDPresenceResponse(raw)
 	})
 }
 
@@ -46,7 +54,11 @@ func (h *Handler) HUDTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:tasks", 15*time.Second, "hud tasks", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/tasks")
+		raw, err := h.fetchHUD(r.Context(), "/api/tasks")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDTasksResponse(raw)
 	})
 }
 
@@ -57,7 +69,11 @@ func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:workflows", 10*time.Second, "hud workflows", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/workflows")
+		raw, err := h.fetchHUD(r.Context(), "/api/workflows")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDWorkflowsResponse(r.Context(), h.fetchHUDWorkflowDetail, raw)
 	})
 }
 
@@ -68,7 +84,11 @@ func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:timeline", 5*time.Second, "hud timeline", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/timeline")
+		raw, err := h.fetchHUD(r.Context(), "/api/timeline")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDTimelineResponse(raw)
 	})
 }
 
@@ -79,7 +99,11 @@ func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:claims", 10*time.Second, "hud claims", func() (any, error) {
-		return h.fetchHUD(r.Context(), "/api/claims")
+		raw, err := h.fetchHUD(r.Context(), "/api/claims")
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDClaimsResponse(raw)
 	})
 }
 
@@ -99,6 +123,12 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err = h.prepareHUDWorkflowStepPayload(r.Context(), id, body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
 	result, err := h.postHUD(r.Context(), path, body)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
@@ -107,6 +137,7 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		h.cache.Invalidate(r.Context(), "hud:workflows")
+		h.cache.Invalidate(r.Context(), "hud:timeline")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -129,6 +160,12 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err = h.prepareHUDWorkflowStepPayload(r.Context(), id, body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
 	result, err := h.postHUD(r.Context(), path, body)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
@@ -137,6 +174,7 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		h.cache.Invalidate(r.Context(), "hud:workflows")
+		h.cache.Invalidate(r.Context(), "hud:timeline")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -199,6 +237,40 @@ func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, e
 	}
 
 	return json.RawMessage(body), nil
+}
+
+func (h *Handler) fetchHUDWorkflowDetail(ctx context.Context, workflowID string) (json.RawMessage, error) {
+	return h.fetchHUD(ctx, fmt.Sprintf("/api/workflows/%s", workflowID))
+}
+
+func (h *Handler) prepareHUDWorkflowStepPayload(ctx context.Context, workflowID string, body []byte) ([]byte, error) {
+	payload := map[string]any{}
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("invalid workflow request body: %w", err)
+		}
+	}
+
+	if hudString(payload["step_id"]) != "" {
+		return json.Marshal(payload)
+	}
+
+	raw, err := h.fetchHUDWorkflowDetail(ctx, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch workflow detail: %w", err)
+	}
+	detail, err := parseHUDEnvelope(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode workflow detail: %w", err)
+	}
+
+	stepID := resolveHUDWorkflowStepID(detail)
+	if stepID == "" {
+		return nil, fmt.Errorf("workflow %s does not expose an active step_id", workflowID)
+	}
+
+	payload["step_id"] = stepID
+	return json.Marshal(payload)
 }
 
 // postHUD makes a POST request to the Loom HUD REST API.
