@@ -282,15 +282,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   };
 
   return (
-    <div class="flex flex-col gap-4">
+    <div class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
       <div
-        class={`glass-panel overflow-hidden border border-white/10 ${
+        class={`glass-panel overflow-hidden border border-white/10 shadow-[0_18px_60px_rgba(0,0,0,0.24)] ${
           isAdminSurface()
             ? 'bg-gradient-to-br from-status-warn/10 via-white/5 to-neon-purple/10'
             : 'bg-gradient-to-br from-neon-cyan/10 via-white/5 to-neon-purple/10'
         }`}
       >
-        <div class="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-start xl:justify-between">
           <div class="min-w-0 space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <span class="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">
@@ -307,52 +307,52 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               </span>
             </div>
             <div>
-              <h2 class="text-2xl font-semibold text-text-main">
+              <h2 class="text-2xl font-semibold tracking-tight text-text-main sm:text-[2rem]">
                 Live FlexInfer operations workbench
               </h2>
-              <p class="mt-1 max-w-3xl text-sm text-text-dim">
+              <p class="mt-2 max-w-3xl text-sm leading-6 text-text-dim">
                 Inspect controller CRDs, inference telemetry, cache pipelines, catalogs, and proxy routing from one operator-focused surface.
               </p>
             </div>
             <div class="flex flex-wrap gap-2 text-[11px] text-text-dim">
-              <span class="rounded-full bg-white/5 px-2.5 py-1">
+              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 Mode: {managementMode()}
               </span>
-              <span class="rounded-full bg-white/5 px-2.5 py-1">
+              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 CRDs {controller.crdModels().length}
               </span>
-              <span class="rounded-full bg-white/5 px-2.5 py-1">
+              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 Registry {controller.registryModels().length}
               </span>
-              <span class="rounded-full bg-white/5 px-2.5 py-1">
+              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 Catalogs {catalogs().length}
               </span>
-              <span class="rounded-full bg-white/5 px-2.5 py-1">
+              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 Caches {caches().length}
               </span>
             </div>
           </div>
-          <div class="flex flex-col items-start gap-2 lg:items-end">
-            <div class="flex flex-wrap gap-2">
+          <div class="flex w-full flex-col items-start gap-3 xl:max-w-sm xl:items-end">
+            <div class="flex w-full flex-wrap gap-2 xl:justify-end">
               <button
                 onClick={() => void refreshWorkbench()}
-                class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+                class="min-h-[40px] rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
               >
                 Refresh all
               </button>
               <button
                 onClick={() => void controller.discoverModels()}
                 disabled={controller.discoverLoading()}
-                class="rounded-md bg-neon-purple/20 px-3 py-1.5 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
+                class="min-h-[40px] rounded-md bg-neon-purple/20 px-3 py-1.5 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
               >
                 {controller.discoverLoading() ? 'Syncing...' : 'Sync CRDs'}
               </button>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-text-dim">
+            <div class="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-text-dim">
               <div class="font-medium text-text-main">
                 {isAdminSurface() ? 'Admin surface' : 'GitOps surface'}
               </div>
-              <div class="mt-1 max-w-sm">
+              <div class="mt-1 leading-5">
                 {isAdminSurface()
                   ? 'Read-write management context. Use the sections below to inspect and patch live models.'
                   : 'Read-first control plane view. The backend is treated as the source of truth.'}
@@ -360,17 +360,20 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </div>
           </div>
         </div>
-        <div class="flex flex-wrap gap-2 border-t border-white/5 px-5 py-3">
-          <For each={sections}>
-            {(section) => (
-              <button
-                onClick={() => jumpTo(section.id)}
-                class="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-neon-cyan/30 hover:text-text-main"
-              >
-                {section.label}
-              </button>
-            )}
-          </For>
+        <div class="border-t border-white/5 px-4 py-3 sm:px-5">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Jump to</span>
+            <For each={sections}>
+              {(section) => (
+                <button
+                  onClick={() => jumpTo(section.id)}
+                  class="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-neon-cyan/30 hover:text-text-main"
+                >
+                  {section.label}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
       </div>
 
@@ -380,7 +383,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
       </Show>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
         <WorkbenchStatCard
           label="Controller"
           value={`${controller.crdModels().length}`}
@@ -407,7 +410,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         />
       </div>
 
-      <section id="control-plane" class="space-y-4">
+      <section id="control-plane" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Controller"
           title="CRD fleet"
@@ -530,7 +533,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </Show>
       </section>
 
-      <section id="telemetry" class="space-y-4">
+      <section id="telemetry" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Telemetry"
           title="Proxy and router health"
@@ -705,7 +708,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
       </section>
 
-      <section id="supply-chain" class="space-y-4">
+      <section id="supply-chain" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Supply chain"
           title="Catalogs and caches"
@@ -845,7 +848,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
       </section>
 
-      <section id="intake" class="space-y-4">
+      <section id="intake" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Intake"
           title="Registry search and deployment intake"

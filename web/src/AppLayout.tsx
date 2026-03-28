@@ -204,7 +204,7 @@ const AppLayout: Component<ParentProps> = (props) => {
       </Show>
 
       {/* Main Content */}
-      <main class="flex-1 min-h-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3 md:p-4 relative z-0">
+      <main class="relative z-0 flex flex-1 min-h-0 flex-col overflow-hidden px-2 py-2 sm:px-3 sm:py-3 md:p-4">
         <Suspense fallback={
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
