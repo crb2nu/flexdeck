@@ -1,6 +1,14 @@
 import { Component, createSignal, createEffect, createMemo, For, Show, onMount, onCleanup } from 'solid-js';
 import type { ModelCache, ModelCachePhase, MCPhaseStatus } from '../../lib/types';
 import { modelsApi } from '../../lib/api';
+import {
+  applyPipelineLogLine,
+  createPipelineTelemetryState,
+  getPipelineTimeline,
+  hasPipelineTelemetry,
+  humanizePhase,
+  type PipelineTelemetryState,
+} from './pipelineTelemetry';
 
 // Pipeline phase ordering for the stepper
 const PHASE_ORDER: ModelCachePhase[] = [
@@ -378,7 +386,7 @@ const PipelineDetail: Component<{ cache: ModelCache }> = (props) => {
 
       {/* Logs panel */}
       <Show when={isActivePhase(currentPhase())}>
-        <LogsPanel namespace={props.cache.namespace} name={props.cache.name} />
+        <LogsPanel namespace={props.cache.namespace} name={props.cache.name} phase={currentPhase()} />
       </Show>
     </div>
   );
@@ -409,10 +417,18 @@ const PhaseMetricsCard: Component<{
 
 // ─── Logs Panel ───
 
-const LogsPanel: Component<{ namespace: string; name: string }> = (props) => {
+const LogsPanel: Component<{ namespace: string; name: string; phase: string }> = (props) => {
   const [logs, setLogs] = createSignal<string[]>([]);
   const [logError, setLogError] = createSignal('');
   const [connected, setConnected] = createSignal(false);
+  const [telemetry, setTelemetry] = createSignal<PipelineTelemetryState>(createPipelineTelemetryState());
+  const telemetryAvailable = createMemo(() => hasPipelineTelemetry(telemetry()));
+  const latestProgress = createMemo(() => telemetry().latestProgress);
+  const latestSnapshot = createMemo(() => telemetry().latestSnapshot);
+  const checkpoint = createMemo(() => telemetry().checkpoint);
+  const runtimeCapabilities = createMemo(() => telemetry().runtimeCapabilities);
+  const timeline = createMemo(() => getPipelineTimeline(telemetry(), props.phase));
+  const activeTimelineStep = createMemo(() => timeline().find((step) => step.state === 'active'));
   let logContainerRef: HTMLDivElement | undefined;
 
   createEffect(() => {
@@ -429,6 +445,7 @@ const LogsPanel: Component<{ namespace: string; name: string }> = (props) => {
         // Keep last 500 lines
         return next.length > 500 ? next.slice(-500) : next;
       });
+      setTelemetry((prev) => applyPipelineLogLine(prev, e.data));
       // Auto-scroll
       requestAnimationFrame(() => {
         if (logContainerRef) {
@@ -455,28 +472,148 @@ const LogsPanel: Component<{ namespace: string; name: string }> = (props) => {
   });
 
   return (
-    <div class="glass-panel overflow-hidden">
-      <div class="px-3 py-2 border-b border-white/5 flex items-center justify-between">
-        <div class="text-[10px] font-medium uppercase tracking-wider text-text-dim">Live Logs</div>
-        <div class={`w-1.5 h-1.5 rounded-full ${connected() ? 'bg-status-ok' : 'bg-status-warn animate-pulse'}`} />
-      </div>
-      <Show when={logError()}>
-        <div class="px-3 py-2 text-[10px] text-status-warn">{logError()}</div>
+    <div class="space-y-3">
+      <Show when={isDetailedTelemetryPhase(props.phase) && telemetryAvailable()}>
+        <div class="glass-panel p-3">
+          <div class="mb-2 flex items-center justify-between">
+            <div class="text-[10px] font-medium uppercase tracking-wider text-neon-cyan">Live Telemetry</div>
+            <div class="text-[10px] font-mono text-text-dim">{props.phase}</div>
+          </div>
+          <Show when={timeline().length > 0}>
+            <div class="mb-3 border-b border-white/5 pb-3">
+              <div class="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-dim">Steps</div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <For each={timeline()}>
+                  {(step, index) => (
+                    <>
+                      <Show when={index() > 0}>
+                        <span class={`h-px w-3 ${step.state === 'done' ? 'bg-status-ok/40' : 'bg-white/10'}`} />
+                      </Show>
+                      <TelemetryStepChip
+                        label={step.label}
+                        state={step.state}
+                        detail={step.detail}
+                      />
+                    </>
+                  )}
+                </For>
+              </div>
+              <Show when={activeTimelineStep()?.detail}>
+                <div class="mt-2 text-[10px] font-mono text-text-dim">
+                  {activeTimelineStep()!.detail}
+                </div>
+              </Show>
+            </div>
+          </Show>
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <TelemetryMetric
+              label="Event"
+              value={latestProgress()?.event || telemetry().latestEvent?.event || '-'}
+            />
+            <TelemetryMetric
+              label="Step"
+              value={activeTimelineStep()?.label || humanizePhase(
+                checkpoint().stage ||
+                  latestSnapshot()?.phase ||
+                  latestProgress()?.phase ||
+                  '-',
+              )}
+            />
+            <TelemetryMetric
+              label="Progress"
+              value={latestProgress()?.percent != null ? `${latestProgress()!.percent}%` : '-'}
+            />
+            <TelemetryMetric
+              label="Checkpoint"
+              value={formatCheckpointSummary(checkpoint())}
+            />
+            <TelemetryMetric
+              label="RSS"
+              value={latestSnapshot()?.rss_mb != null ? `${latestSnapshot()!.rss_mb} MB` : '-'}
+            />
+            <TelemetryMetric
+              label="GPU Mem"
+              value={latestSnapshot()?.gpu_mem_mb != null ? `${latestSnapshot()!.gpu_mem_mb} MB` : '-'}
+            />
+            <TelemetryMetric
+              label="Step Detail"
+              value={latestProgress()?.detail || '-'}
+            />
+            <TelemetryMetric
+              label="Resume Notes"
+              value={checkpoint().notes.length > 0 ? checkpoint().notes.join(' · ') : '-'}
+            />
+          </div>
+          <Show when={runtimeCapabilities()}>
+            <div class="mt-3 border-t border-white/5 pt-3">
+              <div class="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-dim">Runtime Capabilities</div>
+              <div class="flex flex-wrap gap-1.5">
+                <CapabilityPill label="FLA" enabled={runtimeCapabilities()?.fla} />
+                <CapabilityPill label="causal_conv1d" enabled={runtimeCapabilities()?.causal_conv1d} />
+                <CapabilityPill label="psutil" enabled={runtimeCapabilities()?.psutil} />
+              </div>
+            </div>
+          </Show>
+        </div>
       </Show>
-      <div
-        ref={logContainerRef}
-        class="max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed text-text-muted bg-black/20"
-      >
-        <Show when={logs().length === 0 && !logError()}>
-          <span class="text-text-dim">Waiting for logs...</span>
+
+      <div class="glass-panel overflow-hidden">
+        <div class="px-3 py-2 border-b border-white/5 flex items-center justify-between">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-text-dim">Live Logs</div>
+          <div class={`w-1.5 h-1.5 rounded-full ${connected() ? 'bg-status-ok' : 'bg-status-warn animate-pulse'}`} />
+        </div>
+        <Show when={logError()}>
+          <div class="px-3 py-2 text-[10px] text-status-warn">{logError()}</div>
         </Show>
-        <For each={logs()}>
-          {(line) => <div class="whitespace-pre-wrap break-all">{line}</div>}
-        </For>
+        <div
+          ref={logContainerRef}
+          class="max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed text-text-muted bg-black/20"
+        >
+          <Show when={logs().length === 0 && !logError()}>
+            <span class="text-text-dim">Waiting for logs...</span>
+          </Show>
+          <For each={logs()}>
+            {(line) => <div class="whitespace-pre-wrap break-all">{line}</div>}
+          </For>
+        </div>
       </div>
     </div>
   );
 };
+
+const TelemetryMetric: Component<{ label: string; value: string }> = (props) => (
+  <div>
+    <div class="text-[10px] uppercase tracking-wider text-text-dim">{props.label}</div>
+    <div class="mt-1 text-xs font-mono text-text-muted break-words">{props.value}</div>
+  </div>
+);
+
+const TelemetryStepChip: Component<{
+  label: string;
+  state: 'done' | 'active' | 'pending';
+  detail?: string;
+}> = (props) => (
+  <span
+    class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+      props.state === 'done' ? 'bg-status-ok/20 text-status-ok' :
+      props.state === 'active' ? 'bg-neon-cyan/20 text-neon-cyan' :
+      'bg-white/10 text-text-dim'
+    }`}
+    title={props.detail || props.label}
+  >
+    {props.label}
+  </span>
+);
+
+const CapabilityPill: Component<{ label: string; enabled: boolean | undefined }> = (props) => (
+  <span
+    class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+      props.enabled ? 'bg-status-ok/20 text-status-ok' : 'bg-white/10 text-text-dim'
+    }`}
+  >
+    {props.label}: {props.enabled ? 'yes' : 'no'}
+  </span>
+);
 
 // ─── Helpers ───
 
@@ -558,6 +695,10 @@ function getFailureMessage(cache: ModelCache): string | null {
   return failedCondition?.message || null;
 }
 
+function isDetailedTelemetryPhase(phase: string): boolean {
+  return phase === 'Abliterating' || phase === 'Quantizing';
+}
+
 function hasCompletedMetrics(status: MCPhaseStatus | undefined): boolean {
   if (!status) return false;
   // Has at least some real data (not just progress tracking)
@@ -609,6 +750,14 @@ function formatSizeDelta(original?: number, compressed?: number): string {
     return `${b}B`;
   };
   return `${fmt(original)} → ${fmt(compressed)}`;
+}
+
+function formatCheckpointSummary(checkpoint: PipelineTelemetryState['checkpoint']): string {
+  const parts: string[] = [];
+  if (checkpoint.stage) parts.push(humanizePhase(checkpoint.stage));
+  if (checkpoint.completedLayers != null) parts.push(`${checkpoint.completedLayers} layers`);
+  if (parts.length === 0) return '-';
+  return parts.join(' · ');
 }
 
 export default PipelinesTab;

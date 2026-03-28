@@ -812,6 +812,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                           <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${cachePhaseTone(cache.status?.phase)}`}>
                             {cache.status?.phase || 'Unknown'}
                           </span>
+                          <Show when={cacheProgressSummary(cache)}>
+                            {(summary) => (
+                              <div class="mt-2 max-w-xs text-[10px] font-mono text-text-dim">
+                                {summary()}
+                              </div>
+                            )}
+                          </Show>
                         </td>
                         <td class="px-4 py-3 font-mono text-[10px] text-text-dim">
                           {cache.spec?.source}
@@ -1096,6 +1103,31 @@ function cachePhaseTone(phase?: string): string {
       return 'bg-neon-cyan/20 text-neon-cyan';
     default:
       return 'bg-white/10 text-text-dim';
+  }
+}
+
+function cacheProgressSummary(cache: ModelCache): string | null {
+  const activeStatus = activeCachePhaseStatus(cache);
+  if (!activeStatus) return null;
+
+  const parts: string[] = [];
+  if (activeStatus.progress != null) parts.push(`${activeStatus.progress}%`);
+  if (activeStatus.progressDetail) parts.push(activeStatus.progressDetail);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+function activeCachePhaseStatus(cache: ModelCache) {
+  switch (cache.status?.phase) {
+    case 'Abliterating':
+      return cache.status?.abliteration;
+    case 'Finetuning':
+      return cache.status?.finetune;
+    case 'Quantizing':
+      return cache.status?.quantization;
+    case 'Publishing':
+      return cache.status?.publish;
+    default:
+      return null;
   }
 }
 
