@@ -54,6 +54,8 @@ const QUANTIZATION_STAGE_ORDER = [
   'complete',
 ] as const;
 
+type PipelineStageKey = (typeof ABLITERATION_STAGE_ORDER)[number] | (typeof QUANTIZATION_STAGE_ORDER)[number];
+
 const STAGE_LABELS: Record<string, string> = {
   starting: 'Starting',
   loaded_model: 'Model loaded',
@@ -157,7 +159,7 @@ export function getPipelineTimeline(
   state: PipelineTelemetryState,
   phase: string,
 ): PipelineTimelineStep[] {
-  const stageOrder =
+  const stageOrder: readonly PipelineStageKey[] =
     phase === 'Abliterating' ? ABLITERATION_STAGE_ORDER :
     phase === 'Quantizing' ? QUANTIZATION_STAGE_ORDER :
     [];
@@ -238,7 +240,7 @@ function appendUniqueNote(notes: string[], value: string): string[] {
 function recordStructuredStage(
   state: PipelineTelemetryState,
   event: PipelineStructuredEvent,
-): string | null {
+): PipelineStageKey | null {
   const stage = inferStructuredStage(event);
   if (stage) {
     recordStage(state, stage);
@@ -253,7 +255,7 @@ function recordStage(state: PipelineTelemetryState, rawStage: string): void {
   state.observedStages = [...state.observedStages, stage];
 }
 
-function inferStructuredStage(event: PipelineStructuredEvent): string | null {
+function inferStructuredStage(event: PipelineStructuredEvent): PipelineStageKey | null {
   if (event.event === 'runtime_capabilities') return 'starting';
   if (event.event === 'complete') return 'complete';
 
@@ -268,8 +270,8 @@ function inferStructuredStage(event: PipelineStructuredEvent): string | null {
 function inferCurrentStage(
   state: PipelineTelemetryState,
   phase: string,
-): string | null {
-  const candidates = [
+): PipelineStageKey | null {
+  const candidates: Array<PipelineStageKey | null> = [
     normalizeStage(state.checkpoint.stage),
     normalizeStage(state.latestSnapshot?.phase),
     state.latestProgress ? inferStructuredStage(state.latestProgress) : null,
@@ -302,7 +304,7 @@ function getActiveStageDetail(
   return undefined;
 }
 
-function normalizeStage(value: string | null | undefined): string | null {
+function normalizeStage(value: string | null | undefined): PipelineStageKey | null {
   if (!value) return null;
 
   switch (value) {
@@ -343,7 +345,7 @@ function normalizeStage(value: string | null | undefined): string | null {
   }
 }
 
-function inferStageFromDetail(detail: string | null | undefined): string | null {
+function inferStageFromDetail(detail: string | null | undefined): PipelineStageKey | null {
   const value = detail?.trim().toLowerCase();
   if (!value) return null;
   if (value.includes('model loaded') || value.includes('loading shard')) return 'loaded_model';

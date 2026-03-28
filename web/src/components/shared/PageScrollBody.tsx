@@ -6,8 +6,8 @@ type PageScrollBodyProps = ParentProps<{
 }>;
 
 const PageScrollBody: Component<PageScrollBodyProps> = (props) => (
-  <div class={`flex-1 min-h-0 overflow-y-auto ${props.class ?? ''}`}>
-    <div class={`flex min-h-full flex-col ${props.contentClass ?? ''}`}>{props.children}</div>
+  <div class={`h-full min-h-0 overflow-y-auto overscroll-contain ${props.class ?? ''}`}>
+    <div class={`flex min-h-full min-w-0 flex-col ${props.contentClass ?? ''}`}>{props.children}</div>
   </div>
 );
 
