@@ -4,6 +4,9 @@ import solidPlugin from "vite-plugin-solid";
 export default defineConfig({
   base: "./",
   plugins: [solidPlugin()],
+  resolve: {
+    conditions: ["browser"],
+  },
   worker: {
     format: "es",
   },
@@ -34,5 +37,8 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    environment: "jsdom",
   },
 });
