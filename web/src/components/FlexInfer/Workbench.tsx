@@ -1,5 +1,4 @@
-import { Component, For, Show, createMemo, createSignal, onMount } from 'solid-js';
-import { createPolling } from '../../hooks/createPolling';
+import { Component, For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import {
   operatorStateBadgeClass,
   operatorStateLabel,
@@ -9,13 +8,33 @@ import {
 } from '../../lib/freshness';
 import { healthStore } from '../../stores/health';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
-import { modelsApi, flexinferProxyApi, litellm } from '../../lib/api';
-import type {
-  FlexInferProxyMetricsResponse,
-  LiteLLMRouterResponse,
-  ModelCache,
-  ModelCatalogEntry,
-} from '../../lib/types';
+import type { ModelCache } from '../../lib/types';
+import {
+  flexinferCacheError,
+  flexinferCacheLoading,
+  flexinferCacheUpdatedAt,
+  flexinferCaches,
+  flexinferCatalogError,
+  flexinferCatalogLoading,
+  flexinferCatalogUpdatedAt,
+  flexinferCatalogs,
+  flexinferProxyError,
+  flexinferProxyHealth,
+  flexinferProxyLoading,
+  flexinferProxyMetrics,
+  flexinferProxyUpdatedAt,
+  flexinferRouterError,
+  flexinferRouterInfo,
+  flexinferRouterLoading,
+  flexinferRouterUpdatedAt,
+  refreshFlexInferCaches,
+  refreshFlexInferCatalogs,
+  refreshFlexInferOperationalData,
+  refreshFlexInferProxy,
+  refreshFlexInferRouter,
+  startFlexInferOperationalPolling,
+  stopFlexInferOperationalPolling,
+} from '../../stores/flexinferOperational';
 import {
   getReliabilityClasses,
   getReliabilityStatus,
@@ -33,14 +52,6 @@ import {
 } from '../Models/inferenceMetrics';
 
 type Surface = 'models' | 'admin';
-
-interface FlexInferProxyHealth {
-  healthy?: boolean;
-  status?: string;
-  mode?: string;
-  partial?: boolean;
-  message?: string;
-}
 
 interface WorkbenchProps {
   surface?: Surface;
@@ -65,28 +76,24 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const [activeTab] = createSignal<ModelsTab>('controller');
   const noopSetActiveTab = () => undefined;
   const controller = useModelsController(activeTab, noopSetActiveTab);
-
-  const [proxyMetrics, setProxyMetrics] = createSignal<FlexInferProxyMetricsResponse | null>(null);
-  const [proxyHealth, setProxyHealth] = createSignal<FlexInferProxyHealth | null>(null);
-  const [proxyLoading, setProxyLoading] = createSignal(true);
-  const [proxyError, setProxyError] = createSignal('');
-  const [proxyUpdatedAt, setProxyUpdatedAt] = createSignal(0);
-
-  const [routerInfo, setRouterInfo] = createSignal<LiteLLMRouterResponse | null>(null);
-  const [routerLoading, setRouterLoading] = createSignal(true);
-  const [routerError, setRouterError] = createSignal('');
-  const [routerUpdatedAt, setRouterUpdatedAt] = createSignal(0);
-
-  const [catalogs, setCatalogs] = createSignal<ModelCatalogEntry[]>([]);
-  const [catalogLoading, setCatalogLoading] = createSignal(true);
-  const [catalogError, setCatalogError] = createSignal('');
-  const [catalogUpdatedAt, setCatalogUpdatedAt] = createSignal(0);
-
-  const [caches, setCaches] = createSignal<ModelCache[]>([]);
-  const [cacheLoading, setCacheLoading] = createSignal(true);
-  const [cacheError, setCacheError] = createSignal('');
-  const [cacheUpdatedAt, setCacheUpdatedAt] = createSignal(0);
   const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
+  const proxyMetrics = flexinferProxyMetrics;
+  const proxyHealth = flexinferProxyHealth;
+  const proxyLoading = flexinferProxyLoading;
+  const proxyError = flexinferProxyError;
+  const proxyUpdatedAt = flexinferProxyUpdatedAt;
+  const routerInfo = flexinferRouterInfo;
+  const routerLoading = flexinferRouterLoading;
+  const routerError = flexinferRouterError;
+  const routerUpdatedAt = flexinferRouterUpdatedAt;
+  const catalogs = flexinferCatalogs;
+  const catalogLoading = flexinferCatalogLoading;
+  const catalogError = flexinferCatalogError;
+  const catalogUpdatedAt = flexinferCatalogUpdatedAt;
+  const caches = flexinferCaches;
+  const cacheLoading = flexinferCacheLoading;
+  const cacheError = flexinferCacheError;
+  const cacheUpdatedAt = flexinferCacheUpdatedAt;
 
   const proxyHealthClass = () => {
     if (!proxyEnabled()) return 'bg-white/10 text-text-dim';
@@ -115,116 +122,21 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     return 'text-status-ok';
   };
 
-  const refreshProxy = async () => {
-    if (!proxyEnabled()) {
-      setProxyMetrics(null);
-      setProxyHealth(null);
-      setProxyError('');
-      setProxyLoading(false);
-      return;
-    }
-
-    setProxyLoading(true);
-    const [healthResult, metricsResult] = await Promise.allSettled([
-      flexinferProxyApi.health(),
-      flexinferProxyApi.metrics(),
-    ]);
-
-    if (healthResult.status === 'fulfilled') {
-      setProxyHealth(healthResult.value);
-    } else {
-      setProxyHealth(null);
-    }
-
-    if (metricsResult.status === 'fulfilled') {
-      setProxyMetrics(metricsResult.value);
-      setProxyError('');
-      setProxyUpdatedAt(Date.now());
-    } else if (metricsResult.status === 'rejected') {
-      setProxyError(metricsResult.reason instanceof Error ? metricsResult.reason.message : 'Failed to fetch proxy metrics');
-      setProxyMetrics(null);
-    }
-
-    setProxyLoading(false);
-  };
-
-  const refreshRouter = async () => {
-    if (!proxyEnabled()) {
-      setRouterInfo(null);
-      setRouterError('');
-      setRouterLoading(false);
-      return;
-    }
-
-    setRouterLoading(true);
-    try {
-      const data = await litellm.router();
-      setRouterInfo(data);
-      setRouterError('');
-      setRouterUpdatedAt(Date.now());
-    } catch (err) {
-      setRouterInfo(null);
-      setRouterError(err instanceof Error ? err.message : 'Failed to fetch router info');
-    } finally {
-      setRouterLoading(false);
-    }
-  };
-
-  const refreshCatalogs = async () => {
-    setCatalogLoading(true);
-    try {
-      const data = await modelsApi.catalogs();
-      setCatalogs(data.catalogs || []);
-      setCatalogError('');
-      setCatalogUpdatedAt(Date.now());
-    } catch (err) {
-      setCatalogError(err instanceof Error ? err.message : 'Failed to fetch catalogs');
-    } finally {
-      setCatalogLoading(false);
-    }
-  };
-
-  const refreshCaches = async () => {
-    if (!modelCacheEnabled()) {
-      setCaches([]);
-      setCacheError('');
-      setCacheLoading(false);
-      return;
-    }
-
-    setCacheLoading(true);
-    try {
-      const data = await modelsApi.cacheList();
-      setCaches(data.caches || []);
-      setCacheError('');
-      setCacheUpdatedAt(Date.now());
-    } catch (err) {
-      setCacheError(err instanceof Error ? err.message : 'Failed to fetch caches');
-    } finally {
-      setCacheLoading(false);
-    }
-  };
-
   const refreshWorkbench = async () => {
     await Promise.all([
       controller.fetchCRDModels(),
-      controller.fetchRegistryModels(),
-      refreshProxy(),
-      refreshRouter(),
-      refreshCatalogs(),
-      refreshCaches(),
+      refreshFlexInferOperationalData(),
     ]);
     setControllerUpdatedAt(Date.now());
   };
 
   onMount(() => {
+    startFlexInferOperationalPolling();
     void refreshWorkbench();
   });
-
-  createPolling('flexinfer-workbench-proxy', refreshProxy, 15_000, proxyEnabled);
-  createPolling('flexinfer-workbench-router', refreshRouter, 30_000, proxyEnabled);
-  createPolling('flexinfer-workbench-catalogs', refreshCatalogs, 60_000);
-  createPolling('flexinfer-workbench-caches', refreshCaches, 30_000, modelCacheEnabled);
+  onCleanup(() => {
+    stopFlexInferOperationalPolling();
+  });
 
   const controllerSectionState = createMemo<OperatorState>(() =>
     resolveOperatorState({
@@ -605,13 +517,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           action={
             <div class="flex flex-wrap gap-2">
               <button
-                onClick={() => void refreshProxy()}
+                onClick={() => void refreshFlexInferProxy()}
                 class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
               >
                 Reload proxy
               </button>
               <button
-                onClick={() => void refreshRouter()}
+                onClick={() => void refreshFlexInferRouter()}
                 class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
               >
                 Reload router
@@ -781,13 +693,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           action={
             <div class="flex flex-wrap gap-2">
               <button
-                onClick={() => void refreshCatalogs()}
+                onClick={() => void refreshFlexInferCatalogs()}
                 class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-purple/30 hover:text-text-main"
               >
                 Reload catalogs
               </button>
               <button
-                onClick={() => void refreshCaches()}
+                onClick={() => void refreshFlexInferCaches()}
                 class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-purple/30 hover:text-text-main"
               >
                 Reload caches

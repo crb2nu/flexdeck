@@ -21,6 +21,7 @@ import {
   clearModelIntegrationsCache,
   fetchModelIntegrationsBatch,
   invalidateModelIntegration,
+  modelRefKey,
 } from './modelIntegration';
 
 describe('modelIntegration', () => {
@@ -44,6 +45,10 @@ describe('modelIntegration', () => {
     expect(Object.keys(result)).toEqual(['flexinfer-system/alpha']);
     expect(crdInferenceMock).toHaveBeenCalledTimes(1);
     expect(loraMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes a shared model key helper for cross-surface selectors', () => {
+    expect(modelRefKey('flexinfer-system', 'alpha')).toBe('flexinfer-system/alpha');
   });
 
   it('reuses cached values across calls until invalidated', async () => {
