@@ -1,9 +1,20 @@
-import { createEffect, createMemo, createSignal } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
-import { modelsApi, flexinferProxyApi, hudApi, agentsApi } from '../../lib/api';
-import type { FlexInferProxyMetricsResponse } from '../../lib/types';
+import { hudApi, agentsApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
 import { metricsStore } from '../../stores/metrics';
+import {
+  flexinferProxyError,
+  flexinferProxyLoading,
+  flexinferProxyMetrics,
+  flexinferProxyUpdatedAt,
+  flexinferRegistryError,
+  flexinferRegistryLoading,
+  flexinferRegistryModels,
+  flexinferRegistryUpdatedAt,
+  startFlexInferOperationalPolling,
+  stopFlexInferOperationalPolling,
+} from '../../stores/flexinferOperational';
 import { buildInferenceHealthSummary } from './inferenceHealth';
 import { resolveDashboardDataState } from './statusSemantics';
 
@@ -75,62 +86,9 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
   const cpuHistory = createMemo(() => { cpuHistoryVersion(); return cpuRing.toArray(); });
   const memHistory = createMemo(() => { memHistoryVersion(); return memRing.toArray(); });
 
-  const [modelCount, setModelCount] = createSignal<ModelCountState>({
-    deployed: 0,
-    total: 0,
-    loading: true,
-    error: '',
-  });
-  const [modelLastUpdateMs, setModelLastUpdateMs] = createSignal(0);
-
-  const fetchModelCount = async () => {
-    try {
-      const result = await modelsApi.list();
-      const models = result?.models || [];
-      const deployed = models.filter(
-        (model: { deployment_status?: string }) => model.deployment_status === 'deployed',
-      ).length;
-      setModelCount({ deployed, total: models.length, loading: false, error: '' });
-      setModelLastUpdateMs(Date.now());
-    } catch {
-      setModelCount((prev) => ({ ...prev, loading: false, error: 'offline' }));
-    }
-  };
-
-  const [inferenceHealth, setInferenceHealth] = createSignal<InferenceHealthState>({
-    totalTps: 0,
-    modelCount: 0,
-    queueDepth: 0,
-    loading: true,
-    error: '',
-  });
-  const [inferenceLastUpdateMs, setInferenceLastUpdateMs] = createSignal(0);
   const tpsRing = new RingBuffer(20);
   const [tpsHistoryVersion, setTpsHistoryVersion] = createSignal(0);
   const tpsHistory = createMemo(() => { tpsHistoryVersion(); return tpsRing.toArray(); });
-
-  const fetchInferenceHealth = async () => {
-    if (!healthStore.features.flexinfer_proxy?.enabled) return;
-    try {
-      const data: FlexInferProxyMetricsResponse = await flexinferProxyApi.metrics();
-      const summary = buildInferenceHealthSummary(data);
-
-      setInferenceHealth({
-        totalTps: summary.totalTps,
-        modelCount: summary.modelCount,
-        queueDepth: summary.queueDepth,
-        loading: false,
-        error: summary.error,
-      });
-      setInferenceLastUpdateMs(Date.now());
-      if (summary.totalTps > 0) {
-        tpsRing.push(summary.totalTps);
-        setTpsHistoryVersion((v) => v + 1);
-      }
-    } catch {
-      setInferenceHealth((prev) => ({ ...prev, loading: false, error: 'offline' }));
-    }
-  };
 
   const [agentActivity, setAgentActivity] = createSignal<AgentActivityState>({
     activeAgents: 0,
@@ -144,6 +102,56 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
   const loomHUDPullEnabled = () => healthStore.features.loom_hud?.enabled ?? false;
   const loomHUDPushEnabled = () => healthStore.features.loom_hud_push?.enabled ?? false;
   const loomHUDAvailable = () => loomHUDPullEnabled() || loomHUDPushEnabled();
+
+  onMount(() => {
+    startFlexInferOperationalPolling();
+  });
+
+  onCleanup(() => {
+    stopFlexInferOperationalPolling();
+  });
+
+  const modelCount = createMemo<ModelCountState>(() => {
+    const models = flexinferRegistryModels();
+    const deployed = models.filter((model) => model.deployment_status === 'deployed').length;
+    return {
+      deployed,
+      total: models.length,
+      loading: flexinferRegistryLoading(),
+      error: flexinferRegistryError() || '',
+    };
+  });
+  const modelLastUpdateMs = flexinferRegistryUpdatedAt;
+
+  const inferenceHealth = createMemo<InferenceHealthState>(() => {
+    if (!healthStore.features.flexinfer_proxy?.enabled) {
+      return {
+        totalTps: 0,
+        modelCount: 0,
+        queueDepth: 0,
+        loading: false,
+        error: '',
+      };
+    }
+
+    const summary = buildInferenceHealthSummary(flexinferProxyMetrics());
+    return {
+      totalTps: summary.totalTps,
+      modelCount: summary.modelCount,
+      queueDepth: summary.queueDepth,
+      loading: flexinferProxyLoading(),
+      error: flexinferProxyError() || summary.error,
+    };
+  });
+  const inferenceLastUpdateMs = flexinferProxyUpdatedAt;
+
+  createEffect(() => {
+    const totalTps = inferenceHealth().totalTps;
+    if (totalTps > 0) {
+      tpsRing.push(totalTps);
+      setTpsHistoryVersion((v) => v + 1);
+    }
+  });
 
   const fetchAgentActivity = async () => {
     if (!loomHUDAvailable()) return;
@@ -198,13 +206,6 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
     if (loomHUDAvailable()) void fetchAgentActivity();
   });
 
-  createPolling('dash-models', fetchModelCount, metricsRefreshInterval);
-  createPolling(
-    'dash-inference',
-    fetchInferenceHealth,
-    metricsRefreshInterval,
-    () => healthStore.features.flexinfer_proxy?.enabled ?? false,
-  );
   createPolling('dash-agents', fetchAgentActivity, metricsRefreshInterval, loomHUDAvailable);
 
   const resourceDataState = createMemo(() =>

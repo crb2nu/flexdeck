@@ -34,6 +34,10 @@ function keyOf(namespace: string, name: string): string {
   return `${namespace}/${name}`;
 }
 
+export function modelRefKey(namespace: string, name: string): string {
+  return keyOf(namespace, name);
+}
+
 async function fetchModelIntegration(
   namespace: string,
   name: string,

@@ -14,7 +14,14 @@ import {
   clearModelIntegrationsCache,
   fetchModelIntegrationsBatch,
   invalidateModelIntegration,
+  modelRefKey,
 } from '../../lib/modelIntegration';
+import {
+  flexinferRegistryError,
+  flexinferRegistryLoading,
+  flexinferRegistryModels,
+  refreshFlexInferRegistry,
+} from '../../stores/flexinferOperational';
 import {
   getReliabilityStatus,
   type IntegrationFetchState,
@@ -34,8 +41,7 @@ export type ModelsTab =
   | 'pipelines';
 
 export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab: (tab: ModelsTab) => void) {
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
+  const [localError, setLocalError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
   const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
@@ -46,7 +52,6 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   const [loraByModel, setLoraByModel] = createSignal<Record<string, LoRAAdapter[]>>({});
   const [throughputByModel, setThroughputByModel] = createSignal<Record<string, LiteLLMModelThroughput>>({});
   const [integrationByModel, setIntegrationByModel] = createSignal<Record<string, IntegrationFetchState>>({});
-  const [registryModels, setRegistryModels] = createSignal<RegisteredModel[]>([]);
 
   const [searchQuery, setSearchQuery] = createSignal('');
   const [searchSource, setSearchSource] = createSignal<'huggingface' | 'civitai'>('huggingface');
@@ -55,8 +60,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   const [crdNamespace, setCrdNamespace] = createSignal('');
 
   let controllerRefreshToken = 0;
-
-  const modelKey = (namespace: string, name: string) => `${namespace}/${name}`;
+  const loading = flexinferRegistryLoading;
+  const registryModels = flexinferRegistryModels;
+  const error = () => localError() || flexinferRegistryError();
 
   const refreshControllerIntegrations = async (models: FlexInferModel[]) => {
     const token = ++controllerRefreshToken;
@@ -81,7 +87,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
     );
 
     for (const model of models) {
-      const key = modelKey(model.namespace, model.name);
+      const key = modelRefKey(model.namespace, model.name);
       const integration = integrationData[key];
       if (!integration) continue;
       nextIntegration[key] = {
@@ -113,19 +119,12 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   };
 
   const fetchRegistryModels = async () => {
-    try {
-      const data = await modelsApi.list();
-      setRegistryModels(data.models || []);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch models');
-    } finally {
-      setLoading(false);
-    }
+    setLocalError('');
+    await refreshFlexInferRegistry();
   };
 
   const refreshModels = async () => {
-    await Promise.all([fetchCRDModels(), fetchRegistryModels()]);
+    await fetchCRDModels();
   };
 
   const discoverModels = async () => {
@@ -133,9 +132,10 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
     try {
       await modelsApi.discover(crdNamespace() || undefined);
       clearModelIntegrationsCache();
+      setLocalError('');
       await refreshModels();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Discovery failed');
+      setLocalError(err instanceof Error ? err.message : 'Discovery failed');
     } finally {
       setDiscoverLoading(false);
     }
@@ -149,8 +149,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
         ? await modelsApi.searchHuggingFace(searchQuery(), '', 20)
         : await modelsApi.searchCivitAI(searchQuery(), '', 20);
       setSearchResults(data.models || []);
+      setLocalError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
+      setLocalError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setSearching(false);
     }
@@ -162,8 +163,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
       await modelsApi.register(source, sourceId);
       await fetchRegistryModels();
       setActiveTab('registry');
+      setLocalError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setLocalError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setActionLoading(null);
     }
@@ -174,8 +176,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
     try {
       await modelsApi.startDownload(id);
       await fetchRegistryModels();
+      setLocalError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
+      setLocalError(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setActionLoading(null);
     }
@@ -187,8 +190,9 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
     try {
       await modelsApi.delete(id);
       await fetchRegistryModels();
+      setLocalError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      setLocalError(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setActionLoading(null);
     }
@@ -207,19 +211,20 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
       }
       invalidateModelIntegration(model.namespace, model.name);
       await fetchCRDModels();
+      setLocalError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${action} failed`);
+      setLocalError(err instanceof Error ? err.message : `${action} failed`);
     } finally {
       setCrdActionLoading(null);
     }
   };
 
   onMount(() => {
-    void refreshModels().finally(() => setLoading(false));
+    void refreshModels();
     void discoverModels();
   });
 
-  createPolling('models-refresh', async () => { await refreshModels(); }, 15000);
+  createPolling('models-refresh', async () => { await fetchCRDModels(); }, 15000);
 
   createEffect(() => {
     if (activeTab() !== 'controller') return;
@@ -282,7 +287,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   const reliabilitySummary = createMemo(() => {
     const counts: Record<string, number> = { healthy: 0, degraded: 0, partial: 0, unknown: 0 };
     for (const model of crdModels()) {
-      const key = modelKey(model.namespace, model.name);
+      const key = modelRefKey(model.namespace, model.name);
       const status = getReliabilityStatus(inferenceByModel()[key]);
       counts[status.level] += 1;
     }
@@ -293,7 +298,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
     let loaded = 0;
     let total = 0;
     for (const model of crdModels()) {
-      const key = modelKey(model.namespace, model.name);
+      const key = modelRefKey(model.namespace, model.name);
       const summary = summarizeLoRA(loraByModel()[key]);
       loaded += summary.loaded;
       total += summary.total;
@@ -306,7 +311,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
       return { inferenceUnavailable: 0, loraUnavailable: 0 };
     }
     const states = crdModels()
-      .map((model) => integrationByModel()[modelKey(model.namespace, model.name)])
+      .map((model) => integrationByModel()[modelRefKey(model.namespace, model.name)])
       .filter((state): state is IntegrationFetchState => state != null);
     return summarizeIntegrationCoverage(states);
   });
