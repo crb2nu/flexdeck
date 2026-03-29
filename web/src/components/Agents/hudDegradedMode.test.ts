@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeReconnectDelayMs,
+  feedConnectionDetail,
   feedConnectionLabel,
+  feedConnectionState,
   hasDegradedHUDFeed,
   HUD_FEED_RECONNECT_BASE_DELAY_MS,
   HUD_FEED_RECONNECT_MAX_DELAY_MS,
@@ -18,10 +20,20 @@ describe('hudDegradedMode', () => {
   });
 
   it('returns explicit feed labels for connection states', () => {
-    expect(feedConnectionLabel('disabled')).toBe('Push mode (no live feed)');
-    expect(feedConnectionLabel('connecting')).toBe('Connecting...');
-    expect(feedConnectionLabel('live')).toBe('Live');
-    expect(feedConnectionLabel('stale')).toBe('Poll fallback (retry 2-30s)');
+    expect(feedConnectionState('disabled')).toBe('offline');
+    expect(feedConnectionState('connecting')).toBe('connecting');
+    expect(feedConnectionState('live')).toBe('ready');
+    expect(feedConnectionState('stale')).toBe('stale');
+
+    expect(feedConnectionDetail('disabled')).toBe('push mode');
+    expect(feedConnectionDetail('connecting')).toBe('waiting for events');
+    expect(feedConnectionDetail('live')).toBe('live feed');
+    expect(feedConnectionDetail('stale')).toBe('poll fallback');
+
+    expect(feedConnectionLabel('disabled')).toBe('OFFLINE · push mode');
+    expect(feedConnectionLabel('connecting')).toBe('CONNECTING · waiting for events');
+    expect(feedConnectionLabel('live')).toBe('READY · live feed');
+    expect(feedConnectionLabel('stale')).toBe('STALE · poll fallback');
   });
 
   it('marks workflow data stale only when pull mode is enabled and threshold exceeded', () => {

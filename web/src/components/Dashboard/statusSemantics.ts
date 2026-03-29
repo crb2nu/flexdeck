@@ -1,44 +1,25 @@
-export type DashboardDataState = "ready" | "partial" | "stale" | "offline";
+import {
+  operatorStateLabel,
+  resolveOperatorState,
+  type OperatorState,
+  type ResolveOperatorStateInput,
+} from '../../lib/freshness';
 
-export interface ResolveDashboardStateInput {
-  loading?: boolean;
-  error?: string | null;
-  lastUpdateMs?: number;
-  staleAfterMs: number;
-  nowMs?: number;
-}
+export type DashboardDataState = Extract<OperatorState, 'ready' | 'partial' | 'stale' | 'offline'>;
 
-const OFFLINE_ERROR_TOKENS = ["offline", "unavailable", "timeout", "refused"];
-
-function isOfflineError(error: string): boolean {
-  const normalized = error.trim().toLowerCase();
-  if (!normalized) return false;
-  return OFFLINE_ERROR_TOKENS.some((token) => normalized.includes(token));
-}
+export type ResolveDashboardStateInput = ResolveOperatorStateInput;
 
 export function resolveDashboardDataState(
   input: ResolveDashboardStateInput,
 ): DashboardDataState {
-  const {
-    loading = false,
-    error = "",
-    lastUpdateMs = 0,
-    staleAfterMs,
-    nowMs = Date.now(),
-  } = input;
+  const resolved = resolveOperatorState({
+    ...input,
+    loadingState: 'partial',
+  });
 
-  if (loading) return "partial";
-
-  const normalizedError = (error || "").trim();
-  if (normalizedError) {
-    return isOfflineError(normalizedError) ? "offline" : "partial";
-  }
-
-  if (!lastUpdateMs || nowMs - lastUpdateMs > staleAfterMs) return "stale";
-  return "ready";
+  return resolved === 'connecting' ? 'partial' : resolved;
 }
 
 export function dataStateLabel(state: DashboardDataState, detail?: string): string {
-  if (!detail) return state.toUpperCase();
-  return `${state.toUpperCase()} · ${detail}`;
+  return operatorStateLabel(state, detail);
 }

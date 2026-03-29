@@ -1,6 +1,12 @@
 import { Component, For, Show, createMemo, createSignal, onMount } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
-import { resolveFreshness } from '../../lib/freshness';
+import {
+  operatorStateBadgeClass,
+  operatorStateLabel,
+  resolveFreshness,
+  resolveOperatorState,
+  type OperatorState,
+} from '../../lib/freshness';
 import { healthStore } from '../../stores/health';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
 import { modelsApi, flexinferProxyApi, litellm } from '../../lib/api';
@@ -220,6 +226,59 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   createPolling('flexinfer-workbench-catalogs', refreshCatalogs, 60_000);
   createPolling('flexinfer-workbench-caches', refreshCaches, 30_000, modelCacheEnabled);
 
+  const controllerSectionState = createMemo<OperatorState>(() =>
+    resolveOperatorState({
+      loading: controller.loading() || controller.controllerDataLoading(),
+      error: controller.error(),
+      lastUpdateMs: controllerUpdatedAt(),
+      staleAfterMs: 15_000,
+    }),
+  );
+  const controllerSectionDetail = () => {
+    if (controller.error()) return 'controller issue';
+    if (controller.loading() || controller.controllerDataLoading()) {
+      return controllerUpdatedAt() ? 'background refresh' : 'initial sync';
+    }
+    if (controllerSectionState() === 'stale') return 'poll lag';
+    return undefined;
+  };
+  const telemetryUpdatedAt = () => Math.max(proxyUpdatedAt(), routerUpdatedAt(), 0);
+  const telemetrySectionState = createMemo<OperatorState>(() =>
+    resolveOperatorState({
+      loading: proxyLoading() || routerLoading(),
+      error: proxyError() || routerError(),
+      lastUpdateMs: telemetryUpdatedAt(),
+      staleAfterMs: 15_000,
+      disabled: !proxyEnabled(),
+      partial: Boolean(proxyMetrics()?.partial),
+    }),
+  );
+  const telemetrySectionDetail = () => {
+    if (!proxyEnabled()) return 'feature disabled';
+    if (proxyMetrics()?.partial) return 'partial metrics';
+    if (proxyError() || routerError()) return proxyError() && routerError() ? 'upstream errors' : proxyError() ? 'proxy issue' : 'router issue';
+    if (proxyLoading() || routerLoading()) return telemetryUpdatedAt() ? 'background refresh' : 'initial sync';
+    if (telemetrySectionState() === 'stale') return 'poll fallback';
+    return undefined;
+  };
+  const supplyChainUpdatedAt = () => Math.max(catalogUpdatedAt(), cacheUpdatedAt(), 0);
+  const supplyChainSectionState = createMemo<OperatorState>(() =>
+    resolveOperatorState({
+      loading: catalogLoading() || cacheLoading(),
+      error: catalogError() || cacheError(),
+      lastUpdateMs: supplyChainUpdatedAt(),
+      staleAfterMs: 60_000,
+      partial: !modelCacheEnabled(),
+    }),
+  );
+  const supplyChainSectionDetail = () => {
+    if (!modelCacheEnabled()) return 'cache disabled';
+    if (catalogError() || cacheError()) return catalogError() && cacheError() ? 'upstream errors' : catalogError() ? 'catalog issue' : 'cache issue';
+    if (catalogLoading() || cacheLoading()) return supplyChainUpdatedAt() ? 'background refresh' : 'initial sync';
+    if (supplyChainSectionState() === 'stale') return 'poll lag';
+    return undefined;
+  };
+
   const modelRows = createMemo(() => {
     const items = controller.crdModels().map((model) => {
       const key = `${model.namespace}/${model.name}`;
@@ -416,7 +475,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           title="CRD fleet"
           subtitle="Live FlexInfer resources from the controller, prioritized by operational risk."
           updatedAt={controllerUpdatedAt()}
-          freshness={controller.loading() ? 'offline' : resolveFreshness(controllerUpdatedAt(), 15_000)}
+          state={controllerSectionState()}
+          stateDetail={controllerSectionDetail()}
           loading={controller.loading() || controller.controllerDataLoading()}
           action={
             <div class="flex flex-wrap gap-2">
@@ -538,8 +598,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           kicker="Telemetry"
           title="Proxy and router health"
           subtitle="FlexInfer proxy metrics, LiteLLM routing, and per-model request pressure."
-          updatedAt={proxyUpdatedAt() || routerUpdatedAt()}
-          freshness={resolveFreshness(proxyUpdatedAt() || routerUpdatedAt(), 15_000)}
+          updatedAt={telemetryUpdatedAt()}
+          state={telemetrySectionState()}
+          stateDetail={telemetrySectionDetail()}
           loading={proxyLoading() || routerLoading()}
           action={
             <div class="flex flex-wrap gap-2">
@@ -713,8 +774,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           kicker="Supply chain"
           title="Catalogs and caches"
           subtitle="Track upstream catalogs, cache job phases, and release readiness."
-          updatedAt={catalogUpdatedAt() || cacheUpdatedAt()}
-          freshness={resolveFreshness(catalogUpdatedAt() || cacheUpdatedAt(), 60_000)}
+          updatedAt={supplyChainUpdatedAt()}
+          state={supplyChainSectionState()}
+          stateDetail={supplyChainSectionDetail()}
           loading={catalogLoading() || cacheLoading()}
           action={
             <div class="flex flex-wrap gap-2">
@@ -854,7 +916,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           title="Registry search and deployment intake"
           subtitle="Search HuggingFace or CivitAI, then register or download directly into the registry."
           updatedAt={controllerUpdatedAt()}
-          freshness={controller.loading() ? 'offline' : resolveFreshness(controllerUpdatedAt(), 15_000)}
+          state={controllerSectionState()}
+          stateDetail={controllerSectionDetail()}
           loading={controller.loading()}
           action={
             <div class="flex flex-wrap gap-2">
@@ -1037,7 +1100,8 @@ const WorkbenchSectionHeader: Component<{
   title: string;
   subtitle: string;
   updatedAt: number;
-  freshness: string;
+  state: OperatorState;
+  stateDetail?: string;
   loading: boolean;
   action?: any;
 }> = (props) => (
@@ -1047,7 +1111,9 @@ const WorkbenchSectionHeader: Component<{
       <div class="mt-1 text-lg font-semibold text-text-main">{props.title}</div>
       <div class="mt-1 max-w-3xl text-sm text-text-dim">{props.subtitle}</div>
       <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-dim">
-        <span class={`rounded-full px-2.5 py-1 ${freshnessTone(props.freshness)}`}>{props.freshness}</span>
+        <span class={`rounded-full px-2.5 py-1 ${operatorStateBadgeClass(props.state)}`}>
+          {operatorStateLabel(props.state, props.stateDetail)}
+        </span>
         <span class="rounded-full bg-white/5 px-2.5 py-1">
           Updated {props.updatedAt ? new Date(props.updatedAt).toLocaleTimeString() : '—'}
         </span>
@@ -1134,21 +1200,10 @@ function activeCachePhaseStatus(cache: ModelCache) {
   }
 }
 
-function freshnessTone(state: string): string {
-  switch (state) {
-    case 'live':
-      return 'bg-status-ok/20 text-status-ok';
-    case 'stale':
-      return 'bg-status-warn/20 text-status-warn';
-    default:
-      return 'bg-white/10 text-text-dim';
-  }
-}
-
 function freshnessLabel(values: number[]): string {
   const latest = Math.max(...values, 0);
-  if (!latest) return 'offline';
-  return resolveFreshness(latest, 15_000) === 'live' ? 'live' : 'stale';
+  if (!latest) return operatorStateLabel('offline');
+  return operatorStateLabel(resolveFreshness(latest, 15_000));
 }
 
 function freshnessNote(values: number[]): string {
