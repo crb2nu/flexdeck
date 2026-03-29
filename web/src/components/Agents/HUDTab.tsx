@@ -1,11 +1,11 @@
-import { Component, createMemo, createSignal, For, Show } from 'solid-js';
+import { Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
-import { HUD_PULL_STALE_THRESHOLD_MS, isWorkflowDataStale, type FeedConnectionState } from './hudDegradedMode';
+import { hasDegradedHUDFeed, HUD_PULL_STALE_THRESHOLD_MS, type FeedConnectionState } from './hudDegradedMode';
 import {
   applyWorkflowCancel,
   countClaimConflicts,
@@ -26,7 +26,7 @@ const HUDTab: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [workflowAction, setWorkflowAction] = createSignal<string | null>(null);
-  const [eventsConnection, setEventsConnection] = createSignal<FeedConnectionState>('connecting');
+  const [eventsConnection, setEventsConnection] = createSignal<FeedConnectionState>('disabled');
   const [lastSuccessfulPull, setLastSuccessfulPull] = createSignal<number>(0);
   const [now, setNow] = createSignal(Date.now());
 
@@ -129,6 +129,14 @@ const HUDTab: Component = () => {
 
   createPolling('hud-now-ticker', () => { setNow(Date.now()); }, 5000);
 
+  createEffect(() => {
+    if (!pullEnabled()) {
+      setEventsConnection('disabled');
+    } else if (eventsConnection() === 'disabled') {
+      setEventsConnection('connecting');
+    }
+  });
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-status-ok';
@@ -166,6 +174,8 @@ const HUDTab: Component = () => {
         return 'Live event stream';
       case 'stale':
         return 'Poll fallback';
+      case 'disabled':
+        return 'Push snapshots';
       default:
         return 'Connecting';
     }
@@ -176,10 +186,8 @@ const HUDTab: Component = () => {
     return 'cyan';
   };
 
-  const workflowDataStale = () =>
-    isWorkflowDataStale(pullEnabled(), lastSuccessfulPull(), now());
-
-  const hasStaleWarning = () => eventsConnection() === 'stale' || workflowDataStale();
+  const hasStaleWarning = () =>
+    hasDegradedHUDFeed(pullEnabled(), eventsConnection(), lastSuccessfulPull(), now());
   const metrics = (): HUDConsoleMetric[] => [
     {
       label: 'Presence',
@@ -486,6 +494,7 @@ const HUDTab: Component = () => {
 
             <HUDActivityFeed
               initialEvents={timeline()}
+              enabled={pullEnabled()}
               emptyMessage="No timeline entries yet. Live operations will appear here as soon as agents heartbeat, claim files, or transition workflows."
               onConnectionStateChange={setEventsConnection}
             />
