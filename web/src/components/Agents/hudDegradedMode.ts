@@ -1,4 +1,4 @@
-export type FeedConnectionState = 'connecting' | 'live' | 'stale';
+export type FeedConnectionState = 'disabled' | 'connecting' | 'live' | 'stale';
 
 export const HUD_FEED_RECONNECT_BASE_DELAY_MS = 2000;
 export const HUD_FEED_RECONNECT_MAX_DELAY_MS = 30000;
@@ -11,6 +11,8 @@ export function computeReconnectDelayMs(reconnectAttempts: number, jitterMs = Ma
 
 export function feedConnectionLabel(state: FeedConnectionState): string {
   switch (state) {
+    case 'disabled':
+      return 'Push mode (no live feed)';
     case 'live':
       return 'Live';
     case 'stale':
@@ -27,4 +29,15 @@ export function isWorkflowDataStale(
   thresholdMs = HUD_PULL_STALE_THRESHOLD_MS
 ): boolean {
   return pullEnabled && lastSuccessfulPullMs > 0 && nowMs-lastSuccessfulPullMs > thresholdMs;
+}
+
+export function hasDegradedHUDFeed(
+  pullEnabled: boolean,
+  state: FeedConnectionState,
+  lastSuccessfulPullMs: number,
+  nowMs: number,
+  thresholdMs = HUD_PULL_STALE_THRESHOLD_MS
+): boolean {
+  if (!pullEnabled) return false;
+  return state === 'stale' || isWorkflowDataStale(true, lastSuccessfulPullMs, nowMs, thresholdMs);
 }

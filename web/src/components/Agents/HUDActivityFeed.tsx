@@ -11,9 +11,10 @@ const HUDActivityFeed: Component<{
   initialEvents?: HUDTimelineEvent[];
   onConnectionStateChange?: (state: FeedConnectionState) => void;
   emptyMessage?: string;
+  enabled?: boolean;
 }> = (props) => {
   const [events, setEvents] = createSignal<HUDTimelineEvent[]>(props.initialEvents || []);
-  const [connectionState, setConnectionState] = createSignal<FeedConnectionState>('connecting');
+  const [connectionState, setConnectionState] = createSignal<FeedConnectionState>(props.enabled === false ? 'disabled' : 'connecting');
 
   // Merge initial events without replacing SSE events
   createEffect(() => {
@@ -34,6 +35,16 @@ const HUDActivityFeed: Component<{
     let eventSource: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let reconnectAttempts = 0;
+
+    if (props.enabled === false) {
+      setConnectionState('disabled');
+      onCleanup(() => {
+        clearTimeout(reconnectTimer);
+        eventSource?.close();
+        setConnectionState('disabled');
+      });
+      return;
+    }
 
     const connect = () => {
       setConnectionState(reconnectAttempts > 0 ? 'stale' : 'connecting');
@@ -111,6 +122,8 @@ const HUDActivityFeed: Component<{
               ? 'bg-status-ok animate-pulse'
               : connectionState() === 'stale'
                 ? 'bg-status-warn'
+                : connectionState() === 'disabled'
+                  ? 'bg-neon-cyan/70'
                 : 'bg-white/30'
           }`} />
           <span class="text-[10px] text-text-dim">
