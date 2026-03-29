@@ -1,3 +1,8 @@
+import {
+  operatorStateLabel,
+  type OperatorState,
+} from '../../lib/freshness';
+
 export type FeedConnectionState = 'disabled' | 'connecting' | 'live' | 'stale';
 
 export const HUD_FEED_RECONNECT_BASE_DELAY_MS = 2000;
@@ -9,17 +14,34 @@ export function computeReconnectDelayMs(reconnectAttempts: number, jitterMs = Ma
   return Math.min(exponentialDelay + jitterMs, HUD_FEED_RECONNECT_MAX_DELAY_MS);
 }
 
-export function feedConnectionLabel(state: FeedConnectionState): string {
+export function feedConnectionState(state: FeedConnectionState): OperatorState {
   switch (state) {
     case 'disabled':
-      return 'Push mode (no live feed)';
+      return 'offline';
     case 'live':
-      return 'Live';
+      return 'ready';
     case 'stale':
-      return 'Poll fallback (retry 2-30s)';
+      return 'stale';
     default:
-      return 'Connecting...';
+      return 'connecting';
   }
+}
+
+export function feedConnectionDetail(state: FeedConnectionState): string {
+  switch (state) {
+    case 'disabled':
+      return 'push mode';
+    case 'live':
+      return 'live feed';
+    case 'stale':
+      return 'poll fallback';
+    default:
+      return 'waiting for events';
+  }
+}
+
+export function feedConnectionLabel(state: FeedConnectionState): string {
+  return operatorStateLabel(feedConnectionState(state), feedConnectionDetail(state));
 }
 
 export function isWorkflowDataStale(

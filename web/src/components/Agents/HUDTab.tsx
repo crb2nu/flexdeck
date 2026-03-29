@@ -5,7 +5,13 @@ import { healthStore } from '../../stores/health';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
-import { hasDegradedHUDFeed, HUD_PULL_STALE_THRESHOLD_MS, type FeedConnectionState } from './hudDegradedMode';
+import {
+  feedConnectionLabel,
+  feedConnectionState,
+  hasDegradedHUDFeed,
+  HUD_PULL_STALE_THRESHOLD_MS,
+  type FeedConnectionState,
+} from './hudDegradedMode';
 import {
   applyWorkflowCancel,
   countClaimConflicts,
@@ -168,21 +174,11 @@ const HUDTab: Component = () => {
   };
   const claimConflictCount = () => countClaimConflicts(claims());
   const taskBacklog = () => pendingTasks().length + inProgressTasks().length;
-  const feedStateLabel = () => {
-    switch (eventsConnection()) {
-      case 'live':
-        return 'Live event stream';
-      case 'stale':
-        return 'Poll fallback';
-      case 'disabled':
-        return 'Push snapshots';
-      default:
-        return 'Connecting';
-    }
-  };
+  const feedStateLabel = () => feedConnectionLabel(eventsConnection());
   const feedStateTone = (): HUDConsoleMetric['tone'] => {
-    if (eventsConnection() === 'live') return 'ok';
-    if (eventsConnection() === 'stale') return 'warn';
+    const state = feedConnectionState(eventsConnection());
+    if (state === 'ready') return 'ok';
+    if (state === 'stale') return 'warn';
     return 'cyan';
   };
 
@@ -236,7 +232,7 @@ const HUDTab: Component = () => {
         ]}
         alert={hasStaleWarning() ? {
           title: 'Degraded feed',
-          message: `Live HUD data may lag. SSE is ${eventsConnection() === 'live' ? 'live' : 'falling back to polling'} and workflow freshness should be treated as advisory after ${Math.floor(HUD_PULL_STALE_THRESHOLD_MS / 1000)}s.`,
+          message: `Live HUD data may lag. Timeline state is ${feedStateLabel().toLowerCase()} and workflow freshness should be treated as advisory after ${Math.floor(HUD_PULL_STALE_THRESHOLD_MS / 1000)}s.`,
           tone: 'warn',
         } : error() ? {
           title: 'HUD error',
