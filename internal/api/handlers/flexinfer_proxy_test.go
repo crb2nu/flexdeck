@@ -54,6 +54,52 @@ flexinfer_proxy_queued_requests_total{model="model-a"} 7
 	}
 }
 
+func TestParsePrometheusMetricsCapturesCurrentProxyMetricFamilies(t *testing.T) {
+	body := []byte(`
+flexinfer_proxy_gpugroup_swap_signals_total{model="model-a",gpugroup="shared-a"} 3
+flexinfer_proxy_gpugroup_queued_requests_total{model="model-a",gpugroup="shared-a"} 4
+flexinfer_proxy_endpoint_changes_total{model="model-a",change_type="add"} 2
+flexinfer_proxy_endpoint_count{model="model-a"} 1
+flexinfer_proxy_routing_decisions_total{model="model-a",strategy="labels",key_source="service_labels",outcome="hit"} 9
+flexinfer_proxy_routing_target_hits_total{model="model-a",strategy="labels",target="backend-a"} 8
+flexinfer_proxy_routing_key_cardinality{model="model-a",strategy="labels",key_source="service_labels"} 5
+flexinfer_proxy_routing_key_cardinality_overflow_total{model="model-a",strategy="labels",key_source="service_labels"} 1
+flexinfer_proxy_rate_limited_total{model="model-a",scope="global"} 6
+flexinfer_proxy_activation_retries_total{model="model-a"} 7
+flexinfer_proxy_activation_failures_total{model="model-a",reason="ready_timeout"} 2
+`)
+
+	got := parsePrometheusMetrics(body)
+	byModel := got["byModel"].(map[string]map[string]float64)
+	modelA := byModel["model-a"]
+
+	expected := map[string]float64{
+		"gpuGroupSwapSignalsTotal":           3,
+		"gpuGroupQueuedRequestsTotal":        4,
+		"endpointChangesTotal":               2,
+		"endpointCount":                      1,
+		"routingDecisionsTotal":              9,
+		"routingTargetHitsTotal":             8,
+		"routingKeyCardinality":              5,
+		"routingKeyCardinalityOverflowTotal": 1,
+		"rateLimitedTotal":                   6,
+		"activationRetriesTotal":             7,
+		"activationFailuresTotal":            2,
+	}
+	for key, want := range expected {
+		if modelA[key] != want {
+			t.Fatalf("expected byModel[%q]=%v, got %v", key, want, modelA[key])
+		}
+	}
+
+	totals := got["totals"].(map[string]any)
+	for key, want := range expected {
+		if totals[key].(float64) != want {
+			t.Fatalf("expected totals[%q]=%v, got %v", key, want, totals[key])
+		}
+	}
+}
+
 func TestFlexInferProxyMetricsIncludesLegacyAndNormalizedFields(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -113,6 +159,17 @@ flexinfer_proxy_active_connections{model="model-a"} 3
 flexinfer_proxy_scale_ups_total{model="model-a"} 1
 flexinfer_proxy_queue_rejected_total{model="model-a"} 0.5
 flexinfer_proxy_queued_requests_total{model="model-a"} 7
+flexinfer_proxy_gpugroup_swap_signals_total{model="model-a",gpugroup="shared-a"} 3
+flexinfer_proxy_gpugroup_queued_requests_total{model="model-a",gpugroup="shared-a"} 4
+flexinfer_proxy_endpoint_changes_total{model="model-a",change_type="add"} 2
+flexinfer_proxy_endpoint_count{model="model-a"} 1
+flexinfer_proxy_routing_decisions_total{model="model-a",strategy="labels",key_source="service_labels",outcome="hit"} 9
+flexinfer_proxy_routing_target_hits_total{model="model-a",strategy="labels",target="backend-a"} 8
+flexinfer_proxy_routing_key_cardinality{model="model-a",strategy="labels",key_source="service_labels"} 5
+flexinfer_proxy_routing_key_cardinality_overflow_total{model="model-a",strategy="labels",key_source="service_labels"} 1
+flexinfer_proxy_rate_limited_total{model="model-a",scope="global"} 6
+flexinfer_proxy_activation_retries_total{model="model-a"} 7
+flexinfer_proxy_activation_failures_total{model="model-a",reason="ready_timeout"} 2
 not_prometheus_line
 `))
 	}))
@@ -173,6 +230,27 @@ not_prometheus_line
 	if modelA["queuedRequestsTotal"].(float64) != 7 {
 		t.Fatalf("expected byModel.queuedRequestsTotal=7, got %v", modelA["queuedRequestsTotal"])
 	}
+	if modelA["gpuGroupSwapSignalsTotal"].(float64) != 3 {
+		t.Fatalf("expected byModel.gpuGroupSwapSignalsTotal=3, got %v", modelA["gpuGroupSwapSignalsTotal"])
+	}
+	if modelA["gpuGroupQueuedRequestsTotal"].(float64) != 4 {
+		t.Fatalf("expected byModel.gpuGroupQueuedRequestsTotal=4, got %v", modelA["gpuGroupQueuedRequestsTotal"])
+	}
+	if modelA["endpointChangesTotal"].(float64) != 2 || modelA["endpointCount"].(float64) != 1 {
+		t.Fatalf("expected endpoint metrics to round-trip, got %+v", modelA)
+	}
+	if modelA["routingDecisionsTotal"].(float64) != 9 || modelA["routingTargetHitsTotal"].(float64) != 8 {
+		t.Fatalf("expected routing decision metrics to round-trip, got %+v", modelA)
+	}
+	if modelA["routingKeyCardinality"].(float64) != 5 || modelA["routingKeyCardinalityOverflowTotal"].(float64) != 1 {
+		t.Fatalf("expected routing cardinality metrics to round-trip, got %+v", modelA)
+	}
+	if modelA["rateLimitedTotal"].(float64) != 6 {
+		t.Fatalf("expected byModel.rateLimitedTotal=6, got %v", modelA["rateLimitedTotal"])
+	}
+	if modelA["activationRetriesTotal"].(float64) != 7 || modelA["activationFailuresTotal"].(float64) != 2 {
+		t.Fatalf("expected activation metrics to round-trip, got %+v", modelA)
+	}
 
 	requestsByStatus := payload["requestsByStatus"].(map[string]any)
 	modelStatus := requestsByStatus["model-a"].(map[string]any)
@@ -204,6 +282,24 @@ not_prometheus_line
 	}
 	if totals["queuedRequestsTotal"].(float64) != 7 {
 		t.Fatalf("expected totals.queuedRequestsTotal=7, got %v", totals["queuedRequestsTotal"])
+	}
+	if totals["gpuGroupSwapSignalsTotal"].(float64) != 3 || totals["gpuGroupQueuedRequestsTotal"].(float64) != 4 {
+		t.Fatalf("expected totals GPU group metrics to round-trip, got %+v", totals)
+	}
+	if totals["endpointChangesTotal"].(float64) != 2 || totals["endpointCount"].(float64) != 1 {
+		t.Fatalf("expected totals endpoint metrics to round-trip, got %+v", totals)
+	}
+	if totals["routingDecisionsTotal"].(float64) != 9 || totals["routingTargetHitsTotal"].(float64) != 8 {
+		t.Fatalf("expected totals routing metrics to round-trip, got %+v", totals)
+	}
+	if totals["routingKeyCardinality"].(float64) != 5 || totals["routingKeyCardinalityOverflowTotal"].(float64) != 1 {
+		t.Fatalf("expected totals routing cardinality metrics to round-trip, got %+v", totals)
+	}
+	if totals["rateLimitedTotal"].(float64) != 6 {
+		t.Fatalf("expected totals.rateLimitedTotal=6, got %v", totals["rateLimitedTotal"])
+	}
+	if totals["activationRetriesTotal"].(float64) != 7 || totals["activationFailuresTotal"].(float64) != 2 {
+		t.Fatalf("expected totals activation metrics to round-trip, got %+v", totals)
 	}
 	if totals["parseErrors"].(float64) != 1 {
 		t.Fatalf("expected totals.parseErrors=1, got %v", totals["parseErrors"])

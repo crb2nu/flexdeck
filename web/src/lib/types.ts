@@ -334,6 +334,7 @@ export interface FlexInferModelSpec {
     priority?: number;
     count?: number;
     vramEstimateMB?: number;
+    swapCooldown?: string;
   };
   serverless?: {
     enabled?: boolean;
@@ -341,11 +342,38 @@ export interface FlexInferModelSpec {
     idleTimeout?: string;
     coldStartTimeout?: string;
   };
+  config?: Record<string, unknown>;
+  resources?: {
+    requests?: Record<string, string>;
+    limits?: Record<string, string>;
+  };
+  nodeSelector?: Record<string, string>;
+  tolerations?: Array<{
+    key?: string;
+    operator?: string;
+    value?: string;
+    effect?: string;
+    tolerationSeconds?: number;
+  }>;
   cache?: {
     strategy?: string;
     pvcName?: string;
     storageClass?: string;
     size?: string;
+    hostPath?: string;
+    compilationCache?: {
+      enabled?: boolean;
+      hostPath?: string;
+      sizeLimit?: string;
+    };
+    flashLoader?: {
+      enabled?: boolean;
+      concurrency?: number;
+      tmpfsSizeLimit?: string;
+      bufferSizeKB?: number;
+      verifyIntegrity?: boolean;
+      image?: string;
+    };
   };
   litellm?: {
     enabled?: boolean;
@@ -358,8 +386,35 @@ export interface FlexInferModelSpec {
     pressurePolicy?: string;
     highWatermark?: string;
     lowWatermark?: string;
+    maxBlockSize?: number;
+    swapSpace?: string;
+    reconfigureCooldown?: string;
   };
-  nodeSelector?: Record<string, string>;
+  capabilities?: {
+    toolCalling?: boolean;
+    vision?: boolean;
+    imageGeneration?: boolean;
+  };
+  quantize?: {
+    format?: string;
+    ggufType?: string;
+    bits?: number;
+    groupSize?: number;
+    useGPU?: boolean;
+    maxMemoryGB?: number;
+    timeoutSeconds?: number;
+    sym?: boolean;
+    descAct?: boolean;
+    calibration?: {
+      maxSeqLen?: number;
+      maxSamples?: number;
+      nParallelCalibSamples?: number;
+      dataset?: string;
+    };
+    gpuMemoryFraction?: string;
+    dynamicExclusion?: string;
+    nodeSelector?: Record<string, string>;
+  };
 }
 
 export interface FlexInferModelStatus {
@@ -400,12 +455,37 @@ export interface FlexInferModelStatus {
     jobPhase?: string;
     message?: string;
     sizeBytes?: number;
+    quantization?: {
+      format?: string;
+      type?: string;
+      originalSizeBytes?: number;
+      compressedSizeBytes?: number;
+      compressionRatio?: string;
+      quantizationTime?: string;
+      startedAt?: string;
+      completedAt?: string;
+      calibrationParams?: {
+        maxSeqLen?: number;
+        maxSamples?: number;
+        nParallelCalibSamples?: number;
+        dataset?: string;
+      };
+      progress?: number;
+      progressDetail?: string;
+      failureMessage?: string;
+    };
   };
   kvCache?: {
     utilization?: string;
     pressure?: boolean;
     lastPressureTime?: string;
     lastAction?: string;
+    reconfigured?: boolean;
+    reconfiguredAt?: string;
+    originalMaxNumSeqs?: number;
+    reconfiguredMaxNumSeqs?: number;
+    evicted?: boolean;
+    evictedAt?: string;
   };
 }
 
@@ -709,6 +789,17 @@ export interface FlexInferProxyModelMetrics {
   scaleUps: number;
   queueRejectedTotal: number;
   queuedRequestsTotal: number;
+  gpuGroupSwapSignalsTotal?: number;
+  gpuGroupQueuedRequestsTotal?: number;
+  endpointChangesTotal?: number;
+  endpointCount?: number;
+  routingDecisionsTotal?: number;
+  routingTargetHitsTotal?: number;
+  routingKeyCardinality?: number;
+  routingKeyCardinalityOverflowTotal?: number;
+  rateLimitedTotal?: number;
+  activationRetriesTotal?: number;
+  activationFailuresTotal?: number;
 }
 
 export interface FlexInferProxyTotals {
@@ -720,6 +811,17 @@ export interface FlexInferProxyTotals {
   scaleUps: number;
   queueRejectedTotal: number;
   queuedRequestsTotal: number;
+  gpuGroupSwapSignalsTotal?: number;
+  gpuGroupQueuedRequestsTotal?: number;
+  endpointChangesTotal?: number;
+  endpointCount?: number;
+  routingDecisionsTotal?: number;
+  routingTargetHitsTotal?: number;
+  routingKeyCardinality?: number;
+  routingKeyCardinalityOverflowTotal?: number;
+  rateLimitedTotal?: number;
+  activationRetriesTotal?: number;
+  activationFailuresTotal?: number;
   errorRate: number;
   parseErrors: number;
 }
@@ -780,6 +882,10 @@ export interface HUDAgentPresence {
   activeFiles: string[];
   conflicts: string[];
   lastHeartbeat: string;
+  currentTask?: string;
+  description?: string;
+  branch?: string;
+  sessionId?: string;
 }
 
 export interface HUDTask {
@@ -790,6 +896,11 @@ export interface HUDTask {
   agentId?: string;
   filePath?: string;
   tags: string[];
+  sessionId?: string;
+  namespace?: string;
+  context?: string;
+  workflowId?: string;
+  project?: string;
 }
 
 export interface HUDWorkflow {
@@ -820,6 +931,7 @@ export interface HUDClaim {
   reason?: string;
   createdAt?: string;
   updatedAt?: string;
+  expiresAt?: string;
   ttlSeconds?: number;
   stale?: boolean;
 }
