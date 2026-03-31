@@ -208,13 +208,15 @@ func normalizeHUDClaimsFromValue(value any) []map[string]any {
 	items := hudItemsFromValue(value)
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
+		expiresAt := hudString(item["expires_at"])
 		out = append(out, map[string]any{
 			"agentId":   hudString(item["agent_id"]),
 			"filePath":  hudString(item["file_path"]),
 			"claimType": hudString(item["claim_type"]),
 			"reason":    hudString(item["reason"]),
 			"createdAt": hudString(item["created_at"]),
-			"updatedAt": hudString(item["expires_at"]),
+			"updatedAt": firstNonEmpty(hudString(item["updated_at"]), expiresAt),
+			"expiresAt": expiresAt,
 		})
 	}
 	return out

@@ -203,6 +203,28 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 			ensureModelMetrics(byModel, model)["queueRejectedTotal"] += value
 		case "flexinfer_proxy_queued_requests_total":
 			ensureModelMetrics(byModel, model)["queuedRequestsTotal"] += value
+		case "flexinfer_proxy_gpugroup_swap_signals_total":
+			ensureModelMetrics(byModel, model)["gpuGroupSwapSignalsTotal"] += value
+		case "flexinfer_proxy_gpugroup_queued_requests_total":
+			ensureModelMetrics(byModel, model)["gpuGroupQueuedRequestsTotal"] += value
+		case "flexinfer_proxy_endpoint_changes_total":
+			ensureModelMetrics(byModel, model)["endpointChangesTotal"] += value
+		case "flexinfer_proxy_endpoint_count":
+			ensureModelMetrics(byModel, model)["endpointCount"] = value
+		case "flexinfer_proxy_routing_decisions_total":
+			ensureModelMetrics(byModel, model)["routingDecisionsTotal"] += value
+		case "flexinfer_proxy_routing_target_hits_total":
+			ensureModelMetrics(byModel, model)["routingTargetHitsTotal"] += value
+		case "flexinfer_proxy_routing_key_cardinality":
+			ensureModelMetrics(byModel, model)["routingKeyCardinality"] += value
+		case "flexinfer_proxy_routing_key_cardinality_overflow_total":
+			ensureModelMetrics(byModel, model)["routingKeyCardinalityOverflowTotal"] += value
+		case "flexinfer_proxy_rate_limited_total":
+			ensureModelMetrics(byModel, model)["rateLimitedTotal"] += value
+		case "flexinfer_proxy_activation_retries_total":
+			ensureModelMetrics(byModel, model)["activationRetriesTotal"] += value
+		case "flexinfer_proxy_activation_failures_total":
+			ensureModelMetrics(byModel, model)["activationFailuresTotal"] += value
 		case "flexinfer_proxy_request_duration_seconds":
 			// Some exporters may emit this as a gauge-style metric.
 			legacyLatency[model] = value
@@ -210,16 +232,27 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 	}
 
 	totals := map[string]any{
-		"modelCount":          0,
-		"requestsTotal":       0.0,
-		"errorsTotal":         0.0,
-		"queueDepth":          0.0,
-		"activeConnections":   0.0,
-		"scaleUps":            0.0,
-		"queueRejectedTotal":  0.0,
-		"queuedRequestsTotal": 0.0,
-		"errorRate":           0.0,
-		"parseErrors":         parseErrors,
+		"modelCount":                         0,
+		"requestsTotal":                      0.0,
+		"errorsTotal":                        0.0,
+		"queueDepth":                         0.0,
+		"activeConnections":                  0.0,
+		"scaleUps":                           0.0,
+		"queueRejectedTotal":                 0.0,
+		"queuedRequestsTotal":                0.0,
+		"gpuGroupSwapSignalsTotal":           0.0,
+		"gpuGroupQueuedRequestsTotal":        0.0,
+		"endpointChangesTotal":               0.0,
+		"endpointCount":                      0.0,
+		"routingDecisionsTotal":              0.0,
+		"routingTargetHitsTotal":             0.0,
+		"routingKeyCardinality":              0.0,
+		"routingKeyCardinalityOverflowTotal": 0.0,
+		"rateLimitedTotal":                   0.0,
+		"activationRetriesTotal":             0.0,
+		"activationFailuresTotal":            0.0,
+		"errorRate":                          0.0,
+		"parseErrors":                        parseErrors,
 	}
 
 	for model, bucket := range byModel {
@@ -232,6 +265,17 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 		totals["scaleUps"] = totals["scaleUps"].(float64) + bucket["scaleUps"]
 		totals["queueRejectedTotal"] = totals["queueRejectedTotal"].(float64) + bucket["queueRejectedTotal"]
 		totals["queuedRequestsTotal"] = totals["queuedRequestsTotal"].(float64) + bucket["queuedRequestsTotal"]
+		totals["gpuGroupSwapSignalsTotal"] = totals["gpuGroupSwapSignalsTotal"].(float64) + bucket["gpuGroupSwapSignalsTotal"]
+		totals["gpuGroupQueuedRequestsTotal"] = totals["gpuGroupQueuedRequestsTotal"].(float64) + bucket["gpuGroupQueuedRequestsTotal"]
+		totals["endpointChangesTotal"] = totals["endpointChangesTotal"].(float64) + bucket["endpointChangesTotal"]
+		totals["endpointCount"] = totals["endpointCount"].(float64) + bucket["endpointCount"]
+		totals["routingDecisionsTotal"] = totals["routingDecisionsTotal"].(float64) + bucket["routingDecisionsTotal"]
+		totals["routingTargetHitsTotal"] = totals["routingTargetHitsTotal"].(float64) + bucket["routingTargetHitsTotal"]
+		totals["routingKeyCardinality"] = totals["routingKeyCardinality"].(float64) + bucket["routingKeyCardinality"]
+		totals["routingKeyCardinalityOverflowTotal"] = totals["routingKeyCardinalityOverflowTotal"].(float64) + bucket["routingKeyCardinalityOverflowTotal"]
+		totals["rateLimitedTotal"] = totals["rateLimitedTotal"].(float64) + bucket["rateLimitedTotal"]
+		totals["activationRetriesTotal"] = totals["activationRetriesTotal"].(float64) + bucket["activationRetriesTotal"]
+		totals["activationFailuresTotal"] = totals["activationFailuresTotal"].(float64) + bucket["activationFailuresTotal"]
 	}
 
 	for model, statuses := range requestsByStatus {
@@ -261,13 +305,24 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 func ensureModelMetrics(byModel map[string]map[string]float64, model string) map[string]float64 {
 	if _, ok := byModel[model]; !ok {
 		byModel[model] = map[string]float64{
-			"requestsTotal":       0,
-			"errorsTotal":         0,
-			"queueDepth":          0,
-			"activeConnections":   0,
-			"scaleUps":            0,
-			"queueRejectedTotal":  0,
-			"queuedRequestsTotal": 0,
+			"requestsTotal":                      0,
+			"errorsTotal":                        0,
+			"queueDepth":                         0,
+			"activeConnections":                  0,
+			"scaleUps":                           0,
+			"queueRejectedTotal":                 0,
+			"queuedRequestsTotal":                0,
+			"gpuGroupSwapSignalsTotal":           0,
+			"gpuGroupQueuedRequestsTotal":        0,
+			"endpointChangesTotal":               0,
+			"endpointCount":                      0,
+			"routingDecisionsTotal":              0,
+			"routingTargetHitsTotal":             0,
+			"routingKeyCardinality":              0,
+			"routingKeyCardinalityOverflowTotal": 0,
+			"rateLimitedTotal":                   0,
+			"activationRetriesTotal":             0,
+			"activationFailuresTotal":            0,
 		}
 	}
 	return byModel[model]

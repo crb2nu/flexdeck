@@ -17,7 +17,7 @@ func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/claims":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"claims":[{"agent_id":"codex","file_path":"internal/api/router.go","claim_type":"edit"}]}`))
+			_, _ = w.Write([]byte(`{"claims":[{"agent_id":"codex","file_path":"internal/api/router.go","claim_type":"edit","created_at":"2026-03-31T11:00:00Z","expires_at":"2026-03-31T11:15:00Z"}]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/workflows":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"workflows":[{"id":"wf-1","name":"deploy","status":"waiting_approval","current_step":"review","started_at":"2026-03-27T12:00:00Z"}]}`))
@@ -74,6 +74,9 @@ func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
 		}
 		if len(payload) != 1 || payload[0]["agentId"] != "codex" || payload[0]["filePath"] != "internal/api/router.go" {
 			t.Fatalf("unexpected claims payload: %s", rec.Body.String())
+		}
+		if payload[0]["expiresAt"] != "2026-03-31T11:15:00Z" || payload[0]["updatedAt"] != "2026-03-31T11:15:00Z" {
+			t.Fatalf("expected claim expiry fields to normalize, got %s", rec.Body.String())
 		}
 	})
 

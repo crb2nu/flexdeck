@@ -30,15 +30,20 @@ type FlexInferModel struct {
 }
 
 type FlexInferModelSpec struct {
-	Backend       string                `json:"backend"`
-	Source        string                `json:"source"`
-	GPU           *FlexInferGPUSpec     `json:"gpu,omitempty"`
-	Serverless    *FlexInferServerless  `json:"serverless,omitempty"`
-	Cache         *FlexInferCacheSpec   `json:"cache,omitempty"`
-	LiteLLM       *FlexInferLiteLLMSpec `json:"litellm,omitempty"`
-	ServiceLabels []string              `json:"serviceLabels,omitempty"`
-	KVCache       *FlexInferKVCacheSpec `json:"kvCache,omitempty"`
-	NodeSelector  map[string]string     `json:"nodeSelector,omitempty"`
+	Backend       string                 `json:"backend"`
+	Source        string                 `json:"source"`
+	GPU           *FlexInferGPUSpec      `json:"gpu,omitempty"`
+	Serverless    *FlexInferServerless   `json:"serverless,omitempty"`
+	Cache         *FlexInferCacheSpec    `json:"cache,omitempty"`
+	Config        map[string]any         `json:"config,omitempty"`
+	Resources     *FlexInferResources    `json:"resources,omitempty"`
+	NodeSelector  map[string]string      `json:"nodeSelector,omitempty"`
+	Tolerations   []FlexInferToleration  `json:"tolerations,omitempty"`
+	LiteLLM       *FlexInferLiteLLMSpec  `json:"litellm,omitempty"`
+	ServiceLabels []string               `json:"serviceLabels,omitempty"`
+	KVCache       *FlexInferKVCacheSpec  `json:"kvCache,omitempty"`
+	Capabilities  *FlexInferCapabilities `json:"capabilities,omitempty"`
+	Quantize      *FlexInferQuantizeSpec `json:"quantize,omitempty"`
 }
 
 type FlexInferGPUSpec struct {
@@ -47,6 +52,7 @@ type FlexInferGPUSpec struct {
 	Priority     *int32 `json:"priority,omitempty"`
 	Count        *int32 `json:"count,omitempty"`
 	VRAMEstimate *int64 `json:"vramEstimateMB,omitempty"`
+	SwapCooldown string `json:"swapCooldown,omitempty"`
 }
 
 type FlexInferServerless struct {
@@ -57,10 +63,13 @@ type FlexInferServerless struct {
 }
 
 type FlexInferCacheSpec struct {
-	Strategy     string `json:"strategy,omitempty"`
-	PVCName      string `json:"pvcName,omitempty"`
-	StorageClass string `json:"storageClass,omitempty"`
-	Size         string `json:"size,omitempty"`
+	Strategy         string                         `json:"strategy,omitempty"`
+	PVCName          string                         `json:"pvcName,omitempty"`
+	StorageClass     string                         `json:"storageClass,omitempty"`
+	Size             string                         `json:"size,omitempty"`
+	HostPath         string                         `json:"hostPath,omitempty"`
+	CompilationCache *FlexInferCompilationCacheSpec `json:"compilationCache,omitempty"`
+	FlashLoader      *FlexInferFlashLoaderSpec      `json:"flashLoader,omitempty"`
 }
 
 type FlexInferLiteLLMSpec struct {
@@ -71,9 +80,69 @@ type FlexInferLiteLLMSpec struct {
 }
 
 type FlexInferKVCacheSpec struct {
-	PressurePolicy string `json:"pressurePolicy,omitempty"`
-	HighWatermark  string `json:"highWatermark,omitempty"`
-	LowWatermark   string `json:"lowWatermark,omitempty"`
+	PressurePolicy      string `json:"pressurePolicy,omitempty"`
+	HighWatermark       string `json:"highWatermark,omitempty"`
+	LowWatermark        string `json:"lowWatermark,omitempty"`
+	MaxBlockSize        *int32 `json:"maxBlockSize,omitempty"`
+	SwapSpace           string `json:"swapSpace,omitempty"`
+	ReconfigureCooldown string `json:"reconfigureCooldown,omitempty"`
+}
+
+type FlexInferResources struct {
+	Requests map[string]string `json:"requests,omitempty"`
+	Limits   map[string]string `json:"limits,omitempty"`
+}
+
+type FlexInferToleration struct {
+	Key               string `json:"key,omitempty"`
+	Operator          string `json:"operator,omitempty"`
+	Value             string `json:"value,omitempty"`
+	Effect            string `json:"effect,omitempty"`
+	TolerationSeconds *int64 `json:"tolerationSeconds,omitempty"`
+}
+
+type FlexInferCompilationCacheSpec struct {
+	Enabled   *bool  `json:"enabled,omitempty"`
+	HostPath  string `json:"hostPath,omitempty"`
+	SizeLimit string `json:"sizeLimit,omitempty"`
+}
+
+type FlexInferFlashLoaderSpec struct {
+	Enabled         *bool  `json:"enabled,omitempty"`
+	Concurrency     *int32 `json:"concurrency,omitempty"`
+	TmpfsSizeLimit  string `json:"tmpfsSizeLimit,omitempty"`
+	BufferSizeKB    *int32 `json:"bufferSizeKB,omitempty"`
+	VerifyIntegrity *bool  `json:"verifyIntegrity,omitempty"`
+	Image           string `json:"image,omitempty"`
+}
+
+type FlexInferCapabilities struct {
+	ToolCalling     *bool `json:"toolCalling,omitempty"`
+	Vision          *bool `json:"vision,omitempty"`
+	ImageGeneration *bool `json:"imageGeneration,omitempty"`
+}
+
+type FlexInferQuantizeSpec struct {
+	Format            string                    `json:"format,omitempty"`
+	GGUFType          string                    `json:"ggufType,omitempty"`
+	Bits              *int32                    `json:"bits,omitempty"`
+	GroupSize         *int32                    `json:"groupSize,omitempty"`
+	UseGPU            bool                      `json:"useGPU,omitempty"`
+	MaxMemoryGB       *int32                    `json:"maxMemoryGB,omitempty"`
+	TimeoutSeconds    *int64                    `json:"timeoutSeconds,omitempty"`
+	Sym               *bool                     `json:"sym,omitempty"`
+	DescAct           *bool                     `json:"descAct,omitempty"`
+	Calibration       *FlexInferCalibrationSpec `json:"calibration,omitempty"`
+	GPUMemoryFraction *string                   `json:"gpuMemoryFraction,omitempty"`
+	DynamicExclusion  *string                   `json:"dynamicExclusion,omitempty"`
+	NodeSelector      map[string]string         `json:"nodeSelector,omitempty"`
+}
+
+type FlexInferCalibrationSpec struct {
+	MaxSeqLen             *int32  `json:"maxSeqLen,omitempty"`
+	MaxSamples            *int32  `json:"maxSamples,omitempty"`
+	NParallelCalibSamples *int32  `json:"nParallelCalibSamples,omitempty"`
+	Dataset               *string `json:"dataset,omitempty"`
 }
 
 type FlexInferModelStatus struct {
@@ -119,20 +188,42 @@ type FlexInferSharedGroup struct {
 }
 
 type FlexInferCacheStatus struct {
-	Strategy  string `json:"strategy,omitempty"`
-	Ready     bool   `json:"ready,omitempty"`
-	PVCName   string `json:"pvcName,omitempty"`
-	JobName   string `json:"jobName,omitempty"`
-	JobPhase  string `json:"jobPhase,omitempty"`
-	Message   string `json:"message,omitempty"`
-	SizeBytes int64  `json:"sizeBytes,omitempty"`
+	Strategy     string                       `json:"strategy,omitempty"`
+	Ready        bool                         `json:"ready,omitempty"`
+	PVCName      string                       `json:"pvcName,omitempty"`
+	JobName      string                       `json:"jobName,omitempty"`
+	JobPhase     string                       `json:"jobPhase,omitempty"`
+	Message      string                       `json:"message,omitempty"`
+	SizeBytes    int64                        `json:"sizeBytes,omitempty"`
+	Quantization *FlexInferQuantizationStatus `json:"quantization,omitempty"`
 }
 
 type FlexInferKVCacheStatus struct {
-	Utilization      string `json:"utilization,omitempty"`
-	Pressure         bool   `json:"pressure,omitempty"`
-	LastPressureTime string `json:"lastPressureTime,omitempty"`
-	LastAction       string `json:"lastAction,omitempty"`
+	Utilization            string `json:"utilization,omitempty"`
+	Pressure               bool   `json:"pressure,omitempty"`
+	LastPressureTime       string `json:"lastPressureTime,omitempty"`
+	LastAction             string `json:"lastAction,omitempty"`
+	Reconfigured           bool   `json:"reconfigured,omitempty"`
+	ReconfiguredAt         string `json:"reconfiguredAt,omitempty"`
+	OriginalMaxNumSeqs     *int32 `json:"originalMaxNumSeqs,omitempty"`
+	ReconfiguredMaxNumSeqs *int32 `json:"reconfiguredMaxNumSeqs,omitempty"`
+	Evicted                bool   `json:"evicted,omitempty"`
+	EvictedAt              string `json:"evictedAt,omitempty"`
+}
+
+type FlexInferQuantizationStatus struct {
+	Format              string                    `json:"format,omitempty"`
+	Type                string                    `json:"type,omitempty"`
+	OriginalSizeBytes   int64                     `json:"originalSizeBytes,omitempty"`
+	CompressedSizeBytes int64                     `json:"compressedSizeBytes,omitempty"`
+	CompressionRatio    string                    `json:"compressionRatio,omitempty"`
+	QuantizationTime    string                    `json:"quantizationTime,omitempty"`
+	StartedAt           string                    `json:"startedAt,omitempty"`
+	CompletedAt         string                    `json:"completedAt,omitempty"`
+	CalibrationParams   *FlexInferCalibrationSpec `json:"calibrationParams,omitempty"`
+	Progress            *int32                    `json:"progress,omitempty"`
+	ProgressDetail      string                    `json:"progressDetail,omitempty"`
+	FailureMessage      string                    `json:"failureMessage,omitempty"`
 }
 
 // ModelEvent represents a K8s event for a FlexInfer Model CRD.
