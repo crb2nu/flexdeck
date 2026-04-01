@@ -80,6 +80,9 @@ spec:
             # AI namespace for FlexInfer CRDs
             - name: AI_NAMESPACE
               value: "flexinfer-system"
+            # FlexInfer proxy
+            - name: FLEXINFER_PROXY_URL
+              value: "http://flexinfer-proxy.flexinfer-system.svc.cluster.local"
             # Grafana
             - name: GRAFANA_URL
               value: "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"
