@@ -136,8 +136,9 @@ func TestRouter_HUDCapabilitiesExposeDirectEntryState(t *testing.T) {
 	router := NewRouterWithDeps(&config.Config{
 		AllowedOrigins: []string{"*"},
 		LoomHUD: config.LoomHUDConfig{
-			Disabled: false,
-			URL:      "https://loom-hud.example.com",
+			Disabled:  false,
+			URL:       "http://mobile-hud.loom-hub.svc.cluster.local",
+			DirectURL: "https://hud.flexinfer.ai",
 		},
 	}, nil, nil, nil, nil)
 
@@ -162,7 +163,7 @@ func TestRouter_HUDCapabilitiesExposeDirectEntryState(t *testing.T) {
 	if !payload.Available || !payload.PassthroughEnabled || !payload.DirectEntryEnabled {
 		t.Fatalf("unexpected capabilities payload: %+v", payload)
 	}
-	if payload.DirectURL != "https://loom-hud.example.com" {
+	if payload.DirectURL != "https://hud.flexinfer.ai" {
 		t.Fatalf("directUrl = %q, want configured URL", payload.DirectURL)
 	}
 	if payload.Reason != "" {
