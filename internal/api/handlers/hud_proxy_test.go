@@ -13,6 +13,8 @@ import (
 )
 
 func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
+	var workflowDetailRequests int
+
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/claims":
@@ -22,6 +24,7 @@ func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"workflows":[{"id":"wf-1","name":"deploy","status":"waiting_approval","current_step":"review","started_at":"2026-03-27T12:00:00Z"}]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/workflows/wf-1":
+			workflowDetailRequests++
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"id":"wf-1","name":"deploy","status":"waiting_approval","current_step":"review","started_at":"2026-03-27T12:00:00Z","steps":[{"id":"build","name":"Build","status":"completed","type":"tool"},{"id":"review","name":"Review","status":"waiting_approval","type":"approval"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/workflows/wf-1/approve":
@@ -99,14 +102,17 @@ func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
 		if payload[0]["definitionId"] != "deploy" || payload[0]["status"] != "awaiting_approval" {
 			t.Fatalf("unexpected workflow payload: %s", rec.Body.String())
 		}
+		if workflowDetailRequests != 0 {
+			t.Fatalf("expected workflow list normalization to avoid detail fetches, got %d", workflowDetailRequests)
+		}
 
 		steps, ok := payload[0]["steps"].([]any)
-		if !ok || len(steps) != 2 {
-			t.Fatalf("expected detailed workflow steps, got %v", payload[0]["steps"])
+		if !ok || len(steps) != 1 {
+			t.Fatalf("expected synthesized workflow steps, got %v", payload[0]["steps"])
 		}
-		step, ok := steps[1].(map[string]any)
-		if !ok || step["requiresApproval"] != true {
-			t.Fatalf("expected review step to require approval, got %v", steps[1])
+		step, ok := steps[0].(map[string]any)
+		if !ok || step["requiresApproval"] != true || step["name"] != "review" {
+			t.Fatalf("expected synthesized review step to require approval, got %v", steps[0])
 		}
 	})
 
@@ -118,6 +124,9 @@ func TestHUDClaimsAndWorkflowActionsNormalizeContracts(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if workflowDetailRequests != 1 {
+			t.Fatalf("expected approve path to fetch workflow detail once, got %d", workflowDetailRequests)
 		}
 		if !strings.Contains(rec.Body.String(), `"ok":true`) {
 			t.Fatalf("unexpected approve payload: %s", rec.Body.String())

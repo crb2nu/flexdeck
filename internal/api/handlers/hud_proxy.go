@@ -73,7 +73,7 @@ func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		return normalizeHUDWorkflowsResponse(r.Context(), h.fetchHUDWorkflowDetail, raw)
+		return normalizeHUDWorkflowsResponse(raw)
 	})
 }
 
