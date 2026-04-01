@@ -95,9 +95,11 @@ spec:
             # Alertmanager
             - name: ALERTMANAGER_URL
               value: "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"
-            # Loom HUD (push mode — local HUD pushes via webhook)
+            # Loom HUD pull API (in-cluster) plus direct browser entrypoint
             - name: LOOM_HUD_URL
-              value: ""
+              value: "http://mobile-hud.loom-hub.svc.cluster.local"
+            - name: LOOM_HUD_DIRECT_URL
+              value: "https://hud.flexinfer.ai"
             - name: LOOM_HUD_PUSH_TOKEN
               valueFrom:
                 secretKeyRef:

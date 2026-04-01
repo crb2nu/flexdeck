@@ -126,7 +126,8 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `AGENTSCOPE_URL` | `http://agentscope-sandbox-base.ai.svc.cluster.local:8000` | AgentScope API URL |
 | `AGENTSCOPE_GUI_URL` | `http://agentscope-sandbox-gui.ai.svc.cluster.local:8000` | AgentScope GUI URL |
 | `LOOM_HUD_DISABLED` | `false` | Disable Loom HUD pull/push integrations |
-| `LOOM_HUD_URL` | `http://localhost:3333` | Loom HUD pull API base URL |
+| `LOOM_HUD_URL` | `http://localhost:3333` | Loom HUD pull API base URL used by server-side passthrough |
+| `LOOM_HUD_DIRECT_URL` | | Public Loom HUD URL used for direct browser entry |
 | `LOOM_HUD_PUSH_TOKEN` | | Shared secret for HUD push webhook auth |
 
 ### Data + admin

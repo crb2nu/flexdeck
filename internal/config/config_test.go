@@ -36,6 +36,9 @@ func TestLoadUsesExpectedDefaults(t *testing.T) {
 	if cfg.LoomHUD.URL != "http://localhost:3333" {
 		t.Fatalf("expected default LOOM_HUD_URL, got %q", cfg.LoomHUD.URL)
 	}
+	if cfg.LoomHUD.DirectURL != "" {
+		t.Fatalf("expected default LOOM_HUD_DIRECT_URL to be empty, got %q", cfg.LoomHUD.DirectURL)
+	}
 }
 
 func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
@@ -47,6 +50,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("LITELLM_SCRAPE_INTERVAL", "42")
 	t.Setenv("REDIS_DB", "12")
 	t.Setenv("LOOM_HUD_URL", "")
+	t.Setenv("LOOM_HUD_DIRECT_URL", "https://hud.flexinfer.ai")
 
 	cfg, err := Load()
 	if err != nil {
@@ -73,6 +77,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.LoomHUD.URL != "" {
 		t.Fatalf("expected empty LOOM_HUD_URL to be preserved, got %q", cfg.LoomHUD.URL)
+	}
+	if cfg.LoomHUD.DirectURL != "https://hud.flexinfer.ai" {
+		t.Fatalf("expected LOOM_HUD_DIRECT_URL override, got %q", cfg.LoomHUD.DirectURL)
 	}
 	if len(cfg.AllowedOrigins) != 2 || cfg.AllowedOrigins[0] != "https://one.example" || cfg.AllowedOrigins[1] != "https://two.example" {
 		t.Fatalf("unexpected ALLOWED_ORIGINS parse result: %v", cfg.AllowedOrigins)

@@ -102,7 +102,7 @@ func TestHealthLoomHUDEnabledWhenPullURLSet(t *testing.T) {
 		t.Fatal("expected loom_hud.passthroughEnabled=true when pull URL is set")
 	}
 	if loom.DirectURL != "http://loom-hud.ai.svc.cluster.local:3333" {
-		t.Fatalf("expected loom_hud.directUrl to echo the configured URL, got %q", loom.DirectURL)
+		t.Fatalf("expected loom_hud.directUrl to fall back to the pull URL, got %q", loom.DirectURL)
 	}
 
 	loomPush, ok := resp.Features["loom_hud_push"]
@@ -178,8 +178,9 @@ func TestHealthLoomHUDReportsDirectEntryContract(t *testing.T) {
 	h := &Handler{
 		cfg: &config.Config{
 			LoomHUD: config.LoomHUDConfig{
-				Disabled: false,
-				URL:      "https://loom-hud.example.com",
+				Disabled:  false,
+				URL:       "http://mobile-hud.loom-hub.svc.cluster.local",
+				DirectURL: "https://hud.flexinfer.ai",
 			},
 		},
 	}
@@ -204,7 +205,10 @@ func TestHealthLoomHUDReportsDirectEntryContract(t *testing.T) {
 	if !loom.Enabled || !loom.DirectEntryEnabled || !loom.PassthroughEnabled {
 		t.Fatalf("expected loom_hud direct-entry contract to be enabled, got %+v", loom)
 	}
-	if loom.DirectURL != "https://loom-hud.example.com" {
+	if loom.URL != "http://mobile-hud.loom-hub.svc.cluster.local" {
+		t.Fatalf("expected passthrough URL to match configured pull URL, got %q", loom.URL)
+	}
+	if loom.DirectURL != "https://hud.flexinfer.ai" {
 		t.Fatalf("expected directUrl to match configured URL, got %q", loom.DirectURL)
 	}
 }

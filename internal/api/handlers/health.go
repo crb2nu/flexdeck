@@ -29,7 +29,9 @@ type Feature struct {
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	hudURL := h.loomHUDURL()
+	hudDirectURL := h.loomHUDDirectURL()
 	hudPassthroughEnabled := h.loomHUDPassthroughEnabled()
+	hudDirectEntryEnabled := h.loomHUDDirectEntryEnabled()
 	resp := HealthResponse{
 		OK:      true,
 		Service: "flexdeck",
@@ -81,9 +83,9 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"loom_hud": {
 				Enabled:            hudPassthroughEnabled,
 				URL:                hudURL,
-				DirectURL:          hudURL,
+				DirectURL:          hudDirectURL,
 				PassthroughEnabled: hudPassthroughEnabled,
-				DirectEntryEnabled: hudPassthroughEnabled,
+				DirectEntryEnabled: hudDirectEntryEnabled,
 			},
 			"loom_hud_push": {
 				Enabled: !h.cfg.LoomHUD.Disabled && h.hudPushStore != nil,
@@ -119,9 +121,26 @@ func (h *Handler) loomHUDURL() string {
 	return strings.TrimSpace(h.cfg.LoomHUD.URL)
 }
 
+func (h *Handler) loomHUDDirectURL() string {
+	if h == nil || h.cfg == nil {
+		return ""
+	}
+	if directURL := strings.TrimSpace(h.cfg.LoomHUD.DirectURL); directURL != "" {
+		return directURL
+	}
+	return h.loomHUDURL()
+}
+
 func (h *Handler) loomHUDPassthroughEnabled() bool {
 	if h == nil || h.cfg == nil {
 		return false
 	}
 	return !h.cfg.LoomHUD.Disabled && h.loomHUDURL() != ""
+}
+
+func (h *Handler) loomHUDDirectEntryEnabled() bool {
+	if h == nil || h.cfg == nil {
+		return false
+	}
+	return !h.cfg.LoomHUD.Disabled && h.loomHUDDirectURL() != ""
 }

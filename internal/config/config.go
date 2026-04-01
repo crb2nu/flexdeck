@@ -157,6 +157,7 @@ type AgentsConfig struct {
 type LoomHUDConfig struct {
 	Disabled  bool
 	URL       string // env: LOOM_HUD_URL, default: http://localhost:3333
+	DirectURL string // env: LOOM_HUD_DIRECT_URL, default: falls back to LOOM_HUD_URL when unset
 	PushToken string // env: LOOM_HUD_PUSH_TOKEN — shared secret for push webhook auth
 }
 
@@ -288,6 +289,7 @@ func Load() (*Config, error) {
 		LoomHUD: LoomHUDConfig{
 			Disabled:  parseBool(getEnv("LOOM_HUD_DISABLED", "false")),
 			URL:       getEnvAllowEmpty("LOOM_HUD_URL", "http://localhost:3333"),
+			DirectURL: getEnvAllowEmpty("LOOM_HUD_DIRECT_URL", ""),
 			PushToken: getEnv("LOOM_HUD_PUSH_TOKEN", ""),
 		},
 

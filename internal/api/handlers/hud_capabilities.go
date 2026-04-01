@@ -18,13 +18,15 @@ func (h *Handler) HUDCapabilities(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) hudCapabilities() HUDCapabilitiesResponse {
-	directURL := h.loomHUDURL()
-	available := h.loomHUDPassthroughEnabled()
+	directURL := h.loomHUDDirectURL()
+	passthroughEnabled := h.loomHUDPassthroughEnabled()
+	directEntryEnabled := h.loomHUDDirectEntryEnabled()
+	available := passthroughEnabled || directEntryEnabled
 
 	resp := HUDCapabilitiesResponse{
 		Available:          available,
-		PassthroughEnabled: available,
-		DirectEntryEnabled: available,
+		PassthroughEnabled: passthroughEnabled,
+		DirectEntryEnabled: directEntryEnabled,
 		DirectURL:          directURL,
 	}
 
@@ -37,7 +39,7 @@ func (h *Handler) hudCapabilities() HUDCapabilitiesResponse {
 		resp.Reason = "loom hud is unavailable"
 	case h.cfg.LoomHUD.Disabled:
 		resp.Reason = "loom hud is disabled"
-	case directURL == "":
+	case h.loomHUDURL() == "" && directURL == "":
 		resp.Reason = "loom hud url is not configured"
 	default:
 		resp.Reason = "loom hud is unavailable"
