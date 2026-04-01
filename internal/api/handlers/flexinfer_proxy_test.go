@@ -148,6 +148,45 @@ flexinfer_proxy_scale_ups_total{model="model-a"} 1
 	}
 }
 
+func TestFlexInferProxyHealthAcceptsPlainTextHealthz(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			t.Fatalf("expected /healthz, got %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			FlexInferProxy: config.FlexInferProxyConfig{
+				URL: upstream.URL,
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/flexinfer/proxy/health", nil)
+	rec := httptest.NewRecorder()
+	h.FlexInferProxyHealth(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %+v", payload)
+	}
+	if payload["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %+v", payload)
+	}
+}
+
 func TestFlexInferProxyMetricsContractSemantics(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

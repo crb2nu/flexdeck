@@ -97,7 +97,14 @@ func (h *Handler) fetchFlexInferProxy(ctx context.Context, path string) (any, er
 
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("decode flexinfer proxy response: %w", err)
+		trimmed := strings.TrimSpace(string(body))
+		if trimmed == "" {
+			return nil, fmt.Errorf("decode flexinfer proxy response: %w", err)
+		}
+		return map[string]any{
+			"ok":     resp.StatusCode == http.StatusOK,
+			"status": trimmed,
+		}, nil
 	}
 
 	return raw, nil
