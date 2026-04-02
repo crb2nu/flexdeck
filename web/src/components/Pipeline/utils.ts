@@ -1,5 +1,10 @@
 import type { RepoInfo } from '../../lib/api';
 import { normalizeCiJobStatus, normalizeCiPipelineStatus } from '../../lib/fiAccel';
+import {
+  operatorStateBadgeClass,
+  operatorStateLabel,
+  type OperatorState,
+} from '../../lib/freshness';
 import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
 const ACTIVE_JOB_STATUSES = new Set(['running', 'pending', 'created', 'preparing', 'waiting_for_resource', 'scheduled']);
@@ -157,7 +162,14 @@ export interface RepoWithPipeline {
   pipeline: Pipeline | null;
 }
 
-export type PipelineDataState = 'live' | 'stale' | 'static' | 'offline';
+export type PipelineDataState = Extract<OperatorState, 'ready' | 'stale' | 'fallback' | 'offline'>;
+
+export interface PipelineDataStateMeta {
+  state: PipelineDataState;
+  label: string;
+  detail?: string;
+  badgeClass: string;
+}
 
 /**
  * Check if a pipeline has any active (running) jobs
@@ -192,11 +204,22 @@ interface PipelineDataStateInput {
 export function getPipelineDataState(input: PipelineDataStateInput): PipelineDataState {
   const { pipeline, lastUpdate = null, fetchError = false, staleAfterMs = 35000 } = input;
   if (!pipeline) return 'offline';
-  if (!isLivePipelineId(pipeline.id)) return 'static';
+  if (!isLivePipelineId(pipeline.id)) return 'fallback';
   if (fetchError) return 'offline';
   if (!lastUpdate) return 'stale';
   if (Date.now() - lastUpdate.getTime() > staleAfterMs) return 'stale';
-  return 'live';
+  return 'ready';
+}
+
+export function getPipelineDataStateMeta(input: PipelineDataStateInput): PipelineDataStateMeta {
+  const state = getPipelineDataState(input);
+  const detail = state === 'fallback' ? 'static preview' : undefined;
+  return {
+    state,
+    detail,
+    label: operatorStateLabel(state, detail),
+    badgeClass: operatorStateBadgeClass(state),
+  };
 }
 
 /**

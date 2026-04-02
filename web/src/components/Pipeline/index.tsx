@@ -35,7 +35,6 @@ const Pipeline: Component = () => {
     overviewLoading,
     pipelineActionLoading,
     pipelineData,
-    pipelineDataState,
     pipelineSort,
     pipelinesCache,
     pushActionNotice,
@@ -250,13 +249,7 @@ const Pipeline: Component = () => {
                                 {selectedRepo()?.name}
                             </div>
                             <span
-                                class="px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-mono uppercase tracking-wider"
-                                classList={{
-                                    'text-neon-green border-neon-green/30 bg-neon-green/10': pipelineDataState() === 'live',
-                                    'text-yellow-300 border-yellow-300/30 bg-yellow-300/10': pipelineDataState() === 'stale',
-                                    'text-neon-cyan border-neon-cyan/30 bg-neon-cyan/10': pipelineDataState() === 'static',
-                                    'text-red-300 border-red-300/30 bg-red-300/10': pipelineDataState() === 'offline',
-                                }}
+                                class={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-mono uppercase tracking-wider ${dataStateMeta().badgeClass}`}
                             >
                                 {dataStateMeta().label}
                             </span>

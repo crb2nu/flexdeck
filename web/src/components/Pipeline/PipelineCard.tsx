@@ -1,7 +1,14 @@
 import { Component, For, Show } from 'solid-js';
 import type { RepoInfo } from '../../lib/api';
 import type { Pipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
-import { formatRelativeTime, getJobCountsByStatus, getStatusColor, getStatusLabel, hasActiveJobs, isLivePipelineId } from './utils';
+import {
+  formatRelativeTime,
+  getJobCountsByStatus,
+  getPipelineDataStateMeta,
+  getStatusColor,
+  getStatusLabel,
+  hasActiveJobs,
+} from './utils';
 
 const getStageStatusSummary = (stage: PipelineStage): { status: PipelineJob['status']; text: string } => {
   const counts = getJobCountsByStatus(stage.jobs);
@@ -33,7 +40,12 @@ const PipelineCard: Component<{
   const isActive = () => hasActiveJobs(props.pipeline);
   const status = () => props.pipeline?.status ?? 'pending';
   const statusColor = () => getStatusColor(status(), props.pipeline?.rawStatus);
-  const isLive = () => isLivePipelineId(props.pipeline?.id);
+  const sourceStateMeta = () =>
+    getPipelineDataStateMeta({
+      pipeline: props.pipeline,
+      lastUpdate: props.pipeline ? new Date(props.pipeline.createdAt) : null,
+      staleAfterMs: Number.MAX_SAFE_INTEGER,
+    });
 
   return (
     <div
@@ -110,13 +122,9 @@ const PipelineCard: Component<{
               #{props.pipeline!.id.split('-')[1] || props.pipeline!.id}
             </span>
             <span
-              class="px-2 py-0.5 rounded-full border text-[10px] font-mono uppercase tracking-wider"
-              classList={{
-                'text-neon-cyan border-neon-cyan/40 bg-neon-cyan/10': isLive(),
-                'text-yellow-300 border-yellow-300/40 bg-yellow-300/10': !isLive(),
-              }}
+              class={`px-2 py-0.5 rounded-full border text-[10px] font-mono uppercase tracking-wider ${sourceStateMeta().badgeClass}`}
             >
-              {isLive() ? 'LIVE' : 'STATIC'}
+              {sourceStateMeta().label}
             </span>
           </div>
         </Show>
