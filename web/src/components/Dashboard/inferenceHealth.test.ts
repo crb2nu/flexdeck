@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildInferenceHealthSummary } from './inferenceHealth';
 import type { FlexInferProxyMetricsResponse } from '../../lib/types';
+import { buildInferenceHealthSummary } from '../../lib/flexinferSummary';
 
 describe('buildInferenceHealthSummary', () => {
   it('uses totals when provided', () => {

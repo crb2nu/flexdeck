@@ -17,11 +17,11 @@ export function computeReconnectDelayMs(reconnectAttempts: number, jitterMs = Ma
 export function feedConnectionState(state: FeedConnectionState): OperatorState {
   switch (state) {
     case 'disabled':
-      return 'offline';
+      return 'disabled';
     case 'live':
       return 'ready';
     case 'stale':
-      return 'stale';
+      return 'fallback';
     default:
       return 'connecting';
   }

@@ -223,7 +223,7 @@ const Dashboard: Component = () => {
                     ? inferenceHealth().error
                     : undefined,
                 )
-              : dataStateLabel('offline', 'feature disabled')
+              : dataStateLabel('disabled', 'feature disabled')
           }
           icon="⚡"
           color={inferenceFeatureEnabled() ? 'purple' : 'orange'}
@@ -253,7 +253,7 @@ const Dashboard: Component = () => {
                   agentDataState(),
                   loomHUDPushEnabled() && !loomHUDPullEnabled() ? 'push mode' : undefined,
                 )
-              : dataStateLabel('offline', 'feature disabled')
+              : dataStateLabel('disabled', 'feature disabled')
           }
           icon="◎"
           color={agentFeatureEnabled() ? 'green' : 'orange'}

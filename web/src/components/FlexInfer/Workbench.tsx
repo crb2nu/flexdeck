@@ -7,6 +7,10 @@ import {
   type OperatorState,
 } from '../../lib/freshness';
 import { healthStore } from '../../stores/health';
+import {
+  flexinferProxyTotals,
+  flexinferSupplyChainSummary,
+} from '../../stores/flexinferSurface';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
 import type { ModelCache } from '../../lib/types';
 import {
@@ -228,10 +232,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 
   const registryRows = createMemo(() => controller.registryModels().slice().sort((a, b) => a.name.localeCompare(b.name)));
   const searchResults = () => controller.searchResults();
-  const cachedReady = () => caches().filter((cache) => cache.status?.phase === 'Ready').length;
-  const cachedFailed = () => caches().filter((cache) => cache.status?.phase === 'Failed').length;
-  const catalogModelCount = () => catalogs().reduce((sum, catalog) => sum + (catalog.models?.length || 0), 0);
-  const proxyTotals = () => proxyMetrics()?.totals;
+  const supplyChainSummary = () => flexinferSupplyChainSummary();
+  const proxyTotals = () => flexinferProxyTotals();
   const routerModels = () => routerInfo()?.modelInfo || [];
   const reliabilityHeadline = createMemo(() => {
     const summary = controller.reliabilitySummary();
@@ -296,10 +298,10 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                 Registry {controller.registryModels().length}
               </span>
               <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Catalogs {catalogs().length}
+                Catalogs {supplyChainSummary().catalogCount}
               </span>
               <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Caches {caches().length}
+                Caches {supplyChainSummary().cacheCount}
               </span>
             </div>
           </div>
@@ -369,9 +371,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         />
         <WorkbenchStatCard
           label="Supply chain"
-          value={`${catalogs().length}/${catalogModelCount()}`}
+          value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
           tone="text-neon-purple"
-          note={`${caches().length} caches · ${cachedReady()} ready`}
+          note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
         />
         <WorkbenchStatCard
           label="Freshness"
@@ -807,8 +809,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               </table>
             </div>
             <div class="grid grid-cols-2 gap-3 border-t border-white/5 p-4">
-              <WorkbenchStatCard label="Ready" value={`${cachedReady()}`} tone="text-status-ok" note="cache pipelines ready to serve" />
-              <WorkbenchStatCard label="Failed" value={`${cachedFailed()}`} tone="text-status-error" note="requires operator follow-up" />
+              <WorkbenchStatCard label="Ready" value={`${supplyChainSummary().readyCacheCount}`} tone="text-status-ok" note="cache pipelines ready to serve" />
+              <WorkbenchStatCard label="Failed" value={`${supplyChainSummary().failedCacheCount}`} tone="text-status-error" note="requires operator follow-up" />
             </div>
             <Show when={!modelCacheEnabled()}>
               <div class="border-t border-white/5 px-4 py-3 text-[11px] text-text-dim">

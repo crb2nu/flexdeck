@@ -66,13 +66,31 @@ describe("resolveDashboardDataState", () => {
       }),
     ).toBe("ready");
   });
+
+  it("preserves disabled and fallback states from the shared resolver", () => {
+    expect(
+      resolveDashboardDataState({
+        staleAfterMs: 30_000,
+        disabled: true,
+      }),
+    ).toBe("disabled");
+
+    expect(
+      resolveDashboardDataState({
+        staleAfterMs: 30_000,
+        nowMs: 120_000,
+        lastUpdateMs: 110_000,
+        fallback: true,
+      }),
+    ).toBe("fallback");
+  });
 });
 
 describe("dataStateLabel", () => {
   it("formats uppercase labels with optional detail", () => {
     expect(dataStateLabel("ready")).toBe("READY");
-    expect(dataStateLabel("offline", "feature disabled")).toBe(
-      "OFFLINE · feature disabled",
+    expect(dataStateLabel("disabled", "feature disabled")).toBe(
+      "DISABLED · feature disabled",
     );
   });
 });
