@@ -20,6 +20,24 @@ spec:
       serviceAccountName: flexdeck
       nodeSelector:
         kubernetes.io/arch: amd64
+        node.flexstack.io/class: services
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - cblevins-radeonvii
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node.flexstack.io/pool
+                    operator: In
+                    values:
+                      - services-core
       containers:
         - name: flexdeck
           image: registry.harbor.lan/library/flexdeck:latest
