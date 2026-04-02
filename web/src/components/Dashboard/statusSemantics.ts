@@ -5,8 +5,10 @@ import {
   type ResolveOperatorStateInput,
 } from '../../lib/freshness';
 
-export type DashboardDataState = Extract<OperatorState, 'ready' | 'partial' | 'stale' | 'offline'>;
-
+export type DashboardDataState = Extract<
+  OperatorState,
+  'ready' | 'partial' | 'fallback' | 'stale' | 'offline' | 'disabled'
+>;
 export type ResolveDashboardStateInput = ResolveOperatorStateInput;
 
 export function resolveDashboardDataState(

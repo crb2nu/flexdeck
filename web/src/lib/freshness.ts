@@ -1,4 +1,11 @@
-export type OperatorState = 'connecting' | 'ready' | 'partial' | 'stale' | 'offline';
+export type OperatorState =
+  | 'connecting'
+  | 'ready'
+  | 'partial'
+  | 'fallback'
+  | 'stale'
+  | 'offline'
+  | 'disabled';
 export type FreshnessState = Extract<OperatorState, 'ready' | 'stale' | 'offline'>;
 
 export interface ResolveOperatorStateInput {
@@ -9,6 +16,7 @@ export interface ResolveOperatorStateInput {
   nowMs?: number;
   disabled?: boolean;
   partial?: boolean;
+  fallback?: boolean;
   loadingState?: Extract<OperatorState, 'connecting' | 'partial'>;
 }
 
@@ -18,16 +26,20 @@ const OPERATOR_STATE_LABELS: Record<OperatorState, string> = {
   connecting: 'CONNECTING',
   ready: 'READY',
   partial: 'PARTIAL',
+  fallback: 'FALLBACK',
   stale: 'STALE',
   offline: 'OFFLINE',
+  disabled: 'DISABLED',
 };
 
 const OPERATOR_STATE_BADGE_CLASSES: Record<OperatorState, string> = {
   connecting: 'bg-white/10 text-text-dim',
   ready: 'bg-status-ok/20 text-status-ok',
   partial: 'bg-neon-cyan/20 text-neon-cyan',
+  fallback: 'bg-status-warn/15 text-status-warn',
   stale: 'bg-status-warn/20 text-status-warn',
   offline: 'bg-white/10 text-text-dim',
+  disabled: 'bg-white/10 text-text-dim',
 };
 
 export function isOfflineError(error: string): boolean {
@@ -47,10 +59,11 @@ export function resolveOperatorState(
     nowMs = Date.now(),
     disabled = false,
     partial = false,
+    fallback = false,
     loadingState = 'connecting',
   } = input;
 
-  if (disabled) return 'offline';
+  if (disabled) return 'disabled';
 
   const normalizedError = (error || '').trim();
   if (normalizedError) {
@@ -59,6 +72,7 @@ export function resolveOperatorState(
 
   if (loading && !lastUpdateMs) return loadingState;
   if (!lastUpdateMs || nowMs - lastUpdateMs > staleAfterMs) return 'stale';
+  if (fallback) return 'fallback';
   if (partial || loading) return 'partial';
   return 'ready';
 }

@@ -178,7 +178,7 @@ const HUDTab: Component = () => {
   const feedStateTone = (): HUDConsoleMetric['tone'] => {
     const state = feedConnectionState(eventsConnection());
     if (state === 'ready') return 'ok';
-    if (state === 'stale') return 'warn';
+    if (state === 'fallback' || state === 'stale') return 'warn';
     return 'cyan';
   };
 

@@ -239,4 +239,47 @@ describe('HUDTab', () => {
     expect(text).toContain('HUD error');
     expect(text).toContain('HUD pull offline');
   });
+
+  it('renders push-only mode without pull-only sections', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.eventsConnectionLabel = 'DISABLED';
+    hudMocks.feedState = 'disabled';
+    hudMocks.hudMode.pullEnabled = false;
+    hudMocks.hudMode.pushEnabled = true;
+    hudMocks.hudMode.modeLabel = 'Push mode (agent snapshots)';
+    hudMocks.hudMode.modeDescription = 'Presence snapshots only';
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Push mode (agent snapshots)');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Presence snapshots only');
+    expect(text).not.toContain('Claim ledger');
+    expect(text).not.toContain('Workflow queue');
+  });
+
+  it('surfaces disabled HUD mode as an operator error state', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.eventsConnectionLabel = 'DISABLED';
+    hudMocks.feedState = 'disabled';
+    hudMocks.hudMode.pullEnabled = false;
+    hudMocks.hudMode.pushEnabled = false;
+    hudMocks.hudMode.modeLabel = 'Disabled';
+    hudMocks.hudMode.modeDescription = 'No HUD data';
+    hudMocks.hudMode.disabledReason = 'Loom HUD is disabled by policy';
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('HUD error');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Disabled');
+    expect(text).toContain('Loom HUD is disabled by policy');
+    expect(text).not.toContain('Degraded feed');
+  });
 });

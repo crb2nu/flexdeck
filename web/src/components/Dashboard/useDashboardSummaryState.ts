@@ -4,18 +4,16 @@ import { hudApi, agentsApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
 import { metricsStore } from '../../stores/metrics';
 import {
-  flexinferProxyError,
-  flexinferProxyLoading,
-  flexinferProxyMetrics,
   flexinferProxyUpdatedAt,
-  flexinferRegistryError,
-  flexinferRegistryLoading,
-  flexinferRegistryModels,
   flexinferRegistryUpdatedAt,
   startFlexInferOperationalPolling,
   stopFlexInferOperationalPolling,
 } from '../../stores/flexinferOperational';
-import { buildInferenceHealthSummary } from './inferenceHealth';
+import {
+  flexinferInferenceFeatureEnabled,
+  flexinferInferenceHealth,
+  flexinferModelCount,
+} from '../../stores/flexinferSurface';
 import { resolveDashboardDataState } from './statusSemantics';
 
 class RingBuffer {
@@ -34,21 +32,6 @@ class RingBuffer {
     if (!this.full) return this.buf.slice(0, this.pos);
     return [...this.buf.slice(this.pos), ...this.buf.slice(0, this.pos)];
   }
-}
-
-export interface ModelCountState {
-  deployed: number;
-  total: number;
-  loading: boolean;
-  error: string;
-}
-
-export interface InferenceHealthState {
-  totalTps: number;
-  modelCount: number;
-  queueDepth: number;
-  loading: boolean;
-  error: string;
 }
 
 export interface AgentActivityState {
@@ -111,38 +94,10 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
     stopFlexInferOperationalPolling();
   });
 
-  const modelCount = createMemo<ModelCountState>(() => {
-    const models = flexinferRegistryModels();
-    const deployed = models.filter((model) => model.deployment_status === 'deployed').length;
-    return {
-      deployed,
-      total: models.length,
-      loading: flexinferRegistryLoading(),
-      error: flexinferRegistryError() || '',
-    };
-  });
+  const modelCount = createMemo(() => flexinferModelCount());
   const modelLastUpdateMs = flexinferRegistryUpdatedAt;
 
-  const inferenceHealth = createMemo<InferenceHealthState>(() => {
-    if (!healthStore.features.flexinfer_proxy?.enabled) {
-      return {
-        totalTps: 0,
-        modelCount: 0,
-        queueDepth: 0,
-        loading: false,
-        error: '',
-      };
-    }
-
-    const summary = buildInferenceHealthSummary(flexinferProxyMetrics());
-    return {
-      totalTps: summary.totalTps,
-      modelCount: summary.modelCount,
-      queueDepth: summary.queueDepth,
-      loading: flexinferProxyLoading(),
-      error: flexinferProxyError() || summary.error,
-    };
-  });
+  const inferenceHealth = createMemo(() => flexinferInferenceHealth());
   const inferenceLastUpdateMs = flexinferProxyUpdatedAt;
 
   createEffect(() => {
@@ -232,11 +187,9 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
     modelDataState() === 'offline' ? (modelCount().error || 'offline') : '',
   );
 
-  const inferenceFeatureEnabled = createMemo(
-    () => healthStore.features.flexinfer_proxy?.enabled ?? false,
-  );
+  const inferenceFeatureEnabled = createMemo(() => flexinferInferenceFeatureEnabled());
   const inferenceDataState = createMemo(() => {
-    if (!inferenceFeatureEnabled()) return 'offline' as const;
+    if (!inferenceFeatureEnabled()) return 'disabled' as const;
     return resolveDashboardDataState({
       loading: inferenceHealth().loading,
       error: inferenceHealth().error,
@@ -253,7 +206,7 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
 
   const agentFeatureEnabled = createMemo(() => loomHUDAvailable());
   const agentDataState = createMemo(() => {
-    if (!agentFeatureEnabled()) return 'offline' as const;
+    if (!agentFeatureEnabled()) return 'disabled' as const;
     const resolved = resolveDashboardDataState({
       loading: agentActivity().loading,
       error: agentActivity().error,
@@ -261,7 +214,7 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
       staleAfterMs,
     });
     if (resolved === 'ready' && loomHUDPushEnabled() && !loomHUDPullEnabled()) {
-      return 'partial' as const;
+      return 'fallback' as const;
     }
     return resolved;
   });

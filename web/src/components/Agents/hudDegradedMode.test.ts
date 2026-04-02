@@ -20,20 +20,20 @@ describe('hudDegradedMode', () => {
   });
 
   it('returns explicit feed labels for connection states', () => {
-    expect(feedConnectionState('disabled')).toBe('offline');
+    expect(feedConnectionState('disabled')).toBe('disabled');
     expect(feedConnectionState('connecting')).toBe('connecting');
     expect(feedConnectionState('live')).toBe('ready');
-    expect(feedConnectionState('stale')).toBe('stale');
+    expect(feedConnectionState('stale')).toBe('fallback');
 
     expect(feedConnectionDetail('disabled')).toBe('push mode');
     expect(feedConnectionDetail('connecting')).toBe('waiting for events');
     expect(feedConnectionDetail('live')).toBe('live feed');
     expect(feedConnectionDetail('stale')).toBe('poll fallback');
 
-    expect(feedConnectionLabel('disabled')).toBe('OFFLINE · push mode');
+    expect(feedConnectionLabel('disabled')).toBe('DISABLED · push mode');
     expect(feedConnectionLabel('connecting')).toBe('CONNECTING · waiting for events');
     expect(feedConnectionLabel('live')).toBe('READY · live feed');
-    expect(feedConnectionLabel('stale')).toBe('STALE · poll fallback');
+    expect(feedConnectionLabel('stale')).toBe('FALLBACK · poll fallback');
   });
 
   it('marks workflow data stale only when pull mode is enabled and threshold exceeded', () => {

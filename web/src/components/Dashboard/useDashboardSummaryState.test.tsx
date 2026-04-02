@@ -190,7 +190,7 @@ describe('useDashboardSummaryState', () => {
     expect(state.agentFeatureEnabled()).toBe(true);
     expect(state.loomHUDPullEnabled()).toBe(false);
     expect(state.loomHUDPushEnabled()).toBe(true);
-    expect(state.agentDataState()).toBe('partial');
+    expect(state.agentDataState()).toBe('fallback');
     expect(state.agentActivity()).toMatchObject({
       activeAgents: 1,
       totalTasks: 5,
@@ -199,7 +199,7 @@ describe('useDashboardSummaryState', () => {
     });
   });
 
-  it('treats inference as offline when the flexinfer proxy feature is disabled', () => {
+  it('treats inference as disabled when the flexinfer proxy feature is disabled', () => {
     dashboardMocks.healthFeatures.flexinfer_proxy.enabled = false;
     dashboardMocks.healthFeatures.loom_hud.enabled = false;
 
@@ -214,7 +214,7 @@ describe('useDashboardSummaryState', () => {
 
     expect(dashboardMocks.proxyMetrics).not.toHaveBeenCalled();
     expect(state.inferenceFeatureEnabled()).toBe(false);
-    expect(state.inferenceDataState()).toBe('offline');
+    expect(state.inferenceDataState()).toBe('disabled');
     expect(state.inferenceCardError()).toBe('');
   });
 

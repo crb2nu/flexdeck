@@ -1,299 +1,231 @@
-# Implementation Plan — Feature Improvements And Polish (2026-03)
-
-## Implementation Plan — Snappy UX And Smarter Redis (2026-03-06)
-
-### Scope
-- Repository: `/Users/cblevins/workspace/services/flexdeck`
-- Focus:
-  - system-level performance improvements after the recent frontend runtime passes
-  - Redis architecture and cache effectiveness
-  - UX/freshness improvements that make data-heavy pages feel immediate
-- Out of scope:
-  - major new product features
-  - cross-repo infrastructure migrations that are not required for FlexDeck performance
-
-### Objectives
-1. Make Redis an independent platform capability for FlexDeck, not a side effect of LiteLLM metrics.
-2. Convert repeated dashboard reads into cache-friendly, coalesced, and where appropriate precomputed responses.
-3. Standardize page polling so inactive tabs and inactive routes do not keep paying full refresh cost.
-4. Expose freshness/degraded states clearly so the UI feels responsive even when data is being refreshed.
-
-### Milestones
-
-#### M1. Redis Decoupling And Cache Runtime Hardening
-- Create an independent Redis bootstrap path in `cmd/server/main.go`.
-- Pass a generic Redis cache/client into handlers even when LiteLLM is disabled.
-- Extend `internal/cache/cache.go` with:
-  - singleflight request coalescing
-  - optional stale-while-revalidate windows
-  - TTL jitter
-  - lightweight hit/miss telemetry hooks
-
-#### M2. Prometheus And Metrics Read Optimization
-- Add normalized short-TTL backend caching for hot Prometheus query/query_range requests.
-- Bucket time ranges to improve cache reuse.
-- Identify repeated dashboard PromQL worth converting into recording rules.
-- Optionally add a compact dashboard-summary endpoint to reduce six-way frontend panel fan-out.
-
-#### M3. Redis Materialization For Hot Summaries
-- Materialize:
-  - LiteLLM throughput summaries by model/window
-  - CI trend summaries by project/window
-  - CI repository config-detection summaries
-- Keep raw sorted sets for history and debugging.
-- Stop recomputing expensive aggregates on every read path.
-
-#### M4. Shared Polling And Freshness UX
-- Expand visibility-aware polling patterns from Prometheus metrics into shared page infrastructure.
-- Apply first to:
-  - Agents
-  - Alerts
-  - Dashboard node resources
-  - remaining Models subpanels
-- Introduce consistent UI freshness states:
-  - `live`
-  - `cached`
-  - `stale-refreshing`
-  - `paused`
-  - `degraded`
-
-#### M5. Measurement And Verification
-- Add backend cache metrics and Prometheus/Redis cache-hit instrumentation.
-- Add frontend `PerformanceObserver` hooks for long tasks / long animation frames in development or debug mode.
-- Validate with:
-  - backend tests for cache behavior and handler semantics
-  - frontend tests for polling lifecycle and freshness UI
-  - targeted perf smoke runs on topology, pipeline, metrics, and CI repository views
-
-### Prioritized Backlog
-
-#### Slice 1: Independent Redis Cache Bootstrap
-- Target files:
-  - `cmd/server/main.go`
-  - `internal/api/handlers/handlers.go`
-  - `internal/config/config.go` if a clearer Redis/cache config split is needed
-- Deliverables:
-  - generic Redis client/cache exists whenever Redis is configured
-  - `metrics.Store` becomes optional specialized storage on top of that client
-- Why first:
-  - unlocks broader cache coverage without frontend changes
-  - removes an architectural footgun where disabling LiteLLM silently removes unrelated caching
-
-#### Slice 2: Cache Wrapper Hardening
-- Target files:
-  - `internal/cache/cache.go`
-  - `internal/cache/cache_test.go`
-- Deliverables:
-  - request coalescing
-  - stale-while-revalidate mode for eligible handlers
-  - TTL jitter
-  - tests for concurrent misses and stale serve behavior
-- Why second:
-  - gives immediate protection to existing `GetOrFetch` call sites across K8s/Grafana/CI/Alertmanager/FlexInfer
-
-#### Slice 3: Prometheus Query Caching
-- Target files:
-  - `internal/api/handlers/prometheus.go`
-  - `web/src/components/Metrics/usePrometheusMetricsController.ts`
-  - possibly `internal/api/handlers/apiutil/*` if request normalization helpers are needed
-- Deliverables:
-  - short-TTL cached query/query_range responses
-  - normalized time-bucket keys
-  - clear `last updated` / `cached` semantics in the UI
-- Why third:
-  - directly improves one of the most obviously repetitive dashboard request paths
-
-#### Slice 4: Polling Registry Expansion
-- Target files:
-  - `web/src/lib/polling.ts`
-  - `web/src/components/Agents/*`
-  - `web/src/components/Alerts/index.tsx`
-  - `web/src/components/Dashboard/NodeResourcePanel.tsx`
-  - `web/src/components/Models/*`
-- Deliverables:
-  - common scheduling policy
-  - visibility-aware pause/resume
-  - route-active gating
-  - consolidated refresh diagnostics
-
-#### Slice 5: Materialized Redis Summaries
-- Target files:
-  - `internal/metrics/store.go`
-  - `internal/metrics/pipeline_store.go`
-  - `internal/api/handlers/litellm.go`
-  - `internal/api/handlers/ci.go`
-- Deliverables:
-  - cached summary blobs updated on write or via bounded recompute windows
-  - fewer full-key scans and repeated JSON deserializations on read
-
-### Validation Plan
-- Backend:
-  - `go test ./internal/cache/... ./internal/api/handlers/... ./internal/metrics/...`
-- Frontend:
-  - `npm -C web run -s test`
-  - `npm -C web run -s lint`
-  - `npm -C web run -s typecheck`
-- Perf-focused checks:
-  - confirm hidden-tab polling stops for migrated pages
-  - confirm Prometheus tab repeat loads hit backend cache
-  - confirm CI repository list cold and warm timings improve
-  - confirm stale-refresh UX renders immediately instead of spinner-only states
-
-### Risks And Mitigations
-- Risk: stale-while-revalidate hides real failures if freshness state is invisible.
-  - Mitigation: always expose `cached` / `stale-refreshing` / `degraded` state in the UI.
-- Risk: over-caching Prometheus responses can mislead operators during incidents.
-  - Mitigation: keep TTLs short, align to query step, and bypass or reduce TTL for critical instant reads.
-- Risk: materialized summaries drift from raw history.
-  - Mitigation: treat raw sorted sets as source of truth and rebuild summaries deterministically when needed.
-- Risk: polling centralization can break page-local assumptions.
-  - Mitigation: migrate page by page behind stable controller APIs.
-
-### Recommended Execution Order
-1. Redis bootstrap decoupling
-2. Cache wrapper hardening
-3. Prometheus query caching
-4. Polling registry rollout
-5. Materialized metrics and CI summaries
-
-### Sources
-- `cmd/server/main.go:54`
-- `cmd/server/main.go:59`
-- `internal/api/handlers/handlers.go:84`
-- `internal/cache/cache.go:27`
-- `internal/api/handlers/prometheus.go:35`
-- `internal/api/handlers/prometheus.go:56`
-- `internal/api/handlers/ci.go:38`
-- `internal/api/handlers/ci.go:78`
-- `internal/api/handlers/ci.go:133`
-- `internal/metrics/store.go:115`
-- `internal/metrics/pipeline_store.go:66`
-- `web/src/components/Metrics/usePrometheusMetricsController.ts:173`
-- `web/src/components/Alerts/index.tsx:40`
-- `web/src/components/Agents/HUDTab.tsx:128`
-- `web/src/components/Models/InferenceTab.tsx:114`
-- `web/src/components/Models/GPUMetricsPanel.tsx:181`
-- `web/src/components/Dashboard/NodeResourcePanel.tsx:152`
-- [MDN: Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API)
-- [Redis: Cache-Aside Pattern with Redis](https://redis.io/tutorials/howtos/solutions/microservices/caching/)
-- [Grafana docs: data source query caching](https://grafana.com/docs/grafana/latest/administration/data-source-management/)
-- [Grafana docs: Prometheus incremental dashboard queries](https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/)
-- [Prometheus: recording rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/)
+# Implementation Plan — Operational Coherence And Surface Consolidation (2026-04-02)
 
 ## Scope
 - Repository: `/Users/cblevins/workspace/services/flexdeck`
-- Focus: polish and consistency across recently changed Pipeline, Grafana, Dashboard/mobile, and delivery workflows.
-- Out of scope: new subsystem development, cross-repo API changes.
+- Focus:
+  - unify operational state/freshness semantics across Dashboard, FlexInfer, and Loom HUD
+  - consolidate FlexInfer frontend data ownership around the shipped workbench architecture
+  - add regression coverage and tracking hygiene for the highest-churn UX surfaces
+- Out of scope:
+  - new backend subsystems
+  - broad redesign work
+  - cross-repo API changes unless a repo-local consolidation task depends on them
+
+## Starting Line
+- `origin/main` now includes the deployment scheduling hardening from MR `!67`, so the next FlexInfer/Loom HUD slice can build on the current rollout baseline instead of carrying a pending GitOps side quest.
+- Local branch/worktree cleanup is complete enough that the active repo state is reduced to:
+  - clean `main`
+  - one focused planning branch for the next phase
+- Slices 1-3 are already implemented locally on `codex/flexinfer-loom-next-phase`, so the remaining execution risk is no longer architectural uncertainty; it is coverage, governance sync, and clean merge preparation.
+
+## Objectives
+1. Replace conflicting operator state vocabularies with one shared model.
+2. Make the FlexInfer workbench the architectural center of gravity instead of one more parallel view.
+3. Remove or neutralize orphaned legacy model surfaces so future work does not drift.
+4. Add component/controller coverage where recent UI change velocity is highest.
+5. Break the next round into small, shippable slices tied to current issue/governance reality.
 
 ## Milestones
-1. **M1 — Planning Baseline Refresh**
-   - Refresh `.loom` context pack and MCP/runtime inventory.
-   - Capture current constraints (codebase index connectivity issue).
-2. **M2 — Pipeline Confidence Polish**
-   - Land pipeline state/freshness UX and action feedback consistency.
-3. **M3 — Grafana + Dashboard Signal Coherence**
-   - Expose query resolution states and unify status semantics across cards.
-   - Complete final mobile polish verification pass.
-4. **M4 — Verification, Reconciliation, Handoff**
-   - Execute test/ship loop and update roadmap-reconciliation evidence.
 
-## Delivery Status (As Of 2026-03-03)
-- Workstream A: Delivered on `origin/main` (`6587649`, pipeline polish/status clarity).
-- Workstream B: Delivered on `origin/main` (`343565d`, Grafana resolution/fallback diagnostics).
-- Workstream C: Delivered on `origin/main` (`3f39d9a`, dashboard status semantics + feature-gate clarity).
-- Workstream D: Completed in this branch (governance sync + release smoke checklist), pending merge.
+### M1. Shared Operational State Primitives
+- Status: implemented locally on `codex/flexinfer-loom-next-phase`
+- Introduce a shared frontend state model that can represent loading, ready, partial, stale, offline, disabled, and fallback modes.
+- Apply it to:
+  - Dashboard summary cards
+  - FlexInfer workbench section headers
+  - Loom HUD feed/status messaging
+- Keep detail strings additive so feature-flag and degraded-mode reasons remain visible.
 
-## Workstreams
+### M2. FlexInfer Data Ownership Consolidation
+- Status: implemented locally on `codex/flexinfer-loom-next-phase`
+- Create a canonical data layer for the workbench/admin FlexInfer surfaces.
+- Reuse normalized selectors in dashboard summaries where feasible.
+- Decide whether legacy `InferenceTab` / `ProxyTab` / `PipelinesTab` are deleted or retained as thin adapters.
 
-### Workstream A: Pipeline UX Confidence
+### M3. Confidence And Regression Safety
+- Status: in progress
+- Add component/controller tests for:
+  - `AppLayout`
+  - `FlexInfer/Workbench`
+  - `Agents/HUDTab`
+  - pipeline controller/status behavior where touched
+- Keep a short manual smoke path for operator-critical journeys.
+
+### M4. Governance / Backlog Decomposition
+- Status: in progress
+- Record the canonical repo ID and runtime assumptions in `.loom`.
+- Decompose the enhancement round into issue/checklist slices under roadmap issue `#1`.
+- Keep roadmap reconciliation notes synchronized with actual shipped slices.
+
+## Prioritized Backlog
+
+### Slice 1: Shared State Contract
+- Status: implemented locally on `codex/flexinfer-loom-next-phase`
 - Target files:
-  - `web/src/components/Pipeline/index.tsx`
-  - `web/src/components/Pipeline/CIPipelineViz.tsx`
-  - `web/src/components/Pipeline/PipelineCard.tsx`
-  - `web/src/components/Pipeline/utils.ts`
-  - `web/src/components/Pipeline/utils.test.ts`
-- Tasks:
-  - Add explicit live/stale/static/offline status affordances.
-  - Standardize retry/cancel/play feedback and refresh timing.
-  - Tighten overview/detail synchronization logic under polling transitions.
+  - `web/src/lib/freshness.ts`
+  - `web/src/components/Dashboard/statusSemantics.ts`
+  - `web/src/components/Agents/hudDegradedMode.ts`
+  - `web/src/components/Agents/HUDTab.tsx`
+  - `web/src/components/FlexInfer/Workbench.tsx`
+- Deliverables:
+  - one shared operator-state vocabulary
+  - consistent badge/label rendering rules
+  - explicit mapping for disabled, partial, stale, and fallback states
+- Why first:
+  - it improves operator clarity immediately
+  - it creates the contract the consolidation work can build around
 
-### Workstream B: Grafana Operability Polish
+### Slice 2: FlexInfer Shared Data Layer
+- Status: implemented locally on `codex/flexinfer-loom-next-phase`
 - Target files:
-  - `web/src/components/Metrics/GrafanaDashboards.tsx`
-  - `internal/api/handlers/grafana.go` (if backend messaging adjustments are required)
-- Tasks:
-  - Surface query resolution path (`direct|templated|fallback`) in panel UI.
-  - Improve unresolved-template diagnostics and unsupported-query messaging.
-  - Verify expanded panel readability on constrained layouts.
+  - `web/src/components/FlexInfer/Workbench.tsx`
+  - `web/src/components/Models/useModelsController.ts`
+  - `web/src/lib/modelIntegration.ts`
+  - `web/src/components/Dashboard/useDashboardSummaryState.ts`
+  - new shared controller/store under `web/src/components/FlexInfer/` or `web/src/stores/`
+- Deliverables:
+  - one canonical owner for workbench operational fetches and selectors
+  - reused model integration and proxy/router/catalog/cache selectors
+  - fewer independent poll owners for the same FlexInfer facts
+- Why second:
+  - it addresses the highest remaining integration debt from the recent shipment
 
-### Workstream C: Dashboard/Mobile Signal Clarity
+### Slice 3: Legacy Surface Retirement Or Adapter Pass
+- Status: implemented locally on `codex/flexinfer-loom-next-phase`
 - Target files:
-  - `web/src/components/Dashboard/index.tsx`
+  - `web/src/components/Models/InferenceTab.tsx`
+  - `web/src/components/Models/ProxyTab.tsx`
+  - `web/src/components/Models/PipelinesTab.tsx`
+  - `web/src/components/Models/index.tsx`
+  - `web/src/components/Admin/FlexInferTab.tsx`
+- Deliverables:
+  - either remove unused legacy model-era components or convert them into thin adapters over the new shared data layer
+  - add inline architectural notes where compatibility wrappers are intentionally retained
+- Why third:
+  - it prevents the next few cycles from reintroducing duplicate behavior through old entry points
+
+### Slice 4: Component And Controller Test Coverage
+- Status: active next slice
+- Target files:
   - `web/src/AppLayout.tsx`
-  - `web/src/components/Dashboard/PodLogPanel.tsx` (if overlay interaction adjustments are needed)
-- Tasks:
-  - Unify card status semantics across model/inference/agent polling surfaces.
-  - Ensure feature-gated disabled states are distinguishable from runtime failures.
-  - Regression-check sub-375px and touch overlay behavior.
+  - `web/src/components/FlexInfer/Workbench.tsx`
+  - `web/src/components/Agents/HUDTab.tsx`
+  - `web/src/components/Pipeline/usePipelineController.ts`
+  - new or adjacent `*.test.tsx` / `*.test.ts` files
+- Deliverables:
+  - coverage for mobile drawer dismissal and route-close behavior
+  - workbench rendering assertions for ready/stale/error conditions
+  - HUD degraded-mode render assertions
+  - pipeline action-notice / polling assertions where touched
+- Why fourth:
+  - coverage is more effective once the shared state model and data ownership have stabilized
 
-### Workstream D: Testing + Governance
+### Slice 5: Governance And Tracking
+- Status: active this session
 - Target files:
   - `.loom/00-index.md`
+  - `.loom/00-mcp-inventory.md`
   - `.loom/10-research.md`
   - `.loom/20-product-spec.md`
   - `.loom/30-implementation-plan.md`
+  - `.loom/40-decisions.md`
   - `.loom/50-worklog.md`
-  - `docs/polish-release-smoke-checklist.md`
-  - `docs/roadmap-reconciliation-*.md`
-- Tasks:
-  - Keep planning artifacts synchronized with code deltas.
-  - Add concise smoke checklist for polish releases.
+  - roadmap reconciliation note(s)
+- Deliverables:
+  - current plan/spec kept in sync
+  - explicit issue/checklist decomposition under roadmap issue `#1`
+  - canonical repo ID and runtime assumptions captured for future sessions
 
-## Core Workflow Packs (Execution Design)
-1. **Research loop**
-   - Inputs: `git log`, touched-file frequency, targeted source reads.
-   - Output: `.loom/10-research.md` evidence + prioritized polish gaps.
-2. **Technical writing loop**
-   - Inputs: roadmap + research findings.
-   - Output: updated `.loom/20-product-spec.md` and `.loom/30-implementation-plan.md`.
-3. **Testing + ship loop**
-   - Commands:
-     - `npm -C web run -s test`
-     - `npm -C web run -s lint`
-     - `go test ./internal/api/handlers/... ./internal/metrics/...`
-     - `make lint` (if touched scope justifies full run)
-4. **Troubleshooting loop**
-   - Trigger: stale data, auth fallback failures, inconsistent poll state.
-   - Tools: targeted UI logs + handler tests + endpoint spot checks.
-5. **Coordination loop**
-   - Track decisions/worklog updates in `.loom/40-decisions.md` and `.loom/50-worklog.md`.
-   - Keep reconciliation notes aligned with meaningful code deltas.
+## Recommended Execution Order
+1. Governance sync for Slices 1-3 so local progress is documented clearly.
+2. Component coverage for `AppLayout`, `HUDTab`, and `Workbench`.
+3. Broader validation and merge preparation once the coverage slice lands.
 
 ## Validation Plan
-- Functional:
-  - Pipeline actions show deterministic post-action states.
-  - Grafana panel cards expose resolution/fallback state.
-  - Dashboard cards show consistent readiness semantics.
-- Regression:
-  - Mobile breakpoints: 320px, 375px, 390px, desktop.
-  - Hosted route/API base behavior remains correct.
-- Quality gates:
-  - Frontend tests/lint pass.
-  - Targeted backend tests pass for touched handlers.
-  - Smoke checklist is executed and recorded in reconciliation notes (`docs/polish-release-smoke-checklist.md`).
+- Frontend:
+  - targeted vitest coverage while Slice 4 is in flight:
+    - `npm -C web run test -- --run src/components/FlexInfer/Workbench.test.tsx src/components/Agents/HUDTab.test.tsx src/components/Dashboard/useDashboardSummaryState.test.tsx src/lib/freshness.test.ts`
+  - `npm -C web run -s test`
+  - `npm -C web run -s lint`
+  - `npm -C web run -s typecheck`
+- Backend:
+  - `go test ./...`
+- Manual smoke:
+  - verify Dashboard, `/flexinfer`, and `/loom-hud` present consistent state/freshness cues
+  - verify hidden-tab pause/resume still works after any shared-state refactor
+  - verify mobile drawer open/close behavior in `AppLayout`
+  - verify admin and models FlexInfer surfaces still agree on shared data/state
 
 ## Risks And Mitigations
-- Risk: semantic codebase index unavailable (`qdrant` route issue).
-  - Mitigation: use deterministic local code-reading workflow for this cycle.
-- Risk: polish changes introduce subtle UI regressions.
-  - Mitigation: enforce explicit smoke checklist across Pipeline/Grafana/Dashboard mobile surfaces.
-- Risk: mixed feature-flag states produce false “offline” signals.
-  - Mitigation: normalize status vocabulary and render logic by feature gate.
+- Risk: a unified state model erases valuable nuance.
+  - Mitigation: keep a detail/reason channel alongside the shared top-level state.
+- Risk: consolidating FlexInfer data ownership regresses refresh timing.
+  - Mitigation: migrate by selector group and preserve existing polling cadence until verified.
+- Risk: removing legacy tabs breaks future reuse assumptions.
+  - Mitigation: prefer thin adapters first when deletion risk is not yet justified.
+- Risk: test coverage arrives too late to protect refactors.
+  - Mitigation: land a small smoke-oriented test harness as soon as Slice 1 stabilizes.
+
+## Open Questions
+- Should pipeline adopt the same shared state contract in this exact cycle, or remain a follow-on after Workbench/HUD/Dashboard converge?
+- Do we want to keep legacy adapters indefinitely for compatibility, or delete them in a later cleanup once no one relies on the old import paths?
 
 ## Sources
-- `web/src/components/Pipeline/index.tsx:134`
-- `web/src/components/Pipeline/CIPipelineViz.tsx:194`
-- `web/src/components/Metrics/GrafanaDashboards.tsx:221`
-- `web/src/components/Dashboard/index.tsx:176`
-- `docs/roadmap-reconciliation-2026-03-03.md:1`
-- Command: `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+- `ROADMAP.md:93`
+- `ROADMAP.md:122`
+- `web/src/index.tsx:39`
+- `web/src/index.tsx:40`
+- `web/src/components/Models/index.tsx:12`
+- `web/src/components/Admin/FlexInferTab.tsx:12`
+- `web/src/components/Dashboard/statusSemantics.ts:1`
+- `web/src/lib/freshness.ts:1`
+- `web/src/components/Agents/hudDegradedMode.ts:1`
+- `web/src/components/FlexInfer/Workbench.tsx:202`
+- `web/src/components/FlexInfer/Workbench.tsx:218`
+- `web/src/lib/flexinferSummary.ts:1`
+- `web/src/stores/flexinferSurface.ts:1`
+- `web/src/components/Models/LegacyWorkbenchAdapter.tsx:1`
+- `web/src/components/Models/useModelsController.ts:61`
+- `web/src/components/Models/useModelsController.ts:222`
+- `web/src/components/Dashboard/useDashboardSummaryState.ts:201`
+- `web/src/lib/modelIntegration.ts:97`
+- Command: `rg -n "<InferenceTab|InferenceTab\\b|<ProxyTab|ProxyTab\\b|PipelinesTab\\b" web/src`
+- Command: `rg --files web/src | rg '\\.test\\.(ts|tsx)$' | sort`
+- Command: `git branch -vv && git worktree list --porcelain`
+- Command: `git log --oneline --decorate -8 origin/main`
+- `gitlab__get_merge_request(project="services/flexdeck", merge_request_iid=67)`
+- `gitlab__list_issues(project="services/flexdeck", state="opened")`
+
+## API Sync Slice (2026-03-31)
+
+### Goal
+Repair repo-local FlexInfer and Loom HUD contract drift against current upstream APIs without widening the scope into a larger UX refactor.
+
+### Targeted Deliverables
+1. Update `internal/k8s/models_crd.go` and `web/src/lib/types.ts` so FlexDeck preserves the current FlexInfer v1alpha2 `Model` fields it was dropping.
+2. Expand `internal/api/handlers/flexinfer_proxy.go` normalized proxy metrics additively so newer upstream counters/gauges are visible to the UI and downstream selectors.
+3. Keep Loom HUD route wiring unchanged, but align claim normalization/types with the current upstream expiry-based file-claim contract.
+4. Add regression tests around CRD parsing, proxy metric parsing, and HUD claim normalization.
+
+### File-Level Execution Plan
+- Backend contract mirrors:
+  - `internal/k8s/models_crd.go`
+  - `internal/k8s/models_crd_test.go`
+- Proxy metric normalization:
+  - `internal/api/handlers/flexinfer_proxy.go`
+  - `internal/api/handlers/flexinfer_proxy_test.go`
+- Loom HUD normalization/type hygiene:
+  - `internal/api/handlers/hud_contracts.go`
+  - `internal/api/handlers/hud_proxy_test.go`
+  - `web/src/lib/types.ts`
+
+### Validation
+- Run targeted backend tests first:
+  - `go test ./internal/k8s ./internal/api/handlers/...`
+- If type changes ripple into frontend compilation, follow with:
+  - `npm -C web run -s typecheck`
+
+### Non-Goals For This Slice
+- no cross-repo upstream controller/HUD changes
+- no route reshaping for Loom HUD
+- no UI redesign work beyond type/contract compatibility

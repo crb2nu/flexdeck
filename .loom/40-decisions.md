@@ -107,3 +107,57 @@ Record decisions as they are made, with date, rationale, and sources.
 - Sources:
   - [S1] `.loom/00-mcp-inventory.md`
   - [S2] `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+
+### 2026-03-28: Prioritize operational coherence and FlexInfer consolidation over net-new features
+
+- Decision: The next enhancement round should focus on shared state semantics, FlexInfer data consolidation, and regression coverage rather than introducing another major surface.
+- Rationale: The recent workbench/HUD shipment changed the primary operator surfaces, but the remaining debt is mostly coherence debt: different state vocabularies, duplicated data ownership, orphaned legacy model views, and light component coverage.
+- Alternatives considered:
+  - Launch another feature slice immediately (higher novelty, lower immediate usability payoff).
+  - Do governance/docs only (improves bookkeeping but not operator experience).
+- Consequences: The next coding cycle will likely be frontend-heavy and architecture-oriented, with smaller user-visible wins per PR but better long-term maintainability and operator trust.
+- Sources:
+  - [S1] `.loom/10-research.md`
+  - [S2] `.loom/20-product-spec.md`
+  - [S3] `git show --stat --summary 7081375`
+  - [S4] `git show --stat --summary 5314331`
+
+### 2026-03-28: Use `services/flexdeck` as the canonical codebase-memory repo ID
+
+- Decision: Standardize future planning and codebase-memory queries on `repo_id="services/flexdeck"` for this repository.
+- Rationale: The older alias `services-flexdeck` now returns zero chunks, while `services/flexdeck` returns the active index with 1952 chunks.
+- Alternatives considered:
+  - Continue probing both IDs every session (wastes time and risks stale assumptions).
+  - Keep using the stale alias in docs for historical continuity (incorrect operationally).
+- Consequences: Existing `.loom` references to `services-flexdeck` should be treated as historical artifacts and updated opportunistically.
+- Sources:
+  - [S1] `codebase_memory__codebase_stats(repo_id="services/flexdeck")`
+  - [S2] `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+
+### 2026-04-02: Treat `disabled` and `fallback` as first-class operator states
+
+- Decision: Promote `disabled` and `fallback` to explicit shared operator states across Dashboard, FlexInfer, and Loom HUD instead of collapsing them into generic stale/offline wording.
+- Rationale: Operators need to distinguish "feature intentionally unavailable" from "data path degraded" without reading implementation-specific text. The previous vocabulary drift made Dashboard, Workbench, and HUD disagree about materially different situations.
+- Alternatives considered:
+  - Keep per-surface status wording and only harmonize badge styling.
+  - Map everything degraded into `stale`/`offline` to reduce vocabulary size.
+- Consequences: Shared freshness/state helpers carry a slightly richer contract, but the surfaces now speak the same language and tests can assert those states directly.
+- Sources:
+  - [S1] `web/src/lib/freshness.ts`
+  - [S2] `web/src/components/Dashboard/statusSemantics.ts`
+  - [S3] `web/src/components/Agents/hudDegradedMode.ts`
+  - [S4] `web/src/components/Agents/HUDTab.tsx`
+
+### 2026-04-02: Retain legacy model tabs as thin adapters over the workbench
+
+- Decision: Keep legacy `InferenceTab`, `ProxyTab`, and `PipelinesTab` as compatibility adapters that render the canonical FlexInfer workbench instead of deleting them outright.
+- Rationale: The old files were no longer mounted, but they still represented potential future import points. Replacing their polling/API logic with thin adapters removes drift risk now without forcing a hard cleanup decision in the same slice.
+- Alternatives considered:
+  - Delete the legacy files immediately and fix any breakage later.
+  - Leave the legacy files untouched until a bigger cleanup phase.
+- Consequences: Compatibility remains available, but the repo no longer has two separate operational implementations for the same FlexInfer facts.
+- Sources:
+  - [S1] `web/src/components/Models/LegacyWorkbenchAdapter.tsx`
+  - [S2] `web/src/components/Models/InferenceTab.tsx`
+  - [S3] `web/src/components/Models/ProxyTab.tsx`
+  - [S4] `web/src/components/Models/PipelinesTab.tsx`

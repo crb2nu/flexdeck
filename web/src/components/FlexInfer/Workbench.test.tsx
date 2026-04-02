@@ -299,4 +299,18 @@ describe('Workbench', () => {
     expect(text).toContain('offline from controller');
     expect(text).toContain('OFFLINE · controller issue');
   });
+
+  it('renders disabled telemetry state when proxy features are unavailable', async () => {
+    workbenchMocks.healthFeatures.flexinfer_proxy.enabled = false;
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('DISABLED · feature disabled');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Router disabled');
+    expect(text).toContain('DISABLED · feature disabled');
+  });
 });

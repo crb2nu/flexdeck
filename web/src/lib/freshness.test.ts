@@ -62,7 +62,18 @@ describe('resolveOperatorState', () => {
         staleAfterMs: 30_000,
         disabled: true,
       }),
-    ).toBe('offline');
+    ).toBe('disabled');
+  });
+
+  it('marks fallback when fresh data is served through a secondary mode', () => {
+    expect(
+      resolveOperatorState({
+        lastUpdateMs: 110_000,
+        nowMs: 120_000,
+        staleAfterMs: 30_000,
+        fallback: true,
+      }),
+    ).toBe('fallback');
   });
 });
 
@@ -70,10 +81,12 @@ describe('operatorState helpers', () => {
   it('formats uppercase labels with optional detail', () => {
     expect(operatorStateLabel('ready')).toBe('READY');
     expect(operatorStateLabel('partial', 'push mode')).toBe('PARTIAL · push mode');
+    expect(operatorStateLabel('disabled', 'feature disabled')).toBe('DISABLED · feature disabled');
   });
 
   it('returns shared badge classes', () => {
     expect(operatorStateBadgeClass('ready')).toContain('text-status-ok');
+    expect(operatorStateBadgeClass('fallback')).toContain('text-status-warn');
     expect(operatorStateBadgeClass('stale')).toContain('text-status-warn');
   });
 });
