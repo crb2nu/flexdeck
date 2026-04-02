@@ -1,5 +1,11 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
 import { ciApi, RepoInfo } from '../../lib/api';
+import {
+  operatorStateBadgeClass,
+  operatorStateLabel,
+  resolveOperatorState,
+  type OperatorState,
+} from '../../lib/freshness';
 
 interface PipelineRunData {
   pipeline_id: number;
@@ -21,21 +27,44 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
   const [history, setHistory] = createSignal<PipelineRunData[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
+  const [lastUpdated, setLastUpdated] = createSignal(0);
 
   createEffect(() => {
     const id = selectedProjectId();
     if (id === null) {
       setHistory([]);
+      setError('');
+      setLoading(false);
       return;
     }
 
     setLoading(true);
     setError('');
     ciApi.getProjectHistory(id, 100)
-      .then((data) => setHistory(data || []))
+      .then((data) => {
+        setHistory(data || []);
+        setLastUpdated(Date.now());
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load history'))
       .finally(() => setLoading(false));
   });
+
+  const state = (): OperatorState => resolveOperatorState({
+    loading: loading(),
+    error: error(),
+    lastUpdateMs: lastUpdated(),
+    staleAfterMs: 5 * 60_000,
+    disabled: selectedProjectId() === null,
+  });
+
+  const stateDetail = () => {
+    if (selectedProjectId() === null) return 'select project';
+    if (error()) return 'history unavailable';
+    if (loading()) return lastUpdated() ? 'background refresh' : 'initial load';
+    if (state() === 'stale') return 'refresh overdue';
+    if (history().length === 0) return 'no runs yet';
+    return `${history().length} recent run${history().length === 1 ? '' : 's'}`;
+  };
 
   const formatDuration = (secs: number): string => {
     if (!secs || secs <= 0) return '-';
@@ -80,23 +109,52 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
   return (
     <div class="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
-      {/* Project selector */}
-      <div class="flex items-center gap-3">
-        <label class="text-xs text-text-dim uppercase tracking-wider">Project</label>
-        <select
-          class="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:border-neon-cyan focus:outline-none"
-          onChange={(e) => {
-            const val = e.currentTarget.value;
-            setSelectedProjectId(val ? parseInt(val) : null);
-          }}
-        >
-          <option value="">Select a project...</option>
-          <For each={props.repos}>
-            {(repo) => (
-              <option value={repo.id}>{repo.name}</option>
-            )}
-          </For>
-        </select>
+      <div class="glass-panel flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Pipeline History</div>
+          <div class="mt-1 text-lg font-semibold text-text-main">Execution history browser</div>
+          <div class="mt-1 max-w-3xl text-sm text-text-dim">
+            Review recent runs, per-stage outcomes, and branch activity for a selected repository.
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-dim">
+            <span class={`rounded-full px-2.5 py-1 ${operatorStateBadgeClass(state())}`}>
+              {operatorStateLabel(state(), stateDetail())}
+            </span>
+            <span class="rounded-full bg-white/5 px-2.5 py-1">
+              Updated {lastUpdated() ? new Date(lastUpdated()).toLocaleTimeString() : '—'}
+            </span>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="text-xs text-text-dim uppercase tracking-wider">Project</label>
+          <select
+            class="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:border-neon-cyan focus:outline-none"
+            onChange={(e) => {
+              const val = e.currentTarget.value;
+              setSelectedProjectId(val ? parseInt(val) : null);
+            }}
+          >
+            <option value="">Select a project...</option>
+            <For each={props.repos}>
+              {(repo) => (
+                <option value={repo.id}>{repo.name}</option>
+              )}
+            </For>
+          </select>
+          <button
+            type="button"
+            disabled={selectedProjectId() === null || loading()}
+            class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:border-neon-cyan/30 hover:text-text-main disabled:opacity-50"
+            onClick={() => {
+              const id = selectedProjectId();
+              if (id === null) return;
+              setSelectedProjectId(null);
+              queueMicrotask(() => setSelectedProjectId(id));
+            }}
+          >
+            Reload history
+          </button>
+        </div>
       </div>
 
       <Show when={loading()}>

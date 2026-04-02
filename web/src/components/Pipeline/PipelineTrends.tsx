@@ -1,7 +1,12 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
-import { resolveFreshness } from '../../lib/freshness';
+import {
+  operatorStateBadgeClass,
+  operatorStateLabel,
+  resolveOperatorState,
+  type OperatorState,
+} from '../../lib/freshness';
 
 interface TrendData {
   project_id: number;
@@ -19,7 +24,23 @@ const PipelineTrends: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [lastUpdated, setLastUpdated] = createSignal(0);
-  const freshness = () => resolveFreshness(lastUpdated(), 60_000);
+
+  const state = createMemo<OperatorState>(() =>
+    resolveOperatorState({
+      loading: loading(),
+      error: error(),
+      lastUpdateMs: lastUpdated(),
+      staleAfterMs: 60_000 * 3,
+    }),
+  );
+
+  const stateDetail = () => {
+    if (error()) return 'trend feed issue';
+    if (loading()) return lastUpdated() ? 'background refresh' : 'initial sync';
+    if (state() === 'stale') return 'refresh overdue';
+    if (trends().length === 0) return 'awaiting samples';
+    return `${trends().length} project${trends().length === 1 ? '' : 's'}`;
+  };
 
   const fetchTrends = async () => {
     try {
@@ -68,6 +89,24 @@ const PipelineTrends: Component = () => {
 
   return (
     <div class="p-4 overflow-y-auto flex-1">
+      <div class="glass-panel mb-4 flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Pipeline Trends</div>
+          <div class="mt-1 text-lg font-semibold text-text-main">Execution trend telemetry</div>
+          <div class="mt-1 max-w-3xl text-sm text-text-dim">
+            Duration and success-rate trends across recently observed pipeline runs.
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-dim">
+            <span class={`rounded-full px-2.5 py-1 ${operatorStateBadgeClass(state())}`}>
+              {operatorStateLabel(state(), stateDetail())}
+            </span>
+            <span class="rounded-full bg-white/5 px-2.5 py-1">
+              Updated {lastUpdated() ? new Date(lastUpdated()).toLocaleTimeString() : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <Show when={loading()}>
         <div class="flex items-center justify-center py-12">
           <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
