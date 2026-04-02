@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -401,6 +400,26 @@ func normalizeHUDWorkflowStep(step map[string]any) map[string]any {
 	}
 }
 
+func synthesizeHUDWorkflowStep(summary map[string]any, detail map[string]any) map[string]any {
+	stepID := firstNonEmpty(
+		hudString(detail["current_step"]),
+		hudString(summary["current_step"]),
+		hudString(summary["name"]),
+		hudString(summary["id"]),
+	)
+	status := normalizeHUDWorkflowStatus(firstNonEmpty(hudString(detail["status"]), hudString(summary["status"])))
+	stepType := "tool"
+	if status == "awaiting_approval" {
+		stepType = "approval"
+	}
+	return normalizeHUDWorkflowStep(map[string]any{
+		"id":     stepID,
+		"name":   stepID,
+		"status": status,
+		"type":   stepType,
+	})
+}
+
 func normalizeHUDWorkflowSummary(summary map[string]any, detail map[string]any) map[string]any {
 	name := firstNonEmpty(hudString(summary["name"]), hudString(detail["name"]), hudString(summary["definition_id"]), hudString(detail["definition_id"]))
 	id := firstNonEmpty(hudString(summary["id"]), hudString(summary["workflow_id"]), hudString(detail["id"]), hudString(detail["workflow_id"]))
@@ -409,6 +428,9 @@ func normalizeHUDWorkflowSummary(summary map[string]any, detail map[string]any) 
 	steps := make([]map[string]any, 0, len(rawSteps))
 	for _, step := range rawSteps {
 		steps = append(steps, normalizeHUDWorkflowStep(step))
+	}
+	if len(steps) == 0 {
+		steps = append(steps, synthesizeHUDWorkflowStep(summary, detail))
 	}
 	currentStep := workflowCurrentStepIndex(currentStepID, steps)
 	startedAt := firstNonEmpty(hudString(detail["started_at"]), hudString(detail["created_at"]), hudString(summary["started_at"]), hudString(summary["created_at"]))
@@ -422,7 +444,7 @@ func normalizeHUDWorkflowSummary(summary map[string]any, detail map[string]any) 
 	}
 }
 
-func normalizeHUDWorkflowsResponse(ctx context.Context, fetchDetail func(context.Context, string) (json.RawMessage, error), raw json.RawMessage) ([]map[string]any, error) {
+func normalizeHUDWorkflowsResponse(raw json.RawMessage) ([]map[string]any, error) {
 	envelope, err := parseHUDEnvelope(raw)
 	if err != nil {
 		return nil, err
@@ -434,17 +456,7 @@ func normalizeHUDWorkflowsResponse(ctx context.Context, fetchDetail func(context
 	items := hudItemsFromValue(source)
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		workflowID := hudString(item["id"])
-		detail := map[string]any{}
-		if workflowID != "" && fetchDetail != nil {
-			rawDetail, detailErr := fetchDetail(ctx, workflowID)
-			if detailErr == nil {
-				if parsed, err := parseHUDEnvelope(rawDetail); err == nil {
-					detail = parsed
-				}
-			}
-		}
-		out = append(out, normalizeHUDWorkflowSummary(item, detail))
+		out = append(out, normalizeHUDWorkflowSummary(item, nil))
 	}
 	return out, nil
 }
