@@ -5,6 +5,7 @@ import { ciApi, type RepoInfo } from '../../lib/api';
 import type { Pipeline as VizPipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
 import {
   getPipelineDataState,
+  getPipelineDataStateMeta,
   hasActiveJobs,
   isLivePipelineId,
   normalizePipeline,
@@ -475,17 +476,12 @@ export function usePipelineController() {
   );
 
   const dataStateMeta = createMemo(() => {
-    const state = pipelineDataState();
-    switch (state) {
-      case 'live':
-        return { label: 'LIVE' };
-      case 'stale':
-        return { label: 'STALE' };
-      case 'static':
-        return { label: 'STATIC' };
-      default:
-        return { label: 'OFFLINE' };
-    }
+    return getPipelineDataStateMeta({
+      pipeline: pipelineData(),
+      lastUpdate: lastUpdate(),
+      fetchError: pipelineFetchError(),
+      staleAfterMs: PIPELINE_STALE_AFTER_MS,
+    });
   });
 
   const formatTimeAgo = (date: Date | null) => {

@@ -4,6 +4,7 @@ import type { RepoInfo } from "../../lib/api";
 import type { Pipeline } from "./CIPipelineViz";
 import {
   getPipelineDataState,
+  getPipelineDataStateMeta,
   formatRelativeTime,
   getJobCountsByStatus,
   getStatusColor,
@@ -184,7 +185,7 @@ describe("pipeline utils", () => {
         pipeline: livePipeline,
         lastUpdate: new Date("2026-02-17T11:59:50Z"),
       }),
-    ).toBe("live");
+    ).toBe("ready");
 
     expect(
       getPipelineDataState({
@@ -194,7 +195,36 @@ describe("pipeline utils", () => {
     ).toBe("stale");
 
     expect(getPipelineDataState({ pipeline: livePipeline, fetchError: true })).toBe("offline");
-    expect(getPipelineDataState({ pipeline: staticPipeline })).toBe("static");
+    expect(getPipelineDataState({ pipeline: staticPipeline })).toBe("fallback");
     expect(getPipelineDataState({ pipeline: null })).toBe("offline");
+  });
+
+  it("builds shared operator-state metadata for pipeline confidence", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-17T12:00:00Z"));
+
+    const staticPipeline: Pipeline = {
+      ...makePipeline("pending", "2026-02-17T11:59:00Z"),
+      id: "pipeline-demo-main",
+    };
+
+    expect(
+      getPipelineDataStateMeta({
+        pipeline: staticPipeline,
+      }),
+    ).toMatchObject({
+      state: "fallback",
+      detail: "static preview",
+      label: "FALLBACK · static preview",
+    });
+
+    expect(
+      getPipelineDataStateMeta({
+        pipeline: null,
+      }),
+    ).toMatchObject({
+      state: "offline",
+      label: "OFFLINE",
+    });
   });
 });
