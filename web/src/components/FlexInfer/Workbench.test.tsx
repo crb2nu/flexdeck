@@ -14,6 +14,7 @@ const workbenchMocks = vi.hoisted(() => {
     error: '',
     loading: false,
     controllerDataLoading: false,
+    controllerUpdatedAt: Date.now(),
     crdModels: [
       {
         name: 'alpha',
@@ -142,6 +143,7 @@ vi.mock('../Models/useModelsController', () => ({
     controllerDataLoading: () => workbenchMocks.controllerState.controllerDataLoading,
     crdActionLoading: () => null,
     crdModels: () => workbenchMocks.controllerState.crdModels,
+    controllerUpdatedAt: () => workbenchMocks.controllerState.controllerUpdatedAt,
     discoverLoading: () => false,
     discoverModels: workbenchMocks.discoverModels,
     error: () => workbenchMocks.controllerState.error,
@@ -215,6 +217,14 @@ function pageText(): string {
   return document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
+function clickButtonContaining(label: string) {
+  const button = Array.from(document.querySelectorAll('button')).find(
+    (element) => element.textContent?.includes(label),
+  ) as HTMLButtonElement | undefined;
+  expect(button).toBeTruthy();
+  button!.click();
+}
+
 describe('Workbench', () => {
   let cleanup: () => void = () => undefined;
 
@@ -225,6 +235,7 @@ describe('Workbench', () => {
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
     workbenchMocks.controllerState.controllerDataLoading = false;
+    workbenchMocks.controllerState.controllerUpdatedAt = Date.now();
 
     workbenchMocks.storeState.proxyError = '';
     workbenchMocks.storeState.proxyLoading = false;
@@ -268,6 +279,7 @@ describe('Workbench', () => {
   it('renders ready, stale, and partial section states from shared operator data', async () => {
     const now = Date.now();
     workbenchMocks.healthFeatures.modelcache.enabled = false;
+    workbenchMocks.controllerState.controllerUpdatedAt = now;
     workbenchMocks.storeState.proxyUpdatedAt = now - 20_000;
     workbenchMocks.storeState.routerUpdatedAt = now - 20_000;
     workbenchMocks.storeState.catalogUpdatedAt = now;
@@ -282,8 +294,16 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Live FlexInfer operations workbench');
     expect(text).toContain('READY');
-    expect(text).toContain('STALE · poll fallback');
-    expect(text).toContain('PARTIAL · cache disabled');
+
+    clickButtonContaining('Telemetry');
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('STALE · poll fallback');
+    });
+
+    clickButtonContaining('Supply chain');
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('PARTIAL · cache disabled');
+    });
   });
 
   it('surfaces controller errors in both the banner and section state badge', async () => {
@@ -305,6 +325,7 @@ describe('Workbench', () => {
 
     cleanup = mount(() => <Workbench />);
 
+    clickButtonContaining('Telemetry');
     await vi.waitFor(() => {
       expect(pageText()).toContain('DISABLED · feature disabled');
     });

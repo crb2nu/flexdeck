@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js';
+import { Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
@@ -184,6 +184,13 @@ const HUDTab: Component = () => {
 
   const hasStaleWarning = () =>
     hasDegradedHUDFeed(pullEnabled(), eventsConnection(), lastSuccessfulPull(), now());
+  const hasInitialData = () =>
+    presence().length > 0 ||
+    claims().length > 0 ||
+    tasks().length > 0 ||
+    workflows().length > 0 ||
+    timeline().length > 0;
+  const isInitialLoading = () => loading() && !error() && !hasInitialData();
   const metrics = (): HUDConsoleMetric[] => [
     {
       label: 'Presence',
@@ -217,6 +224,10 @@ const HUDTab: Component = () => {
     },
   ];
 
+  onMount(() => {
+    void fetchAll();
+  });
+
   return (
     <div class="flex flex-col gap-4">
       <HUDConsoleScaffold
@@ -240,13 +251,14 @@ const HUDTab: Component = () => {
           tone: 'error',
         } : undefined}
       >
-        <Show when={loading() && presence().length === 0}>
+        <Show when={isInitialLoading()}>
           <div class="glass-panel flex items-center justify-center py-10">
             <div class="text-text-dim animate-pulse">Loading HUD signals...</div>
           </div>
         </Show>
 
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.9fr)]">
+        <Show when={!isInitialLoading()}>
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.9fr)]">
           <div class="space-y-4">
             <div class="glass-panel p-4">
               <div class="mb-3 flex items-center justify-between gap-3">
@@ -495,7 +507,8 @@ const HUDTab: Component = () => {
               onConnectionStateChange={setEventsConnection}
             />
           </div>
-        </div>
+          </div>
+        </Show>
       </HUDConsoleScaffold>
     </div>
   );

@@ -18,6 +18,7 @@ export const PIPELINE_POLL_RECENT = 30_000;   // Terminal <5min
 export const PIPELINE_POLL_IDLE = 60_000;     // Terminal >5min or no pipeline
 export const PIPELINE_POLL_INTERVAL = PIPELINE_POLL_ACTIVE; // legacy alias
 export const PIPELINE_STALE_AFTER_MS = PIPELINE_POLL_ACTIVE * 3;
+export const PIPELINE_RECENT_REFRESH_WINDOW_MS = 5 * 60_000;
 
 export type ActionNotice = {
   type: 'info' | 'success' | 'error';
@@ -33,6 +34,21 @@ function isPipelineSnapshot(value: unknown): value is PipelineSnapshot {
 
   const status = (value as { status?: unknown }).status;
   return typeof status === 'string' && status !== 'none';
+}
+
+export function getPipelineRefreshInterval(
+  pipeline: VizPipeline | undefined,
+  lastUpdate: Date | null,
+): number {
+  if (!pipeline || !isLivePipelineId(pipeline.id)) return PIPELINE_POLL_IDLE;
+  if (hasActiveJobs(pipeline)) return PIPELINE_POLL_ACTIVE;
+
+  if (lastUpdate) {
+    const ageMs = Date.now() - lastUpdate.getTime();
+    if (ageMs < PIPELINE_RECENT_REFRESH_WINDOW_MS) return PIPELINE_POLL_RECENT;
+  }
+
+  return PIPELINE_POLL_IDLE;
 }
 
 export function usePipelineController() {
@@ -221,17 +237,7 @@ export function usePipelineController() {
   });
 
   const effectiveInterval = createMemo(() => {
-    const pipeline = pipelineData();
-    if (!pipeline || !isLivePipelineId(pipeline.id)) return PIPELINE_POLL_IDLE;
-    if (hasActiveJobs(pipeline)) return PIPELINE_POLL_ACTIVE;
-
-    // Terminal pipeline — check how recently it finished.
-    const last = lastUpdate();
-    if (last) {
-      const ageMs = Date.now() - last.getTime();
-      if (ageMs < 5 * 60_000) return PIPELINE_POLL_RECENT;
-    }
-    return PIPELINE_POLL_IDLE;
+    return getPipelineRefreshInterval(pipelineData(), lastUpdate());
   });
 
   createPolling(

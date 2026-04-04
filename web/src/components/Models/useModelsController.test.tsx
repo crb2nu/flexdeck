@@ -253,6 +253,7 @@ describe('useModelsController', () => {
       expect(controller.controllerDataLoading()).toBe(false);
     });
 
+    expect(controller.controllerUpdatedAt()).toBeGreaterThan(0);
     expect(controller.phaseSummary()).toEqual({ Ready: 1, Failed: 1 });
     expect(controller.integrationSummary()).toEqual({
       inferenceUnavailable: 1,
@@ -285,6 +286,7 @@ describe('useModelsController', () => {
 
     const stream = FakeEventSource.instances[0];
     expect(stream?.url).toContain('/api/models/crd/watch');
+    const initialUpdatedAt = controller.controllerUpdatedAt();
 
     stream.emit('model', {
       type: 'ADDED',
@@ -297,6 +299,7 @@ describe('useModelsController', () => {
     });
 
     expect(controller.phaseSummary()).toEqual({ Ready: 1, Failed: 1 });
+    expect(controller.controllerUpdatedAt()).toBeGreaterThanOrEqual(initialUpdatedAt);
     expect(controller.integrationSummary()).toEqual({
       inferenceUnavailable: 1,
       loraUnavailable: 1,
