@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RepoInfo } from '../../lib/api';
 import type { Pipeline } from './CIPipelineViz';
+import {
+  getPipelineRefreshInterval,
+  PIPELINE_POLL_IDLE,
+  PIPELINE_POLL_RECENT,
+  PIPELINE_RECENT_REFRESH_WINDOW_MS,
+  usePipelineController,
+} from './usePipelineController';
 
 const pipelineControllerMocks = vi.hoisted(() => ({
   batchPipelines: vi.fn<(ids: number[]) => Promise<{ pipelines: Record<string, unknown> }>>(),
@@ -38,9 +45,7 @@ vi.mock('../../lib/api', () => ({
   },
 }));
 
-import { usePipelineController } from './usePipelineController';
-
-function buildRepo(id: number, name: string, overrides: Partial<RepoInfo> = {}): RepoInfo {
+function buildRepo(id: number, name = `repo-${id}`, overrides: Partial<RepoInfo> = {}): RepoInfo {
   return {
     id,
     name,
@@ -63,7 +68,7 @@ function buildPipeline(id: string, status: Pipeline['status'] = 'running'): Pipe
         name: 'build',
         jobs: [
           {
-            id: 'job-build',
+            id: `job-${id}`,
             name: 'build',
             stage: 'build',
             status: status === 'running' ? 'running' : 'success',
@@ -90,6 +95,8 @@ describe('usePipelineController', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-03T12:00:00Z'));
+
     pipelineControllerMocks.batchPipelines.mockReset();
     pipelineControllerMocks.cancelPipeline.mockClear();
     pipelineControllerMocks.createPolling.mockClear();
@@ -116,15 +123,26 @@ describe('usePipelineController', () => {
     vi.useRealTimers();
   });
 
-  it('loads pipeline cache through the batch endpoint on mount', async () => {
-    const repos = [buildRepo(11, 'flexdeck'), buildRepo(12, 'loom-core')];
+  it('uses the recent refresh window for live pipelines and drops to idle after the stale threshold', () => {
+    const pipeline = buildPipeline('101', 'success');
+    const lastUpdate = new Date('2026-04-03T12:00:30Z');
+
+    vi.setSystemTime(new Date('2026-04-03T12:04:59Z'));
+    expect(getPipelineRefreshInterval(pipeline, lastUpdate)).toBe(PIPELINE_POLL_RECENT);
+
+    vi.setSystemTime(new Date('2026-04-03T12:05:31Z'));
+    expect(getPipelineRefreshInterval(pipeline, lastUpdate)).toBe(PIPELINE_POLL_IDLE);
+    expect(PIPELINE_RECENT_REFRESH_WINDOW_MS).toBe(5 * 60_000);
+  });
+
+  it('loads pipeline cache through the batch endpoint on mount and chunks large repo sets', async () => {
+    const repos = Array.from({ length: 21 }, (_, index) => buildRepo(index + 1));
     pipelineControllerMocks.listRepos.mockResolvedValue(repos);
-    pipelineControllerMocks.batchPipelines.mockResolvedValue({
-      pipelines: {
-        '11': buildPipeline('101', 'running'),
-        '12': buildPipeline('102', 'success'),
-      },
-    });
+    pipelineControllerMocks.batchPipelines.mockImplementation(async (ids: number[]) => ({
+      pipelines: Object.fromEntries(
+        ids.map((id) => [String(id), buildPipeline(String(id), id % 2 === 0 ? 'success' : 'running')]),
+      ),
+    }));
 
     let controller!: ReturnType<typeof usePipelineController>;
     cleanup = mount(() => {
@@ -135,22 +153,26 @@ describe('usePipelineController', () => {
     await vi.runAllTimersAsync();
     await vi.waitFor(() => {
       expect(controller.loading()).toBe(false);
-      expect(controller.pipelinesCache().size).toBe(2);
+      expect(controller.pipelinesCache().size).toBe(21);
     });
 
-    expect(pipelineControllerMocks.batchPipelines).toHaveBeenCalledWith([11, 12]);
-    expect(controller.pipelinesCache().get(11)?.id).toBe('101');
-    expect(controller.pipelinesCache().get(12)?.status).toBe('success');
+    expect(pipelineControllerMocks.batchPipelines).toHaveBeenCalledTimes(2);
+    expect(pipelineControllerMocks.batchPipelines).toHaveBeenNthCalledWith(1, [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    ]);
+    expect(pipelineControllerMocks.batchPipelines).toHaveBeenNthCalledWith(2, [21]);
     expect(controller.lastUpdate()).toBeInstanceOf(Date);
   });
 
   it('falls back to individual pipeline fetches when the batch endpoint fails', async () => {
-    const repos = [buildRepo(21, 'flexdeck'), buildRepo(22, 'loom-core')];
+    const repos = [buildRepo(21, 'flexdeck'), buildRepo(22, 'loom-core'), buildRepo(23, 'infra-core')];
     pipelineControllerMocks.listRepos.mockResolvedValue(repos);
     pipelineControllerMocks.batchPipelines.mockRejectedValue(new Error('batch unavailable'));
     pipelineControllerMocks.getPipeline
       .mockResolvedValueOnce(buildPipeline('201', 'running'))
-      .mockResolvedValueOnce(buildPipeline('202', 'failed'));
+      .mockResolvedValueOnce(buildPipeline('202', 'failed'))
+      .mockResolvedValueOnce(buildPipeline('203', 'success'));
 
     let controller!: ReturnType<typeof usePipelineController>;
     cleanup = mount(() => {
@@ -160,12 +182,13 @@ describe('usePipelineController', () => {
 
     await vi.runAllTimersAsync();
     await vi.waitFor(() => {
-      expect(controller.pipelinesCache().size).toBe(2);
+      expect(controller.pipelinesCache().size).toBe(3);
     });
 
-    expect(pipelineControllerMocks.batchPipelines).toHaveBeenCalledWith([21, 22]);
+    expect(pipelineControllerMocks.batchPipelines).toHaveBeenCalledWith([21, 22, 23]);
     expect(pipelineControllerMocks.getPipeline).toHaveBeenNthCalledWith(1, 21);
     expect(pipelineControllerMocks.getPipeline).toHaveBeenNthCalledWith(2, 22);
+    expect(pipelineControllerMocks.getPipeline).toHaveBeenNthCalledWith(3, 23);
     expect(controller.pipelinesCache().get(22)?.status).toBe('failed');
   });
 
@@ -232,9 +255,10 @@ describe('usePipelineController', () => {
     expect(controller.pipelineDataState()).toBe('fallback');
   });
 
-  it('retries live pipelines and schedules a refresh fetch', async () => {
+  it('retries and cancels live pipelines with scheduled refreshes', async () => {
     const repo = buildRepo(41, 'flexdeck');
-    pipelineControllerMocks.getPipeline.mockResolvedValue(buildPipeline('401', 'running'));
+    const livePipeline = buildPipeline('401', 'running');
+    pipelineControllerMocks.getPipeline.mockResolvedValue(livePipeline);
 
     let controller!: ReturnType<typeof usePipelineController>;
     cleanup = mount(() => {
@@ -254,11 +278,29 @@ describe('usePipelineController', () => {
       message: 'Pipeline retry requested.',
     });
     expect(controller.pipelineActionLoading()).toBe(false);
-    expect(pipelineControllerMocks.getPipeline).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => {
       expect(pipelineControllerMocks.getPipeline).toHaveBeenCalledWith(41);
+    });
+
+    pipelineControllerMocks.getPipeline.mockClear();
+    await controller.handleCancelPipeline();
+
+    expect(pipelineControllerMocks.cancelPipeline).toHaveBeenCalledWith(41, '401');
+    expect(controller.actionNotice()).toEqual({
+      type: 'success',
+      message: 'Pipeline cancel requested.',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => {
+      expect(pipelineControllerMocks.getPipeline).toHaveBeenCalledWith(41);
+    });
+
+    await vi.advanceTimersByTimeAsync(4500);
+    await vi.waitFor(() => {
+      expect(controller.actionNotice()).toBeNull();
     });
   });
 
@@ -319,10 +361,9 @@ describe('usePipelineController', () => {
     expect(controller.traceLoading()).toBe(false);
   });
 
-  it('surfaces trigger failures and clears timed notices after the timeout', async () => {
+  it('triggers live pipelines and clears timed notices after the timeout', async () => {
     const repo = buildRepo(51, 'flexdeck');
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    pipelineControllerMocks.triggerPipeline.mockRejectedValueOnce(new Error('boom'));
+    pipelineControllerMocks.getPipeline.mockResolvedValue(buildPipeline('5101', 'running'));
 
     let controller!: ReturnType<typeof usePipelineController>;
     cleanup = mount(() => {
@@ -336,15 +377,18 @@ describe('usePipelineController', () => {
 
     expect(pipelineControllerMocks.triggerPipeline).toHaveBeenCalledWith(51, 'release/2026-04-03');
     expect(controller.actionNotice()).toEqual({
-      type: 'error',
-      message: 'Pipeline trigger failed.',
+      type: 'success',
+      message: 'Pipeline trigger requested for release/2026-04-03.',
+    });
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.waitFor(() => {
+      expect(pipelineControllerMocks.getPipeline).toHaveBeenCalledWith(51);
     });
 
     await vi.advanceTimersByTimeAsync(4500);
     await vi.waitFor(() => {
       expect(controller.actionNotice()).toBeNull();
     });
-
-    consoleError.mockRestore();
   });
 });

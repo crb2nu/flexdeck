@@ -61,6 +61,8 @@ interface WorkbenchProps {
   surface?: Surface;
 }
 
+type WorkbenchSectionId = 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
+
 const controlPlaneOrder: Record<string, number> = {
   Failed: 0,
   Preempted: 1,
@@ -80,7 +82,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const [activeTab] = createSignal<ModelsTab>('controller');
   const noopSetActiveTab = () => undefined;
   const controller = useModelsController(activeTab, noopSetActiveTab);
-  const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
+  const [activeSection, setActiveSection] = createSignal<WorkbenchSectionId>('control-plane');
   const proxyMetrics = flexinferProxyMetrics;
   const proxyHealth = flexinferProxyHealth;
   const proxyLoading = flexinferProxyLoading;
@@ -131,7 +133,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       controller.fetchCRDModels(),
       refreshFlexInferOperationalData(),
     ]);
-    setControllerUpdatedAt(Date.now());
   };
 
   onMount(() => {
@@ -146,14 +147,14 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     resolveOperatorState({
       loading: controller.loading() || controller.controllerDataLoading(),
       error: controller.error(),
-      lastUpdateMs: controllerUpdatedAt(),
+      lastUpdateMs: controller.controllerUpdatedAt(),
       staleAfterMs: 15_000,
     }),
   );
   const controllerSectionDetail = () => {
     if (controller.error()) return 'controller issue';
     if (controller.loading() || controller.controllerDataLoading()) {
-      return controllerUpdatedAt() ? 'background refresh' : 'initial sync';
+      return controller.controllerUpdatedAt() ? 'background refresh' : 'initial sync';
     }
     if (controllerSectionState() === 'stale') return 'poll lag';
     return undefined;
@@ -243,16 +244,39 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     return { level: 'healthy' as const, label: `${summary.healthy} healthy` };
   });
 
-  const sections = [
-    { id: 'control-plane', label: 'Control plane' },
-    { id: 'telemetry', label: 'Telemetry' },
-    { id: 'supply-chain', label: 'Supply chain' },
-    { id: 'intake', label: 'Intake' },
-  ];
-
-  const jumpTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  const sectionNav = createMemo(() => [
+    {
+      id: 'control-plane' as const,
+      label: 'Control plane',
+      eyebrow: 'CRDs',
+      value: `${controller.crdModels().length}`,
+      detail: reliabilityHeadline().label,
+    },
+    {
+      id: 'telemetry' as const,
+      label: 'Telemetry',
+      eyebrow: 'Proxy + router',
+      value: `${proxyTotals()?.queueDepth ?? 0}`,
+      detail: `${proxyTotals()?.requestsTotal ?? 0} requests`,
+    },
+    {
+      id: 'supply-chain' as const,
+      label: 'Supply chain',
+      eyebrow: 'Catalogs + caches',
+      value: `${supplyChainSummary().cacheCount}`,
+      detail: `${supplyChainSummary().readyCacheCount} ready caches`,
+    },
+    {
+      id: 'intake' as const,
+      label: 'Intake',
+      eyebrow: 'Registry + search',
+      value: `${controller.registryModels().length}`,
+      detail: `${searchResults().length} staged results`,
+    },
+  ]);
+  const activeSectionMeta = createMemo(() => (
+    sectionNav().find((section) => section.id === activeSection()) ?? sectionNav()[0]
+  ));
 
   return (
     <div class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
@@ -335,12 +359,16 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
         <div class="border-t border-white/5 px-4 py-3 sm:px-5">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Jump to</span>
-            <For each={sections}>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Focus area</span>
+            <For each={sectionNav()}>
               {(section) => (
                 <button
-                  onClick={() => jumpTo(section.id)}
-                  class="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-neon-cyan/30 hover:text-text-main"
+                  onClick={() => setActiveSection(section.id)}
+                  class={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                    activeSection() === section.id
+                      ? 'border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan'
+                      : 'border-white/10 bg-black/20 text-text-muted hover:border-neon-cyan/30 hover:text-text-main'
+                  }`}
                 >
                   {section.label}
                 </button>
@@ -383,12 +411,56 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         />
       </div>
 
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+        <aside class="glass-panel h-fit p-3 xl:sticky xl:top-4">
+          <div class="px-1 pb-3">
+            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Section navigator</div>
+            <div class="mt-2 text-xs text-text-dim">
+              Keep one operational lane in focus instead of scanning the full workbench.
+            </div>
+          </div>
+          <div class="flex gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-visible">
+            <For each={sectionNav()}>
+              {(section) => (
+                <button
+                  onClick={() => setActiveSection(section.id)}
+                  class={`min-w-[180px] rounded-2xl border p-3 text-left transition-colors xl:min-w-0 ${
+                    activeSection() === section.id
+                      ? 'border-neon-cyan/30 bg-neon-cyan/10'
+                      : 'border-white/8 bg-white/5 hover:border-neon-cyan/20 hover:bg-white/7'
+                  }`}
+                >
+                  <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">{section.eyebrow}</div>
+                  <div class="mt-2 flex items-end justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class={`text-sm font-medium ${activeSection() === section.id ? 'text-text-main' : 'text-text-muted'}`}>
+                        {section.label}
+                      </div>
+                      <div class="mt-1 text-[11px] text-text-dim">{section.detail}</div>
+                    </div>
+                    <div class={`text-xl font-semibold ${activeSection() === section.id ? 'text-neon-cyan' : 'text-text-main'}`}>
+                      {section.value}
+                    </div>
+                  </div>
+                </button>
+              )}
+            </For>
+          </div>
+          <div class="mt-3 rounded-2xl border border-white/8 bg-black/20 p-3">
+            <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Current focus</div>
+            <div class="mt-2 text-sm font-medium text-text-main">{activeSectionMeta()?.label}</div>
+            <div class="mt-1 text-xs text-text-dim">{activeSectionMeta()?.detail}</div>
+          </div>
+        </aside>
+
+        <div class="min-w-0 space-y-4">
+      <Show when={activeSection() === 'control-plane'}>
       <section id="control-plane" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Controller"
           title="CRD fleet"
           subtitle="Live FlexInfer resources from the controller, prioritized by operational risk."
-          updatedAt={controllerUpdatedAt()}
+          updatedAt={controller.controllerUpdatedAt()}
           state={controllerSectionState()}
           stateDetail={controllerSectionDetail()}
           loading={controller.loading() || controller.controllerDataLoading()}
@@ -506,7 +578,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           </div>
         </Show>
       </section>
+      </Show>
 
+      <Show when={activeSection() === 'telemetry'}>
       <section id="telemetry" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Telemetry"
@@ -682,7 +756,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           </div>
         </div>
       </section>
+      </Show>
 
+      <Show when={activeSection() === 'supply-chain'}>
       <section id="supply-chain" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Supply chain"
@@ -823,13 +899,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           </div>
         </div>
       </section>
+      </Show>
 
+      <Show when={activeSection() === 'intake'}>
       <section id="intake" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
           kicker="Intake"
           title="Registry search and deployment intake"
           subtitle="Search HuggingFace or CivitAI, then register or download directly into the registry."
-          updatedAt={controllerUpdatedAt()}
+          updatedAt={controller.controllerUpdatedAt()}
           state={controllerSectionState()}
           stateDetail={controllerSectionDetail()}
           loading={controller.loading()}
@@ -997,6 +1075,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           </div>
         </div>
       </section>
+      </Show>
+        </div>
+      </div>
     </div>
   );
 };

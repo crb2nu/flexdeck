@@ -15,9 +15,10 @@ const hudMocks = vi.hoisted(() => {
 
   return {
     agentsList: vi.fn(async () => ({ agents: [] })),
+    autoRunPolling: true,
     claims: vi.fn(async () => ({ claims: [] })),
     createPolling: vi.fn((id: string, task: () => Promise<void> | void) => {
-      if (id === 'agents-hud-pull' || id === 'hud-now-ticker') {
+      if (hudMocks.autoRunPolling && (id === 'agents-hud-pull' || id === 'hud-now-ticker')) {
         queueMicrotask(() => {
           void task();
         });
@@ -148,6 +149,7 @@ describe('HUDTab', () => {
   let cleanup: () => void = () => undefined;
 
   beforeEach(() => {
+    hudMocks.autoRunPolling = true;
     hudMocks.degradedFeed = true;
     hudMocks.eventsConnectionLabel = 'STALE';
     hudMocks.feedState = 'stale';
@@ -238,6 +240,20 @@ describe('HUDTab', () => {
     const text = pageText();
     expect(text).toContain('HUD error');
     expect(text).toContain('HUD pull offline');
+  });
+
+  it('triggers an immediate pull on mount instead of waiting for the first polling interval', async () => {
+    hudMocks.autoRunPolling = false;
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(hudMocks.presence).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.waitFor(() => {
+      expect(pageText()).not.toContain('Loading HUD signals...');
+    });
   });
 
   it('renders push-only mode without pull-only sections', async () => {

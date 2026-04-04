@@ -46,6 +46,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
   const [crdActionLoading, setCrdActionLoading] = createSignal<string | null>(null);
   const [controllerDataLoading, setControllerDataLoading] = createSignal(false);
+  const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
 
   const [crdModels, setCrdModels] = createSignal<FlexInferModel[]>([]);
   const [inferenceByModel, setInferenceByModel] = createSignal<Record<string, InferenceMetrics>>({});
@@ -113,6 +114,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
       const data: FlexInferModelListResponse = await modelsApi.crd();
       setCrdModels(data.models || []);
       if (data.namespace) setCrdNamespace(data.namespace);
+      setControllerUpdatedAt(Date.now());
     } catch (err) {
       console.warn('CRD fetch failed, falling back to registry:', err);
     }
@@ -249,6 +251,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
             }
             return [...prev, incoming];
           });
+          setControllerUpdatedAt(Date.now());
         } catch {
           // ignore parse errors
         }
@@ -319,6 +322,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   return {
     actionLoading,
     controllerDataLoading,
+    controllerUpdatedAt,
     crdActionLoading,
     crdModels,
     discoverLoading,
