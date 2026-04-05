@@ -293,6 +293,7 @@ describe('Workbench', () => {
 
     const text = pageText();
     expect(text).toContain('Live FlexInfer operations workbench');
+    expect(text).toContain('Operator briefing');
     expect(text).toContain('READY');
 
     clickButtonContaining('Telemetry');
@@ -313,6 +314,11 @@ describe('Workbench', () => {
 
     await vi.waitFor(() => {
       expect(pageText()).toContain('offline from controller');
+    });
+
+    clickButtonContaining('Control plane');
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('OFFLINE · controller issue');
     });
 
     const text = pageText();

@@ -43,6 +43,7 @@ import {
   getReliabilityClasses,
   getReliabilityStatus,
 } from '../Models/controllerIntegration';
+import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import {
   useModelsController,
   type ModelsTab,
@@ -61,7 +62,7 @@ interface WorkbenchProps {
   surface?: Surface;
 }
 
-type WorkbenchSectionId = 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
+type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
 
 const controlPlaneOrder: Record<string, number> = {
   Failed: 0,
@@ -82,7 +83,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const [activeTab] = createSignal<ModelsTab>('controller');
   const noopSetActiveTab = () => undefined;
   const controller = useModelsController(activeTab, noopSetActiveTab);
-  const [activeSection, setActiveSection] = createSignal<WorkbenchSectionId>('control-plane');
+  const [activeSection, setActiveSection] = createSignal<WorkbenchSectionId>('overview');
   const proxyMetrics = flexinferProxyMetrics;
   const proxyHealth = flexinferProxyHealth;
   const proxyLoading = flexinferProxyLoading;
@@ -246,11 +247,20 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 
   const sectionNav = createMemo(() => [
     {
+      id: 'overview' as const,
+      label: 'Overview',
+      eyebrow: 'Cockpit',
+      value: freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()]),
+      detail: `${controller.crdModels().length} CRDs · ${proxyTotals()?.requestsTotal ?? 0} requests`,
+      group: 'Primary',
+    },
+    {
       id: 'control-plane' as const,
       label: 'Control plane',
       eyebrow: 'CRDs',
       value: `${controller.crdModels().length}`,
       detail: reliabilityHeadline().label,
+      group: 'Operations',
     },
     {
       id: 'telemetry' as const,
@@ -258,6 +268,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       eyebrow: 'Proxy + router',
       value: `${proxyTotals()?.queueDepth ?? 0}`,
       detail: `${proxyTotals()?.requestsTotal ?? 0} requests`,
+      group: 'Operations',
     },
     {
       id: 'supply-chain' as const,
@@ -265,6 +276,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       eyebrow: 'Catalogs + caches',
       value: `${supplyChainSummary().cacheCount}`,
       detail: `${supplyChainSummary().readyCacheCount} ready caches`,
+      group: 'Operations',
     },
     {
       id: 'intake' as const,
@@ -272,12 +284,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       eyebrow: 'Registry + search',
       value: `${controller.registryModels().length}`,
       detail: `${searchResults().length} staged results`,
+      group: 'Operations',
     },
   ]);
-  const activeSectionMeta = createMemo(() => (
-    sectionNav().find((section) => section.id === activeSection()) ?? sectionNav()[0]
-  ));
-
   return (
     <div class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
       <div
@@ -357,25 +366,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </div>
           </div>
         </div>
-        <div class="border-t border-white/5 px-4 py-3 sm:px-5">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Focus area</span>
-            <For each={sectionNav()}>
-              {(section) => (
-                <button
-                  onClick={() => setActiveSection(section.id)}
-                  class={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                    activeSection() === section.id
-                      ? 'border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan'
-                      : 'border-white/10 bg-black/20 text-text-muted hover:border-neon-cyan/30 hover:text-text-main'
-                  }`}
-                >
-                  {section.label}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
       </div>
 
       <Show when={controller.error()}>
@@ -384,76 +374,119 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
       </Show>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
-        <WorkbenchStatCard
-          label="Controller"
-          value={`${controller.crdModels().length}`}
-          tone="text-neon-cyan"
-          note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
-        />
-        <WorkbenchStatCard
-          label="Telemetry"
-          value={proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '—'}
-          tone="text-status-ok"
-          note={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`}
-        />
-        <WorkbenchStatCard
-          label="Supply chain"
-          value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
-          tone="text-neon-purple"
-          note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
-        />
-        <WorkbenchStatCard
-          label="Freshness"
-          value={freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
-          tone="text-text-main"
-          note={freshnessNote([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
-        />
-      </div>
-
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-        <aside class="glass-panel h-fit p-3 xl:sticky xl:top-4">
-          <div class="px-1 pb-3">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Section navigator</div>
-            <div class="mt-2 text-xs text-text-dim">
-              Keep one operational lane in focus instead of scanning the full workbench.
-            </div>
-          </div>
-          <div class="flex gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-visible">
-            <For each={sectionNav()}>
-              {(section) => (
-                <button
-                  onClick={() => setActiveSection(section.id)}
-                  class={`min-w-[180px] rounded-2xl border p-3 text-left transition-colors xl:min-w-0 ${
-                    activeSection() === section.id
-                      ? 'border-neon-cyan/30 bg-neon-cyan/10'
-                      : 'border-white/8 bg-white/5 hover:border-neon-cyan/20 hover:bg-white/7'
-                  }`}
-                >
-                  <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">{section.eyebrow}</div>
-                  <div class="mt-2 flex items-end justify-between gap-3">
-                    <div class="min-w-0">
-                      <div class={`text-sm font-medium ${activeSection() === section.id ? 'text-text-main' : 'text-text-muted'}`}>
-                        {section.label}
-                      </div>
-                      <div class="mt-1 text-[11px] text-text-dim">{section.detail}</div>
-                    </div>
-                    <div class={`text-xl font-semibold ${activeSection() === section.id ? 'text-neon-cyan' : 'text-text-main'}`}>
-                      {section.value}
-                    </div>
-                  </div>
-                </button>
-              )}
-            </For>
-          </div>
-          <div class="mt-3 rounded-2xl border border-white/8 bg-black/20 p-3">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Current focus</div>
-            <div class="mt-2 text-sm font-medium text-text-main">{activeSectionMeta()?.label}</div>
-            <div class="mt-1 text-xs text-text-dim">{activeSectionMeta()?.detail}</div>
-          </div>
-        </aside>
+        <OperationsSidebarNav
+          title="Workbench sections"
+          description="Use the rail to stay inside one operational lane at a time. Overview is the fast briefing; the other tabs are for focused triage."
+          items={sectionNav()}
+          active={activeSection()}
+          onChange={(section) => setActiveSection(section as WorkbenchSectionId)}
+        />
 
         <div class="min-w-0 space-y-4">
+      <Show when={activeSection() === 'overview'}>
+      <section id="overview" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
+        <WorkbenchSectionHeader
+          kicker="Overview"
+          title="Operator briefing"
+          subtitle="A compact read on fleet health, request pressure, supply readiness, and the next lane to investigate."
+          updatedAt={Math.max(controller.controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt())}
+          state={resolveOperatorState({
+            loading: controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading() || catalogLoading() || cacheLoading(),
+            error: controller.error() || proxyError() || routerError() || catalogError() || cacheError(),
+            lastUpdateMs: Math.max(controller.controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt()),
+            staleAfterMs: 15_000,
+            partial: !modelCacheEnabled() || Boolean(proxyMetrics()?.partial),
+          })}
+          stateDetail={controller.error() || proxyError() || routerError() || catalogError() || cacheError() ? 'multi-surface review' : undefined}
+          loading={controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading()}
+        />
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <WorkbenchStatCard
+            label="Controller"
+            value={`${controller.crdModels().length}`}
+            tone="text-neon-cyan"
+            note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
+          />
+          <WorkbenchStatCard
+            label="Telemetry"
+            value={proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '—'}
+            tone="text-status-ok"
+            note={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`}
+          />
+          <WorkbenchStatCard
+            label="Supply chain"
+            value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
+            tone="text-neon-purple"
+            note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
+          />
+          <WorkbenchStatCard
+            label="Freshness"
+            value={freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
+            tone="text-text-main"
+            note={freshnessNote([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
+          />
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div class="glass-panel p-4">
+            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Recommended next stop</div>
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <OverviewFocusCard
+                title="Control plane"
+                detail="Use this when model phase, reliability, or CRD health is the first question."
+                stat={`${controller.crdModels().length} models`}
+                tone="text-neon-cyan"
+                onClick={() => setActiveSection('control-plane')}
+              />
+              <OverviewFocusCard
+                title="Telemetry"
+                detail="Queue depth, error rate, and router coverage are grouped here for incident triage."
+                stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
+                tone="text-status-ok"
+                onClick={() => setActiveSection('telemetry')}
+              />
+              <OverviewFocusCard
+                title="Supply chain"
+                detail="Catalog sync and cache job readiness stay together so release artifacts are easy to read."
+                stat={`${supplyChainSummary().readyCacheCount} ready`}
+                tone="text-neon-purple"
+                onClick={() => setActiveSection('supply-chain')}
+              />
+              <OverviewFocusCard
+                title="Intake"
+                detail="Registry search, staged candidates, and deployment intake stay isolated from controller triage."
+                stat={`${searchResults().length} staged`}
+                tone="text-text-main"
+                onClick={() => setActiveSection('intake')}
+              />
+            </div>
+          </div>
+
+          <div class="glass-panel overflow-hidden">
+            <div class="border-b border-white/5 px-4 py-3">
+              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Operational notes</div>
+            </div>
+            <div class="space-y-3 p-4 text-sm text-text-dim">
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Control plane first</div>
+                <div class="mt-1 text-xs">The controller lane leads with phase and reliability so degraded models rise to the top immediately.</div>
+              </div>
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Telemetry next</div>
+                <div class="mt-1 text-xs">Proxy totals and router coverage are paired to shorten the gap between “it feels slow” and “why”.</div>
+              </div>
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Supply and intake split</div>
+                <div class="mt-1 text-xs">Cache and catalog release work stays separate from search and registry intake so the workbench is easier to scan under load.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      </Show>
+
       <Show when={activeSection() === 'control-plane'}>
       <section id="control-plane" class="scroll-mt-6 space-y-4 xl:scroll-mt-8">
         <WorkbenchSectionHeader
@@ -1088,6 +1121,24 @@ const WorkbenchStatCard: Component<{ label: string; value: string; tone: string;
     <div class={`mt-2 text-2xl font-semibold ${props.tone}`}>{props.value}</div>
     <div class="mt-1 text-xs text-text-dim">{props.note}</div>
   </div>
+);
+
+const OverviewFocusCard: Component<{
+  title: string;
+  detail: string;
+  stat: string;
+  tone: string;
+  onClick: () => void;
+}> = (props) => (
+  <button
+    type="button"
+    onClick={props.onClick}
+    class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-neon-cyan/20 hover:bg-white/7"
+  >
+    <div class={`text-sm font-semibold ${props.tone}`}>{props.title}</div>
+    <div class="mt-2 text-[11px] leading-5 text-text-dim">{props.detail}</div>
+    <div class="mt-4 text-xs font-medium text-text-main">{props.stat}</div>
+  </button>
 );
 
 const WorkbenchSectionHeader: Component<{
