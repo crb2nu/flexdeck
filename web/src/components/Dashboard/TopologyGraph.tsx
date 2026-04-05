@@ -233,6 +233,7 @@ const TopologyGraph: Component<Props> = (props) => {
   let rafId: number | null = null;
   let lastTopologyVersion = -1;
   let lastStyleVersion = -1;
+  let interactionsBound = false;
   let topologyWorker: Worker | null = null;
   let topologyWorkerRequestId = 0;
   let pendingBuildRequestId = 0;
@@ -242,6 +243,9 @@ const TopologyGraph: Component<Props> = (props) => {
   let activeSimulationMode: 'main' | 'worker' | null = null;
   let currentSimulationAlpha = 0;
   const workerBuildRequests = new Map<number, WorkerBuildPending>();
+  const graphNodeByUid = new Map<string, D3Node>();
+  let zoomBehavior: d3.ZoomBehavior<HTMLCanvasElement, unknown> | null = null;
+  let dragBehavior: d3.DragBehavior<HTMLCanvasElement, unknown, D3Node | null> | null = null;
   let topologySyncTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // State
@@ -674,36 +678,41 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const refreshNodeData = () => {
     if (graphNodes.length === 0) return;
+    let updated = false;
 
     for (const nodeData of props.nodes) {
-      const graphNode = graphNodeById.get(`node-${nodeData.metadata.name}`);
+      const uid = nodeData.metadata.uid;
+      if (!uid) continue;
+      const graphNode = graphNodeByUid.get(uid);
       if (graphNode) {
-        graphNode.data = nodeData;
-        graphNode.status = isNodeReady(nodeData) ? 'ok' : 'error';
+        const nextStatus = isNodeReady(nodeData) ? 'ok' : 'error';
+        if (graphNode.data !== nodeData || graphNode.status !== nextStatus) {
+          graphNode.data = nodeData;
+          graphNode.status = nextStatus;
+          updated = true;
+        }
       }
     }
 
     for (const podData of props.pods) {
-      const namespace = podData.metadata.namespace ?? 'undefined';
-      const graphNode = graphNodeById.get(`pod-${namespace}-${podData.metadata.name}`);
+      const uid = podData.metadata.uid;
+      if (!uid) continue;
+      const graphNode = graphNodeByUid.get(uid);
       if (graphNode) {
-        graphNode.data = podData;
-        graphNode.status = podData.status.phase === 'Running'
+        const nextStatus = podData.status.phase === 'Running'
           ? 'ok'
           : podData.status.phase === 'Pending'
             ? 'warn'
             : 'error';
+        if (graphNode.data !== podData || graphNode.status !== nextStatus) {
+          graphNode.data = podData;
+          graphNode.status = nextStatus;
+          updated = true;
+        }
       }
     }
 
-    for (const serviceData of props.services) {
-      const namespace = serviceData.metadata.namespace ?? 'undefined';
-      const graphNode = graphNodeById.get(`svc-${namespace}-${serviceData.metadata.name}`);
-      if (graphNode) {
-        graphNode.data = serviceData;
-        graphNode.status = 'ok';
-      }
-    }
+    if (!updated) return;
 
     nodeStylesCacheValid = false;
     invalidateBaseLayer();
@@ -720,9 +729,12 @@ const TopologyGraph: Component<Props> = (props) => {
 
     // Build O(1) index map for particle spawning
     graphNodeById.clear();
+    graphNodeByUid.clear();
     nodeIndexMap.clear();
     graphNodes.forEach((node, idx) => {
       graphNodeById.set(node.id, node);
+      const sourceUid = node.data?.metadata?.uid;
+      if (sourceUid) graphNodeByUid.set(sourceUid, node);
       nodeIndexMap.set(node.id, idx);
     });
     if (visibleNodeFlags.length !== graphNodes.length) {
@@ -1963,81 +1975,82 @@ const TopologyGraph: Component<Props> = (props) => {
   const bindCanvasInteractions = (width: number, height: number) => {
     if (!overlayCanvasRef) return;
 
-    const zoom = d3.zoom<HTMLCanvasElement, unknown>()
-      .scaleExtent([0.1, 8])
-      .on('zoom', (e) => {
-        transform = e.transform;
-        bumpInteraction();
-        if (isSimulationActive) {
-          invalidateViewport();
-        } else {
-          applyBaseCanvasPreview(e.transform);
-          invalidateOverlayLayer();
-          scheduleBaseLayerCommit();
-        }
-        // Restart animation if not running (for pan/zoom after settling)
-        startAnimationLoop();
-      });
-
-    const drag = d3.drag<HTMLCanvasElement, unknown>()
-      .subject((e) => {
-        const node = getKeyUnderMouse(e.sourceEvent);
-        return node ? node : null;
-      })
-      .on('start', (e) => {
-        if (activeSimulationMode === 'worker') {
-          isSimulationActive = true;
-          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.3);
-          invalidateViewport();
-          startAnimationLoop();
-        } else if (!e.active) {
-          simulation?.alphaTarget(0.3).restart();
-          isSimulationActive = true;
-          invalidateViewport();
-          startAnimationLoop();
-        }
-        bumpInteraction();
-        const n = e.subject as D3Node;
-        n.x = e.x;
-        n.y = e.y;
-        n.fx = e.x;
-        n.fy = e.y;
-        postWorkerDrag('start', n, e.x, e.y);
-      })
-      .on('drag', (e) => {
-        bumpInteraction();
-        const n = e.subject as D3Node;
-        n.x = e.x;
-        n.y = e.y;
-        n.fx = e.x;
-        n.fy = e.y;
-        postWorkerDrag('move', n, e.x, e.y);
-        invalidateViewport();
-      })
-      .on('end', (e) => {
-        const n = e.subject as D3Node;
-        if (activeSimulationMode === 'worker') {
-          currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.14);
-          postWorkerDrag('end', n);
-        } else if (!e.active) {
-          simulation?.alphaTarget(0);
-        }
-        n.fx = null;
-        n.fy = null;
-        invalidateViewport();
-      });
-
     const selection = d3.select(overlayCanvasRef);
-    selection.on('.zoom', null);
-    selection.on('.drag', null);
-    selection.call(zoom);
-    selection.call(drag);
-    selection.on('dblclick.zoom', null);
+    if (!interactionsBound) {
+      zoomBehavior = d3.zoom<HTMLCanvasElement, unknown>()
+        .scaleExtent([0.1, 8])
+        .on('zoom', (e) => {
+          transform = e.transform;
+          bumpInteraction();
+          if (isSimulationActive) {
+            invalidateViewport();
+          } else {
+            applyBaseCanvasPreview(e.transform);
+            invalidateOverlayLayer();
+            scheduleBaseLayerCommit();
+          }
+          // Restart animation if not running (for pan/zoom after settling)
+          startAnimationLoop();
+        });
+
+      dragBehavior = d3.drag<HTMLCanvasElement, unknown, D3Node | null>()
+        .subject((e) => {
+          const node = getKeyUnderMouse(e.sourceEvent);
+          return node ? node : null;
+        })
+        .on('start', (e) => {
+          if (activeSimulationMode === 'worker') {
+            isSimulationActive = true;
+            currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.3);
+            invalidateViewport();
+            startAnimationLoop();
+          } else if (!e.active) {
+            simulation?.alphaTarget(0.3).restart();
+            isSimulationActive = true;
+            invalidateViewport();
+            startAnimationLoop();
+          }
+          bumpInteraction();
+          const n = e.subject as D3Node;
+          n.x = e.x;
+          n.y = e.y;
+          n.fx = e.x;
+          n.fy = e.y;
+          postWorkerDrag('start', n, e.x, e.y);
+        })
+        .on('drag', (e) => {
+          bumpInteraction();
+          const n = e.subject as D3Node;
+          n.x = e.x;
+          n.y = e.y;
+          n.fx = e.x;
+          n.fy = e.y;
+          postWorkerDrag('move', n, e.x, e.y);
+          invalidateViewport();
+        })
+        .on('end', (e) => {
+          const n = e.subject as D3Node;
+          if (activeSimulationMode === 'worker') {
+            currentSimulationAlpha = Math.max(currentSimulationAlpha, 0.14);
+            postWorkerDrag('end', n);
+          } else if (!e.active) {
+            simulation?.alphaTarget(0);
+          }
+          n.fx = null;
+          n.fy = null;
+          invalidateViewport();
+        });
+
+      selection.call(zoomBehavior);
+      selection.call(dragBehavior);
+      selection.on('dblclick.zoom', null);
+      interactionsBound = true;
+    }
 
     if (graphNodes.length > 0 && !graphNodes[0].x) {
       const baseZoom = Math.max(0.3, Math.min(0.8, 50 / (graphNodes.length || 1)));
       selection.call(
-        zoom.transform,
+        zoomBehavior!.transform,
         d3.zoomIdentity.translate(width / 2, height / 2).scale(baseZoom).translate(-width / 2, -height / 2),
       );
     }

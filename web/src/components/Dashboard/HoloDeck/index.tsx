@@ -32,6 +32,8 @@ interface Props {
   nodes: K8sNode[];
   pods: K8sPod[];
   services: K8sService[];
+  topologyVersion?: number;
+  styleVersion?: number;
   quality?: QualityLevel;
   filter?: HoloDeckFilter;
   onSelect?: (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => void;
@@ -58,6 +60,16 @@ interface ServiceVisualRef {
   initialY: number;
   waveOffset: number;
 }
+
+type HoloNodeUserData = {
+  type?: 'node' | 'pod' | 'service';
+  scannerRef?: THREE.Mesh;
+  coreRef?: THREE.Object3D;
+  cpuRingRef?: RingMesh;
+  memRingRef?: RingMesh;
+  nodeName?: string;
+  initialY?: number;
+};
 
 interface HoloDeckPerfSnapshot {
   sceneBuildMs: number;
@@ -156,7 +168,25 @@ const HoloDeck: Component<Props> = (props) => {
   let lastFilterMatchCount = 0;
   let lastSceneAccelDelta: FiAccelMetricsDelta = EMPTY_FI_ACCEL_DELTA;
 
-  const sceneDataKey = createMemo<string>(() => {
+  const sceneTopologyKey = createMemo<string>(() => {
+    if (props.topologyVersion !== undefined) {
+      return `topology:${props.topologyVersion}`;
+    }
+    const nodeKey = props.nodes
+      .map((node) => node.metadata.name)
+      .join(',');
+    const podKey = props.pods
+      .map((pod) => `${pod.metadata.namespace || 'default'}/${pod.metadata.name}:${pod.spec.nodeName || ''}`)
+      .join(',');
+    const serviceKey = props.services
+      .map((service) => `${service.metadata.namespace || 'default'}/${service.metadata.name}:${JSON.stringify(service.spec.selector || {})}`)
+      .join(',');
+    return `${nodeKey}|${podKey}|${serviceKey}`;
+  });
+  const sceneStyleKey = createMemo<string>(() => {
+    if (props.styleVersion !== undefined) {
+      return `style:${props.styleVersion}`;
+    }
     const nodeKey = props.nodes
       .map((node) => {
         const ready = node.status.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True') ? '1' : '0';
@@ -164,12 +194,9 @@ const HoloDeck: Component<Props> = (props) => {
       })
       .join(',');
     const podKey = props.pods
-      .map((pod) => `${pod.metadata.namespace || 'default'}/${pod.metadata.name}:${pod.spec.nodeName || ''}:${pod.status.phase}`)
+      .map((pod) => `${pod.metadata.namespace || 'default'}/${pod.metadata.name}:${pod.status.phase}`)
       .join(',');
-    const serviceKey = props.services
-      .map((service) => `${service.metadata.namespace || 'default'}/${service.metadata.name}:${service.spec.type}:${JSON.stringify(service.spec.selector || {})}`)
-      .join(',');
-    return `${nodeKey}|${podKey}|${serviceKey}`;
+    return `${nodeKey}|${podKey}`;
   });
 
   const clusterHealth = createMemo<ClusterHealthData>(() => computeClusterHealth(props.nodes, props.pods));
@@ -293,6 +320,61 @@ const HoloDeck: Component<Props> = (props) => {
     lastFilterApplyMs = performance.now() - startedAt;
     lastFilterMatchCount = matchCount;
     publishPerfSnapshot();
+  };
+
+  const refreshSceneVisuals = () => {
+    if (objectMap.size === 0) return;
+
+    for (const node of props.nodes) {
+      const nodeId = `node-${node.metadata.name}`;
+      dataMap.set(nodeId, node);
+      const object = objectMap.get(nodeId);
+      if (!object) continue;
+      const userData = object.userData as HoloNodeUserData;
+      const nextColor = node.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True')
+        ? HOLO_THEME.colors.node.ready
+        : HOLO_THEME.colors.node.error;
+
+      const scannerMaterial = userData.scannerRef?.material as THREE.MeshBasicMaterial | undefined;
+      if (scannerMaterial) {
+        scannerMaterial.color.setHex(nextColor);
+      }
+
+      const coreMaterial = (userData.coreRef as THREE.Mesh | undefined)?.material as THREE.MeshBasicMaterial | undefined;
+      if (coreMaterial) {
+        coreMaterial.color.setHex(nextColor);
+      }
+
+      const tower = userData.coreRef?.parent as THREE.Object3D | undefined;
+      const edgeMaterial = tower?.children.find((child) => child instanceof THREE.LineSegments)?.material as
+        | THREE.LineBasicMaterial
+        | undefined;
+      if (edgeMaterial) {
+        edgeMaterial.color.setHex(nextColor);
+      }
+    }
+
+    for (const pod of props.pods) {
+      const podId = `pod-${pod.metadata.namespace || 'default'}-${pod.metadata.name}`;
+      dataMap.set(podId, pod);
+      const object = objectMap.get(podId);
+      if (!(object instanceof THREE.Mesh)) continue;
+      const nextColor = pod.status.phase === 'Running'
+        ? HOLO_THEME.colors.pod.running
+        : pod.status.phase === 'Pending'
+          ? HOLO_THEME.colors.pod.pending
+          : HOLO_THEME.colors.pod.error;
+      const material = object.material as THREE.MeshStandardMaterial | undefined;
+      if (!material) continue;
+      material.color.setHex(nextColor);
+      material.emissive.setHex(nextColor);
+    }
+
+    for (const service of props.services) {
+      dataMap.set(`service-${service.metadata.namespace || 'default'}-${service.metadata.name}`, service);
+    }
+
+    applyFilterVisuals();
   };
 
   onMount(() => {
@@ -514,7 +596,7 @@ const HoloDeck: Component<Props> = (props) => {
   });
 
   createEffect(() => {
-    const _sceneKey = sceneDataKey();
+    const _sceneKey = sceneTopologyKey();
     untrack(() => {
       while(dataGroup.children.length > 0) { const c = dataGroup.children[0]; dataGroup.remove(c); disposeObject(c); }
       objectMap.clear(); dataMap.clear(); serviceToPodsMap.clear();
@@ -530,6 +612,13 @@ const HoloDeck: Component<Props> = (props) => {
       curves = res.curves; serviceCurves = res.serviceCurves;
       rebuildVisualRefs();
       applyFilterVisuals();
+    });
+  });
+
+  createEffect(() => {
+    const _styleKey = sceneStyleKey();
+    untrack(() => {
+      refreshSceneVisuals();
     });
   });
 
