@@ -16,7 +16,28 @@ const hudMocks = vi.hoisted(() => {
   return {
     agentsList: vi.fn(async () => ({ agents: [] })),
     autoRunPolling: true,
-    claims: vi.fn(async () => ({ claims: [] })),
+    fleet: vi.fn(async () => ({
+      agents: [
+        {
+          agentId: 'codex-1',
+          agentType: 'codex',
+          status: 'active',
+          activeFiles: ['/tmp/example.ts'],
+          conflicts: [],
+        },
+      ],
+      claims: [],
+      tasks: [
+        {
+          id: 'task-1',
+          title: 'Review coverage slice',
+          status: 'pending',
+          priority: 2,
+          tags: [],
+        },
+      ],
+      kpis: {},
+    })),
     createPolling: vi.fn((id: string, task: () => Promise<void> | void) => {
       if (hudMocks.autoRunPolling && (id === 'agents-hud-pull' || id === 'hud-now-ticker')) {
         queueMicrotask(() => {
@@ -28,28 +49,6 @@ const hudMocks = vi.hoisted(() => {
     eventsConnectionLabel: 'STALE',
     feedState: 'stale',
     hudMode,
-    presence: vi.fn(async () => ({
-      agents: [
-        {
-          agentId: 'codex-1',
-          agentType: 'codex',
-          status: 'active',
-          activeFiles: ['/tmp/example.ts'],
-          conflicts: [],
-        },
-      ],
-    })),
-    tasks: vi.fn(async () => ({
-      tasks: [
-        {
-          id: 'task-1',
-          title: 'Review coverage slice',
-          status: 'pending',
-          priority: 2,
-          tags: [],
-        },
-      ],
-    })),
     timeline: vi.fn(async () => ({
       events: [
         {
@@ -71,10 +70,8 @@ vi.mock('../../lib/api', () => ({
   hudApi: {
     approveWorkflow: vi.fn(async () => {}),
     cancelWorkflow: vi.fn(async () => {}),
-    claims: hudMocks.claims,
-    presence: hudMocks.presence,
+    fleet: hudMocks.fleet,
     rejectWorkflow: vi.fn(async () => {}),
-    tasks: hudMocks.tasks,
     timeline: hudMocks.timeline,
     workflows: hudMocks.workflows,
   },
@@ -160,14 +157,12 @@ describe('HUDTab', () => {
     hudMocks.hudMode.disabledReason = '';
 
     hudMocks.agentsList.mockClear();
-    hudMocks.claims.mockClear();
+    hudMocks.fleet.mockClear();
     hudMocks.createPolling.mockClear();
-    hudMocks.presence.mockReset();
-    hudMocks.tasks.mockReset();
     hudMocks.timeline.mockReset();
     hudMocks.workflows.mockReset();
 
-    hudMocks.presence.mockResolvedValue({
+    hudMocks.fleet.mockResolvedValue({
       agents: [
         {
           agentId: 'codex-1',
@@ -177,9 +172,7 @@ describe('HUDTab', () => {
           conflicts: [],
         },
       ],
-    });
-    hudMocks.claims.mockResolvedValue({ claims: [] });
-    hudMocks.tasks.mockResolvedValue({
+      claims: [],
       tasks: [
         {
           id: 'task-1',
@@ -189,6 +182,7 @@ describe('HUDTab', () => {
           tags: [],
         },
       ],
+      kpis: {},
     });
     hudMocks.timeline.mockResolvedValue({
       events: [
@@ -225,9 +219,7 @@ describe('HUDTab', () => {
 
   it('renders the HUD error alert when pull refresh fails', async () => {
     hudMocks.degradedFeed = false;
-    hudMocks.presence.mockRejectedValue(new Error('HUD pull offline'));
-    hudMocks.claims.mockRejectedValue(new Error('HUD pull offline'));
-    hudMocks.tasks.mockRejectedValue(new Error('HUD pull offline'));
+    hudMocks.fleet.mockRejectedValue(new Error('HUD pull offline'));
     hudMocks.timeline.mockRejectedValue(new Error('HUD pull offline'));
     hudMocks.workflows.mockRejectedValue(new Error('HUD pull offline'));
 
@@ -248,7 +240,7 @@ describe('HUDTab', () => {
     cleanup = mount(() => <HUDTab />);
 
     await vi.waitFor(() => {
-      expect(hudMocks.presence).toHaveBeenCalledTimes(1);
+      expect(hudMocks.fleet).toHaveBeenCalledTimes(1);
     });
 
     await vi.waitFor(() => {

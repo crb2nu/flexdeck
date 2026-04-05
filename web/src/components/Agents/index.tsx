@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo, createSignal, For, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
+import { Component, createEffect, createMemo, createSignal, For, on, Show, lazy, Suspense, ErrorBoundary } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
@@ -31,6 +31,7 @@ const Agents: Component = () => {
   const [activeSection, setActiveSection] = createSignal<OperationsSection>('overview');
   const hudEntry = createMemo(() => getHudEntryState(healthStore.features || {}));
   const isToolingSection = createMemo(() => activeSection() === 'registry' || activeSection() === 'flow');
+  let scrollViewport: HTMLDivElement | undefined;
 
   // Graph data
   const [graphNodes, setGraphNodes] = createSignal<AgentNode[]>([]);
@@ -116,6 +117,12 @@ const Agents: Component = () => {
       void Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
     }
   });
+
+  createEffect(on(activeSection, () => {
+    queueMicrotask(() => {
+      scrollViewport?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+  }, { defer: true }));
 
   const sectionNav = createMemo(() => [
     {
@@ -336,7 +343,10 @@ const Agents: Component = () => {
         <ErrorState message={error()} />
       </Show>
 
-      <PageScrollBody class={activeSection() === 'flow' ? 'overflow-hidden' : ''}>
+      <PageScrollBody
+        class={activeSection() === 'flow' ? 'overflow-hidden' : ''}
+        viewportRef={(element) => { scrollViewport = element; }}
+      >
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
           <OperationsSidebarNav
             title="Operations lanes"

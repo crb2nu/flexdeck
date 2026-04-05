@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { batch, Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
@@ -36,6 +36,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [workflows, setWorkflows] = createSignal<HUDWorkflow[]>([]);
   const [timeline, setTimeline] = createSignal<HUDTimelineEvent[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
   const [workflowAction, setWorkflowAction] = createSignal<string | null>(null);
   const [eventsConnection, setEventsConnection] = createSignal<FeedConnectionState>('disabled');
@@ -47,24 +48,26 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const pushEnabled = () => hudMode().pushEnabled;
 
   const fetchAllPull = async () => {
-    const [presenceResult, claimsResult, tasksResult, workflowsResult, timelineResult] = await Promise.allSettled([
-      hudApi.presence(),
-      hudApi.claims(),
-      hudApi.tasks(),
+    const [fleetResult, workflowsResult, timelineResult] = await Promise.allSettled([
+      hudApi.fleet(),
       hudApi.workflows(),
       hudApi.timeline(),
     ]);
 
-    if (presenceResult.status === 'fulfilled') setPresence(extractItems<HUDAgentPresence>(presenceResult.value, 'agents'));
-    if (claimsResult.status === 'fulfilled') setClaims(extractItems<HUDClaim>(claimsResult.value, 'claims'));
-    if (tasksResult.status === 'fulfilled') setTasks(extractItems<HUDTask>(tasksResult.value, 'tasks'));
-    if (workflowsResult.status === 'fulfilled') setWorkflows(extractItems<HUDWorkflow>(workflowsResult.value, 'workflows'));
-    if (timelineResult.status === 'fulfilled') setTimeline(extractItems<HUDTimelineEvent>(timelineResult.value, 'events'));
+    batch(() => {
+      if (fleetResult.status === 'fulfilled') {
+        setPresence(extractItems<HUDAgentPresence>(fleetResult.value, 'agents'));
+        setClaims(extractItems<HUDClaim>(fleetResult.value, 'claims'));
+        setTasks(extractItems<HUDTask>(fleetResult.value, 'tasks'));
+      }
+      if (workflowsResult.status === 'fulfilled') setWorkflows(extractItems<HUDWorkflow>(workflowsResult.value, 'workflows'));
+      if (timelineResult.status === 'fulfilled') setTimeline(extractItems<HUDTimelineEvent>(timelineResult.value, 'events'));
+    });
 
-    const failed = [presenceResult, claimsResult, tasksResult, workflowsResult, timelineResult]
+    const failed = [fleetResult, workflowsResult, timelineResult]
       .filter((result) => result.status === 'rejected');
 
-    if (failed.length === 5) {
+    if (failed.length === 3) {
       const reason = failed[0] as PromiseRejectedResult;
       throw new Error(toErrorMessage(reason.reason, 'Failed to fetch HUD pull data'));
     }
@@ -85,6 +88,8 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   };
 
   const fetchAll = async () => {
+    const isInitialLoad = loading();
+    if (!isInitialLoad) setRefreshing(true);
     try {
       if (pullEnabled()) {
         await fetchAllPull();
@@ -97,6 +102,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       setError(toErrorMessage(err, 'Failed to fetch HUD data'));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -595,8 +601,8 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         modeDescription={hudMode().modeDescription}
         metrics={metrics()}
         actions={[
-          { label: 'Refresh HUD', onClick: fetchAll, variant: 'primary', disabled: loading() },
-          { label: 'Reload timeline', onClick: fetchAll, variant: 'secondary', disabled: loading() },
+          { label: refreshing() ? 'Refreshing...' : 'Refresh HUD', onClick: fetchAll, variant: 'primary', disabled: loading() || refreshing() },
+          { label: refreshing() ? 'Refreshing...' : 'Reload timeline', onClick: fetchAll, variant: 'secondary', disabled: loading() || refreshing() },
         ]}
         alert={hasStaleWarning() ? {
           title: 'Degraded feed',
