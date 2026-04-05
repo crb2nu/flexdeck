@@ -24,11 +24,11 @@ func (h *Handler) HUDFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:fleet", 15*time.Second, "hud fleet", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/fleet")
-		if err != nil {
-			return nil, err
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/fleet", "")...)
+		if err == nil {
+			return normalizeHUDFleetResponse(raw)
 		}
-		return normalizeHUDFleetResponse(raw)
+		return h.fetchMobileHUDFleet(r.Context())
 	})
 }
 
@@ -39,7 +39,7 @@ func (h *Handler) HUDPresence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:presence", 10*time.Second, "hud presence", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/presence")
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/presence", "/api/mobile/v1/presence")...)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func (h *Handler) HUDTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:tasks", 15*time.Second, "hud tasks", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/tasks")
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/tasks", "/api/mobile/v1/tasks")...)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func (h *Handler) HUDWorkflows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:workflows", 10*time.Second, "hud workflows", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/workflows")
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/workflows", "/api/mobile/v1/workflows")...)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func (h *Handler) HUDTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:timeline", 5*time.Second, "hud timeline", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/timeline")
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/timeline", "/api/mobile/v1/dashboard")...)
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +99,7 @@ func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cachedProxyJSON(w, r, "hud:claims", 10*time.Second, "hud claims", func() (any, error) {
-		raw, err := h.fetchHUD(r.Context(), "/api/claims")
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/claims", "/api/mobile/v1/presence")...)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +115,10 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := chi.URLParam(r, "id")
-	path := fmt.Sprintf("/api/workflows/%s/approve", id)
+	paths := h.hudPaths(
+		fmt.Sprintf("/api/workflows/%s/approve", id),
+		fmt.Sprintf("/api/mobile/v1/workflows/%s/approve", id),
+	)
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
 	if err != nil {
@@ -129,7 +132,7 @@ func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.postHUD(r.Context(), path, body)
+	result, err := h.postHUDPaths(r.Context(), body, paths...)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -152,7 +155,10 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := chi.URLParam(r, "id")
-	path := fmt.Sprintf("/api/workflows/%s/reject", id)
+	paths := h.hudPaths(
+		fmt.Sprintf("/api/workflows/%s/reject", id),
+		fmt.Sprintf("/api/mobile/v1/workflows/%s/reject", id),
+	)
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
 	if err != nil {
@@ -166,7 +172,7 @@ func (h *Handler) HUDWorkflowReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.postHUD(r.Context(), path, body)
+	result, err := h.postHUDPaths(r.Context(), body, paths...)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -189,7 +195,10 @@ func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := chi.URLParam(r, "id")
-	path := fmt.Sprintf("/api/workflows/%s/cancel", id)
+	paths := h.hudPaths(
+		fmt.Sprintf("/api/workflows/%s/cancel", id),
+		"",
+	)
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
 	if err != nil {
@@ -197,7 +206,7 @@ func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.postHUD(r.Context(), path, body)
+	result, err := h.postHUDPaths(r.Context(), body, paths...)
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -214,6 +223,28 @@ func (h *Handler) HUDWorkflowCancel(w http.ResponseWriter, r *http.Request) {
 
 // fetchHUD makes a GET request to the Loom HUD REST API.
 func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, error) {
+	return h.fetchHUDPaths(ctx, path)
+}
+
+func (h *Handler) fetchHUDPaths(ctx context.Context, paths ...string) (json.RawMessage, error) {
+	var lastErr error
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		raw, err := h.fetchHUDPath(ctx, path)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return nil, fmt.Errorf("no hud paths configured")
+	}
+	return nil, lastErr
+}
+
+func (h *Handler) fetchHUDPath(ctx context.Context, path string) (json.RawMessage, error) {
 	reqURL := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
@@ -228,7 +259,7 @@ func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, e
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("hud returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("hud returned %d for %s", resp.StatusCode, path)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -240,7 +271,10 @@ func (h *Handler) fetchHUD(ctx context.Context, path string) (json.RawMessage, e
 }
 
 func (h *Handler) fetchHUDWorkflowDetail(ctx context.Context, workflowID string) (json.RawMessage, error) {
-	return h.fetchHUD(ctx, fmt.Sprintf("/api/workflows/%s", workflowID))
+	return h.fetchHUDPaths(ctx, h.hudPaths(
+		fmt.Sprintf("/api/workflows/%s", workflowID),
+		fmt.Sprintf("/api/mobile/v1/workflows/%s", workflowID),
+	)...)
 }
 
 func (h *Handler) prepareHUDWorkflowStepPayload(ctx context.Context, workflowID string, body []byte) ([]byte, error) {
@@ -275,6 +309,28 @@ func (h *Handler) prepareHUDWorkflowStepPayload(ctx context.Context, workflowID 
 
 // postHUD makes a POST request to the Loom HUD REST API.
 func (h *Handler) postHUD(ctx context.Context, path string, body []byte) ([]byte, error) {
+	return h.postHUDPaths(ctx, body, path)
+}
+
+func (h *Handler) postHUDPaths(ctx context.Context, body []byte, paths ...string) ([]byte, error) {
+	var lastErr error
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		result, err := h.postHUDPath(ctx, path, body)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return nil, fmt.Errorf("no hud post paths configured")
+	}
+	return nil, lastErr
+}
+
+func (h *Handler) postHUDPath(ctx context.Context, path string, body []byte) ([]byte, error) {
 	reqURL := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
@@ -295,8 +351,94 @@ func (h *Handler) postHUD(ctx context.Context, path string, body []byte) ([]byte
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("hud returned %d: %s", resp.StatusCode, string(result))
+		return nil, fmt.Errorf("hud returned %d for %s: %s", resp.StatusCode, path, string(result))
 	}
 
 	return result, nil
+}
+
+func (h *Handler) hudPaths(primary, mobile string) []string {
+	if strings.Contains(strings.ToLower(h.loomHUDURL()), "mobile-hud") {
+		return []string{mobile, primary}
+	}
+	return []string{primary, mobile}
+}
+
+func (h *Handler) fetchMobileHUDFleet(ctx context.Context) (map[string]any, error) {
+	presenceRaw, err := h.fetchHUD(ctx, "/api/mobile/v1/presence")
+	if err != nil {
+		return nil, err
+	}
+	tasksRaw, err := h.fetchHUD(ctx, "/api/mobile/v1/tasks")
+	if err != nil {
+		return nil, err
+	}
+	workflowsRaw, err := h.fetchHUD(ctx, "/api/mobile/v1/workflows")
+	if err != nil {
+		return nil, err
+	}
+
+	agents, err := normalizeHUDPresenceResponse(presenceRaw)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := normalizeHUDClaimsResponse(presenceRaw)
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := normalizeHUDTasksResponse(tasksRaw)
+	if err != nil {
+		return nil, err
+	}
+	workflows, err := normalizeHUDWorkflowsResponse(workflowsRaw)
+	if err != nil {
+		return nil, err
+	}
+
+	activeAgents := 0
+	idleAgents := 0
+	offlineAgents := 0
+	for _, agent := range agents {
+		switch hudString(agent["status"]) {
+		case "active":
+			activeAgents++
+		case "idle":
+			idleAgents++
+		case "offline":
+			offlineAgents++
+		}
+	}
+
+	workflowsEnvelope, err := parseHUDEnvelope(workflowsRaw)
+	if err != nil {
+		return nil, err
+	}
+	pendingApprovals := hudInt(workflowsEnvelope["pending_approvals"])
+	if pendingApprovals == 0 {
+		pendingApprovals = hudInt(workflowsEnvelope["deprecated_pending_approvals"])
+	}
+	activeWorkflows := hudInt(workflowsEnvelope["active_workflows"])
+	if activeWorkflows == 0 {
+		for _, workflow := range workflows {
+			status := hudString(workflow["status"])
+			if status != "awaiting_approval" && status != "completed" && status != "canceled" && status != "failed" {
+				activeWorkflows++
+			}
+		}
+	}
+
+	return map[string]any{
+		"sessions": []map[string]any{},
+		"agents":   agents,
+		"claims":   claims,
+		"tasks":    tasks,
+		"kpis": map[string]any{
+			"pending_approvals": pendingApprovals,
+			"running_workflows": activeWorkflows,
+			"active_agents":     activeAgents,
+			"idle_agents":       idleAgents,
+			"offline_agents":    offlineAgents,
+			"total_tasks":       len(tasks),
+		},
+	}, nil
 }
