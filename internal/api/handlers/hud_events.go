@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -23,28 +24,13 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to upstream HUD SSE stream
-	url := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + "/api/events"
-
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "failed to create request"})
-		return
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := sseClient.Do(req)
+	resp, err := h.openHUDSSE(r)
 	if err != nil {
 		slog.Warn("HUD events SSE: upstream connection failed", "error", err)
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "failed to connect to HUD events stream"})
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "HUD events stream returned non-OK"})
-		return
-	}
 
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -60,7 +46,11 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		default:
-			line := normalizeHUDSSEDataLine(scanner.Text())
+			line := scanner.Text()
+			if strings.HasPrefix(line, "event:") {
+				continue
+			}
+			line = normalizeHUDSSEDataLine(line)
 			_, _ = w.Write([]byte(line + "\n"))
 			// Flush on empty line (end of SSE event) or data lines
 			if line == "" || strings.HasPrefix(line, "data:") {
@@ -72,4 +62,34 @@ func (h *Handler) HUDEventsSSE(w http.ResponseWriter, r *http.Request) {
 	if err := scanner.Err(); err != nil {
 		slog.Debug("HUD events SSE: scanner error", "error", err)
 	}
+}
+
+func (h *Handler) openHUDSSE(r *http.Request) (*http.Response, error) {
+	var lastErr error
+	for _, path := range h.hudPaths("/api/events", "/api/mobile/v1/events/stream") {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		url := strings.TrimSuffix(h.cfg.LoomHUD.URL, "/") + path
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "text/event-stream")
+
+		resp, err := sseClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			return resp, nil
+		}
+		_ = resp.Body.Close()
+		lastErr = fmt.Errorf("hud events stream returned %d for %s", resp.StatusCode, path)
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no hud events path available")
+	}
+	return nil, lastErr
 }

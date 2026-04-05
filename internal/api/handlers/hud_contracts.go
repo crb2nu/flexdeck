@@ -15,9 +15,31 @@ func parseHUDEnvelope(raw json.RawMessage) (map[string]any, error) {
 		return nil, err
 	}
 	if object, ok := decoded.(map[string]any); ok {
+		if object["data"] != nil && isHUDWrapperEnvelope(object) {
+			switch data := object["data"].(type) {
+			case map[string]any:
+				return data, nil
+			case []any:
+				return map[string]any{"items": data}, nil
+			}
+		}
 		return object, nil
 	}
 	return map[string]any{"items": decoded}, nil
+}
+
+func isHUDWrapperEnvelope(object map[string]any) bool {
+	if len(object) == 0 || object["data"] == nil {
+		return false
+	}
+	for key := range object {
+		switch key {
+		case "ok", "data", "meta", "error":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func hudItemsFromEnvelope(raw json.RawMessage, key string) ([]map[string]any, error) {
@@ -145,6 +167,12 @@ func normalizeHUDTimelineType(eventType string) string {
 		return "task_update"
 	case "agent.claim.add", "agent.claim.release":
 		return "file_claim"
+	case "hud.approval_needed":
+		return "approval_needed"
+	case "hud.fleet":
+		return "fleet_update"
+	case "hud.health":
+		return "health_update"
 	default:
 		return eventType
 	}
@@ -283,6 +311,7 @@ func normalizeHUDFleetResponse(raw json.RawMessage) (map[string]any, error) {
 	return map[string]any{
 		"sessions": normalizeHUDSessionsFromValue(envelope["sessions"]),
 		"agents":   normalizeHUDPresenceFromValue(envelope["agents"]),
+		"claims":   normalizeHUDClaimsFromValue(firstNonNil(envelope["claims"], envelope["file_claims"])),
 		"tasks":    normalizeHUDTasksFromValue(envelope["tasks"]),
 		"kpis": map[string]any{
 			"pending_approvals": hudInt(envelope["pending_approvals"]),
@@ -314,6 +343,9 @@ func normalizeHUDClaimsResponse(raw json.RawMessage) ([]map[string]any, error) {
 	if envelope["claims"] != nil {
 		return normalizeHUDClaimsFromValue(envelope["claims"]), nil
 	}
+	if envelope["file_claims"] != nil {
+		return normalizeHUDClaimsFromValue(envelope["file_claims"]), nil
+	}
 	return normalizeHUDClaimsFromValue(envelope["items"]), nil
 }
 
@@ -333,11 +365,17 @@ func normalizeHUDTimelineResponse(raw json.RawMessage) ([]map[string]any, error)
 	if err != nil {
 		return nil, err
 	}
+	if eventType := firstNonEmpty(hudString(envelope["type"]), hudString(envelope["event_type"])); eventType != "" {
+		return normalizeHUDSSEEnvelope(envelope), nil
+	}
 	if envelope["event_type"] != nil {
 		return normalizeHUDTimelineFromValue([]any{envelope}), nil
 	}
 	if envelope["entries"] != nil {
 		return normalizeHUDTimelineFromValue(envelope["entries"]), nil
+	}
+	if envelope["recent_timeline"] != nil {
+		return normalizeHUDTimelineFromValue(envelope["recent_timeline"]), nil
 	}
 	return normalizeHUDTimelineFromValue(envelope["items"]), nil
 }
@@ -354,26 +392,60 @@ func normalizeHUDSSEDataLine(line string) string {
 	if err != nil {
 		return line
 	}
-	var event map[string]any
-	switch {
-	case envelope["event_type"] != nil:
-		normalized := normalizeHUDTimelineFromValue([]any{envelope})
-		if len(normalized) == 0 {
-			return line
-		}
-		event = normalized[0]
-	default:
-		events, err := normalizeHUDTimelineResponse(json.RawMessage(payload))
-		if err != nil || len(events) == 0 {
-			return line
-		}
-		event = events[0]
+	events := normalizeHUDSSEEnvelope(envelope)
+	if len(events) == 0 {
+		return line
 	}
-	normalized, err := json.Marshal(event)
+	normalized, err := json.Marshal(events[0])
 	if err != nil {
 		return line
 	}
 	return "data: " + string(normalized)
+}
+
+func normalizeHUDSSEEnvelope(envelope map[string]any) []map[string]any {
+	if eventType := firstNonEmpty(hudString(envelope["type"]), hudString(envelope["event_type"])); eventType != "" {
+		data := hudMap(envelope["data"])
+		normalizedType := normalizeHUDTimelineType(eventType)
+		summary := summarizeHUDTimelineEntry(map[string]any{"data": data}, normalizedType)
+		if summary == strings.ReplaceAll(normalizedType, "_", " ") {
+			switch normalizedType {
+			case "fleet_update":
+				summary = "Fleet snapshot refreshed"
+			case "health_update":
+				summary = "Health snapshot refreshed"
+			case "approval_needed":
+				summary = "Approval required"
+			}
+		}
+		return []map[string]any{
+			{
+				"timestamp": firstNonEmpty(hudString(envelope["timestamp"]), hudString(data["timestamp"])),
+				"type":      normalizedType,
+				"agentId": firstNonEmpty(
+					hudString(envelope["agent_id"]),
+					hudString(envelope["agentId"]),
+					hudString(data["agent_id"]),
+					hudString(data["agentId"]),
+				),
+				"summary": summary,
+				"data":    data,
+			},
+		}
+	}
+	if envelope["event_type"] != nil {
+		return normalizeHUDTimelineFromValue([]any{envelope})
+	}
+	if envelope["entries"] != nil {
+		return normalizeHUDTimelineFromValue(envelope["entries"])
+	}
+	if envelope["recent_timeline"] != nil {
+		return normalizeHUDTimelineFromValue(envelope["recent_timeline"])
+	}
+	if envelope["items"] != nil {
+		return normalizeHUDTimelineFromValue(envelope["items"])
+	}
+	return nil
 }
 
 func workflowCurrentStepIndex(currentStep string, steps []map[string]any) int {
@@ -462,14 +534,27 @@ func normalizeHUDWorkflowsResponse(raw json.RawMessage) ([]map[string]any, error
 }
 
 func resolveHUDWorkflowStepID(detail map[string]any) string {
-	if stepID := hudString(detail["current_step"]); stepID != "" {
+	root := detail
+	if workflow := hudMap(detail["workflow"]); len(workflow) > 0 {
+		root = workflow
+	}
+	if stepID := hudString(root["current_step"]); stepID != "" {
 		return stepID
 	}
-	steps := hudItemsFromValue(detail["steps"])
+	steps := hudItemsFromValue(root["steps"])
 	if len(steps) == 0 {
 		return ""
 	}
 	return hudString(steps[0]["id"])
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {
