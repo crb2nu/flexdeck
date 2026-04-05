@@ -139,7 +139,10 @@ const isTopologyNodeReady = (node: K8sNode): boolean =>
   node.status.conditions.some((condition) => condition.type === 'Ready' && condition.status === 'True');
 
 export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
-  const previousNodeById = new Map(input.prevNodes.map((node) => [node.id, node]));
+  const previousNodeById = new Map<string, TopologyNode>();
+  for (const node of input.prevNodes) {
+    previousNodeById.set(node.id, node);
+  }
 
   const links: TopologyLink[] = [];
   const hostsLinks: TopologyLink[] = [];
@@ -147,12 +150,19 @@ export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
   const nodes: TopologyNode[] = [];
   const nodeMap = new Map<string, TopologyNode>();
   const namespaceMap = new Map<string, number>();
-  const podsByNamespace = buildPodIndexesByNamespace(input.pods);
+  let podsByNamespace: Map<string, NamespacePodIndex> | null = null;
 
   const appendNode = (node: TopologyNode): void => {
     preserveNodePhysics(node, previousNodeById.get(node.id));
     nodes.push(node);
     nodeMap.set(node.id, node);
+  };
+
+  const getPodsByNamespaceIndex = (namespace: string): NamespacePodIndex | undefined => {
+    if (!podsByNamespace) {
+      podsByNamespace = buildPodIndexesByNamespace(input.pods);
+    }
+    return podsByNamespace.get(namespace);
   };
 
   for (const k8sNode of input.nodes) {
@@ -168,10 +178,11 @@ export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
   for (const pod of input.pods) {
     const namespace = pod.metadata.namespace || 'default';
     const namespaceForId = pod.metadata.namespace ?? 'undefined';
+    const podId = `pod-${namespaceForId}-${pod.metadata.name}`;
     getNamespaceColor(namespace, namespaceMap);
 
     appendNode({
-      id: `pod-${namespaceForId}-${pod.metadata.name}`,
+      id: podId,
       type: 'pod',
       label: pod.metadata.name,
       data: pod,
@@ -187,7 +198,7 @@ export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
       const hostNodeId = `node-${pod.spec.nodeName}`;
       if (nodeMap.has(hostNodeId)) {
         const link: TopologyLink = {
-          source: `pod-${namespaceForId}-${pod.metadata.name}`,
+          source: podId,
           target: hostNodeId,
           type: 'hosts'
         };
@@ -214,7 +225,7 @@ export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
 
     if (!service.spec.selector) continue;
 
-    const namespaceIndex = podsByNamespace.get(namespace);
+    const namespaceIndex = getPodsByNamespaceIndex(namespace);
     if (!namespaceIndex) continue;
 
     const selectorEntries = Object.entries(service.spec.selector);

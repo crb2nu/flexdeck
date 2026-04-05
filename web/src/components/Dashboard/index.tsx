@@ -82,21 +82,32 @@ const Dashboard: Component = () => {
   });
 
   // Computed values from K8s store
-  const podReady = createMemo(() =>
-    k8sStore.pods.filter(p =>
-      p.status?.phase === 'Running' ||
-      (p.status as any)?.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True'
-    ).length
-  );
+  const podSummary = createMemo(() => {
+    let ready = 0;
+    const namespaces = new Set<string>();
+    const currentPods = pods();
 
-  const podTotal = createMemo(() => k8sStore.pods.length);
+    for (const pod of currentPods) {
+      if (pod.metadata?.namespace) {
+        namespaces.add(pod.metadata.namespace);
+      }
+      if (
+        pod.status?.phase === 'Running' ||
+        (pod.status as any)?.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True'
+      ) {
+        ready += 1;
+      }
+    }
 
-  const podNamespaces = createMemo(() =>
-    new Set(k8sStore.pods.map(p => p.metadata?.namespace)).size
-  );
+    return {
+      namespaces: namespaces.size,
+      ready,
+      total: currentPods.length,
+    };
+  });
 
   // Get pods on a specific node
-  const getPodsOnNode = createMemo(() => {
+  const podsOnSelectedNode = createMemo(() => {
     const item = selectedItem();
     if (!item || item.type !== 'node') return [];
     const nodeName = (item.data as K8sNode).metadata.name;
@@ -108,11 +119,19 @@ const Dashboard: Component = () => {
     setSelectedItem(item);
   };
 
-  const nodeReady = createMemo(() =>
-    k8sStore.nodes.filter(n => isNodeReady(n as any)).length
-  );
-
-  const nodeTotal = createMemo(() => k8sStore.nodes.length);
+  const nodeSummary = createMemo(() => {
+    let ready = 0;
+    const currentNodes = nodes();
+    for (const node of currentNodes) {
+      if (isNodeReady(node as any)) {
+        ready += 1;
+      }
+    }
+    return {
+      ready,
+      total: currentNodes.length,
+    };
+  });
 
   const isLoading = createMemo(() =>
     k8sStore.lastUpdate === 0 && connectionStatus() !== 'error'
@@ -150,8 +169,8 @@ const Dashboard: Component = () => {
       <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 min-w-0">
         <PulseCard
           title="Pods"
-          value={`${podReady()}/${podTotal()}`}
-          sub={`${podNamespaces()} namespaces`}
+          value={`${podSummary().ready}/${podSummary().total}`}
+          sub={`${podSummary().namespaces} namespaces`}
           loading={isLoading()}
           error={k8sCardError()}
           meta={dataStateLabel(k8sDataState())}
@@ -160,7 +179,7 @@ const Dashboard: Component = () => {
 
         <PulseCard
           title="Nodes"
-          value={`${nodeReady()}/${nodeTotal()}`}
+          value={`${nodeSummary().ready}/${nodeSummary().total}`}
           sub="cluster nodes"
           loading={isLoading()}
           error={k8sCardError()}
@@ -441,7 +460,15 @@ const Dashboard: Component = () => {
           }
         >
           <Show when={viewMode() === '2d'} fallback={
-              <HoloDeck nodes={nodes()} pods={pods()} services={services()} filter={filter()} onSelect={handleSelect} />
+              <HoloDeck
+                nodes={nodes()}
+                pods={pods()}
+                services={services()}
+                topologyVersion={k8sStore.topologyVersion}
+                styleVersion={k8sStore.styleVersion}
+                filter={filter()}
+                onSelect={handleSelect}
+              />
           }>
             <TopologyGraph
                 nodes={nodes()}
@@ -544,9 +571,9 @@ const Dashboard: Component = () => {
                     </div>
                   </div>
                   <div>
-                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Pods ({getPodsOnNode().length})</h4>
+                    <h4 class="text-[10px] text-text-dim uppercase mb-3 font-bold tracking-widest">Pods ({podsOnSelectedNode().length})</h4>
                     <div class="max-h-32 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
-                      <For each={getPodsOnNode().slice(0, 20)}>
+                      <For each={podsOnSelectedNode().slice(0, 20)}>
                         {p => (
                           <div class="flex items-center gap-2 text-[11px]">
                             <span class={`w-1.5 h-1.5 rounded-full ${p.status.phase === 'Running' ? 'bg-green-500' : 'bg-yellow-500'}`} />

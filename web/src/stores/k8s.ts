@@ -73,7 +73,7 @@ interface K8sStore {
   error: string | null;
 }
 
-interface WatchEvent {
+export interface WatchEvent {
   type: "ADDED" | "MODIFIED" | "DELETED";
   objectType: "node" | "pod" | "service";
   object: K8sNode | K8sPod | K8sService;
@@ -162,7 +162,7 @@ const computeTopologyHash = (
     hash = (
       hash +
       hashString(
-        `s:${namespace}/${service.metadata.name}|${service.spec.type ?? ""}|${selectorKey(service.spec.selector)}`
+        `s:${namespace}/${service.metadata.name}|${selectorKey(service.spec.selector)}`
       )
     ) >>> 0;
   }
@@ -195,7 +195,54 @@ interface WatchChangeFlags {
   styleChanged: boolean;
 }
 
-const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
+interface WatchDraftState {
+  nodes: K8sNode[];
+  pods: K8sPod[];
+  services: K8sService[];
+  nodesMutable: boolean;
+  podsMutable: boolean;
+  servicesMutable: boolean;
+}
+
+const rebuildUidIndex = <T extends { metadata: { uid: string } }>(
+  values: T[],
+  indexMap: Map<string, number>
+) => {
+  indexMap.clear();
+  for (let i = 0; i < values.length; i++) {
+    indexMap.set(values[i].metadata.uid, i);
+  }
+};
+
+const ensureNodeDraft = (drafts: WatchDraftState): K8sNode[] => {
+  if (!drafts.nodesMutable) {
+    drafts.nodes = drafts.nodes.slice();
+    drafts.nodesMutable = true;
+  }
+  return drafts.nodes;
+};
+
+const ensurePodDraft = (drafts: WatchDraftState): K8sPod[] => {
+  if (!drafts.podsMutable) {
+    drafts.pods = drafts.pods.slice();
+    drafts.podsMutable = true;
+  }
+  return drafts.pods;
+};
+
+const ensureServiceDraft = (drafts: WatchDraftState): K8sService[] => {
+  if (!drafts.servicesMutable) {
+    drafts.services = drafts.services.slice();
+    drafts.servicesMutable = true;
+  }
+  return drafts.services;
+};
+
+const applyWatchEventToDrafts = (
+  event: WatchEvent,
+  drafts: WatchDraftState,
+  flags: WatchChangeFlags
+) => {
   const { type, objectType, object } = event;
 
   if (objectType === "node") {
@@ -203,112 +250,173 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
     const uid = node.metadata.uid;
     const index = nodesByUid.get(uid);
 
-    setStore("nodes", (nodes) => {
-      if (type === "DELETED") {
-        if (index !== undefined) {
-          flags.topologyChanged = true;
-          flags.styleChanged = true;
-          nodesByUid.delete(uid);
-          const filtered = nodes.filter((n) => n.metadata.uid !== uid);
-          // Rebuild node index after delete (indexes shift)
-          nodesByUid.clear();
-          for (let i = 0; i < filtered.length; i++) nodesByUid.set(filtered[i].metadata.uid, i);
-          return filtered;
-        }
-        return nodes;
-      } else if (index !== undefined) {
-        const previous = nodes[index];
-        if (previous.metadata.name !== node.metadata.name) {
-          flags.topologyChanged = true;
-        }
-        if (nodeReadyStatus(previous) !== nodeReadyStatus(node)) {
-          flags.styleChanged = true;
-        }
-        const updated = [...nodes];
-        updated[index] = node;
-        return updated;
-      } else {
+    if (type === "DELETED") {
+      if (index !== undefined) {
         flags.topologyChanged = true;
         flags.styleChanged = true;
-        nodesByUid.set(uid, nodes.length);
-        return [...nodes, node];
+        const nodes = ensureNodeDraft(drafts);
+        nodes.splice(index, 1);
+        rebuildUidIndex(nodes, nodesByUid);
       }
-    });
+      return;
+    }
+
+    if (index !== undefined) {
+      const previous = drafts.nodes[index];
+      if (previous.metadata.name !== node.metadata.name) {
+        flags.topologyChanged = true;
+      }
+      if (nodeReadyStatus(previous) !== nodeReadyStatus(node)) {
+        flags.styleChanged = true;
+      }
+      const nodes = ensureNodeDraft(drafts);
+      nodes[index] = node;
+      return;
+    }
+
+    flags.topologyChanged = true;
+    flags.styleChanged = true;
+    const nodes = ensureNodeDraft(drafts);
+    nodesByUid.set(uid, nodes.length);
+    nodes.push(node);
   } else if (objectType === "pod") {
     const pod = object as K8sPod;
     const uid = pod.metadata.uid;
     const index = podsByUid.get(uid);
 
-    setStore("pods", (pods) => {
-      if (type === "DELETED") {
-        if (index !== undefined) {
-          flags.topologyChanged = true;
-          flags.styleChanged = true;
-          podsByUid.delete(uid);
-          const filtered = pods.filter((p) => p.metadata.uid !== uid);
-          podsByUid.clear();
-          for (let i = 0; i < filtered.length; i++) podsByUid.set(filtered[i].metadata.uid, i);
-          return filtered;
-        }
-        return pods;
-      } else if (index !== undefined) {
-        const previous = pods[index];
-        if (
-          previous.metadata.name !== pod.metadata.name ||
-          previous.metadata.namespace !== pod.metadata.namespace ||
-          previous.spec.nodeName !== pod.spec.nodeName
-        ) {
-          flags.topologyChanged = true;
-        }
-        if (previous.status?.phase !== pod.status?.phase) {
-          flags.styleChanged = true;
-        }
-        const updated = [...pods];
-        updated[index] = pod;
-        return updated;
-      } else {
+    if (type === "DELETED") {
+      if (index !== undefined) {
         flags.topologyChanged = true;
         flags.styleChanged = true;
-        podsByUid.set(uid, pods.length);
-        return [...pods, pod];
+        const pods = ensurePodDraft(drafts);
+        pods.splice(index, 1);
+        rebuildUidIndex(pods, podsByUid);
       }
-    });
-  } else if (objectType === "service") {
-    const service = object as K8sService;
-    const uid = service.metadata.uid;
-    const index = servicesByUid.get(uid);
+      return;
+    }
 
-    setStore("services", (services) => {
-      if (type === "DELETED") {
-        if (index !== undefined) {
-          flags.topologyChanged = true;
-          servicesByUid.delete(uid);
-          const filtered = services.filter((s) => s.metadata.uid !== uid);
-          servicesByUid.clear();
-          for (let i = 0; i < filtered.length; i++) servicesByUid.set(filtered[i].metadata.uid, i);
-          return filtered;
-        }
-        return services;
-      } else if (index !== undefined) {
-        const previous = services[index];
-        if (
-          previous.metadata.name !== service.metadata.name ||
-          previous.metadata.namespace !== service.metadata.namespace ||
-          previous.spec.type !== service.spec.type ||
-          !selectorEquals(previous.spec.selector, service.spec.selector)
-        ) {
-          flags.topologyChanged = true;
-        }
-        const updated = [...services];
-        updated[index] = service;
-        return updated;
-      } else {
+    if (index !== undefined) {
+      const previous = drafts.pods[index];
+      if (
+        previous.metadata.name !== pod.metadata.name ||
+        previous.metadata.namespace !== pod.metadata.namespace ||
+        previous.spec.nodeName !== pod.spec.nodeName
+      ) {
         flags.topologyChanged = true;
-        servicesByUid.set(uid, services.length);
-        return [...services, service];
       }
-    });
+      if (previous.status?.phase !== pod.status?.phase) {
+        flags.styleChanged = true;
+      }
+      const pods = ensurePodDraft(drafts);
+      pods[index] = pod;
+      return;
+    }
+
+    flags.topologyChanged = true;
+    flags.styleChanged = true;
+    const pods = ensurePodDraft(drafts);
+    podsByUid.set(uid, pods.length);
+    pods.push(pod);
+    return;
   }
+
+  const service = object as K8sService;
+  const uid = service.metadata.uid;
+  const index = servicesByUid.get(uid);
+
+  if (type === "DELETED") {
+    if (index !== undefined) {
+      flags.topologyChanged = true;
+      const services = ensureServiceDraft(drafts);
+      services.splice(index, 1);
+      rebuildUidIndex(services, servicesByUid);
+    }
+    return;
+  }
+
+  if (index !== undefined) {
+    const previous = drafts.services[index];
+    if (
+      previous.metadata.name !== service.metadata.name ||
+      previous.metadata.namespace !== service.metadata.namespace ||
+      !selectorEquals(previous.spec.selector, service.spec.selector)
+    ) {
+      flags.topologyChanged = true;
+    }
+    const services = ensureServiceDraft(drafts);
+    services[index] = service;
+    return;
+  }
+
+  flags.topologyChanged = true;
+  const services = ensureServiceDraft(drafts);
+  servicesByUid.set(uid, services.length);
+  services.push(service);
+};
+
+const publishWatchDrafts = (drafts: WatchDraftState) => {
+  if (drafts.nodesMutable) {
+    setStore("nodes", reconcile(drafts.nodes));
+  }
+  if (drafts.podsMutable) {
+    setStore("pods", reconcile(drafts.pods));
+  }
+  if (drafts.servicesMutable) {
+    setStore("services", reconcile(drafts.services));
+  }
+};
+
+const createWatchDraftState = (): WatchDraftState => ({
+  nodes: store.nodes,
+  pods: store.pods,
+  services: store.services,
+  nodesMutable: false,
+  podsMutable: false,
+  servicesMutable: false,
+});
+
+const replaceStoreCollections = (
+  nodes: K8sNode[],
+  pods: K8sPod[],
+  services: K8sService[]
+) => {
+  setStore("nodes", reconcile(nodes));
+  setStore("pods", reconcile(pods));
+  setStore("services", reconcile(services));
+  rebuildIndexes(nodes, pods, services);
+};
+
+const replaceStoreState = (nextState: K8sStore) => {
+  batch(() => {
+    replaceStoreCollections(nextState.nodes, nextState.pods, nextState.services);
+    setStore("topologyVersion", nextState.topologyVersion);
+    setStore("styleVersion", nextState.styleVersion);
+    setStore("connected", nextState.connected);
+    setStore("lastUpdate", nextState.lastUpdate);
+    setStore("error", nextState.error);
+  });
+};
+
+const applyFetchedCollections = (
+  nodes: K8sNode[],
+  pods: K8sPod[],
+  services: K8sService[],
+  topologyChanged: boolean,
+  styleChanged: boolean
+) => {
+  batch(() => {
+    replaceStoreCollections(nodes, pods, services);
+    if (topologyChanged) bumpTopologyVersion();
+    if (styleChanged) bumpStyleVersion();
+    setStore("lastUpdate", Date.now());
+    setStore("error", null);
+  });
+};
+
+const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
+  const drafts = createWatchDraftState();
+  applyWatchEventToDrafts(event, drafts, flags);
+  publishWatchDrafts(drafts);
 };
 
 const flushPendingWatchEvents = () => {
@@ -321,11 +429,13 @@ const flushPendingWatchEvents = () => {
     topologyChanged: false,
     styleChanged: false,
   };
+  const drafts = createWatchDraftState();
 
   batch(() => {
     for (const event of events) {
-      applyWatchEventToStore(event, flags);
+      applyWatchEventToDrafts(event, drafts, flags);
     }
+    publishWatchDrafts(drafts);
     setStore("lastUpdate", Date.now());
     if (flags.topologyChanged) bumpTopologyVersion();
     if (flags.styleChanged) bumpStyleVersion();
@@ -390,14 +500,7 @@ async function fetchInitialData() {
         const styleChanged =
           computeStyleHash(nodes, pods) !== computeStyleHash(store.nodes, store.pods);
 
-        setStore("nodes", reconcile(nodes));
-        setStore("pods", reconcile(pods));
-        setStore("services", reconcile(services));
-        rebuildIndexes(nodes, pods, services);
-        if (topologyChanged) bumpTopologyVersion();
-        if (styleChanged) bumpStyleVersion();
-        setStore("lastUpdate", Date.now());
-        setStore("error", null);
+        applyFetchedCollections(nodes, pods, services, topologyChanged, styleChanged);
       } else {
         throw new Error(`Public API error: ${resp.status}`);
       }
@@ -440,14 +543,13 @@ async function fetchInitialData() {
     const styleChanged =
       computeStyleHash(nextNodes, nextPods) !== computeStyleHash(store.nodes, store.pods);
 
-    setStore("nodes", reconcile(nextNodes));
-    setStore("pods", reconcile(nextPods));
-    setStore("services", reconcile(nextServices));
-    rebuildIndexes(nextNodes, nextPods, nextServices);
-    if (topologyChanged) bumpTopologyVersion();
-    if (styleChanged) bumpStyleVersion();
-    setStore("lastUpdate", Date.now());
-    setStore("error", null);
+    applyFetchedCollections(
+      nextNodes,
+      nextPods,
+      nextServices,
+      topologyChanged,
+      styleChanged
+    );
   } catch (err) {
     console.error("Failed to fetch K8s data:", err);
     setStore(
@@ -613,4 +715,22 @@ export const isNodeReady = (node: K8sNode): boolean => {
 
 export const getPodsOnNode = (nodeName: string): K8sPod[] => {
   return store.pods.filter((p) => p.spec.nodeName === nodeName);
+};
+
+export const __k8sTestUtils = {
+  applyWatchEventToStore,
+  enqueueWatchEvent,
+  flushPendingWatchEvents,
+  replaceStoreState,
+  resetStore: () =>
+    replaceStoreState({
+      nodes: [],
+      pods: [],
+      services: [],
+      topologyVersion: 0,
+      styleVersion: 0,
+      connected: false,
+      lastUpdate: 0,
+      error: null,
+    }),
 };
