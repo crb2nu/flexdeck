@@ -229,6 +229,7 @@ describe('Workbench', () => {
   let cleanup: () => void = () => undefined;
 
   beforeEach(() => {
+    vi.stubGlobal('scrollTo', vi.fn());
     workbenchMocks.healthFeatures.flexinfer_proxy.enabled = true;
     workbenchMocks.healthFeatures.modelcache.enabled = true;
 
@@ -274,6 +275,7 @@ describe('Workbench', () => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
+    vi.unstubAllGlobals();
   });
 
   it('renders ready, stale, and partial section states from shared operator data', async () => {
@@ -339,5 +341,20 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Router disabled');
     expect(text).toContain('DISABLED · feature disabled');
+  });
+
+  it('resets the viewport when switching sections from the overview shell', async () => {
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Operator briefing');
+    });
+
+    clickButtonContaining('Telemetry');
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Proxy and router health');
+    });
+
+    expect(window.scrollTo).toHaveBeenCalled();
   });
 });

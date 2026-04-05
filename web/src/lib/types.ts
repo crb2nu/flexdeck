@@ -860,6 +860,7 @@ export interface ModelCatalogEntry {
 export interface HUDFleetResponse {
   sessions: HUDSession[];
   agents: HUDAgentPresence[];
+  claims?: HUDClaim[];
   tasks: HUDTask[];
   kpis: Record<string, number>;
 }
