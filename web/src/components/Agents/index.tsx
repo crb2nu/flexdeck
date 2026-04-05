@@ -3,7 +3,7 @@ import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
-import { TabBar, LoadingState, EmptyState, ErrorState } from '../shared';
+import { LoadingState, EmptyState, ErrorState, OperationsSidebarNav } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
 import { getHudEntryState } from '../../lib/featureFlags';
 import { healthStore } from '../../stores/health';
@@ -17,25 +17,20 @@ import { isHUDAgent } from './hudUtils';
 
 const HUDTab = lazy(() => import('./HUDTab'));
 
-type ViewMode = 'hud' | 'registry' | 'flow';
+type OperationsSection = 'overview' | 'presence' | 'workflows' | 'claims' | 'timeline' | 'registry' | 'flow';
 type EditableAgentType = 'langgraph' | 'custom';
 
 const toEditableAgentType = (type: Agent['type']): EditableAgentType =>
   type === 'langgraph' ? 'langgraph' : 'custom';
-
-const VIEW_TABS = [
-  { id: 'hud' as const, label: 'HUD' },
-  { id: 'registry' as const, label: 'Registry' },
-  { id: 'flow' as const, label: 'Flow' },
-];
 
 const Agents: Component = () => {
   const [agents, setAgents] = createStore<Agent[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
-  const [viewMode, setViewMode] = createSignal<ViewMode>('hud');
+  const [activeSection, setActiveSection] = createSignal<OperationsSection>('overview');
   const hudEntry = createMemo(() => getHudEntryState(healthStore.features || {}));
+  const isToolingSection = createMemo(() => activeSection() === 'registry' || activeSection() === 'flow');
 
   // Graph data
   const [graphNodes, setGraphNodes] = createSignal<AgentNode[]>([]);
@@ -114,11 +109,80 @@ const Agents: Component = () => {
 
   createPolling('agents-main', async () => {
     await Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
-  }, 10000, () => viewMode() !== 'hud');
+  }, 10000, () => !isToolingSection());
 
   createEffect(() => {
-    if (viewMode() !== 'hud') {
+    if (isToolingSection()) {
       void Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
+    }
+  });
+
+  const sectionNav = createMemo(() => [
+    {
+      id: 'overview' as const,
+      label: 'Overview',
+      eyebrow: 'Cockpit',
+      detail: 'Start with a live HUD briefing, then move into a focused lane.',
+      group: 'Primary',
+    },
+    {
+      id: 'presence' as const,
+      label: 'Presence & tasks',
+      eyebrow: 'Live HUD',
+      detail: 'Who is active and how much slice work is building.',
+      group: 'Live HUD',
+    },
+    {
+      id: 'workflows' as const,
+      label: 'Workflow queue',
+      eyebrow: 'Live HUD',
+      detail: 'Approvals, rejections, and in-flight execution.',
+      group: 'Live HUD',
+    },
+    {
+      id: 'claims' as const,
+      label: 'Claim ledger',
+      eyebrow: 'Live HUD',
+      detail: 'File pressure and conflict hotspots across the workspace.',
+      group: 'Live HUD',
+    },
+    {
+      id: 'timeline' as const,
+      label: 'Timeline',
+      eyebrow: 'Live HUD',
+      detail: 'Heartbeat and workflow event feed health.',
+      group: 'Live HUD',
+    },
+    {
+      id: 'registry' as const,
+      label: 'Registry',
+      eyebrow: 'Tooling',
+      detail: 'Definitions, health checks, and manual agent tools.',
+      group: 'Tooling',
+    },
+    {
+      id: 'flow' as const,
+      label: 'Flow graph',
+      eyebrow: 'Tooling',
+      detail: 'Relationship view for registered agents.',
+      group: 'Tooling',
+    },
+  ]);
+
+  const hudFocus = createMemo(() => {
+    switch (activeSection()) {
+      case 'overview':
+        return 'overview' as const;
+      case 'presence':
+        return 'presence' as const;
+      case 'workflows':
+        return 'workflows' as const;
+      case 'claims':
+        return 'claims' as const;
+      case 'timeline':
+        return 'timeline' as const;
+      default:
+        return 'full' as const;
     }
   });
 
@@ -249,12 +313,6 @@ const Agents: Component = () => {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <TabBar
-            tabs={VIEW_TABS}
-            active={viewMode()}
-            onChange={(id) => setViewMode(id as ViewMode)}
-            size="md"
-          />
           <Show when={hudEntry().directEntryEnabled && hudEntry().directUrl}>
             <button
               type="button"
@@ -266,7 +324,7 @@ const Agents: Component = () => {
           </Show>
           <button
             onClick={() => { fetchAgents(); fetchGraph(); }}
-            disabled={loading() || viewMode() === 'hud'}
+            disabled={loading() || !isToolingSection()}
             class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Refresh registry
@@ -274,14 +332,24 @@ const Agents: Component = () => {
         </div>
       </div>
 
-      <Show when={error() && viewMode() !== 'hud'}>
+      <Show when={error() && isToolingSection()}>
         <ErrorState message={error()} />
       </Show>
 
-      <PageScrollBody class={viewMode() === 'flow' ? 'overflow-hidden' : ''}>
-        <Show when={viewMode() === 'hud'}>
+      <PageScrollBody class={activeSection() === 'flow' ? 'overflow-hidden' : ''}>
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+          <OperationsSidebarNav
+            title="Operations lanes"
+            description="The live HUD and the older registry tools now share one page shell. Pick a lane on the left instead of scanning the whole surface at once."
+            items={sectionNav()}
+            active={activeSection()}
+            onChange={(section) => setActiveSection(section as OperationsSection)}
+          />
+
+          <div class="min-w-0">
+        <Show when={!isToolingSection()}>
           <ErrorBoundary fallback={(err) => (
-            <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+            <div class="glass-panel border border-status-error/20 p-4 text-sm text-status-error">
               HUD error: {err.message}
             </div>
           )}>
@@ -290,12 +358,53 @@ const Agents: Component = () => {
                 <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-purple" />
               </div>
             }>
-              <HUDTab />
+              <div class="space-y-4">
+                <HUDTab focus={hudFocus()} />
+                <Show when={activeSection() === 'overview'}>
+                  <div class="grid gap-4 lg:grid-cols-2">
+                    <div class="glass-panel p-4">
+                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Tooling lanes</div>
+                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveSection('registry')}
+                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-neon-cyan/20 hover:bg-white/7"
+                        >
+                          <div class="text-sm font-medium text-text-main">Registry</div>
+                          <div class="mt-1 text-xs leading-5 text-text-dim">Definitions, health checks, and manual agent controls remain available here when you need deeper tooling.</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSection('flow')}
+                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-neon-cyan/20 hover:bg-white/7"
+                        >
+                          <div class="text-sm font-medium text-text-main">Flow graph</div>
+                          <div class="mt-1 text-xs leading-5 text-text-dim">Switch to the relationship graph when you need to inspect topology instead of live operator pressure.</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="glass-panel p-4">
+                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Operating posture</div>
+                      <div class="mt-3 space-y-3 text-sm text-text-dim">
+                        <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                          <div class="font-medium text-text-main">Live HUD first</div>
+                          <div class="mt-1 text-xs">Presence, work queue, claims, and the timeline now act as the primary control plane.</div>
+                        </div>
+                        <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                          <div class="font-medium text-text-main">Tooling second</div>
+                          <div class="mt-1 text-xs">Registry and graph views are still available, but they no longer compete with the live operations surface for attention.</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Show>
+              </div>
             </Suspense>
           </ErrorBoundary>
         </Show>
 
-        <Show when={viewMode() !== 'hud'}>
+        <Show when={isToolingSection()}>
           <Show
             when={!loading() || agents.length > 0}
             fallback={<LoadingState message="Loading registry..." />}
@@ -311,7 +420,7 @@ const Agents: Component = () => {
                 />
               }
             >
-              <Show when={viewMode() === 'flow'}>
+              <Show when={activeSection() === 'flow'}>
                 <div class="flex-1 min-h-[400px]">
                   <AgentFlowGraph
                     nodes={graphNodes()}
@@ -324,7 +433,7 @@ const Agents: Component = () => {
                 </div>
               </Show>
 
-              <Show when={viewMode() === 'registry'}>
+              <Show when={activeSection() === 'registry'}>
                 <div class="space-y-4">
                   <div class="glass-panel flex items-center justify-between px-4 py-3">
                     <div>
@@ -374,6 +483,8 @@ const Agents: Component = () => {
             </Show>
           </Show>
         </Show>
+          </div>
+        </div>
       </PageScrollBody>
 
       {/* Create/Edit Form Modal */}

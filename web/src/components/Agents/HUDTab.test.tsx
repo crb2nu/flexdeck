@@ -298,4 +298,17 @@ describe('HUDTab', () => {
     expect(text).toContain('Loom HUD is disabled by policy');
     expect(text).not.toContain('Degraded feed');
   });
+
+  it('renders overview focus as a briefing surface instead of the full queue stack', async () => {
+    cleanup = mount(() => <HUDTab focus="overview" />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Live posture');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Operator notes');
+    expect(text).not.toContain('Claim ledger');
+    expect(text).not.toContain('Workflow queue');
+  });
 });
