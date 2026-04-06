@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { batch, createSignal } from 'solid-js';
 import { modelsApi, flexinferProxyApi, litellm } from '../lib/api';
 import type {
   FlexInferProxyMetricsResponse,
@@ -18,37 +18,85 @@ export interface FlexInferProxyHealthState {
   message?: string;
 }
 
+interface AsyncState<T> {
+  value: () => T;
+  setValue: (value: T) => void;
+  loading: () => boolean;
+  setLoading: (loading: boolean) => void;
+  error: () => string;
+  setError: (error: string) => void;
+  updatedAt: () => number;
+  setUpdatedAt: (updatedAt: number) => void;
+}
+
+function createAsyncState<T>(initialValue: T): AsyncState<T> {
+  const [value, setValue] = createSignal<T>(initialValue);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal('');
+  const [updatedAt, setUpdatedAt] = createSignal(0);
+
+  return {
+    value,
+    setValue,
+    loading,
+    setLoading,
+    error,
+    setError,
+    updatedAt,
+    setUpdatedAt,
+  };
+}
+
+function resetAsyncState<T>(state: AsyncState<T>, value: T): void {
+  batch(() => {
+    state.setValue(value);
+    state.setLoading(true);
+    state.setError('');
+    state.setUpdatedAt(0);
+  });
+}
+
+function clearAsyncState<T>(state: AsyncState<T>, value: T): void {
+  batch(() => {
+    state.setValue(value);
+    state.setLoading(false);
+    state.setError('');
+    state.setUpdatedAt(0);
+  });
+}
+
+function startAsyncState<T>(state: AsyncState<T>): void {
+  state.setLoading(true);
+}
+
+function completeAsyncState<T>(state: AsyncState<T>, value: T): void {
+  batch(() => {
+    state.setValue(value);
+    state.setError('');
+    state.setUpdatedAt(Date.now());
+    state.setLoading(false);
+  });
+}
+
+function failAsyncState<T>(state: AsyncState<T>, error: string): void {
+  batch(() => {
+    state.setError(error);
+    state.setLoading(false);
+  });
+}
+
 const REGISTRY_POLL_ID = 'flexinfer-registry-models';
 const PROXY_POLL_ID = 'flexinfer-proxy-metrics';
 const ROUTER_POLL_ID = 'flexinfer-router-info';
 const CATALOG_POLL_ID = 'flexinfer-catalogs';
 const CACHE_POLL_ID = 'flexinfer-caches';
 
-const [registryModels, setRegistryModels] = createSignal<RegisteredModel[]>([]);
-const [registryLoading, setRegistryLoading] = createSignal(true);
-const [registryError, setRegistryError] = createSignal('');
-const [registryUpdatedAt, setRegistryUpdatedAt] = createSignal(0);
-
-const [proxyMetrics, setProxyMetrics] = createSignal<FlexInferProxyMetricsResponse | null>(null);
-const [proxyHealth, setProxyHealth] = createSignal<FlexInferProxyHealthState | null>(null);
-const [proxyLoading, setProxyLoading] = createSignal(true);
-const [proxyError, setProxyError] = createSignal('');
-const [proxyUpdatedAt, setProxyUpdatedAt] = createSignal(0);
-
-const [routerInfo, setRouterInfo] = createSignal<LiteLLMRouterResponse | null>(null);
-const [routerLoading, setRouterLoading] = createSignal(true);
-const [routerError, setRouterError] = createSignal('');
-const [routerUpdatedAt, setRouterUpdatedAt] = createSignal(0);
-
-const [catalogs, setCatalogs] = createSignal<ModelCatalogEntry[]>([]);
-const [catalogLoading, setCatalogLoading] = createSignal(true);
-const [catalogError, setCatalogError] = createSignal('');
-const [catalogUpdatedAt, setCatalogUpdatedAt] = createSignal(0);
-
-const [caches, setCaches] = createSignal<ModelCache[]>([]);
-const [cacheLoading, setCacheLoading] = createSignal(true);
-const [cacheError, setCacheError] = createSignal('');
-const [cacheUpdatedAt, setCacheUpdatedAt] = createSignal(0);
+const registryState = createAsyncState<RegisteredModel[]>([]);
+const proxyMetricsState = createAsyncState<FlexInferProxyMetricsResponse | null>(null);
+const proxyHealthState = createSignal<FlexInferProxyHealthState | null>(null);
+const routerState = createAsyncState<LiteLLMRouterResponse | null>(null);
+const catalogState = createAsyncState<ModelCatalogEntry[]>([]);
+const cacheState = createAsyncState<ModelCache[]>([]);
 
 let pollingConsumers = 0;
 
@@ -60,138 +108,96 @@ export function __resetFlexInferOperationalStoreForTests(): void {
   pollingScheduler.unregister(CATALOG_POLL_ID);
   pollingScheduler.unregister(CACHE_POLL_ID);
 
-  setRegistryModels([]);
-  setRegistryLoading(true);
-  setRegistryError('');
-  setRegistryUpdatedAt(0);
-
-  setProxyMetrics(null);
-  setProxyHealth(null);
-  setProxyLoading(true);
-  setProxyError('');
-  setProxyUpdatedAt(0);
-
-  setRouterInfo(null);
-  setRouterLoading(true);
-  setRouterError('');
-  setRouterUpdatedAt(0);
-
-  setCatalogs([]);
-  setCatalogLoading(true);
-  setCatalogError('');
-  setCatalogUpdatedAt(0);
-
-  setCaches([]);
-  setCacheLoading(true);
-  setCacheError('');
-  setCacheUpdatedAt(0);
+  batch(() => {
+    resetAsyncState(registryState, []);
+    resetAsyncState(proxyMetricsState, null);
+    resetAsyncState(routerState, null);
+    resetAsyncState(catalogState, []);
+    resetAsyncState(cacheState, []);
+    proxyHealthState[1](null);
+  });
 }
 
 export async function refreshFlexInferRegistry(): Promise<void> {
-  setRegistryLoading(true);
+  startAsyncState(registryState);
   try {
     const data = await modelsApi.list();
-    setRegistryModels(data.models || []);
-    setRegistryError('');
-    setRegistryUpdatedAt(Date.now());
+    completeAsyncState(registryState, data.models || []);
   } catch (err) {
-    setRegistryError(err instanceof Error ? err.message : 'Failed to fetch models');
-  } finally {
-    setRegistryLoading(false);
+    failAsyncState(registryState, err instanceof Error ? err.message : 'Failed to fetch models');
   }
 }
 
 export async function refreshFlexInferProxy(): Promise<void> {
   if (!healthStore.features?.flexinfer_proxy?.enabled) {
-    setProxyMetrics(null);
-    setProxyHealth(null);
-    setProxyError('');
-    setProxyLoading(false);
+    batch(() => {
+      clearAsyncState(proxyMetricsState, null);
+      proxyHealthState[1](null);
+    });
     return;
   }
 
-  setProxyLoading(true);
+  startAsyncState(proxyMetricsState);
   const [healthResult, metricsResult] = await Promise.allSettled([
     flexinferProxyApi.health(),
     flexinferProxyApi.metrics(),
   ]);
 
   if (healthResult.status === 'fulfilled') {
-    setProxyHealth(healthResult.value);
+    proxyHealthState[1](healthResult.value);
   } else {
-    setProxyHealth(null);
+    proxyHealthState[1](null);
   }
 
   if (metricsResult.status === 'fulfilled') {
-    setProxyMetrics(metricsResult.value);
-    setProxyError('');
-    setProxyUpdatedAt(Date.now());
+    completeAsyncState(proxyMetricsState, metricsResult.value);
   } else {
-    setProxyMetrics(null);
-    setProxyError(
+    failAsyncState(
+      proxyMetricsState,
       metricsResult.reason instanceof Error
         ? metricsResult.reason.message
         : 'Failed to fetch proxy metrics',
     );
   }
-
-  setProxyLoading(false);
 }
 
 export async function refreshFlexInferRouter(): Promise<void> {
   if (!healthStore.features?.flexinfer_proxy?.enabled) {
-    setRouterInfo(null);
-    setRouterError('');
-    setRouterLoading(false);
+    clearAsyncState(routerState, null);
     return;
   }
 
-  setRouterLoading(true);
+  startAsyncState(routerState);
   try {
     const data = await litellm.router();
-    setRouterInfo(data);
-    setRouterError('');
-    setRouterUpdatedAt(Date.now());
+    completeAsyncState(routerState, data);
   } catch (err) {
-    setRouterInfo(null);
-    setRouterError(err instanceof Error ? err.message : 'Failed to fetch router info');
-  } finally {
-    setRouterLoading(false);
+    failAsyncState(routerState, err instanceof Error ? err.message : 'Failed to fetch router info');
   }
 }
 
 export async function refreshFlexInferCatalogs(): Promise<void> {
-  setCatalogLoading(true);
+  startAsyncState(catalogState);
   try {
     const data = await modelsApi.catalogs();
-    setCatalogs(data.catalogs || []);
-    setCatalogError('');
-    setCatalogUpdatedAt(Date.now());
+    completeAsyncState(catalogState, data.catalogs || []);
   } catch (err) {
-    setCatalogError(err instanceof Error ? err.message : 'Failed to fetch catalogs');
-  } finally {
-    setCatalogLoading(false);
+    failAsyncState(catalogState, err instanceof Error ? err.message : 'Failed to fetch catalogs');
   }
 }
 
 export async function refreshFlexInferCaches(): Promise<void> {
   if (!healthStore.features?.modelcache?.enabled) {
-    setCaches([]);
-    setCacheError('');
-    setCacheLoading(false);
+    clearAsyncState(cacheState, []);
     return;
   }
 
-  setCacheLoading(true);
+  startAsyncState(cacheState);
   try {
     const data = await modelsApi.cacheList();
-    setCaches(data.caches || []);
-    setCacheError('');
-    setCacheUpdatedAt(Date.now());
+    completeAsyncState(cacheState, data.caches || []);
   } catch (err) {
-    setCacheError(err instanceof Error ? err.message : 'Failed to fetch caches');
-  } finally {
-    setCacheLoading(false);
+    failAsyncState(cacheState, err instanceof Error ? err.message : 'Failed to fetch caches');
   }
 }
 
@@ -227,26 +233,28 @@ export function stopFlexInferOperationalPolling(): void {
   pollingScheduler.unregister(CACHE_POLL_ID);
 }
 
-export {
-  cacheError as flexinferCacheError,
-  cacheLoading as flexinferCacheLoading,
-  cacheUpdatedAt as flexinferCacheUpdatedAt,
-  caches as flexinferCaches,
-  catalogError as flexinferCatalogError,
-  catalogLoading as flexinferCatalogLoading,
-  catalogs as flexinferCatalogs,
-  catalogUpdatedAt as flexinferCatalogUpdatedAt,
-  proxyError as flexinferProxyError,
-  proxyHealth as flexinferProxyHealth,
-  proxyLoading as flexinferProxyLoading,
-  proxyMetrics as flexinferProxyMetrics,
-  proxyUpdatedAt as flexinferProxyUpdatedAt,
-  registryError as flexinferRegistryError,
-  registryLoading as flexinferRegistryLoading,
-  registryModels as flexinferRegistryModels,
-  registryUpdatedAt as flexinferRegistryUpdatedAt,
-  routerError as flexinferRouterError,
-  routerInfo as flexinferRouterInfo,
-  routerLoading as flexinferRouterLoading,
-  routerUpdatedAt as flexinferRouterUpdatedAt,
-};
+export const flexinferCacheError = cacheState.error;
+export const flexinferCacheLoading = cacheState.loading;
+export const flexinferCacheUpdatedAt = cacheState.updatedAt;
+export const flexinferCaches = cacheState.value;
+
+export const flexinferCatalogError = catalogState.error;
+export const flexinferCatalogLoading = catalogState.loading;
+export const flexinferCatalogUpdatedAt = catalogState.updatedAt;
+export const flexinferCatalogs = catalogState.value;
+
+export const flexinferProxyError = proxyMetricsState.error;
+export const flexinferProxyHealth = proxyHealthState[0];
+export const flexinferProxyLoading = proxyMetricsState.loading;
+export const flexinferProxyMetrics = proxyMetricsState.value;
+export const flexinferProxyUpdatedAt = proxyMetricsState.updatedAt;
+
+export const flexinferRegistryError = registryState.error;
+export const flexinferRegistryLoading = registryState.loading;
+export const flexinferRegistryModels = registryState.value;
+export const flexinferRegistryUpdatedAt = registryState.updatedAt;
+
+export const flexinferRouterError = routerState.error;
+export const flexinferRouterInfo = routerState.value;
+export const flexinferRouterLoading = routerState.loading;
+export const flexinferRouterUpdatedAt = routerState.updatedAt;

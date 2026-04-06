@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, For, Show, createMemo } from 'solid-js';
+import { batch, Component, createSignal, createMemo, For, Show, onMount } from 'solid-js';
 import { modelsApi } from '../../lib/api';
 import type { FlexInferModel, FlexInferModelListResponse, ModelComparisonData } from '../../lib/types';
 
@@ -11,15 +11,21 @@ const ModelComparison: Component = () => {
   const [viewMode, setViewMode] = createSignal<'table' | 'chart'>('table');
   const [gpuData, setGpuData] = createSignal<any[]>([]);
 
-  createEffect(async () => {
+  const loadComparisonData = async () => {
     try {
       const [crd, gpu] = await Promise.all([
         modelsApi.crd(),
         fetch('/api/k8s/metrics/gpu/models').then(r => r.ok ? r.json() : { models: [] }),
       ]);
-      setModels((crd as FlexInferModelListResponse).models || []);
-      setGpuData(gpu.models || []);
+      batch(() => {
+        setModels((crd as FlexInferModelListResponse).models || []);
+        setGpuData(gpu.models || []);
+      });
     } catch { /* ignore */ }
+  };
+
+  onMount(() => {
+    void loadComparisonData();
   });
 
   const readyModels = createMemo(() => models().filter(m => m.status?.phase === 'Ready'));
