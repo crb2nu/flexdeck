@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
+import { Component, createSignal, For, onMount, Show } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { api } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
@@ -58,6 +58,10 @@ const ModelGPUTable: Component = () => {
       setError(true);
     }
   };
+
+  onMount(() => {
+    void fetchData();
+  });
 
   createPolling('gpu-models', fetchData, POLL_INTERVAL);
 
