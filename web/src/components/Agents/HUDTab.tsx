@@ -1,4 +1,5 @@
 import { batch, Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { createStore } from 'solid-js/store';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
@@ -35,13 +36,15 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [tasks, setTasks] = createSignal<HUDTask[]>([]);
   const [workflows, setWorkflows] = createSignal<HUDWorkflow[]>([]);
   const [timeline, setTimeline] = createSignal<HUDTimelineEvent[]>([]);
-  const [loading, setLoading] = createSignal(true);
-  const [refreshing, setRefreshing] = createSignal(false);
-  const [error, setError] = createSignal('');
-  const [workflowAction, setWorkflowAction] = createSignal<string | null>(null);
-  const [eventsConnection, setEventsConnection] = createSignal<FeedConnectionState>('disabled');
-  const [lastSuccessfulPull, setLastSuccessfulPull] = createSignal<number>(0);
-  const [now, setNow] = createSignal(Date.now());
+  const [state, setState] = createStore({
+    loading: true,
+    refreshing: false,
+    error: '',
+    workflowAction: null as string | null,
+    eventsConnection: 'disabled' as FeedConnectionState,
+    lastSuccessfulPull: 0,
+    now: Date.now(),
+  });
 
   const hudMode = createMemo(() => getHudModeState(healthStore.features || {}));
   const pullEnabled = () => hudMode().pullEnabled;
@@ -72,8 +75,10 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       throw new Error(toErrorMessage(reason.reason, 'Failed to fetch HUD pull data'));
     }
 
-    setLastSuccessfulPull(Date.now());
-    setError('');
+    setState({
+      lastSuccessfulPull: Date.now(),
+      error: '',
+    });
   };
 
   const fetchAllPush = async () => {
@@ -84,25 +89,27 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     setTasks([]);
     setWorkflows([]);
     setTimeline([]);
-    setError('');
+    setState('error', '');
   };
 
   const fetchAll = async () => {
-    const isInitialLoad = loading();
-    if (!isInitialLoad) setRefreshing(true);
+    const isInitialLoad = state.loading;
+    if (!isInitialLoad) setState('refreshing', true);
     try {
       if (pullEnabled()) {
         await fetchAllPull();
       } else if (pushEnabled()) {
         await fetchAllPush();
       } else {
-        setError(hudMode().disabledReason || 'Loom HUD is disabled');
+        setState('error', hudMode().disabledReason || 'Loom HUD is disabled');
       }
     } catch (err) {
-      setError(toErrorMessage(err, 'Failed to fetch HUD data'));
+      setState('error', toErrorMessage(err, 'Failed to fetch HUD data'));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setState({
+        loading: false,
+        refreshing: false,
+      });
     }
   };
 
@@ -111,51 +118,51 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   });
 
   const handleApprove = async (id: string) => {
-    setWorkflowAction(`approve:${id}`);
+    setState('workflowAction', `approve:${id}`);
     try {
       await hudApi.approveWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setError(toErrorMessage(err, 'Failed to approve workflow'));
+      setState('error', toErrorMessage(err, 'Failed to approve workflow'));
     } finally {
-      setWorkflowAction(null);
+      setState('workflowAction', null);
     }
   };
 
   const handleReject = async (id: string) => {
-    setWorkflowAction(`reject:${id}`);
+    setState('workflowAction', `reject:${id}`);
     try {
       await hudApi.rejectWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setError(toErrorMessage(err, 'Failed to reject workflow'));
+      setState('error', toErrorMessage(err, 'Failed to reject workflow'));
     } finally {
-      setWorkflowAction(null);
+      setState('workflowAction', null);
     }
   };
 
   const handleCancel = async (id: string) => {
-    setWorkflowAction(`cancel:${id}`);
+    setState('workflowAction', `cancel:${id}`);
     try {
       await hudApi.cancelWorkflow(id, 'Cancelled from FlexDeck HUD panel');
       setWorkflows((current) => applyWorkflowCancel(current, id));
       await fetchAll();
     } catch (err) {
-      setError(toErrorMessage(err, 'Failed to cancel workflow'));
+      setState('error', toErrorMessage(err, 'Failed to cancel workflow'));
     } finally {
-      setWorkflowAction(null);
+      setState('workflowAction', null);
     }
   };
 
   createPolling('agents-hud-pull', fetchAll, 15000);
 
-  createPolling('hud-now-ticker', () => { setNow(Date.now()); }, 5000);
+  createPolling('hud-now-ticker', () => { setState('now', Date.now()); }, 5000);
 
   createEffect(() => {
     if (!pullEnabled()) {
-      setEventsConnection('disabled');
-    } else if (eventsConnection() === 'disabled') {
-      setEventsConnection('connecting');
+      setState('eventsConnection', 'disabled');
+    } else if (state.eventsConnection === 'disabled') {
+      setState('eventsConnection', 'connecting');
     }
   });
 
@@ -190,23 +197,23 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   };
   const claimConflictCount = () => countClaimConflicts(claims());
   const taskBacklog = () => pendingTasks().length + inProgressTasks().length;
-  const feedStateLabel = () => feedConnectionLabel(eventsConnection());
+  const feedStateLabel = () => feedConnectionLabel(state.eventsConnection);
   const feedStateTone = (): HUDConsoleMetric['tone'] => {
-    const state = feedConnectionState(eventsConnection());
-    if (state === 'ready') return 'ok';
-    if (state === 'fallback' || state === 'stale') return 'warn';
+    const feedState = feedConnectionState(state.eventsConnection);
+    if (feedState === 'ready') return 'ok';
+    if (feedState === 'fallback' || feedState === 'stale') return 'warn';
     return 'cyan';
   };
 
   const hasStaleWarning = () =>
-    hasDegradedHUDFeed(pullEnabled(), eventsConnection(), lastSuccessfulPull(), now());
+    hasDegradedHUDFeed(pullEnabled(), state.eventsConnection, state.lastSuccessfulPull, state.now);
   const hasInitialData = () =>
     presence().length > 0 ||
     claims().length > 0 ||
     tasks().length > 0 ||
     workflows().length > 0 ||
     timeline().length > 0;
-  const isInitialLoading = () => loading() && !error() && !hasInitialData();
+  const isInitialLoading = () => state.loading && !state.error && !hasInitialData();
   const metrics = (): HUDConsoleMetric[] => [
     {
       label: 'Presence',
@@ -550,27 +557,27 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                       <button
                         type="button"
                         onClick={() => handleApprove(wf.id)}
-                        disabled={workflowAction() === `approve:${wf.id}`}
+                        disabled={state.workflowAction === `approve:${wf.id}`}
                         class="rounded-md bg-status-ok/20 px-3 py-1.5 text-xs font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
                       >
-                        {workflowAction() === `approve:${wf.id}` ? 'Approving...' : 'Approve'}
+                        {state.workflowAction === `approve:${wf.id}` ? 'Approving...' : 'Approve'}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleReject(wf.id)}
-                        disabled={workflowAction() === `reject:${wf.id}`}
+                        disabled={state.workflowAction === `reject:${wf.id}`}
                         class="rounded-md bg-status-error/20 px-3 py-1.5 text-xs font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
                       >
-                        {workflowAction() === `reject:${wf.id}` ? 'Rejecting...' : 'Reject'}
+                        {state.workflowAction === `reject:${wf.id}` ? 'Rejecting...' : 'Reject'}
                       </button>
                     </Show>
                     <button
                       type="button"
                       onClick={() => handleCancel(wf.id)}
-                      disabled={workflowAction() === `cancel:${wf.id}`}
+                      disabled={state.workflowAction === `cancel:${wf.id}`}
                       class="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-text-main transition-colors hover:bg-white/20 disabled:opacity-50"
                     >
-                      {workflowAction() === `cancel:${wf.id}` ? 'Cancelling...' : 'Cancel'}
+                      {state.workflowAction === `cancel:${wf.id}` ? 'Cancelling...' : 'Cancel'}
                     </button>
                   </div>
                 </div>
@@ -587,7 +594,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       initialEvents={timeline()}
       enabled={pullEnabled()}
       emptyMessage="No timeline entries yet. Live operations will appear here as soon as agents heartbeat, claim files, or transition workflows."
-      onConnectionStateChange={setEventsConnection}
+      onConnectionStateChange={(connection) => setState('eventsConnection', connection)}
     />
   );
 
@@ -605,16 +612,16 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         modeDescription={hudMode().modeDescription}
         metrics={metrics()}
         actions={[
-          { label: refreshing() ? 'Refreshing...' : 'Refresh HUD', onClick: fetchAll, variant: 'primary', disabled: loading() || refreshing() },
-          { label: refreshing() ? 'Refreshing...' : 'Reload timeline', onClick: fetchAll, variant: 'secondary', disabled: loading() || refreshing() },
+          { label: state.refreshing ? 'Refreshing...' : 'Refresh HUD', onClick: fetchAll, variant: 'primary', disabled: state.loading || state.refreshing },
+          { label: state.refreshing ? 'Refreshing...' : 'Reload timeline', onClick: fetchAll, variant: 'secondary', disabled: state.loading || state.refreshing },
         ]}
         alert={hasStaleWarning() ? {
           title: 'Degraded feed',
           message: `Live HUD data may lag. Timeline state is ${feedStateLabel().toLowerCase()} and workflow freshness should be treated as advisory after ${Math.floor(HUD_PULL_STALE_THRESHOLD_MS / 1000)}s.`,
           tone: 'warn',
-        } : error() ? {
+        } : state.error ? {
           title: 'HUD error',
-          message: error(),
+          message: state.error,
           tone: 'error',
         } : undefined}
       >
