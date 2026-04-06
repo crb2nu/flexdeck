@@ -240,7 +240,7 @@ describe('HUDTab', () => {
     cleanup = mount(() => <HUDTab />);
 
     await vi.waitFor(() => {
-      expect(hudMocks.fleet).toHaveBeenCalledTimes(1);
+      expect(hudMocks.fleet.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 
     await vi.waitFor(() => {

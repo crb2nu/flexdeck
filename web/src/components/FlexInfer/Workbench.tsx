@@ -60,6 +60,7 @@ type Surface = 'models' | 'admin';
 
 interface WorkbenchProps {
   surface?: Surface;
+  scrollViewport?: () => HTMLDivElement | undefined;
 }
 
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -79,7 +80,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const managementMode = () => getFlexInferManagementMode(healthStore.features || {});
   const proxyEnabled = () => healthStore.features?.flexinfer_proxy?.enabled ?? false;
   const modelCacheEnabled = () => healthStore.features?.modelcache?.enabled ?? false;
-  let workbenchRoot: HTMLDivElement | undefined;
 
   const [activeTab] = createSignal<ModelsTab>('controller');
   const noopSetActiveTab = () => undefined;
@@ -291,12 +291,12 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 
   createEffect(on(activeSection, () => {
     queueMicrotask(() => {
-      scrollNearestViewportToTop(workbenchRoot);
+      scrollViewportToTop(props.scrollViewport?.());
     });
   }, { defer: true }));
 
   return (
-    <div ref={workbenchRoot} class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
+    <div class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
       <div
         class={`glass-panel overflow-hidden border border-white/10 shadow-[0_18px_60px_rgba(0,0,0,0.24)] ${
           isAdminSurface()
@@ -1266,26 +1266,13 @@ function freshnessNote(values: number[]): string {
   return `Last successful refresh at ${new Date(latest).toLocaleTimeString()}.`;
 }
 
-function scrollNearestViewportToTop(element?: HTMLElement) {
+function scrollViewportToTop(viewport?: HTMLElement) {
   if (typeof window === 'undefined') return;
-  const viewport = findNearestScrollViewport(element);
   if (viewport) {
     viewport.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     return;
   }
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-}
-
-function findNearestScrollViewport(element?: HTMLElement): HTMLElement | undefined {
-  let current = element?.parentElement;
-  while (current) {
-    const style = window.getComputedStyle(current);
-    if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && current.scrollHeight > current.clientHeight) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  return undefined;
 }
 
 export default FlexInferWorkbench;

@@ -9,6 +9,7 @@ type PageScrollBodyProps = ParentProps<{
 const PageScrollBody: Component<PageScrollBodyProps> = (props) => (
   <div
     ref={(element) => props.viewportRef?.(element)}
+    data-page-scroll-body=""
     class={`h-full min-h-0 overflow-y-auto overscroll-contain ${props.class ?? ''}`}
   >
     <div class={`flex min-h-full min-w-0 flex-col ${props.contentClass ?? ''}`}>{props.children}</div>
