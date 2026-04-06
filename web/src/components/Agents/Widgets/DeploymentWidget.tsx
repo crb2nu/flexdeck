@@ -1,5 +1,6 @@
-import { Component, For, Show, createSignal, onMount } from 'solid-js';
+import { Component, createMemo, createResource, For, Show } from 'solid-js';
 import { modelsApi } from '../../../lib/api';
+import type { RegisteredModel } from '../../../lib/types';
 
 interface DeploymentInfo {
   name: string;
@@ -20,10 +21,52 @@ interface DeploymentWidgetProps {
   };
 }
 
+function normalizeDeploymentStatus(status: RegisteredModel['deployment_status']): DeploymentInfo['status'] {
+  switch (status) {
+    case 'deployed':
+      return 'deployed';
+    case 'pending':
+      return 'pending';
+    case 'failed':
+      return 'error';
+    case 'stopped':
+    case 'none':
+    default:
+      return 'stopped';
+  }
+}
+
+function mapRegisteredModelToDeployment(model: RegisteredModel): DeploymentInfo | null {
+  if (!model.deployment_name) return null;
+
+  const status = normalizeDeploymentStatus(model.deployment_status);
+
+  return {
+    name: model.deployment_name || model.name,
+    namespace: model.deployment_ns || 'ai',
+    replicas: model.replicas || 0,
+    ready: status === 'deployed' ? (model.replicas || 0) : 0,
+    status,
+    model: model.name,
+    backend: model.metadata?.backend as string | undefined,
+    hardware: model.metadata?.hardware as string | undefined,
+  };
+}
+
+async function loadDeployments(props: DeploymentWidgetProps['data']): Promise<DeploymentInfo[]> {
+  if (props.deployments) {
+    return props.deployments;
+  }
+
+  const result = await modelsApi.list();
+  const models = result?.models || [];
+  return models
+    .map((model: RegisteredModel) => mapRegisteredModelToDeployment(model))
+    .filter((deployment: DeploymentInfo | null): deployment is DeploymentInfo => deployment !== null);
+}
+
 const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
-  const [deployments, setDeployments] = createSignal<DeploymentInfo[]>([]);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
+  const [deploymentsResource] = createResource(() => props.data, loadDeployments);
 
   const statusConfig = (status: string) => {
     switch (status) {
@@ -40,39 +83,9 @@ const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
     }
   };
 
-  onMount(async () => {
-    // If deployments provided statically, use them
-    if (props.data.deployments) {
-      setDeployments(props.data.deployments);
-      setLoading(false);
-      return;
-    }
-
-    // Auto-discover from API
-    try {
-      setLoading(true);
-      const result = await modelsApi.list();
-      const models = result?.models || [];
-      const mapped: DeploymentInfo[] = models
-        .filter((m: Record<string, unknown>) => m.deployment_name)
-        .map((m: Record<string, unknown>) => ({
-          name: (m.deployment_name as string) || (m.name as string),
-          namespace: (m.deployment_ns as string) || 'ai',
-          replicas: (m.replicas as number) || 0,
-          ready: m.deployment_status === 'deployed' ? ((m.replicas as number) || 0) : 0,
-          status: (m.deployment_status as string) || 'stopped',
-          model: m.name as string,
-          backend: (m.metadata as Record<string, string>)?.backend,
-          hardware: (m.metadata as Record<string, string>)?.hardware,
-        }));
-      setDeployments(mapped);
-    } catch {
-      setError('Failed to fetch deployments');
-    } finally {
-      setLoading(false);
-    }
-  });
-
+  const deployments = createMemo(() => deploymentsResource() || []);
+  const loading = () => deploymentsResource.loading;
+  const error = () => deploymentsResource.error ? 'Failed to fetch deployments' : '';
   const totalRunning = () => deployments().filter(d => d.status === 'deployed').length;
   const totalCount = () => deployments().length;
 
