@@ -1,8 +1,8 @@
 import { batch, Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
-import { createStore } from 'solid-js/store';
 import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
+import { createAsyncStatusController } from '../../lib/asyncState';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
@@ -36,15 +36,14 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [tasks, setTasks] = createSignal<HUDTask[]>([]);
   const [workflows, setWorkflows] = createSignal<HUDWorkflow[]>([]);
   const [timeline, setTimeline] = createSignal<HUDTimelineEvent[]>([]);
-  const [state, setState] = createStore({
-    loading: true,
-    refreshing: false,
-    error: '',
+  const asyncState = createAsyncStatusController({
     workflowAction: null as string | null,
     eventsConnection: 'disabled' as FeedConnectionState,
     lastSuccessfulPull: 0,
     now: Date.now(),
   });
+  const state = asyncState.state;
+  const patchState = asyncState.patch;
 
   const hudMode = createMemo(() => getHudModeState(healthStore.features || {}));
   const pullEnabled = () => hudMode().pullEnabled;
@@ -75,7 +74,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       throw new Error(toErrorMessage(reason.reason, 'Failed to fetch HUD pull data'));
     }
 
-    setState({
+    patchState({
       lastSuccessfulPull: Date.now(),
       error: '',
     });
@@ -89,28 +88,24 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     setTasks([]);
     setWorkflows([]);
     setTimeline([]);
-    setState('error', '');
+    patchState({ error: '' });
   };
 
   const fetchAll = async () => {
-    const isInitialLoad = state.loading;
-    if (!isInitialLoad) setState('refreshing', true);
+    asyncState.start();
     try {
       if (pullEnabled()) {
         await fetchAllPull();
       } else if (pushEnabled()) {
         await fetchAllPush();
       } else {
-        setState('error', hudMode().disabledReason || 'Loom HUD is disabled');
+        asyncState.fail(hudMode().disabledReason || 'Loom HUD is disabled');
       }
     } catch (err) {
-      setState('error', toErrorMessage(err, 'Failed to fetch HUD data'));
-    } finally {
-      setState({
-        loading: false,
-        refreshing: false,
-      });
+      asyncState.fail(toErrorMessage(err, 'Failed to fetch HUD data'));
+      return;
     }
+    asyncState.succeed();
   };
 
   onMount(() => {
@@ -118,51 +113,51 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   });
 
   const handleApprove = async (id: string) => {
-    setState('workflowAction', `approve:${id}`);
+    patchState({ workflowAction: `approve:${id}` });
     try {
       await hudApi.approveWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setState('error', toErrorMessage(err, 'Failed to approve workflow'));
+      patchState({ error: toErrorMessage(err, 'Failed to approve workflow') });
     } finally {
-      setState('workflowAction', null);
+      patchState({ workflowAction: null });
     }
   };
 
   const handleReject = async (id: string) => {
-    setState('workflowAction', `reject:${id}`);
+    patchState({ workflowAction: `reject:${id}` });
     try {
       await hudApi.rejectWorkflow(id);
       await fetchAll();
     } catch (err) {
-      setState('error', toErrorMessage(err, 'Failed to reject workflow'));
+      patchState({ error: toErrorMessage(err, 'Failed to reject workflow') });
     } finally {
-      setState('workflowAction', null);
+      patchState({ workflowAction: null });
     }
   };
 
   const handleCancel = async (id: string) => {
-    setState('workflowAction', `cancel:${id}`);
+    patchState({ workflowAction: `cancel:${id}` });
     try {
       await hudApi.cancelWorkflow(id, 'Cancelled from FlexDeck HUD panel');
       setWorkflows((current) => applyWorkflowCancel(current, id));
       await fetchAll();
     } catch (err) {
-      setState('error', toErrorMessage(err, 'Failed to cancel workflow'));
+      patchState({ error: toErrorMessage(err, 'Failed to cancel workflow') });
     } finally {
-      setState('workflowAction', null);
+      patchState({ workflowAction: null });
     }
   };
 
   createPolling('agents-hud-pull', fetchAll, 15000);
 
-  createPolling('hud-now-ticker', () => { setState('now', Date.now()); }, 5000);
+  createPolling('hud-now-ticker', () => { patchState({ now: Date.now() }); }, 5000);
 
   createEffect(() => {
     if (!pullEnabled()) {
-      setState('eventsConnection', 'disabled');
+      patchState({ eventsConnection: 'disabled' });
     } else if (state.eventsConnection === 'disabled') {
-      setState('eventsConnection', 'connecting');
+      patchState({ eventsConnection: 'connecting' });
     }
   });
 
@@ -594,7 +589,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       initialEvents={timeline()}
       enabled={pullEnabled()}
       emptyMessage="No timeline entries yet. Live operations will appear here as soon as agents heartbeat, claim files, or transition workflows."
-      onConnectionStateChange={(connection) => setState('eventsConnection', connection)}
+      onConnectionStateChange={(connection) => patchState({ eventsConnection: connection })}
     />
   );
 
