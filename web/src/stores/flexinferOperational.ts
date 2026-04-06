@@ -1,5 +1,13 @@
 import { batch, createSignal } from 'solid-js';
 import { modelsApi, flexinferProxyApi, litellm } from '../lib/api';
+import {
+  clearAsyncValueState,
+  completeAsyncValueState,
+  createAsyncValueState,
+  failAsyncValueState,
+  resetAsyncValueState,
+  startAsyncValueState,
+} from '../lib/asyncState';
 import type {
   FlexInferProxyMetricsResponse,
   LiteLLMRouterResponse,
@@ -18,85 +26,18 @@ export interface FlexInferProxyHealthState {
   message?: string;
 }
 
-interface AsyncState<T> {
-  value: () => T;
-  setValue: (value: T) => void;
-  loading: () => boolean;
-  setLoading: (loading: boolean) => void;
-  error: () => string;
-  setError: (error: string) => void;
-  updatedAt: () => number;
-  setUpdatedAt: (updatedAt: number) => void;
-}
-
-function createAsyncState<T>(initialValue: T): AsyncState<T> {
-  const [value, setValue] = createSignal<T>(initialValue);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [updatedAt, setUpdatedAt] = createSignal(0);
-
-  return {
-    value,
-    setValue,
-    loading,
-    setLoading,
-    error,
-    setError,
-    updatedAt,
-    setUpdatedAt,
-  };
-}
-
-function resetAsyncState<T>(state: AsyncState<T>, value: T): void {
-  batch(() => {
-    state.setValue(value);
-    state.setLoading(true);
-    state.setError('');
-    state.setUpdatedAt(0);
-  });
-}
-
-function clearAsyncState<T>(state: AsyncState<T>, value: T): void {
-  batch(() => {
-    state.setValue(value);
-    state.setLoading(false);
-    state.setError('');
-    state.setUpdatedAt(0);
-  });
-}
-
-function startAsyncState<T>(state: AsyncState<T>): void {
-  state.setLoading(true);
-}
-
-function completeAsyncState<T>(state: AsyncState<T>, value: T): void {
-  batch(() => {
-    state.setValue(value);
-    state.setError('');
-    state.setUpdatedAt(Date.now());
-    state.setLoading(false);
-  });
-}
-
-function failAsyncState<T>(state: AsyncState<T>, error: string): void {
-  batch(() => {
-    state.setError(error);
-    state.setLoading(false);
-  });
-}
-
 const REGISTRY_POLL_ID = 'flexinfer-registry-models';
 const PROXY_POLL_ID = 'flexinfer-proxy-metrics';
 const ROUTER_POLL_ID = 'flexinfer-router-info';
 const CATALOG_POLL_ID = 'flexinfer-catalogs';
 const CACHE_POLL_ID = 'flexinfer-caches';
 
-const registryState = createAsyncState<RegisteredModel[]>([]);
-const proxyMetricsState = createAsyncState<FlexInferProxyMetricsResponse | null>(null);
+const registryState = createAsyncValueState<RegisteredModel[]>([]);
+const proxyMetricsState = createAsyncValueState<FlexInferProxyMetricsResponse | null>(null);
 const proxyHealthState = createSignal<FlexInferProxyHealthState | null>(null);
-const routerState = createAsyncState<LiteLLMRouterResponse | null>(null);
-const catalogState = createAsyncState<ModelCatalogEntry[]>([]);
-const cacheState = createAsyncState<ModelCache[]>([]);
+const routerState = createAsyncValueState<LiteLLMRouterResponse | null>(null);
+const catalogState = createAsyncValueState<ModelCatalogEntry[]>([]);
+const cacheState = createAsyncValueState<ModelCache[]>([]);
 
 let pollingConsumers = 0;
 
@@ -109,35 +50,35 @@ export function __resetFlexInferOperationalStoreForTests(): void {
   pollingScheduler.unregister(CACHE_POLL_ID);
 
   batch(() => {
-    resetAsyncState(registryState, []);
-    resetAsyncState(proxyMetricsState, null);
-    resetAsyncState(routerState, null);
-    resetAsyncState(catalogState, []);
-    resetAsyncState(cacheState, []);
+    resetAsyncValueState(registryState, []);
+    resetAsyncValueState(proxyMetricsState, null);
+    resetAsyncValueState(routerState, null);
+    resetAsyncValueState(catalogState, []);
+    resetAsyncValueState(cacheState, []);
     proxyHealthState[1](null);
   });
 }
 
 export async function refreshFlexInferRegistry(): Promise<void> {
-  startAsyncState(registryState);
+  startAsyncValueState(registryState);
   try {
     const data = await modelsApi.list();
-    completeAsyncState(registryState, data.models || []);
+    completeAsyncValueState(registryState, data.models || []);
   } catch (err) {
-    failAsyncState(registryState, err instanceof Error ? err.message : 'Failed to fetch models');
+    failAsyncValueState(registryState, err instanceof Error ? err.message : 'Failed to fetch models');
   }
 }
 
 export async function refreshFlexInferProxy(): Promise<void> {
   if (!healthStore.features?.flexinfer_proxy?.enabled) {
     batch(() => {
-      clearAsyncState(proxyMetricsState, null);
+      clearAsyncValueState(proxyMetricsState, null);
       proxyHealthState[1](null);
     });
     return;
   }
 
-  startAsyncState(proxyMetricsState);
+  startAsyncValueState(proxyMetricsState);
   const [healthResult, metricsResult] = await Promise.allSettled([
     flexinferProxyApi.health(),
     flexinferProxyApi.metrics(),
@@ -150,9 +91,9 @@ export async function refreshFlexInferProxy(): Promise<void> {
   }
 
   if (metricsResult.status === 'fulfilled') {
-    completeAsyncState(proxyMetricsState, metricsResult.value);
+    completeAsyncValueState(proxyMetricsState, metricsResult.value);
   } else {
-    failAsyncState(
+    failAsyncValueState(
       proxyMetricsState,
       metricsResult.reason instanceof Error
         ? metricsResult.reason.message
@@ -163,41 +104,41 @@ export async function refreshFlexInferProxy(): Promise<void> {
 
 export async function refreshFlexInferRouter(): Promise<void> {
   if (!healthStore.features?.flexinfer_proxy?.enabled) {
-    clearAsyncState(routerState, null);
+    clearAsyncValueState(routerState, null);
     return;
   }
 
-  startAsyncState(routerState);
+  startAsyncValueState(routerState);
   try {
     const data = await litellm.router();
-    completeAsyncState(routerState, data);
+    completeAsyncValueState(routerState, data);
   } catch (err) {
-    failAsyncState(routerState, err instanceof Error ? err.message : 'Failed to fetch router info');
+    failAsyncValueState(routerState, err instanceof Error ? err.message : 'Failed to fetch router info');
   }
 }
 
 export async function refreshFlexInferCatalogs(): Promise<void> {
-  startAsyncState(catalogState);
+  startAsyncValueState(catalogState);
   try {
     const data = await modelsApi.catalogs();
-    completeAsyncState(catalogState, data.catalogs || []);
+    completeAsyncValueState(catalogState, data.catalogs || []);
   } catch (err) {
-    failAsyncState(catalogState, err instanceof Error ? err.message : 'Failed to fetch catalogs');
+    failAsyncValueState(catalogState, err instanceof Error ? err.message : 'Failed to fetch catalogs');
   }
 }
 
 export async function refreshFlexInferCaches(): Promise<void> {
   if (!healthStore.features?.modelcache?.enabled) {
-    clearAsyncState(cacheState, []);
+    clearAsyncValueState(cacheState, []);
     return;
   }
 
-  startAsyncState(cacheState);
+  startAsyncValueState(cacheState);
   try {
     const data = await modelsApi.cacheList();
-    completeAsyncState(cacheState, data.caches || []);
+    completeAsyncValueState(cacheState, data.caches || []);
   } catch (err) {
-    failAsyncState(cacheState, err instanceof Error ? err.message : 'Failed to fetch caches');
+    failAsyncValueState(cacheState, err instanceof Error ? err.message : 'Failed to fetch caches');
   }
 }
 
