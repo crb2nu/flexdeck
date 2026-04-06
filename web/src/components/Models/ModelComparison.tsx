@@ -1,34 +1,46 @@
-import { batch, Component, createSignal, createMemo, For, Show, onMount } from 'solid-js';
-import { modelsApi } from '../../lib/api';
-import type { FlexInferModel, FlexInferModelListResponse, ModelComparisonData } from '../../lib/types';
+import { Component, createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { api, modelsApi } from '../../lib/api';
+import type { FlexInferModel, ModelComparisonData } from '../../lib/types';
 
 const COLORS = ['text-neon-cyan', 'text-neon-purple', 'text-status-ok'];
 const BG_COLORS = ['bg-neon-cyan', 'bg-neon-purple', 'bg-status-ok'];
 
+interface ModelComparisonGpuEntry {
+  modelName: string;
+  gpuUtilization: number | null;
+  vramUsedPercent: number | null;
+}
+
+interface ModelComparisonResource {
+  models: FlexInferModel[];
+  gpuModels: ModelComparisonGpuEntry[];
+}
+
+async function loadModelComparisonResource(): Promise<ModelComparisonResource> {
+  try {
+    const [crd, gpu] = await Promise.all([
+      modelsApi.crd(),
+      api<{ models?: ModelComparisonGpuEntry[] }>('/k8s/metrics/gpu/models'),
+    ]);
+
+    return {
+      models: crd.models || [],
+      gpuModels: gpu.models || [],
+    };
+  } catch {
+    return {
+      models: [],
+      gpuModels: [],
+    };
+  }
+}
+
 const ModelComparison: Component = () => {
-  const [models, setModels] = createSignal<FlexInferModel[]>([]);
   const [selected, setSelected] = createSignal<string[]>([]);
   const [viewMode, setViewMode] = createSignal<'table' | 'chart'>('table');
-  const [gpuData, setGpuData] = createSignal<any[]>([]);
+  const [comparisonResource] = createResource(loadModelComparisonResource);
 
-  const loadComparisonData = async () => {
-    try {
-      const [crd, gpu] = await Promise.all([
-        modelsApi.crd(),
-        fetch('/api/k8s/metrics/gpu/models').then(r => r.ok ? r.json() : { models: [] }),
-      ]);
-      batch(() => {
-        setModels((crd as FlexInferModelListResponse).models || []);
-        setGpuData(gpu.models || []);
-      });
-    } catch { /* ignore */ }
-  };
-
-  onMount(() => {
-    void loadComparisonData();
-  });
-
-  const readyModels = createMemo(() => models().filter(m => m.status?.phase === 'Ready'));
+  const readyModels = createMemo(() => comparisonResource()?.models.filter((model) => model.status?.phase === 'Ready') || []);
 
   const toggleSelect = (name: string) => {
     const current = selected();
@@ -41,8 +53,8 @@ const ModelComparison: Component = () => {
 
   const comparisonData = createMemo((): ModelComparisonData[] => {
     return selected().map(name => {
-      const model = models().find(m => m.name === name);
-      const gpu = gpuData().find((g: any) => g.modelName === name);
+      const model = comparisonResource()?.models.find((entry) => entry.name === name);
+      const gpu = comparisonResource()?.gpuModels.find((entry) => entry.modelName === name);
       return {
         name,
         phase: model?.status?.phase || 'Unknown',
