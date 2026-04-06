@@ -106,6 +106,10 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     }
   };
 
+  onMount(() => {
+    void fetchAll();
+  });
+
   const handleApprove = async (id: string) => {
     setWorkflowAction(`approve:${id}`);
     try {
