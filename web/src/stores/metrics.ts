@@ -1,6 +1,13 @@
-import { createEffect } from "solid-js";
-import { createStore, reconcile } from "solid-js/store";
-import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from "./dashboardSummary";
+import { batch, createEffect } from "solid-js";
+import { createStore } from "solid-js/store";
+import {
+  dashboardSummary,
+  dashboardSummaryError,
+  dashboardSummaryLoading,
+  dashboardSummaryRefreshing,
+  dashboardSummaryUpdatedAt,
+} from "./dashboardSummary";
+import type { DashboardSummaryResponse } from "../lib/api/infrastructure";
 
 // Resource metrics for nodes and pods
 export interface ResourceMetrics {
@@ -34,19 +41,7 @@ const [metricsStore, setMetricsStore] = createStore<MetricsStore>({
   lastUpdate: 0,
 });
 
-// Derive metricsStore from dashboardSummary whenever it updates
-createEffect(() => {
-  const summary = dashboardSummary();
-  const loading = dashboardSummaryLoading();
-  const error = dashboardSummaryError();
-
-  if (!summary) {
-    setMetricsStore('loading', loading);
-    setMetricsStore('error', error || metricsStore.error);
-    return;
-  }
-
-  // Build node metrics map
+function buildNodeMetrics(summary: DashboardSummaryResponse, observedAtMs: number) {
   const nodeMetrics = new Map<string, ResourceMetrics>();
   for (const n of summary.nodes) {
     const cpuUsage = n.cpu_percent ?? 0;
@@ -59,11 +54,13 @@ createEffect(() => {
       memoryUsed: memUsed,
       memoryLimit: memTotal,
       memoryPercent: memPercent,
-      lastUpdate: Date.now(),
+      lastUpdate: observedAtMs,
     });
   }
+  return nodeMetrics;
+}
 
-  // Build pod metrics map
+function buildPodMetrics(summary: DashboardSummaryResponse, observedAtMs: number) {
   const podMetrics = new Map<string, ResourceMetrics>();
   for (const p of summary.pods) {
     const memPercent = p.memory_limit > 0 ? (p.memory_used / p.memory_limit) * 100 : 0;
@@ -72,18 +69,41 @@ createEffect(() => {
       memoryUsed: p.memory_used,
       memoryLimit: p.memory_limit,
       memoryPercent: memPercent,
-      lastUpdate: Date.now(),
+      lastUpdate: observedAtMs,
     });
   }
+  return podMetrics;
+}
 
-  setMetricsStore('nodes', reconcile(nodeMetrics));
-  setMetricsStore('pods', reconcile(podMetrics));
-  setMetricsStore('clusterCpu', summary.cluster.cpu_percent);
-  setMetricsStore('clusterMemory', summary.cluster.memory_used);
-  setMetricsStore('clusterMemoryTotal', summary.cluster.memory_total);
-  setMetricsStore('loading', false);
-  setMetricsStore('error', null);
-  setMetricsStore('lastUpdate', Date.now());
+// Derive metricsStore from dashboardSummary whenever it updates
+createEffect(() => {
+  const summary = dashboardSummary();
+  const loading = dashboardSummaryLoading() || dashboardSummaryRefreshing();
+  const error = dashboardSummaryError();
+  const updatedAt = dashboardSummaryUpdatedAt();
+
+  if (!summary) {
+    batch(() => {
+      setMetricsStore('loading', loading);
+      setMetricsStore('error', error || metricsStore.error);
+    });
+    return;
+  }
+
+  const observedAtMs = updatedAt || Date.now();
+  const nodeMetrics = buildNodeMetrics(summary, observedAtMs);
+  const podMetrics = buildPodMetrics(summary, observedAtMs);
+
+  batch(() => {
+    setMetricsStore('nodes', nodeMetrics);
+    setMetricsStore('pods', podMetrics);
+    setMetricsStore('clusterCpu', summary.cluster.cpu_percent);
+    setMetricsStore('clusterMemory', summary.cluster.memory_used);
+    setMetricsStore('clusterMemoryTotal', summary.cluster.memory_total);
+    setMetricsStore('loading', loading);
+    setMetricsStore('error', error);
+    setMetricsStore('lastUpdate', observedAtMs);
+  });
 });
 
 // Start/stop are now no-ops — polling is managed by dashboardSummary store.

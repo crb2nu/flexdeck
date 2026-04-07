@@ -140,4 +140,16 @@ describe('layoutEngine', () => {
     expect(prepared.simulation.alpha()).toBeLessThanOrEqual(prepared.tuning.alphaAfterWarmup);
     prepared.simulation.stop();
   });
+
+  it('treats nodes with missing readiness conditions as not ready instead of throwing', () => {
+    const result = buildTopologyGraphData({
+      nodes: [{ metadata: { name: 'node-a' } } as K8sNode],
+      pods: [],
+      services: [],
+      prevNodes: [],
+    });
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].status).toBe('error');
+  });
 });

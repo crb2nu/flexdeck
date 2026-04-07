@@ -2,6 +2,7 @@ import { Component, createSignal, createEffect, onMount, onCleanup, Show, untrac
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../lib/fiAccel';
+import { isK8sNodeReady } from '../../lib/k8sStatus';
 import {
   buildTopologyGraphData,
   createTopologySimulation,
@@ -20,8 +21,7 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T 
   }) as T;
 };
 
-const isNodeReady = (node: K8sNode): boolean =>
-  node.status.conditions.some((condition) => condition.type === 'Ready' && condition.status === 'True');
+const isNodeReady = (node: K8sNode): boolean => isK8sNodeReady(node);
 
 interface Props {
   nodes: K8sNode[];

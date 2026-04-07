@@ -4,6 +4,7 @@ import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
 import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../../lib/fiAccel';
 import { getNodeMetrics } from '../../../stores/metrics';
 import { formatPercent } from '../../../lib/format';
+import { isK8sNodeReady } from '../../../lib/k8sStatus';
 import {
     HOLO_THEME,
     HEALTH_HUB_CONFIG,
@@ -189,7 +190,7 @@ const HoloDeck: Component<Props> = (props) => {
     }
     const nodeKey = props.nodes
       .map((node) => {
-        const ready = node.status.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True') ? '1' : '0';
+        const ready = isK8sNodeReady(node) ? '1' : '0';
         return `${node.metadata.name}:${ready}`;
       })
       .join(',');
@@ -331,7 +332,7 @@ const HoloDeck: Component<Props> = (props) => {
       const object = objectMap.get(nodeId);
       if (!object) continue;
       const userData = object.userData as HoloNodeUserData;
-      const nextColor = node.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True')
+      const nextColor = isK8sNodeReady(node)
         ? HOLO_THEME.colors.node.ready
         : HOLO_THEME.colors.node.error;
 
