@@ -233,15 +233,26 @@ function sectionClass(id: string): string {
 describe('Workbench', () => {
   let cleanup: () => void = () => undefined;
   let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+  let scrollToMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     workbenchMocks.healthFeatures.flexinfer_proxy.enabled = true;
     workbenchMocks.healthFeatures.modelcache.enabled = true;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
     scrollIntoViewMock = vi.fn();
+    scrollToMock = vi.fn();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: scrollIntoViewMock,
     });
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: scrollToMock,
+    });
+    window.history.replaceState({}, '', '/models');
 
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
@@ -285,6 +296,9 @@ describe('Workbench', () => {
     cleanup = () => undefined;
     document.body.innerHTML = '';
     delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, '', '/models');
   });
 
   it('switches the visible lane from the sidebar rail inside the page shell', async () => {
@@ -299,7 +313,7 @@ describe('Workbench', () => {
     expect(sectionClass('overview')).not.toContain('hidden');
     expect(sectionClass('telemetry')).toContain('hidden');
 
-    scrollIntoViewMock.mockClear();
+    scrollToMock.mockClear();
     findButton('Telemetry').click();
 
     await vi.waitFor(() => {
@@ -309,12 +323,46 @@ describe('Workbench', () => {
     expect(findButton('Telemetry').getAttribute('aria-pressed')).toBe('true');
     expect(findButton('Overview').getAttribute('aria-pressed')).toBe('false');
     expect(sectionClass('overview')).toContain('hidden');
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    expect(scrollToMock).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#flexinfer-telemetry');
 
     findButton('Intake').click();
     await vi.waitFor(() => {
       expect(sectionClass('intake')).not.toContain('hidden');
     });
+    expect(window.location.hash).toBe('#flexinfer-intake');
+  });
+
+  it('opens the hashed section on first render', async () => {
+    window.history.replaceState({}, '', '/models#flexinfer-supply-chain');
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(sectionClass('supply-chain')).not.toContain('hidden');
+    });
+
+    expect(findButton('Supply chain').getAttribute('aria-pressed')).toBe('true');
+    expect(sectionClass('overview')).toContain('hidden');
+  });
+
+  it('falls back to the page scroll body when section nodes cannot scroll themselves', async () => {
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Operator briefing');
+    });
+
+    scrollToMock.mockClear();
+    findButton('Telemetry').click();
+
+    await vi.waitFor(() => {
+      expect(sectionClass('telemetry')).not.toContain('hidden');
+    });
+
+    expect(scrollToMock).toHaveBeenCalled();
   });
 
   it('renders ready, stale, and partial section states from shared operator data', async () => {

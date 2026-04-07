@@ -51,7 +51,8 @@ interface DashboardListState {
 
 const DASHBOARD_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000;
 const DASHBOARD_LIVE_CACHE_TTL_MS = 60 * 1000;
-const MAX_LIVE_PANEL_QUERIES = 24;
+const MAX_LIVE_PANEL_QUERIES = 12;
+const LIVE_QUERY_CONCURRENCY = 4;
 
 function isPrometheusDatasourceName(name?: string): boolean {
   if (!name) return true; // Treat inherited/default datasource as potentially Prometheus.
@@ -370,8 +371,25 @@ function flattenPanels(rawPanels: any[], section?: string): Panel[] {
   return flat;
 }
 
+async function runConcurrently<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+) {
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      await worker(items[currentIndex]);
+    }
+  });
+
+  await Promise.all(runners);
+}
+
 const GrafanaDashboards: Component = () => {
-  const [dashboardsResource] = createResource<DashboardListState>(async () => {
+  const [dashboardsResource, { refetch: refetchDashboards }] = createResource<DashboardListState>(async () => {
     try {
       const data = await grafanaApi.dashboards();
       return {
@@ -385,6 +403,7 @@ const GrafanaDashboards: Component = () => {
       };
     }
   });
+  const [searchQuery, setSearchQuery] = createSignal('');
   const [expandedUid, setExpandedUid] = createSignal<string | null>(null);
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
@@ -415,6 +434,26 @@ const GrafanaDashboards: Component = () => {
     };
   });
   const dashboards = createMemo(() => dashboardsResource()?.dashboards || []);
+  const filteredDashboards = createMemo(() => {
+    const query = searchQuery().trim().toLowerCase();
+    if (!query) return dashboards();
+
+    return dashboards().filter((dashboard) => {
+      const haystacks = [
+        dashboard.title,
+        dashboard.folderTitle || '',
+        dashboard.type,
+        ...(dashboard.tags || []),
+      ];
+      return haystacks.some((value) => value.toLowerCase().includes(query));
+    });
+  });
+  const dashboardSummary = createMemo(() => ({
+    total: dashboards().length,
+    filtered: filteredDashboards().length,
+    folders: new Set(dashboards().map((dashboard) => dashboard.folderTitle).filter(Boolean)).size,
+    tagged: dashboards().filter((dashboard) => (dashboard.tags || []).length > 0).length,
+  }));
   const loading = () => dashboardsResource.loading;
   const error = () => dashboardsResource()?.error || '';
 
@@ -519,8 +558,7 @@ const GrafanaDashboards: Component = () => {
     const end = now;
     const step = '120';
 
-    await Promise.all(
-      candidates.map(async (panel) => {
+    await runConcurrently(candidates, LIVE_QUERY_CONCURRENCY, async (panel) => {
         const key = panelKey(panel);
         const expr = resolvedExprByPanelKey[key] || '';
         if (!expr || expr.includes('$')) return;
@@ -548,8 +586,7 @@ const GrafanaDashboards: Component = () => {
               err instanceof Error ? err.message : 'Live query failed',
           };
         }
-      }),
-    );
+      });
 
     if (generation !== liveFetchGeneration) return;
     setLiveDataByPanel({ ...liveState });
@@ -628,6 +665,50 @@ const GrafanaDashboards: Component = () => {
 
   return (
     <div class="flex flex-col gap-4">
+      <div class="glass-panel overflow-hidden border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.12))]">
+        <div class="flex flex-col gap-4 p-4 lg:flex-row lg:items-end lg:justify-between">
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
+              <span class="rounded-full border border-white/10 bg-white/8 px-2.5 py-1">Grafana explorer</span>
+              <span class="rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2.5 py-1 text-neon-cyan">
+                {dashboardSummary().filtered} visible
+              </span>
+              <span class="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">
+                {dashboardSummary().folders} folders
+              </span>
+            </div>
+            <div>
+              <h2 class="text-xl font-semibold tracking-tight text-text-main">Operational dashboard catalog</h2>
+              <p class="mt-1 max-w-3xl text-sm leading-6 text-text-dim">
+                Browse Grafana surfaces, open one focused dashboard at a time, and sample live Prometheus-backed panels without flooding the page with queries.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex w-full flex-col gap-3 lg:max-w-md">
+            <label class="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+              <span class="text-xs uppercase tracking-[0.18em] text-text-dim">Find</span>
+              <input
+                value={searchQuery()}
+                onInput={(event) => setSearchQuery(event.currentTarget.value)}
+                placeholder="Search dashboards, folders, tags"
+                class="w-full bg-transparent text-sm text-text-main outline-none placeholder:text-text-dim"
+              />
+            </label>
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-dim">
+              <span>{dashboardSummary().tagged} tagged dashboards · live previews capped at {MAX_LIVE_PANEL_QUERIES}</span>
+              <button
+                type="button"
+                onClick={() => void refetchDashboards()}
+                class="rounded-md border border-neon-cyan/20 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              >
+                Refresh catalog
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <Show when={error()}>
         <div class="glass-panel flex flex-col gap-2 p-4 text-sm text-status-error border border-status-error/20">
           <div class="flex items-center gap-3">
@@ -655,35 +736,53 @@ const GrafanaDashboards: Component = () => {
         </div>
       </Show>
 
+      <Show when={!loading() && dashboards().length > 0 && filteredDashboards().length === 0}>
+        <div class="glass-panel p-8 text-center">
+          <div class="text-lg text-text-main">No dashboards match</div>
+          <p class="mx-auto mt-2 max-w-md text-sm text-text-dim">
+            Try a title, folder, datasource tag, or clear the search query to see the full catalog again.
+          </p>
+        </div>
+      </Show>
+
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <For each={dashboards()}>
+        <For each={filteredDashboards()}>
           {(dash) => (
             <div
-              class={`glass-panel-hover flex flex-col p-4 cursor-pointer transition-all ${
+              class={`glass-panel-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-all duration-200 ${
                 expandedUid() === dash.uid
-                  ? 'border-neon-cyan/30 md:col-span-2 xl:col-span-3'
-                  : ''
+                  ? 'border-neon-cyan/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.08))] shadow-[0_18px_52px_rgba(5,10,20,0.24)] md:col-span-2 xl:col-span-3'
+                  : 'hover:border-neon-cyan/15'
               }`}
               onClick={() => toggleDashboard(dash.uid)}
             >
-              <div class="flex items-start justify-between mb-2">
+              <div class="mb-3 flex items-start justify-between gap-3">
                 <div class="flex-1 min-w-0">
-                  <h3 class="text-sm font-medium text-text-main truncate">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
+                      {dash.type || 'dashboard'}
+                    </span>
+                    <Show when={dash.folderTitle}>
+                      <span class="text-[10px] uppercase tracking-[0.18em] text-text-dim/80">
+                        {dash.folderTitle}
+                      </span>
+                    </Show>
+                  </div>
+                  <h3 class="mt-2 text-sm font-medium text-text-main truncate">
                     {dash.title}
                   </h3>
-                  <Show when={dash.folderTitle}>
-                    <div class="text-[10px] text-text-dim mt-0.5">
-                      {dash.folderTitle}
-                    </div>
-                  </Show>
                 </div>
-                <span class="text-[10px] text-text-dim ml-2 shrink-0">
-                  {expandedUid() === dash.uid ? '[-]' : '[+]'}
+                <span class={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                  expandedUid() === dash.uid
+                    ? 'border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan'
+                    : 'border-white/10 bg-black/20 text-text-dim'
+                }`}>
+                  {expandedUid() === dash.uid ? 'Open' : 'Preview'}
                 </span>
               </div>
 
               <Show when={dash.tags && dash.tags.length > 0}>
-                <div class="flex flex-wrap gap-1 mb-2">
+                <div class="mb-2 flex flex-wrap gap-1">
                   <For each={dash.tags}>
                     {(tag) => (
                       <span class="px-1.5 py-0.5 text-[10px] rounded bg-neon-purple/20 text-neon-purple">
@@ -697,7 +796,7 @@ const GrafanaDashboards: Component = () => {
               {/* Expanded panel list */}
               <Show when={expandedUid() === dash.uid}>
                 <div
-                  class="mt-3 pt-3 border-t border-white/5"
+                  class="mt-3 border-t border-white/5 pt-3"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Show when={panelsLoading()}>
@@ -727,6 +826,11 @@ const GrafanaDashboards: Component = () => {
                         </Show>
                       </Show>
                     </div>
+                    <Show when={liveSummary().tracked > MAX_LIVE_PANEL_QUERIES}>
+                      <div class="mb-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-text-dim">
+                        Sampling live previews for the first {MAX_LIVE_PANEL_QUERIES} supported Prometheus panels to keep the page responsive.
+                      </div>
+                    </Show>
                     <Show when={templateVarEntries().length > 0}>
                       <div class="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-text-dim">
                         <span class="uppercase tracking-wider">vars</span>
@@ -740,15 +844,15 @@ const GrafanaDashboards: Component = () => {
                       </div>
                     </Show>
                     <div class="max-h-[32rem] overflow-y-auto pr-1">
-                      <div class="grid grid-cols-1 gap-1.5 lg:grid-cols-2 2xl:grid-cols-3">
+                      <div class="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
                         <For each={panels()}>
                           {(panel) => (
-                            <div class="rounded bg-white/5 px-2 py-1.5 text-xs">
+                            <div class="rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(0,0,0,0.18))] px-3 py-2 text-xs">
                               <div class="flex items-center gap-2">
-                                <span class="text-neon-cyan font-mono">
+                                <span class="font-mono text-neon-cyan">
                                   {panel.type}
                                 </span>
-                                <span class="text-text-main truncate flex-1 font-medium">
+                                <span class="flex-1 truncate font-medium text-text-main">
                                   {panel.title}
                                 </span>
                                 <span class="text-[10px] text-text-dim">
@@ -778,7 +882,7 @@ const GrafanaDashboards: Component = () => {
                               </Show>
 
                               <Show when={panel.queryPreview}>
-                                <pre class="mt-1 max-h-24 overflow-auto rounded bg-black/30 p-1.5 font-mono text-[10px] text-text-dim">
+                                <pre class="mt-1 max-h-24 overflow-auto rounded-xl bg-black/30 p-1.5 font-mono text-[10px] text-text-dim">
                                   {panel.queryPreview}
                                 </pre>
                               </Show>
@@ -851,7 +955,7 @@ const GrafanaDashboards: Component = () => {
                     href={dash.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1 mt-2 text-xs text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+                    class="mt-2 inline-flex items-center gap-1 text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
                     onClick={(e) => e.stopPropagation()}
                   >
                     Open in Grafana
