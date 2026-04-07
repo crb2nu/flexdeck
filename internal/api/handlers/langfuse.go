@@ -11,6 +11,11 @@ import (
 	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 )
 
+var (
+	langfuseDataClient   = apiutil.DefaultClient
+	langfuseHealthClient = apiutil.ShortClient
+)
+
 // langfuseRequest issues an authenticated GET to the Langfuse public API.
 func (h *Handler) langfuseRequest(endpoint string) ([]byte, int, error) {
 	u := strings.TrimRight(h.cfg.Langfuse.URL, "/") + endpoint
@@ -25,7 +30,7 @@ func (h *Handler) langfuseRequest(endpoint string) ([]byte, int, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := apiutil.ShortClient.Do(req)
+	resp, err := langfuseDataClient.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -50,7 +55,7 @@ func (h *Handler) LangfuseHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Langfuse health endpoint (no auth needed)
 	healthURL := strings.TrimRight(h.cfg.Langfuse.URL, "/") + "/api/public/health"
-	resp, err := apiutil.ShortClient.Get(healthURL)
+	resp, err := langfuseHealthClient.Get(healthURL)
 	if err != nil {
 		respondJSON(w, http.StatusOK, map[string]any{
 			"healthy": false,

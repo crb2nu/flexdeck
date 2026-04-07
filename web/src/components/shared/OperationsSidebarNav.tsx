@@ -50,15 +50,16 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
               <div class="px-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim/80">
                 {group.name}
               </div>
-              <div class="mt-2 flex gap-2.5 overflow-x-auto pb-1 xl:flex-col xl:overflow-visible">
+              <div class="mt-2 flex flex-col gap-2.5">
                 <For each={group.items}>
                   {(item) => (
                     <button
                       type="button"
                       aria-pressed={props.active === item.id}
                       aria-current={props.active === item.id ? 'true' : undefined}
+                      data-operations-nav-id={item.id}
                       onClick={() => props.onChange(item.id)}
-                      class={`group relative min-w-[184px] overflow-hidden rounded-[20px] border p-3 text-left transition-all duration-200 xl:min-w-0 ${
+                      class={`group relative overflow-hidden rounded-[20px] border p-3 text-left transition-all duration-200 ${
                         props.active === item.id
                           ? 'border-neon-cyan/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.18),rgba(255,255,255,0.05),rgba(15,23,42,0.55))] shadow-[0_16px_34px_rgba(7,10,20,0.22)]'
                           : 'border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))] hover:border-neon-cyan/20 hover:bg-white/7 hover:shadow-[0_12px_28px_rgba(5,8,18,0.18)]'

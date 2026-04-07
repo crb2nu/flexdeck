@@ -216,10 +216,8 @@ function pageText(): string {
   return document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function findButton(label: string): HTMLButtonElement {
-  const button = Array.from(document.querySelectorAll('button')).find(
-    (element) => element.textContent?.includes(label),
-  ) as HTMLButtonElement | undefined;
+function findSidebarButton(sectionId: string): HTMLButtonElement {
+  const button = document.querySelector(`[data-operations-nav-id="${sectionId}"]`) as HTMLButtonElement | null;
   expect(button).toBeTruthy();
   return button!;
 }
@@ -308,25 +306,26 @@ describe('Workbench', () => {
       expect(pageText()).toContain('Operator briefing');
     });
 
-    expect(findButton('Overview').getAttribute('aria-pressed')).toBe('true');
-    expect(findButton('Telemetry').getAttribute('aria-pressed')).toBe('false');
+    expect(findSidebarButton('overview').getAttribute('aria-pressed')).toBe('true');
+    expect(findSidebarButton('telemetry').getAttribute('aria-pressed')).toBe('false');
     expect(sectionClass('overview')).not.toContain('hidden');
     expect(sectionClass('telemetry')).toContain('hidden');
 
     scrollToMock.mockClear();
-    findButton('Telemetry').click();
+    findSidebarButton('telemetry').click();
 
     await vi.waitFor(() => {
       expect(sectionClass('telemetry')).not.toContain('hidden');
     });
 
-    expect(findButton('Telemetry').getAttribute('aria-pressed')).toBe('true');
-    expect(findButton('Overview').getAttribute('aria-pressed')).toBe('false');
+    expect(findSidebarButton('telemetry').getAttribute('aria-pressed')).toBe('true');
+    expect(findSidebarButton('telemetry').getAttribute('aria-current')).toBe('true');
+    expect(findSidebarButton('overview').getAttribute('aria-pressed')).toBe('false');
     expect(sectionClass('overview')).toContain('hidden');
     expect(scrollToMock).toHaveBeenCalled();
     expect(window.location.hash).toBe('#flexinfer-telemetry');
 
-    findButton('Intake').click();
+    findSidebarButton('intake').click();
     await vi.waitFor(() => {
       expect(sectionClass('intake')).not.toContain('hidden');
     });
@@ -342,7 +341,7 @@ describe('Workbench', () => {
       expect(sectionClass('supply-chain')).not.toContain('hidden');
     });
 
-    expect(findButton('Supply chain').getAttribute('aria-pressed')).toBe('true');
+    expect(findSidebarButton('supply-chain').getAttribute('aria-pressed')).toBe('true');
     expect(sectionClass('overview')).toContain('hidden');
   });
 
@@ -356,7 +355,7 @@ describe('Workbench', () => {
     });
 
     scrollToMock.mockClear();
-    findButton('Telemetry').click();
+    findSidebarButton('telemetry').click();
 
     await vi.waitFor(() => {
       expect(sectionClass('telemetry')).not.toContain('hidden');

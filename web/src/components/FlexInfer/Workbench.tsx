@@ -1,4 +1,4 @@
-import { Component, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js';
+import { Component, For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import {
   operatorStateBadgeClass,
   operatorStateLabel,
@@ -151,6 +151,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     const hashSection = readWorkbenchSectionFromHash();
     if (hashSection) {
       setActiveSection(hashSection);
+      requestAnimationFrame(() => scrollSectionIntoView(hashSection, 'auto'));
+    } else {
+      syncWorkbenchSectionHash(activeSection());
     }
 
     startFlexInferOperationalPolling();
@@ -160,7 +163,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       const handleHashChange = () => {
         const nextSection = readWorkbenchSectionFromHash();
         if (nextSection) {
-          setActiveSection(nextSection);
+          changeSection(nextSection, { syncHash: false, behavior: 'auto' });
         }
       };
 
@@ -174,26 +177,37 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     stopFlexInferOperationalPolling();
   });
 
-  const scrollActiveSectionIntoView = () => {
-    const target = document.getElementById(activeSection());
+  const scrollSectionIntoView = (
+    section: WorkbenchSectionId,
+    behavior: ScrollBehavior = 'smooth',
+  ) => {
+    const target = document.getElementById(section);
     if (!target) return;
 
     const viewport = resolvePageScrollViewport(target);
     if (viewport) {
       const offset = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - 12;
-      viewport.scrollTo({ top: Math.max(0, offset), left: 0, behavior: 'smooth' });
+      viewport.scrollTo({ top: Math.max(0, offset), left: 0, behavior });
       return;
     }
 
     if (typeof target.scrollIntoView === 'function') {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.scrollIntoView({ behavior, block: 'start' });
     }
   };
 
-  createEffect(on(activeSection, () => {
-    syncWorkbenchSectionHash(activeSection());
-    requestAnimationFrame(scrollActiveSectionIntoView);
-  }, { defer: true }));
+  const changeSection = (
+    section: WorkbenchSectionId,
+    options?: { behavior?: ScrollBehavior; syncHash?: boolean }
+  ) => {
+    setActiveSection(section);
+    if (options?.syncHash !== false) {
+      syncWorkbenchSectionHash(section);
+    }
+    requestAnimationFrame(() => {
+      scrollSectionIntoView(section, options?.behavior ?? 'smooth');
+    });
+  };
 
   const controllerSectionState = createMemo<OperatorState>(() =>
     resolveOperatorState({
@@ -464,7 +478,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           description="Stay in one operational lane at a time. Overview is the briefing; the other sections are focused triage."
           items={sectionNav()}
           active={activeSection()}
-          onChange={(section) => setActiveSection(section as WorkbenchSectionId)}
+          onChange={(section) => changeSection(section as WorkbenchSectionId)}
         />
 
         <div class="min-w-0 space-y-4">
