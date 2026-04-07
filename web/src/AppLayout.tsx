@@ -48,8 +48,8 @@ const AppLayout: Component<ParentProps> = (props) => {
     }
   };
 
-  onMount(async () => {
-    await Promise.all([fetchHealth(), fetchUIConfig()]);
+  onMount(() => {
+    void Promise.all([fetchHealth(), fetchUIConfig()]);
   });
 
   createEffect(() => {

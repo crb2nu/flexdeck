@@ -186,7 +186,14 @@ describe('useDashboardSummaryState', () => {
       expect(state.agentActivity().loading).toBe(false);
     });
 
+    expect(dashboardMocks.pollingRegister).toHaveBeenCalledWith(
+      'dash-agents',
+      expect.any(Function),
+      15_000,
+      false,
+    );
     expect(dashboardMocks.agentsList).toHaveBeenCalled();
+    expect(dashboardMocks.agentsList).toHaveBeenCalledTimes(1);
     expect(state.agentFeatureEnabled()).toBe(true);
     expect(state.loomHUDPullEnabled()).toBe(false);
     expect(state.loomHUDPushEnabled()).toBe(true);
@@ -235,7 +242,14 @@ describe('useDashboardSummaryState', () => {
       expect(state.agentActivity().loading).toBe(false);
     });
 
+    expect(dashboardMocks.pollingRegister).toHaveBeenCalledWith(
+      'dash-agents',
+      expect.any(Function),
+      15_000,
+      false,
+    );
     expect(dashboardMocks.hudFleet).toHaveBeenCalled();
+    expect(dashboardMocks.hudFleet).toHaveBeenCalledTimes(1);
     expect(state.agentDataState()).toBe('ready');
     expect(state.agentActivity()).toMatchObject({
       activeAgents: 1,

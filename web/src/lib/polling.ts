@@ -4,6 +4,7 @@ interface TaskEntry {
   task: PollingTask;
   baseInterval: number; // original interval for jitter calculations
   interval: number;     // current jittered interval
+  allowImmediate: boolean;
   timer?: any;
   immediateTimer?: any;
   running?: boolean;
@@ -49,12 +50,13 @@ class PollingScheduler {
       task,
       baseInterval: interval,
       interval: jitteredInterval(interval),
+      allowImmediate: immediate,
     };
     this.tasks.set(id, entry);
 
     if (!this.isPaused) {
       this.startTask(id, entry);
-      if (immediate) {
+      if (entry.allowImmediate) {
         const idx = this.registrationIndex++;
         const delay = staggerDelay(idx, 20, 50);
         entry.immediateTimer = setTimeout(() => {
@@ -133,14 +135,16 @@ class PollingScheduler {
     let idx = 0;
     for (const [id, entry] of this.tasks.entries()) {
       this.startTask(id, entry);
-      // Stagger resume fires to avoid burst
-      const delay = staggerDelay(idx++, 30, 50);
-      entry.immediateTimer = setTimeout(() => {
-        entry.immediateTimer = undefined;
-        if (this.tasks.has(id) && !this.isPaused) {
-          this.runTask(id, entry);
-        }
-      }, delay);
+      if (entry.allowImmediate) {
+        // Stagger resume fires to avoid burst.
+        const delay = staggerDelay(idx++, 30, 50);
+        entry.immediateTimer = setTimeout(() => {
+          entry.immediateTimer = undefined;
+          if (this.tasks.has(id) && !this.isPaused) {
+            this.runTask(id, entry);
+          }
+        }, delay);
+      }
     }
   }
 }

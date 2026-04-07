@@ -14,15 +14,17 @@ export function createPolling(
   id: string | (() => string),
   task: () => Promise<void> | void,
   interval: number | (() => number),
-  enabled: boolean | (() => boolean) = true
+  enabled: boolean | (() => boolean) = true,
+  immediate: boolean | (() => boolean) = true,
 ) {
   createEffect(() => {
     const taskId = typeof id === 'function' ? id() : id;
     const isEnabled = typeof enabled === 'function' ? enabled() : enabled;
     const intervalMs = typeof interval === 'function' ? interval() : interval;
+    const shouldRunImmediately = typeof immediate === 'function' ? immediate() : immediate;
 
     if (isEnabled) {
-      pollingScheduler.register(taskId, task, intervalMs);
+      pollingScheduler.register(taskId, task, intervalMs, shouldRunImmediately);
     } else {
       pollingScheduler.unregister(taskId);
     }
@@ -30,11 +32,6 @@ export function createPolling(
     onCleanup(() => {
       pollingScheduler.unregister(taskId);
     });
-  });
-
-  onCleanup(() => {
-    const taskId = typeof id === 'function' ? id() : id;
-    pollingScheduler.unregister(taskId);
   });
 
   return {
