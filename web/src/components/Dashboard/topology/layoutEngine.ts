@@ -1,6 +1,7 @@
 import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
 import { filterLabelSelectorMatches } from '../../../lib/fiAccel';
+import { isK8sNodeReady } from '../../../lib/k8sStatus';
 import type { TopologyNode, TopologyLink } from './types';
 
 export interface BuildInput {
@@ -135,8 +136,7 @@ const preserveNodePhysics = (target: TopologyNode, previousNode: TopologyNode | 
   target.fy = previousNode.fy;
 };
 
-const isTopologyNodeReady = (node: K8sNode): boolean =>
-  node.status.conditions.some((condition) => condition.type === 'Ready' && condition.status === 'True');
+const isTopologyNodeReady = (node: K8sNode): boolean => isK8sNodeReady(node);
 
 export const buildTopologyGraphData = (input: BuildInput): BuildResult => {
   const previousNodeById = new Map<string, TopologyNode>();

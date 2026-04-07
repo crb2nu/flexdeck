@@ -1,6 +1,7 @@
 import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { authenticatedFetch } from "./auth";
+import { isK8sNodeReady } from "../lib/k8sStatus";
 import { pollingScheduler } from "../lib/polling";
 
 // Types matching the Go backend
@@ -136,8 +137,7 @@ const selectorEquals = (
   right?: Record<string, string>
 ): boolean => selectorKey(left) === selectorKey(right);
 
-const nodeReadyStatus = (node: K8sNode): boolean =>
-  node.status.conditions?.some((c) => c.type === "Ready" && c.status === "True") ?? false;
+const nodeReadyStatus = (node: K8sNode): boolean => isK8sNodeReady(node);
 
 const computeTopologyHash = (
   nodes: K8sNode[],
@@ -706,11 +706,7 @@ export const getServicesByNamespace = (namespace: string) =>
 
 // Node status helpers
 export const isNodeReady = (node: K8sNode): boolean => {
-  return (
-    node.status.conditions?.some(
-      (c) => c.type === "Ready" && c.status === "True"
-    ) ?? false
-  );
+  return isK8sNodeReady(node);
 };
 
 export const getPodsOnNode = (nodeName: string): K8sPod[] => {
