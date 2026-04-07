@@ -329,4 +329,25 @@ describe('useModelsController', () => {
     expect(controllerMocks.crdResponse).toHaveBeenCalledTimes(1);
     expect(controller.crdActionLoading()).toBe(null);
   });
+
+  it('supports a read-first mode that skips eager refresh, discovery, and controller streams', async () => {
+    let controller!: ReturnType<typeof useModelsController>;
+    cleanup = mount(() => {
+      const [activeTab, setActiveTab] = createSignal<ModelsTab>('proxy');
+      controller = useModelsController(activeTab, setActiveTab, {
+        refreshOnMount: false,
+        autoDiscoverOnMount: false,
+        includeThroughputMetrics: false,
+      });
+      return <div />;
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(controllerMocks.crdResponse).not.toHaveBeenCalled();
+    expect(controllerMocks.discover).not.toHaveBeenCalled();
+    expect(controllerMocks.fetchModelIntegrationsBatch).not.toHaveBeenCalled();
+    expect(FakeEventSource.instances).toHaveLength(0);
+    expect(controller.crdModels()).toEqual([]);
+  });
 });
