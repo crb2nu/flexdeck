@@ -1,4 +1,4 @@
-import { batch, Component, createMemo, createSignal, onMount, For, Show } from 'solid-js';
+import { batch, Component, createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { grafanaApi, prom } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
 
@@ -42,6 +42,11 @@ interface DashboardCacheEntry {
   liveDataByPanel: Record<string, PanelLiveData>;
   detailFetchedAt: number;
   liveFetchedAt: number;
+}
+
+interface DashboardListState {
+  dashboards: Dashboard[];
+  error: string;
 }
 
 const DASHBOARD_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -366,9 +371,20 @@ function flattenPanels(rawPanels: any[], section?: string): Panel[] {
 }
 
 const GrafanaDashboards: Component = () => {
-  const [dashboards, setDashboards] = createSignal<Dashboard[]>([]);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
+  const [dashboardsResource] = createResource<DashboardListState>(async () => {
+    try {
+      const data = await grafanaApi.dashboards();
+      return {
+        dashboards: data || [],
+        error: '',
+      };
+    } catch (err) {
+      return {
+        dashboards: [],
+        error: err instanceof Error ? err.message : 'Failed to load dashboards',
+      };
+    }
+  });
   const [expandedUid, setExpandedUid] = createSignal<string | null>(null);
   const [panels, setPanels] = createSignal<Panel[]>([]);
   const [panelsLoading, setPanelsLoading] = createSignal(false);
@@ -398,6 +414,9 @@ const GrafanaDashboards: Component = () => {
       error: values.filter((value) => value.state === 'error').length,
     };
   });
+  const dashboards = createMemo(() => dashboardsResource()?.dashboards || []);
+  const loading = () => dashboardsResource.loading;
+  const error = () => dashboardsResource()?.error || '';
 
   const sanitizeError = (msg: string) => {
     if (!msg) return '';
@@ -546,17 +565,6 @@ const GrafanaDashboards: Component = () => {
       },
     }));
   };
-
-  onMount(async () => {
-    try {
-      const data = await grafanaApi.dashboards();
-      setDashboards(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboards');
-    } finally {
-      setLoading(false);
-    }
-  });
 
   const toggleDashboard = async (uid: string) => {
     if (expandedUid() === uid) {
