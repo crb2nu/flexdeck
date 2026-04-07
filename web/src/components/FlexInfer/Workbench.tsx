@@ -59,6 +59,16 @@ import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
 
+const workbenchSectionIds: WorkbenchSectionId[] = [
+  'overview',
+  'control-plane',
+  'telemetry',
+  'supply-chain',
+  'intake',
+];
+
+const workbenchSectionHashPrefix = '#flexinfer-';
+
 interface WorkbenchProps {
   surface?: Surface;
 }
@@ -138,8 +148,27 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   };
 
   onMount(() => {
+    const hashSection = readWorkbenchSectionFromHash();
+    if (hashSection) {
+      setActiveSection(hashSection);
+    }
+
     startFlexInferOperationalPolling();
     void refreshWorkbench();
+
+    if (typeof window !== 'undefined') {
+      const handleHashChange = () => {
+        const nextSection = readWorkbenchSectionFromHash();
+        if (nextSection) {
+          setActiveSection(nextSection);
+        }
+      };
+
+      window.addEventListener('hashchange', handleHashChange);
+      onCleanup(() => {
+        window.removeEventListener('hashchange', handleHashChange);
+      });
+    }
   });
   onCleanup(() => {
     stopFlexInferOperationalPolling();
@@ -149,17 +178,21 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     const target = document.getElementById(activeSection());
     if (!target) return;
 
-    if (typeof target.scrollIntoView === 'function') {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const viewport = resolvePageScrollViewport(target);
+    if (viewport) {
+      const offset = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - 12;
+      viewport.scrollTo({ top: Math.max(0, offset), left: 0, behavior: 'smooth' });
       return;
     }
 
-    const viewport = document.querySelector<HTMLElement>('[data-page-scroll-body]');
-    viewport?.scrollTo({ top: target.offsetTop, left: 0, behavior: 'smooth' });
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   createEffect(on(activeSection, () => {
-    queueMicrotask(scrollActiveSectionIntoView);
+    syncWorkbenchSectionHash(activeSection());
+    requestAnimationFrame(scrollActiveSectionIntoView);
   }, { defer: true }));
 
   const controllerSectionState = createMemo<OperatorState>(() =>
@@ -1215,6 +1248,32 @@ function freshnessNote(values: number[]): string {
   const latest = Math.max(...values, 0);
   if (!latest) return 'No successful refresh yet.';
   return `Last successful refresh at ${new Date(latest).toLocaleTimeString()}.`;
+}
+
+function isWorkbenchSectionId(value: string): value is WorkbenchSectionId {
+  return workbenchSectionIds.includes(value as WorkbenchSectionId);
+}
+
+function readWorkbenchSectionFromHash(): WorkbenchSectionId | null {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  if (!hash.startsWith(workbenchSectionHashPrefix)) return null;
+
+  const rawSection = hash.slice(workbenchSectionHashPrefix.length);
+  return isWorkbenchSectionId(rawSection) ? rawSection : null;
+}
+
+function syncWorkbenchSectionHash(section: WorkbenchSectionId) {
+  if (typeof window === 'undefined') return;
+  const nextHash = `${workbenchSectionHashPrefix}${section}`;
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+}
+
+function resolvePageScrollViewport(target: HTMLElement): HTMLElement | null {
+  const nearestViewport = target.closest<HTMLElement>('[data-page-scroll-body]');
+  if (nearestViewport) return nearestViewport;
+  return document.querySelector<HTMLElement>('[data-page-scroll-body]');
 }
 
 export default FlexInferWorkbench;
