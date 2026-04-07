@@ -20,6 +20,7 @@ export interface OperationsSidebarNavProps {
 const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
   const groupedItems = createMemo(() => {
     const groups: Array<{ name: string; items: OperationsSidebarItem[] }> = [];
+
     for (const item of props.items) {
       const groupName = item.group || 'Sections';
       const existing = groups.find((group) => group.name === groupName);
@@ -29,12 +30,11 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
         groups.push({ name: groupName, items: [item] });
       }
     }
+
     return groups;
   });
 
-  const activeItem = createMemo(() => (
-    props.items.find((item) => item.id === props.active) ?? props.items[0]
-  ));
+  const activeItem = createMemo(() => props.items.find((item) => item.id === props.active) ?? props.items[0]);
 
   return (
     <aside class="glass-panel h-fit p-3 xl:sticky xl:top-4">
@@ -55,6 +55,7 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
                   {(item) => (
                     <button
                       type="button"
+                      aria-pressed={props.active === item.id}
                       onClick={() => props.onChange(item.id)}
                       class={`min-w-[196px] rounded-2xl border p-3 text-left transition-colors xl:min-w-0 ${
                         props.active === item.id
