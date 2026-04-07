@@ -3,6 +3,7 @@
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import PageScrollBody from '../shared/PageScrollBody';
 
 const workbenchMocks = vi.hoisted(() => {
   const healthFeatures = {
@@ -14,7 +15,6 @@ const workbenchMocks = vi.hoisted(() => {
     error: '',
     loading: false,
     controllerDataLoading: false,
-    controllerUpdatedAt: Date.now(),
     crdModels: [
       {
         name: 'alpha',
@@ -143,7 +143,6 @@ vi.mock('../Models/useModelsController', () => ({
     controllerDataLoading: () => workbenchMocks.controllerState.controllerDataLoading,
     crdActionLoading: () => null,
     crdModels: () => workbenchMocks.controllerState.crdModels,
-    controllerUpdatedAt: () => workbenchMocks.controllerState.controllerUpdatedAt,
     discoverLoading: () => false,
     discoverModels: workbenchMocks.discoverModels,
     error: () => workbenchMocks.controllerState.error,
@@ -206,7 +205,7 @@ import Workbench from './Workbench';
 function mount(factory: () => JSX.Element) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(factory, container);
+  const dispose = render(() => <PageScrollBody>{factory()}</PageScrollBody>, container);
   return () => {
     dispose();
     container.remove();
@@ -217,26 +216,36 @@ function pageText(): string {
   return document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function clickButtonContaining(label: string) {
+function findButton(label: string): HTMLButtonElement {
   const button = Array.from(document.querySelectorAll('button')).find(
     (element) => element.textContent?.includes(label),
   ) as HTMLButtonElement | undefined;
   expect(button).toBeTruthy();
-  button!.click();
+  return button!;
+}
+
+function sectionClass(id: string): string {
+  const section = document.getElementById(id);
+  expect(section).toBeTruthy();
+  return section!.className;
 }
 
 describe('Workbench', () => {
   let cleanup: () => void = () => undefined;
+  let scrollIntoViewMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.stubGlobal('scrollTo', vi.fn());
     workbenchMocks.healthFeatures.flexinfer_proxy.enabled = true;
     workbenchMocks.healthFeatures.modelcache.enabled = true;
+    scrollIntoViewMock = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
 
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
     workbenchMocks.controllerState.controllerDataLoading = false;
-    workbenchMocks.controllerState.controllerUpdatedAt = Date.now();
 
     workbenchMocks.storeState.proxyError = '';
     workbenchMocks.storeState.proxyLoading = false;
@@ -275,13 +284,42 @@ describe('Workbench', () => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
-    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('switches the visible lane from the sidebar rail inside the page shell', async () => {
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Operator briefing');
+    });
+
+    expect(findButton('Overview').getAttribute('aria-pressed')).toBe('true');
+    expect(findButton('Telemetry').getAttribute('aria-pressed')).toBe('false');
+    expect(sectionClass('overview')).not.toContain('hidden');
+    expect(sectionClass('telemetry')).toContain('hidden');
+
+    scrollIntoViewMock.mockClear();
+    findButton('Telemetry').click();
+
+    await vi.waitFor(() => {
+      expect(sectionClass('telemetry')).not.toContain('hidden');
+    });
+
+    expect(findButton('Telemetry').getAttribute('aria-pressed')).toBe('true');
+    expect(findButton('Overview').getAttribute('aria-pressed')).toBe('false');
+    expect(sectionClass('overview')).toContain('hidden');
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+
+    findButton('Intake').click();
+    await vi.waitFor(() => {
+      expect(sectionClass('intake')).not.toContain('hidden');
+    });
   });
 
   it('renders ready, stale, and partial section states from shared operator data', async () => {
     const now = Date.now();
     workbenchMocks.healthFeatures.modelcache.enabled = false;
-    workbenchMocks.controllerState.controllerUpdatedAt = now;
     workbenchMocks.storeState.proxyUpdatedAt = now - 20_000;
     workbenchMocks.storeState.routerUpdatedAt = now - 20_000;
     workbenchMocks.storeState.catalogUpdatedAt = now;
@@ -297,16 +335,8 @@ describe('Workbench', () => {
     expect(text).toContain('Live FlexInfer operations workbench');
     expect(text).toContain('Operator briefing');
     expect(text).toContain('READY');
-
-    clickButtonContaining('Telemetry');
-    await vi.waitFor(() => {
-      expect(pageText()).toContain('STALE · poll fallback');
-    });
-
-    clickButtonContaining('Supply chain');
-    await vi.waitFor(() => {
-      expect(pageText()).toContain('PARTIAL · cache disabled');
-    });
+    expect(text).toContain('STALE · poll fallback');
+    expect(text).toContain('PARTIAL · cache disabled');
   });
 
   it('surfaces controller errors in both the banner and section state badge', async () => {
@@ -316,11 +346,6 @@ describe('Workbench', () => {
 
     await vi.waitFor(() => {
       expect(pageText()).toContain('offline from controller');
-    });
-
-    clickButtonContaining('Control plane');
-    await vi.waitFor(() => {
-      expect(pageText()).toContain('OFFLINE · controller issue');
     });
 
     const text = pageText();
@@ -333,7 +358,6 @@ describe('Workbench', () => {
 
     cleanup = mount(() => <Workbench />);
 
-    clickButtonContaining('Telemetry');
     await vi.waitFor(() => {
       expect(pageText()).toContain('DISABLED · feature disabled');
     });
@@ -341,20 +365,5 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Router disabled');
     expect(text).toContain('DISABLED · feature disabled');
-  });
-
-  it('resets the viewport when switching sections from the overview shell', async () => {
-    cleanup = mount(() => <Workbench />);
-
-    await vi.waitFor(() => {
-      expect(pageText()).toContain('Operator briefing');
-    });
-
-    clickButtonContaining('Telemetry');
-    await vi.waitFor(() => {
-      expect(pageText()).toContain('Proxy and router health');
-    });
-
-    expect(window.scrollTo).toHaveBeenCalled();
   });
 });

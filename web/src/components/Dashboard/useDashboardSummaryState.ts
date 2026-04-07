@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount, on } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
 import { hudApi, agentsApi } from '../../lib/api';
 import { healthStore } from '../../stores/health';
@@ -88,6 +88,9 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
 
   onMount(() => {
     startFlexInferOperationalPolling();
+    if (loomHUDAvailable()) {
+      void fetchAgentActivity();
+    }
   });
 
   onCleanup(() => {
@@ -157,11 +160,13 @@ export function useDashboardSummaryState(input: UseDashboardSummaryStateInput) {
     }
   };
 
-  createEffect(() => {
-    if (loomHUDAvailable()) void fetchAgentActivity();
-  });
+  createEffect(on(loomHUDAvailable, (available, previousAvailable) => {
+    if (available && !previousAvailable) {
+      void fetchAgentActivity();
+    }
+  }, { defer: true }));
 
-  createPolling('dash-agents', fetchAgentActivity, metricsRefreshInterval, loomHUDAvailable);
+  createPolling('dash-agents', fetchAgentActivity, metricsRefreshInterval, loomHUDAvailable, false);
 
   const resourceDataState = createMemo(() =>
     resolveDashboardDataState({
