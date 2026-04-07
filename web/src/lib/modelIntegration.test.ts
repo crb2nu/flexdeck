@@ -87,6 +87,19 @@ describe('modelIntegration', () => {
     expect(item?.adapters).toEqual([]);
   });
 
+  it('skips per-model throughput probes when throughput is not requested', async () => {
+    crdInferenceMock.mockResolvedValue({ model: 'alpha', tps: 1 });
+    loraMock.mockResolvedValue({ adapters: [] });
+
+    const result = await fetchModelIntegrationsBatch(
+      [{ namespace: 'ns', name: 'alpha' }],
+      { force: true, includeThroughput: false },
+    );
+
+    expect(modelMetricsMock).not.toHaveBeenCalled();
+    expect(result['ns/alpha']?.throughputAvailable).toBe(false);
+  });
+
   it('reuses the same in-flight fetch across concurrent callers for one model key', async () => {
     let resolveInference: ((value: { model: string; tps: number }) => void) | undefined;
     let resolveLora: ((value: { adapters: { name: string; state: string }[] }) => void) | undefined;

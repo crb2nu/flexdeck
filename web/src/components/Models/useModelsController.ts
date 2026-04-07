@@ -40,7 +40,20 @@ export type ModelsTab =
   | 'proxy'
   | 'pipelines';
 
-export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab: (tab: ModelsTab) => void) {
+interface UseModelsControllerOptions {
+  refreshOnMount?: boolean;
+  autoDiscoverOnMount?: boolean;
+  includeThroughputMetrics?: boolean;
+}
+
+export function useModelsController(
+  activeTab: Accessor<ModelsTab>,
+  setActiveTab: (tab: ModelsTab) => void,
+  options: UseModelsControllerOptions = {},
+) {
+  const refreshOnMount = options.refreshOnMount ?? true;
+  const autoDiscoverOnMount = options.autoDiscoverOnMount ?? true;
+  const includeThroughputMetrics = options.includeThroughputMetrics ?? true;
   const [localError, setLocalError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [discoverLoading, setDiscoverLoading] = createSignal(false);
@@ -84,7 +97,7 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
 
     const integrationData = await fetchModelIntegrationsBatch(
       models.map((model) => ({ namespace: model.namespace, name: model.name })),
-      { concurrency: 4 },
+      { concurrency: 4, includeThroughput: includeThroughputMetrics },
     );
 
     for (const model of models) {
@@ -222,11 +235,15 @@ export function useModelsController(activeTab: Accessor<ModelsTab>, setActiveTab
   };
 
   onMount(() => {
-    void refreshModels();
-    void discoverModels();
+    if (refreshOnMount) {
+      void refreshModels();
+    }
+    if (autoDiscoverOnMount) {
+      void discoverModels();
+    }
   });
 
-  createPolling('models-refresh', async () => { await fetchCRDModels(); }, 15000);
+  createPolling('models-refresh', async () => { await fetchCRDModels(); }, 15000, true, !refreshOnMount);
 
   createEffect(() => {
     if (activeTab() !== 'controller') return;

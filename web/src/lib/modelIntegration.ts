@@ -19,6 +19,7 @@ export interface ModelIntegrationResult {
 interface BatchOptions {
   force?: boolean;
   concurrency?: number;
+  includeThroughput?: boolean;
 }
 
 const DEFAULT_TTL_MS = 15_000;
@@ -41,13 +42,13 @@ export function modelRefKey(namespace: string, name: string): string {
 async function fetchModelIntegration(
   namespace: string,
   name: string,
+  includeThroughput = true,
 ): Promise<ModelIntegrationResult> {
-  const [inferenceResult, loraResult, throughputResult] =
-    await Promise.allSettled([
-      modelsApi.crdInference(namespace, name),
-      modelsApi.lora(namespace, name),
-      litellm.modelMetrics(name).catch(() => null),
-    ]);
+  const [inferenceResult, loraResult, throughputResult] = await Promise.allSettled([
+    modelsApi.crdInference(namespace, name),
+    modelsApi.lora(namespace, name),
+    includeThroughput ? litellm.modelMetrics(name).catch(() => null) : Promise.resolve(null),
+  ]);
 
   return {
     metrics:
@@ -71,6 +72,7 @@ async function getModelIntegration(
   namespace: string,
   name: string,
   force = false,
+  includeThroughput = true,
 ): Promise<ModelIntegrationResult> {
   const key = keyOf(namespace, name);
   const now = Date.now();
@@ -85,7 +87,7 @@ async function getModelIntegration(
   }
 
   const promise = (async () => {
-    const value = await fetchModelIntegration(namespace, name);
+    const value = await fetchModelIntegration(namespace, name, includeThroughput);
     cache.set(key, { value, expiresAt: Date.now() + DEFAULT_TTL_MS });
     return value;
   })();
@@ -104,6 +106,7 @@ export async function fetchModelIntegrationsBatch(
 ): Promise<Record<string, ModelIntegrationResult>> {
   const force = options.force ?? false;
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
+  const includeThroughput = options.includeThroughput ?? true;
 
   const deduped = new Map<string, ModelRef>();
   for (const model of models) {
@@ -127,6 +130,7 @@ export async function fetchModelIntegrationsBatch(
         item.namespace,
         item.name,
         force,
+        includeThroughput,
       );
     }
   });

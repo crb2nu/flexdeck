@@ -89,11 +89,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   const proxyEnabled = () => healthStore.features?.flexinfer_proxy?.enabled ?? false;
   const modelCacheEnabled = () => healthStore.features?.modelcache?.enabled ?? false;
 
-  const [activeTab] = createSignal<ModelsTab>('controller');
-  const noopSetActiveTab = () => undefined;
-  const controller = useModelsController(activeTab, noopSetActiveTab);
-  const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
   const [activeSection, setActiveSection] = createSignal<WorkbenchSectionId>('overview');
+  const activeTab = createMemo<ModelsTab>(() => (activeSection() === 'control-plane' ? 'controller' : 'proxy'));
+  const noopSetActiveTab = () => undefined;
+  const controller = useModelsController(activeTab, noopSetActiveTab, {
+    refreshOnMount: false,
+    autoDiscoverOnMount: false,
+    includeThroughputMetrics: false,
+  });
+  const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
   const proxyMetrics = flexinferProxyMetrics;
   const proxyHealth = flexinferProxyHealth;
   const proxyLoading = flexinferProxyLoading;
@@ -271,7 +275,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         key,
         reliability,
         adapters: controller.loraByModel()[key] || [],
-        throughput: controller.throughputByModel()[key],
         integrationState: controller.integrationByModel()[key],
       };
     });
