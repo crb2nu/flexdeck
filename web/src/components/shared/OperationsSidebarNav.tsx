@@ -61,21 +61,21 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
                       onClick={() => props.onChange(item.id)}
                       class={`group relative overflow-hidden rounded-[20px] border p-3 text-left transition-all duration-200 ${
                         props.active === item.id
-                          ? 'border-neon-cyan/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.18),rgba(255,255,255,0.05),rgba(15,23,42,0.55))] shadow-[0_16px_34px_rgba(7,10,20,0.22)]'
-                          : 'border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))] hover:border-neon-cyan/20 hover:bg-white/7 hover:shadow-[0_12px_28px_rgba(5,8,18,0.18)]'
+                          ? 'border-white/15 bg-white/10'
+                          : 'border-white/8 bg-white/5 hover:border-white/12 hover:bg-white/7'
                       }`}
                     >
                       <div
                         class={`pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-full transition-all duration-200 ${
                           props.active === item.id
-                            ? 'bg-neon-cyan shadow-[0_0_18px_rgba(34,211,238,0.55)]'
-                            : 'bg-transparent group-hover:bg-neon-cyan/30'
+                            ? 'bg-white/50'
+                            : 'bg-transparent group-hover:bg-white/20'
                         }`}
                       />
                       <div class="flex items-start justify-between gap-3 pl-2">
                         <div class="min-w-0">
                           <Show when={item.eyebrow}>
-                            <div class={`text-[10px] font-semibold uppercase tracking-[0.18em] ${props.active === item.id ? 'text-neon-cyan/80' : 'text-text-dim'}`}>
+                            <div class={`text-[10px] font-semibold uppercase tracking-[0.18em] ${props.active === item.id ? 'text-text-muted' : 'text-text-dim'}`}>
                               {item.eyebrow}
                             </div>
                           </Show>
@@ -88,13 +88,13 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
                         </div>
                         <div class="flex shrink-0 flex-col items-end gap-2">
                           <Show when={item.value}>
-                            <div class={`text-xl font-semibold leading-none ${props.active === item.id ? 'text-neon-cyan' : 'text-text-main'}`}>
+                            <div class={`text-xl font-semibold leading-none ${props.active === item.id ? 'text-white' : 'text-text-main'}`}>
                               {item.value}
                             </div>
                           </Show>
                           <span class={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${
                             props.active === item.id
-                              ? 'border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan'
+                              ? 'border-white/20 bg-white/10 text-white'
                               : 'border-white/10 bg-white/5 text-text-dim/75'
                           }`}>
                             {props.active === item.id ? 'Visible' : 'Switch'}
@@ -113,7 +113,7 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
       <div class="mt-3 rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.18))] p-3">
         <div class="flex items-center justify-between gap-2">
           <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Current focus</div>
-          <span class="rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neon-cyan">
+          <span class="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-white">
             {activeItem()?.eyebrow || 'Active'}
           </span>
         </div>

@@ -197,7 +197,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
         <div class="flex items-center gap-3">
           {/* Connection status indicator */}
           <div class={`w-2 h-2 rounded-full ${
-            status() === 'connected' ? 'bg-neon-green animate-pulse' :
+            status() === 'connected' ? 'bg-status-ok animate-pulse' :
             status() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
             status() === 'error' ? 'bg-red-500' :
             'bg-gray-500'
@@ -271,7 +271,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
           }}
           class={`px-2 py-1 text-[10px] font-mono rounded transition-all ${
             autoScroll()
-              ? 'text-neon-cyan'
+              ? 'text-white'
               : 'text-text-dim hover:text-text-main'
           }`}
         >
@@ -336,8 +336,8 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
       </div>
 
       {/* Corner accents */}
-      <div class="absolute top-0 left-0 w-4 h-4 border-l-2 border-t-2 border-neon-cyan/40 pointer-events-none" />
-      <div class="absolute bottom-0 left-0 w-4 h-4 border-l-2 border-b-2 border-neon-cyan/40 pointer-events-none" />
+      <div class="absolute top-0 left-0 w-4 h-4 border-l-2 border-t-2 border-white/15 pointer-events-none" />
+      <div class="absolute bottom-0 left-0 w-4 h-4 border-l-2 border-b-2 border-white/15 pointer-events-none" />
 
       <style>{`
         @keyframes slide-in-right {

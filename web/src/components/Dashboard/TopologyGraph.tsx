@@ -2274,11 +2274,11 @@ const TopologyGraph: Component<Props> = (props) => {
     <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
         <div class="pointer-events-none absolute inset-0 overflow-hidden">
             <div
-                class="absolute -left-20 top-10 h-56 w-56 rounded-full bg-neon-cyan/10 blur-3xl"
+                class="absolute -left-20 top-10 h-56 w-56 rounded-full bg-white/5 blur-3xl"
                 style={{ animation: 'topologyAuroraDrift 18s ease-in-out infinite' }}
             />
             <div
-                class="absolute -right-24 bottom-6 h-64 w-64 rounded-full bg-neon-purple/10 blur-3xl"
+                class="absolute -right-24 bottom-6 h-64 w-64 rounded-full bg-white/5 blur-3xl"
                 style={{ animation: 'topologyAuroraFloat 24s ease-in-out infinite' }}
             />
             <div class="absolute inset-0 opacity-[0.06]" style={{ background: 'radial-gradient(circle at 20% 20%, rgba(0,217,255,0.18), transparent 32%), radial-gradient(circle at 80% 76%, rgba(168,85,247,0.16), transparent 30%)' }} />
@@ -2301,12 +2301,12 @@ const TopologyGraph: Component<Props> = (props) => {
         {/* Stats Overlay */}
         <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-[#0a1020]/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
             <span class="text-text-dim">Nodes:</span>
-            <span class="font-mono text-neon-cyan">{liveTopologyStats().nodes || nodeCount()}</span>
+            <span class="font-mono text-white">{liveTopologyStats().nodes || nodeCount()}</span>
             <span class="text-text-dim ml-2 hidden sm:inline">Renderer:</span>
-            <span class="font-mono text-neon-purple hidden sm:inline">Canvas/GPU</span>
+            <span class="font-mono text-text-muted hidden sm:inline">Canvas/GPU</span>
             <Show when={topologySyncing()}>
-              <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-neon-cyan shadow-[0_0_18px_rgba(0,217,255,0.12)]">
-                <span class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
+              <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-white">
+                <span class="h-1.5 w-1.5 rounded-full bg-white/40 animate-pulse" />
                 Syncing
               </span>
             </Show>
@@ -2351,14 +2351,14 @@ const TopologyGraph: Component<Props> = (props) => {
             <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
             <div class="flex flex-col gap-2">
                 <div class="flex items-center gap-2">
-                    <div class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-neon-cyan bg-neon-cyan/20">
-                        <span class="text-[8px] text-neon-cyan">⬡</span>
+                    <div class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white/20 bg-white/10">
+                        <span class="text-[8px] text-white">⬡</span>
                     </div>
                     <span class="text-text-dim">Node</span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <div class="flex h-4 w-4 items-center justify-center rounded-full border border-neon-purple bg-neon-purple/20">
-                        <span class="text-[8px] text-neon-purple">◆</span>
+                    <div class="flex h-4 w-4 items-center justify-center rounded-full border border-white/15 bg-white/10">
+                        <span class="text-[8px] text-text-muted">◆</span>
                     </div>
                     <span class="text-text-dim">Service</span>
                 </div>
@@ -2368,7 +2368,7 @@ const TopologyGraph: Component<Props> = (props) => {
                 </div>
                 <div class="mt-1 border-t border-white/5 pt-2">
                      <span class="text-[10px] text-text-dim flex items-center gap-1">
-                        <span class="inline-block w-2 h-2 rounded-full bg-neon-cyan animate-pulse" />
+                        <span class="inline-block w-2 h-2 rounded-full bg-white/40 animate-pulse" />
                         Traffic
                      </span>
                 </div>
@@ -2381,13 +2381,13 @@ const TopologyGraph: Component<Props> = (props) => {
                 <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-[#0a1020]/95 p-4 border border-white/10 shadow-xl z-10 transition-all duration-200">
                     <div class="mb-3 flex items-center gap-3">
                         <div class={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
-                            node().type === 'node' ? 'border-neon-cyan bg-neon-cyan/20' :
-                            node().type === 'service' ? 'border-neon-purple bg-neon-purple/20' :
+                            node().type === 'node' ? 'border-white/20 bg-white/10' :
+                            node().type === 'service' ? 'border-white/15 bg-white/10' :
                             'border-status-ok bg-status-ok/20'
                         }`}>
                             <span class={`text-sm ${
-                                node().type === 'node' ? 'text-neon-cyan' :
-                                node().type === 'service' ? 'text-neon-purple' :
+                                node().type === 'node' ? 'text-white' :
+                                node().type === 'service' ? 'text-text-muted' :
                                 'text-status-ok'
                             }`}>
                                 {getNodeIcon(node())}

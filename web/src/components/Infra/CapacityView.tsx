@@ -13,7 +13,7 @@ function pct(v: number): string {
 function heatColor(pct: number): string {
   if (pct >= 90) return 'bg-status-error/80 text-white';
   if (pct >= 75) return 'bg-status-warn/70 text-white';
-  if (pct >= 50) return 'bg-neon-cyan/30 text-neon-cyan';
+  if (pct >= 50) return 'bg-white/10 text-white';
   return 'bg-status-ok/20 text-status-ok';
 }
 
@@ -105,7 +105,7 @@ const CapacityView: Component<Props> = (props) => {
                     </div>
                     <div class="mt-1 h-1 w-full rounded-full bg-white/5">
                       <div
-                        class={`h-1 rounded-full transition-all duration-500 ${item.pct >= 90 ? 'bg-status-error' : item.pct >= 75 ? 'bg-status-warn' : 'bg-neon-cyan/60'}`}
+                        class={`h-1 rounded-full transition-all duration-500 ${item.pct >= 90 ? 'bg-status-error' : item.pct >= 75 ? 'bg-status-warn' : 'bg-white/40'}`}
                         style={{ width: `${Math.min(100, item.pct)}%` }}
                       />
                     </div>

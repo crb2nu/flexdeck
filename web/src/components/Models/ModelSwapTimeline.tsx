@@ -29,7 +29,7 @@ function stateColor(state: string): string {
   switch (state) {
     case 'Active': return 'text-status-ok';
     case 'Queued': return 'text-status-warn';
-    case 'Preempted': return 'text-neon-purple';
+    case 'Preempted': return 'text-text-muted';
     default: return 'text-text-dim';
   }
 }
@@ -38,7 +38,7 @@ function stateBgColor(state: string): string {
   switch (state) {
     case 'Active': return 'bg-status-ok/20 text-status-ok';
     case 'Queued': return 'bg-status-warn/20 text-status-warn';
-    case 'Preempted': return 'bg-neon-purple/20 text-neon-purple';
+    case 'Preempted': return 'bg-white/10 text-text-muted';
     default: return 'bg-white/10 text-text-dim';
   }
 }
@@ -47,7 +47,7 @@ function dotBgColor(state: string): string {
   switch (state) {
     case 'Active': return 'bg-status-ok';
     case 'Queued': return 'bg-status-warn';
-    case 'Preempted': return 'bg-neon-purple';
+    case 'Preempted': return 'bg-white/30';
     default: return 'bg-white/20';
   }
 }
@@ -93,10 +93,10 @@ const ModelSwapTimeline: Component<{ namespace: string; name: string }> = (props
       <Show when={!loading() && events().length > 0}>
         <div class="px-1 pb-2 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-[10px] font-medium text-neon-purple uppercase tracking-wider">
+            <span class="text-[10px] font-medium text-text-muted uppercase tracking-wider">
               Swap History
             </span>
-            <span class="rounded-full bg-neon-purple/20 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
+            <span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-text-muted">
               {events().length} event{events().length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -153,7 +153,7 @@ const ModelSwapTimeline: Component<{ namespace: string; name: string }> = (props
                   {/* Row 2: Preempted-by info */}
                   <Show when={event.preemptedBy}>
                     <div class="text-text-dim/70 truncate">
-                      Preempted by <span class="font-mono text-neon-purple">{event.preemptedBy}</span>
+                      Preempted by <span class="font-mono text-text-muted">{event.preemptedBy}</span>
                     </div>
                   </Show>
                 </div>
@@ -162,7 +162,7 @@ const ModelSwapTimeline: Component<{ namespace: string; name: string }> = (props
           </For>
           <Show when={events().length > 20 && !showAll()}>
             <button
-              class="text-xs text-neon-cyan/70 hover:text-neon-cyan mt-1"
+              class="text-xs text-text-dim hover:text-white mt-1"
               onClick={() => setShowAll(true)}
             >
               Show all {events().length} events

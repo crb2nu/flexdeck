@@ -13,9 +13,9 @@ const GrafanaDashboards = lazy(() => import('./GrafanaDashboards'));
 const Alerts = lazy(() => import('../Alerts'));
 
 const METRICS_TABS: TabDef<'prometheus' | 'grafana' | 'alerts'>[] = [
-  { id: 'prometheus', label: 'Prometheus', color: 'neon-cyan' },
-  { id: 'grafana', label: 'Grafana', color: 'neon-cyan' },
-  { id: 'alerts', label: 'Alerts', color: 'neon-cyan' },
+  { id: 'prometheus', label: 'Prometheus', color: 'white' },
+  { id: 'grafana', label: 'Grafana', color: 'white' },
+  { id: 'alerts', label: 'Alerts', color: 'white' },
 ];
 
 const Metrics: Component = () => {
@@ -34,7 +34,7 @@ const Metrics: Component = () => {
     PROMETHEUS_TIME_RANGES.map((range) => ({
       id: range.value,
       label: range.label,
-      color: 'neon-cyan',
+      color: 'white',
     }))
   );
 
@@ -67,7 +67,7 @@ const Metrics: Component = () => {
             <button
               onClick={fetchMetrics}
               disabled={loading()}
-              class="flex items-center gap-2 rounded-lg bg-neon-cyan/10 px-4 py-1.5 text-sm font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50 border border-neon-cyan/20"
+              class="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-1.5 text-sm font-medium text-white transition-all hover:bg-white/20 disabled:opacity-50 border border-white/15"
             >
               <span class={loading() ? 'animate-spin' : ''}>↻</span>
               Refresh
@@ -178,8 +178,8 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
 
   const getColorClass = (color: string) => {
     const colors: Record<string, string> = {
-      cyan: 'text-neon-cyan',
-      purple: 'text-neon-purple',
+      cyan: 'text-white',
+      purple: 'text-text-muted',
       green: 'text-status-ok',
       orange: 'text-status-warn',
       blue: 'text-blue-400',

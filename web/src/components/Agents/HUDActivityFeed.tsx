@@ -92,8 +92,8 @@ const HUDActivityFeed: Component<{
     switch (type) {
       case 'session_start': return 'text-status-ok';
       case 'session_end': return 'text-text-dim';
-      case 'context_add': return 'text-neon-cyan';
-      case 'task_update': return 'text-neon-purple';
+      case 'context_add': return 'text-white';
+      case 'task_update': return 'text-text-muted';
       case 'file_claim': return 'text-yellow-400';
       case 'conflict': return 'text-status-error';
       case 'heartbeat': return 'text-text-dim';
@@ -123,7 +123,7 @@ const HUDActivityFeed: Component<{
               : connectionState() === 'stale'
                 ? 'bg-status-warn'
                 : connectionState() === 'disabled'
-                  ? 'bg-neon-cyan/70'
+                  ? 'bg-white/40'
                 : 'bg-white/30'
           }`} />
           <span class="text-[10px] text-text-dim">

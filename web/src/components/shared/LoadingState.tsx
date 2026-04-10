@@ -21,7 +21,7 @@ const LoadingState: Component<LoadingStateProps> = (props) => {
       when={variant() === 'spinner'}
       fallback={
         <span class={`inline-flex items-center gap-2 ${SIZE_MAP[size()].text}`}>
-          <span class={`${SIZE_MAP[size()].spinner} animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan`} />
+          <span class={`${SIZE_MAP[size()].spinner} animate-spin rounded-full border-2 border-white/10 border-t-white/50`} />
           <Show when={props.message}>
             <span class="text-text-dim">{props.message}</span>
           </Show>
@@ -30,7 +30,7 @@ const LoadingState: Component<LoadingStateProps> = (props) => {
     >
       <div class="flex flex-1 items-center justify-center py-16">
         <div class="flex flex-col items-center gap-3">
-          <div class={`${SIZE_MAP[size()].spinner} animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan`} />
+          <div class={`${SIZE_MAP[size()].spinner} animate-spin rounded-full border-2 border-white/10 border-t-white/50`} />
           <Show when={props.message}>
             <p class={`text-text-dim ${SIZE_MAP[size()].text}`}>{props.message}</p>
           </Show>

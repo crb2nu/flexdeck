@@ -72,7 +72,7 @@ const UsersTab: Component = () => {
     const colors: Record<string, string> = {
       admin: "bg-red-500/20 text-red-400 border-red-500/30",
       editor: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-      viewer: "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/30",
+      viewer: "bg-white/10 text-white border-white/20",
     };
     return colors[role] || "bg-white/10 text-text-muted border-white/20";
   };
@@ -85,7 +85,7 @@ const UsersTab: Component = () => {
           USER MANAGEMENT
         </h3>
         <button
-          class="rounded-md bg-neon-cyan/10 border border-neon-cyan/30 px-3 py-1.5 text-xs font-mono text-neon-cyan hover:bg-neon-cyan/20 transition-colors"
+          class="rounded-md bg-white/10 border border-white/20 px-3 py-1.5 text-xs font-mono text-white hover:bg-white/15 transition-colors"
           onClick={() => {
             setShowCreate(true);
             setCreatedToken("");
@@ -102,7 +102,7 @@ const UsersTab: Component = () => {
             when={!createdToken()}
             fallback={
               <div class="space-y-2">
-                <div class="text-xs text-neon-green font-mono">
+                <div class="text-xs text-status-ok font-mono">
                   User created! Copy the token now — it won't be shown again.
                 </div>
                 <div class="flex items-center gap-2 rounded bg-black/40 p-2">
@@ -110,7 +110,7 @@ const UsersTab: Component = () => {
                     {createdToken()}
                   </code>
                   <button
-                    class="text-xs text-neon-cyan hover:text-white"
+                    class="text-xs text-text-muted hover:text-white"
                     onClick={() => navigator.clipboard.writeText(createdToken())}
                   >
                     Copy
@@ -135,7 +135,7 @@ const UsersTab: Component = () => {
                 </label>
                 <input
                   type="text"
-                  class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                  class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                   value={newUsername()}
                   onInput={(e) => setNewUsername(e.currentTarget.value)}
                   placeholder="username"
@@ -144,7 +144,7 @@ const UsersTab: Component = () => {
               <div>
                 <label class="text-[10px] text-text-dim block mb-1">ROLE</label>
                 <select
-                  class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                  class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                   value={newRole()}
                   onChange={(e) => setNewRole(e.currentTarget.value)}
                 >
@@ -154,7 +154,7 @@ const UsersTab: Component = () => {
                 </select>
               </div>
               <button
-                class="rounded bg-neon-cyan/20 border border-neon-cyan/30 px-4 py-1.5 text-xs text-neon-cyan font-mono hover:bg-neon-cyan/30 disabled:opacity-50"
+                class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono hover:bg-white/15 disabled:opacity-50"
                 onClick={handleCreate}
                 disabled={creating() || !newUsername()}
               >
@@ -196,12 +196,12 @@ const UsersTab: Component = () => {
                   type="checkbox"
                   checked={editDisabled()}
                   onChange={(e) => setEditDisabled(e.currentTarget.checked)}
-                  class="accent-neon-cyan"
+                  class="accent-white"
                 />
                 Disabled
               </label>
               <button
-                class="rounded bg-neon-cyan/20 border border-neon-cyan/30 px-4 py-1.5 text-xs text-neon-cyan font-mono"
+                class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono"
                 onClick={handleUpdate}
               >
                 Save
@@ -261,7 +261,7 @@ const UsersTab: Component = () => {
                   </td>
                   <td class="px-4 py-2.5">
                     <span
-                      class={`text-[10px] font-mono ${user.disabled ? "text-red-400" : "text-neon-green"}`}
+                      class={`text-[10px] font-mono ${user.disabled ? "text-red-400" : "text-status-ok"}`}
                     >
                       {user.disabled ? "DISABLED" : "ACTIVE"}
                     </span>
@@ -273,7 +273,7 @@ const UsersTab: Component = () => {
                   </td>
                   <td class="px-4 py-2.5 text-right space-x-2">
                     <button
-                      class="text-text-dim hover:text-neon-cyan transition-colors"
+                      class="text-text-dim hover:text-white transition-colors"
                       onClick={() => {
                         setEditUser(user);
                         setEditRole(user.role);

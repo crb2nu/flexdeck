@@ -670,7 +670,7 @@ const GrafanaDashboards: Component = () => {
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
               <span class="rounded-full border border-white/10 bg-white/8 px-2.5 py-1">Grafana explorer</span>
-              <span class="rounded-full border border-neon-cyan/20 bg-neon-cyan/10 px-2.5 py-1 text-neon-cyan">
+              <span class="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-white">
                 {dashboardSummary().filtered} visible
               </span>
               <span class="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">
@@ -700,7 +700,7 @@ const GrafanaDashboards: Component = () => {
               <button
                 type="button"
                 onClick={() => void refetchDashboards()}
-                class="rounded-md border border-neon-cyan/20 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+                class="rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/15"
               >
                 Refresh catalog
               </button>
@@ -723,7 +723,7 @@ const GrafanaDashboards: Component = () => {
 
       <Show when={loading()}>
         <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
         </div>
       </Show>
 
@@ -751,8 +751,8 @@ const GrafanaDashboards: Component = () => {
             <div
               class={`glass-panel-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-all duration-200 ${
                 expandedUid() === dash.uid
-                  ? 'border-neon-cyan/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.08))] shadow-[0_18px_52px_rgba(5,10,20,0.24)] md:col-span-2 xl:col-span-3'
-                  : 'hover:border-neon-cyan/15'
+                  ? 'border-white/20 md:col-span-2 xl:col-span-3'
+                  : ''
               }`}
               onClick={() => toggleDashboard(dash.uid)}
             >
@@ -774,7 +774,7 @@ const GrafanaDashboards: Component = () => {
                 </div>
                 <span class={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
                   expandedUid() === dash.uid
-                    ? 'border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan'
+                    ? 'border-white/20 bg-white/10 text-white'
                     : 'border-white/10 bg-black/20 text-text-dim'
                 }`}>
                   {expandedUid() === dash.uid ? 'Open' : 'Preview'}
@@ -785,7 +785,7 @@ const GrafanaDashboards: Component = () => {
                 <div class="mb-2 flex flex-wrap gap-1">
                   <For each={dash.tags}>
                     {(tag) => (
-                      <span class="px-1.5 py-0.5 text-[10px] rounded bg-neon-purple/20 text-neon-purple">
+                      <span class="px-1.5 py-0.5 text-[10px] rounded bg-white/10 text-text-muted">
                         {tag}
                       </span>
                     )}
@@ -801,7 +801,7 @@ const GrafanaDashboards: Component = () => {
                 >
                   <Show when={panelsLoading()}>
                     <div class="flex items-center gap-2 text-xs text-text-dim">
-                      <div class="h-3 w-3 animate-spin rounded-full border border-white/10 border-t-neon-cyan" />
+                      <div class="h-3 w-3 animate-spin rounded-full border border-white/10 border-t-white/50" />
                       Loading panels...
                     </div>
                   </Show>
@@ -816,7 +816,7 @@ const GrafanaDashboards: Component = () => {
                         <span>{panelSummary().datasources} datasources</span>
                       </Show>
                       <Show when={liveSummary().tracked > 0}>
-                        <span class="text-neon-cyan">{liveSummary().ready} live</span>
+                        <span class="text-white">{liveSummary().ready} live</span>
                         <span>{liveSummary().loading} loading</span>
                         <Show when={liveSummary().unsupported > 0}>
                           <span>{liveSummary().unsupported} skipped</span>
@@ -836,7 +836,7 @@ const GrafanaDashboards: Component = () => {
                         <span class="uppercase tracking-wider">vars</span>
                         <For each={templateVarEntries()}>
                           {(entry) => (
-                            <span class="rounded bg-neon-cyan/10 px-1.5 py-0.5 text-neon-cyan">
+                            <span class="rounded bg-white/10 px-1.5 py-0.5 text-white">
                               {entry[0]}={entry[1]}
                             </span>
                           )}
@@ -849,7 +849,7 @@ const GrafanaDashboards: Component = () => {
                           {(panel) => (
                             <div class="rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(0,0,0,0.18))] px-3 py-2 text-xs">
                               <div class="flex items-center gap-2">
-                                <span class="font-mono text-neon-cyan">
+                                <span class="text-text-muted font-mono">
                                   {panel.type}
                                 </span>
                                 <span class="flex-1 truncate font-medium text-text-main">
@@ -868,7 +868,7 @@ const GrafanaDashboards: Component = () => {
                                     </span>
                                   </Show>
                                   <Show when={panel.datasource}>
-                                    <span class="rounded bg-neon-purple/10 px-1.5 py-0.5 text-neon-purple">
+                                    <span class="rounded bg-white/10 px-1.5 py-0.5 text-text-muted">
                                       ds: {panel.datasource}
                                     </span>
                                   </Show>
@@ -893,7 +893,7 @@ const GrafanaDashboards: Component = () => {
                                     <Show when={live().state === 'ready'}>
                                       <div class="flex items-end justify-between gap-2">
                                         <div class="flex items-end gap-2">
-                                          <span class="text-base font-semibold tabular-nums text-neon-cyan">
+                                          <span class="text-base font-semibold tabular-nums text-white">
                                             {formatMetricValue(live().value)}
                                           </span>
                                           <Show when={live().resolution}>
@@ -955,7 +955,7 @@ const GrafanaDashboards: Component = () => {
                     href={dash.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="mt-2 inline-flex items-center gap-1 text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
+                    class="inline-flex items-center gap-1 mt-2 text-xs text-white hover:text-white/80 transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >
                     Open in Grafana

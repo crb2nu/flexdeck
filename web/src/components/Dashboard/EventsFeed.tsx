@@ -46,7 +46,7 @@ const EventsFeed: Component = () => {
     type === 'Warning' ? 'text-yellow-400' : 'text-text-dim';
 
   const typeDot = (type: string) =>
-    type === 'Warning' ? 'bg-yellow-500' : 'bg-neon-green/60';
+    type === 'Warning' ? 'bg-yellow-500' : 'bg-white/30';
 
   const timeAgo = (ts?: string) => {
     if (!ts) return '';
@@ -61,7 +61,7 @@ const EventsFeed: Component = () => {
     <div class="glass-panel flex flex-col overflow-hidden" style={{ 'max-height': '280px' }}>
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/5">
         <div class="flex items-center gap-2">
-          <span class="text-xs text-neon-cyan">⚡</span>
+          <span class="text-xs text-text-dim">⚡</span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">Cluster Events</span>
           <Show when={stablePanel.status()}>
             {(status) => (
@@ -75,7 +75,7 @@ const EventsFeed: Component = () => {
       </div>
 
       <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
-        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
           when={!stablePanel.showBlockingLoading()}
           fallback={
@@ -116,7 +116,7 @@ const EventsFeed: Component = () => {
                             {evt.involvedObject?.kind}/{evt.involvedObject?.name}
                           </span>
                           <Show when={evt.count && evt.count > 1}>
-                            <span class="text-[9px] text-neon-purple/70 ml-auto">×{evt.count}</span>
+                            <span class="text-[9px] text-text-dim ml-auto">×{evt.count}</span>
                           </Show>
                         </div>
                         <p class="text-[11px] text-text-muted truncate group-hover:whitespace-normal group-hover:break-words">

@@ -19,7 +19,7 @@ const EmptyState: Component<EmptyStateProps> = (props) => {
     const icon = props.icon;
     if (!icon) return null;
     if (typeof icon === 'string') {
-      return <div class={`${isSmall() ? 'mb-2 text-3xl' : 'mb-4 text-6xl'} text-neon-purple/30`}>{icon}</div>;
+      return <div class={`${isSmall() ? 'mb-2 text-3xl' : 'mb-4 text-6xl'} text-text-muted/30`}>{icon}</div>;
     }
     return <div class={`${isSmall() ? 'mb-2' : 'mb-3'} opacity-30`}>{icon}</div>;
   };
@@ -37,7 +37,7 @@ const EmptyState: Component<EmptyStateProps> = (props) => {
         <Show when={props.action}>
           <button
             onClick={() => props.action!.onClick()}
-            class="mt-4 rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+            class="mt-4 rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15"
           >
             {props.action!.label}
           </button>

@@ -288,7 +288,7 @@ const Dashboard: Component = () => {
            {/* Connection status indicator */}
            <div class="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-[#0a1020]/85 px-2.5 py-1 sm:px-3">
              <div class={`w-2 h-2 rounded-full ${
-               connectionStatus() === 'connected' ? 'bg-neon-green animate-pulse' :
+               connectionStatus() === 'connected' ? 'bg-status-ok animate-pulse' :
                connectionStatus() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
                connectionStatus() === 'error' ? 'bg-red-500' :
                'bg-gray-500'
@@ -306,7 +306,7 @@ const Dashboard: Component = () => {
                onClick={() => setShowFilters(!showFilters())}
                class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors ${
                  hasActiveFilter()
-                   ? 'bg-neon-purple/20 border-neon-purple/50 text-neon-purple'
+                   ? 'bg-white/10 border-white/20 text-white'
                    : showFilters()
                    ? 'bg-black/40 border-white/20 text-text-main'
                    : 'bg-black/40 border-white/10 text-text-dim hover:text-text-main'
@@ -319,7 +319,7 @@ const Dashboard: Component = () => {
            <TabBar
              tabs={[
                { id: '2d', label: '2D' },
-               { id: '3d', label: '3D', color: 'neon-purple' },
+               { id: '3d', label: '3D' },
              ]}
              active={viewMode()}
              onChange={setViewMode}
@@ -330,7 +330,7 @@ const Dashboard: Component = () => {
         {/* Mobile Observability Toggle */}
         <button
           onClick={() => setShowObservability(true)}
-          class="lg:hidden absolute left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-[#0a1020]/85 border border-neon-purple/40 text-neon-purple shadow-lg shadow-neon-purple/20 animate-pulse-glow"
+          class="lg:hidden absolute left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-bg-dark/90 border border-white/10 text-text-dim shadow-lg"
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <span class="text-lg">◈</span>
@@ -345,7 +345,7 @@ const Dashboard: Component = () => {
               <Show when={hasActiveFilter()}>
                 <button
                   onClick={clearFilters}
-                  class="text-[10px] text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+                  class="text-[10px] text-text-dim hover:text-white transition-colors"
                 >
                   Clear All
                 </button>
@@ -361,7 +361,7 @@ const Dashboard: Component = () => {
                   placeholder="Pod or namespace name..."
                   value={searchInput()}
                   onInput={(e) => handleSearchChange(e.currentTarget.value)}
-                  class="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main placeholder:text-text-dim/50 focus:border-neon-cyan/50 focus:outline-none pr-6"
+                  class="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none pr-6"
                 />
                 <Show when={searchInput()}>
                   <button
@@ -384,7 +384,7 @@ const Dashboard: Component = () => {
                   onClick={() => toggleStatusFilter('Running')}
                   class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
                     isStatusActive('Running')
-                      ? 'bg-neon-green/20 border-neon-green/50 text-neon-green'
+                      ? 'bg-status-ok/20 border-status-ok/50 text-status-ok'
                       : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
                   }`}
                 >
@@ -419,7 +419,7 @@ const Dashboard: Component = () => {
               <select
                 value={filter().namespace || ''}
                 onChange={(e) => setFilter({ ...filter(), namespace: e.currentTarget.value || undefined })}
-                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
               >
                 <option value="">All Namespaces</option>
                 <For each={namespaceList()}>
@@ -434,7 +434,7 @@ const Dashboard: Component = () => {
               <select
                 value={filter().nodeName || ''}
                 onChange={(e) => setFilter({ ...filter(), nodeName: e.currentTarget.value || undefined })}
-                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
               >
                 <option value="">All Nodes</option>
                 <For each={nodeNameList()}>
@@ -452,7 +452,7 @@ const Dashboard: Component = () => {
               ? <LoadingState message="Loading cluster data..." />
               : <div class="flex h-full items-center justify-center">
                   <div class="text-center">
-                    <div class="mb-4 text-6xl text-neon-cyan/30">⬡</div>
+                    <div class="mb-4 text-6xl text-text-muted/30">⬡</div>
                     <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
                     <p class="text-sm text-text-muted">No resources found</p>
                   </div>
@@ -663,12 +663,12 @@ const Dashboard: Component = () => {
         />
         
         {/* Sidebar Content */}
-        <div class="relative mt-auto lg:mt-0 h-[85vh] lg:h-full w-full bg-[rgba(8,14,28,0.94)] lg:bg-transparent backdrop-blur-sm lg:backdrop-blur-none border-t border-white/10 lg:border-t-0 flex flex-col gap-3 p-4 lg:p-0 overflow-y-auto shadow-2xl lg:shadow-none">
+        <div class="relative mt-auto lg:mt-0 h-[85vh] lg:h-full w-full bg-bg-dark lg:bg-transparent border-t border-white/[0.08] lg:border-t-0 flex flex-col gap-3 p-4 lg:p-0 overflow-y-auto shadow-2xl lg:shadow-none">
           {/* Mobile Header */}
           <div class="flex lg:hidden items-center justify-between mb-2 pb-2 border-b border-white/5">
             <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-neon-purple animate-pulse" />
-              <span class="text-xs font-mono text-neon-purple uppercase tracking-widest font-bold">Observability</span>
+              <div class="w-2 h-2 rounded-full bg-white/40" />
+              <span class="text-xs font-mono text-text-dim uppercase tracking-widest font-bold">Observability</span>
             </div>
             <button 
               onClick={() => setShowObservability(false)}

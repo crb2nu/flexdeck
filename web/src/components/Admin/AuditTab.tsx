@@ -43,15 +43,15 @@ const AuditTab: Component = () => {
   });
 
   const statusColor = (status: number) => {
-    if (status >= 200 && status < 300) return "text-neon-green";
+    if (status >= 200 && status < 300) return "text-status-ok";
     if (status >= 400 && status < 500) return "text-yellow-400";
     return "text-red-400";
   };
 
   const methodColor = (method: string) => {
     const colors: Record<string, string> = {
-      GET: "text-neon-cyan",
-      POST: "text-neon-green",
+      GET: "text-white",
+      POST: "text-status-ok",
       PUT: "text-yellow-400",
       DELETE: "text-red-400",
     };
@@ -75,7 +75,7 @@ const AuditTab: Component = () => {
               <For each={Object.entries(s().byAction || {}).slice(0, 6)}>
                 {([action, count]) => (
                   <div class="text-center flex-shrink-0">
-                    <div class="text-sm font-mono text-neon-cyan">
+                    <div class="text-sm font-mono text-white">
                       {count as number}
                     </div>
                     <div class="text-[9px] text-text-dim truncate max-w-[80px]">
@@ -96,7 +96,7 @@ const AuditTab: Component = () => {
         </h3>
         <input
           type="text"
-          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none w-32"
+          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none w-32"
           placeholder="Action..."
           value={filterAction()}
           onInput={(e) => {
@@ -106,7 +106,7 @@ const AuditTab: Component = () => {
         />
         <input
           type="text"
-          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none w-32"
+          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none w-32"
           placeholder="User..."
           value={filterUser()}
           onInput={(e) => {
@@ -115,7 +115,7 @@ const AuditTab: Component = () => {
           }}
         />
         <button
-          class="text-xs text-text-dim hover:text-neon-cyan"
+          class="text-xs text-text-dim hover:text-white"
           onClick={() => refetch()}
         >
           Refresh
@@ -166,7 +166,7 @@ const AuditTab: Component = () => {
                   <td class="px-3 py-2 text-text-dim font-mono whitespace-nowrap">
                     {new Date(entry.timestamp).toLocaleString()}
                   </td>
-                  <td class="px-3 py-2 font-mono text-neon-cyan">
+                  <td class="px-3 py-2 font-mono text-white">
                     {entry.action}
                   </td>
                   <td class="px-3 py-2">

@@ -43,7 +43,7 @@ const SecretsTable: Component<SecretsTableProps> = (props) => (
                 <span class={`text-[10px] text-text-dim transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
                   &#9656;
                 </span>
-                <span class="font-medium text-text-main text-sm group-hover:text-neon-cyan transition-colors">
+                <span class="font-medium text-text-main text-sm group-hover:text-white transition-colors">
                   {secret.metadata?.name}
                 </span>
                 <span class="text-text-dim text-xs">{secret.metadata?.namespace}</span>
@@ -68,9 +68,9 @@ const SecretsTable: Component<SecretsTableProps> = (props) => (
                           return (
                             <div class="border-b border-white/5 last:border-0 px-3 py-1.5">
                               <div class="flex items-center gap-2">
-                                <span class="text-xs font-mono text-neon-cyan">{k}</span>
+                                <span class="text-xs font-mono text-text-dim">{k}</span>
                                 <button
-                                  class="text-[10px] text-text-dim hover:text-neon-cyan transition-colors"
+                                  class="text-[10px] text-text-dim hover:text-text-dim transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     props.onRevealKey(revealKey);

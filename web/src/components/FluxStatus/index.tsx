@@ -160,7 +160,7 @@ const FluxStatus: Component = () => {
             <Show when={kustomizations().length > 0}>
               <div class="glass-panel overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-white/5">
-                  <span class="text-xs text-neon-cyan">&#9671;</span>
+                  <span class="text-xs text-text-dim">&#9671;</span>
                   <span class="text-xs font-mono text-text-main uppercase tracking-wider">
                     Kustomizations
                   </span>
@@ -188,7 +188,7 @@ const FluxStatus: Component = () => {
             <Show when={helmReleases().length > 0}>
               <div class="glass-panel overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-white/5">
-                  <span class="text-xs text-neon-purple">&#9032;</span>
+                  <span class="text-xs text-text-dim">&#9032;</span>
                   <span class="text-xs font-mono text-text-main uppercase tracking-wider">
                     Helm Releases
                   </span>
@@ -245,7 +245,7 @@ const FluxStatus: Component = () => {
       {/* Toast */}
       <Show when={toast()}>
         <div class="fixed bottom-4 right-4 z-50 animate-fade-in-scale">
-          <div class="glass-panel px-4 py-2 text-sm text-neon-cyan border border-neon-cyan/30 shadow-[0_0_20px_rgba(0,217,255,0.1)]">
+          <div class="glass-panel px-4 py-2 text-sm text-white border border-white/20">
             {toast()}
           </div>
         </div>
@@ -288,7 +288,7 @@ const FluxSourceRow: Component<{ source: FluxSource }> = (props) => {
           <p class="text-[11px] text-text-muted font-mono truncate mt-0.5">
             {props.source.url}
             <Show when={props.source.branch}>
-              <span class="text-neon-cyan"> @{props.source.branch}</span>
+              <span class="text-text-muted"> @{props.source.branch}</span>
             </Show>
           </p>
         </Show>
@@ -370,7 +370,7 @@ const FluxResourceRow: Component<{
             </span>
             {/* Source ref chip */}
             <Show when={props.resource.sourceRef}>
-              <span class="text-[10px] text-neon-cyan font-mono px-1.5 py-0.5 rounded bg-neon-cyan/10 hidden sm:inline">
+              <span class="text-[10px] text-text-muted font-mono px-1.5 py-0.5 rounded bg-white/5 hidden sm:inline">
                 from: {props.resource.sourceRef!.name}
               </span>
             </Show>
@@ -418,7 +418,7 @@ const FluxResourceRow: Component<{
             props.onReconcile();
           }}
           disabled={props.reconciling || props.resource.suspended}
-          class="text-[10px] font-mono px-2 py-1 rounded bg-white/5 border border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
+          class="text-[10px] font-mono px-2 py-1 rounded bg-white/5 border border-white/10 text-text-dim hover:text-white hover:border-white/20 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
         >
           {props.reconciling ? '\u27F3...' : '\u27F3 Sync'}
         </button>
@@ -489,8 +489,8 @@ const FluxResourceRow: Component<{
               <button
                 class={`text-[10px] font-mono px-2 py-1 rounded border transition-colors ${
                   props.hrExpandedSection === 'values'
-                    ? 'bg-neon-cyan/10 border-neon-cyan/20 text-neon-cyan'
-                    : 'bg-white/5 border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30'
+                    ? 'bg-white/10 border-white/15 text-white'
+                    : 'bg-white/5 border-white/10 text-text-dim hover:text-white hover:border-white/20'
                 }`}
                 onClick={(e) => { e.stopPropagation(); props.onHrToggle!('values'); }}
               >
@@ -499,8 +499,8 @@ const FluxResourceRow: Component<{
               <button
                 class={`text-[10px] font-mono px-2 py-1 rounded border transition-colors ${
                   props.hrExpandedSection === 'history'
-                    ? 'bg-neon-cyan/10 border-neon-cyan/20 text-neon-cyan'
-                    : 'bg-white/5 border-white/10 text-text-dim hover:text-neon-cyan hover:border-neon-cyan/30'
+                    ? 'bg-white/10 border-white/15 text-white'
+                    : 'bg-white/5 border-white/10 text-text-dim hover:text-white hover:border-white/20'
                 }`}
                 onClick={(e) => { e.stopPropagation(); props.onHrToggle!('history'); }}
               >
@@ -611,9 +611,9 @@ function syncStateLabel(state: FluxSyncState): string {
 function syncStateDotClass(state: FluxSyncState): string {
   switch (state) {
     case 'in-sync':
-      return 'bg-neon-green';
+      return 'bg-status-ok';
     case 'drifting':
-      return 'bg-neon-cyan';
+      return 'bg-white/40';
     case 'error':
       return 'bg-red-500';
     case 'suspended':
@@ -624,9 +624,9 @@ function syncStateDotClass(state: FluxSyncState): string {
 function syncStatePillClass(state: FluxSyncState): string {
   switch (state) {
     case 'in-sync':
-      return 'bg-neon-green/10 text-neon-green border border-neon-green/20';
+      return 'bg-status-ok/10 text-status-ok border border-status-ok/20';
     case 'drifting':
-      return 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20';
+      return 'bg-white/5 text-text-muted border border-white/10';
     case 'error':
       return 'bg-red-500/10 text-red-400 border border-red-500/20';
     case 'suspended':

@@ -85,7 +85,7 @@ const LogWidget: Component<LogWidgetProps> = (props) => {
       {/* Header */}
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-black/20">
         <div class="flex items-center gap-2">
-          <span class="text-[10px] text-neon-green">▶</span>
+          <span class="text-[10px] text-status-ok">▶</span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">
             {props.data.title || 'Log Stream'}
           </span>
@@ -96,7 +96,7 @@ const LogWidget: Component<LogWidgetProps> = (props) => {
             class={`text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
               paused()
                 ? 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10'
-                : 'border-white/10 text-text-dim hover:text-neon-green'
+                : 'border-white/10 text-text-dim hover:text-status-ok'
             }`}
           >
             {paused() ? '⏸ PAUSED' : '⏵ LIVE'}

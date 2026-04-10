@@ -1,9 +1,10 @@
-import { Component, For, Show } from 'solid-js';
+import { Component, Show } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
 import type { K8sDeployment } from '../../lib/types';
 import StatusDot from '../shared/StatusDot';
 import type { Status } from '../shared/StatusDot';
-import EmptyState from '../shared/EmptyState';
+import DataTable from '../shared/DataTable';
+import type { ColumnDef } from '../shared/DataTable';
 
 const getDeploymentStatus = (d: K8sDeployment): Status => {
   const ready = d.status?.readyReplicas || 0;
@@ -24,106 +25,117 @@ export interface DeploymentsTableProps {
   onRestart: (ns: string, name: string) => void;
 }
 
-const DeploymentsTable: Component<DeploymentsTableProps> = (props) => (
-  <Show
-    when={props.deployments.length > 0}
-    fallback={
-      <EmptyState
-        size="sm"
-        icon={
-          <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-          </svg>
-        }
-        title="No deployments found"
-      />
-    }
-  >
-    <table class="w-full text-sm">
-      <thead class="border-b border-white/10 text-left text-xs uppercase text-text-muted sticky top-0 bg-[#0b1020]">
-        <tr>
-          <th class="px-4 py-3 w-8" />
-          <th class="px-4 py-3">Name</th>
-          <th class="px-4 py-3">Namespace</th>
-          <th class="px-4 py-3">Ready</th>
-          <th class="px-4 py-3">Image</th>
-          <th class="px-4 py-3">Age</th>
-          <Show when={!props.readOnly}>
-            <th class="px-4 py-3">Actions</th>
-          </Show>
-        </tr>
-      </thead>
-      <tbody>
-        <For each={props.deployments}>
-        {(d) => {
+const DeploymentsTable: Component<DeploymentsTableProps> = (props) => {
+  const columns = (): ColumnDef<K8sDeployment>[] => {
+    const cols: ColumnDef<K8sDeployment>[] = [
+      {
+        id: 'status',
+        header: '',
+        accessor: (d) => getDeploymentStatus(d),
+        cell: (_, d) => <StatusDot status={getDeploymentStatus(d)} />,
+        width: '2rem',
+      },
+      {
+        id: 'name',
+        header: 'Name',
+        accessor: (d) => d.metadata?.name ?? '',
+        cell: (v) => <span class="font-medium text-text-main">{v}</span>,
+        sortable: true,
+      },
+      {
+        id: 'namespace',
+        header: 'Namespace',
+        accessor: (d) => d.metadata?.namespace ?? '',
+        sortable: true,
+      },
+      {
+        id: 'ready',
+        header: 'Ready',
+        accessor: (d) => d.status?.readyReplicas || 0,
+        cell: (_, d) => {
           const ready = d.status?.readyReplicas || 0;
           const desired = d.spec?.replicas || 0;
           const status = getDeploymentStatus(d);
-          const image = d.spec?.template?.spec?.containers?.[0]?.image || '-';
-          const shortImage = image.split('/').pop()?.split('@')[0] || image;
-
           return (
-            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer group">
-              <td class="px-4 py-3">
-                <StatusDot status={status} />
-              </td>
-              <td class="px-4 py-3 font-medium text-text-main group-hover:text-neon-cyan transition-colors">
-                {d.metadata?.name}
-              </td>
-              <td class="px-4 py-3 text-text-dim">{d.metadata?.namespace}</td>
-              <td class="px-4 py-3">
-                <span class={status === 'ok' ? 'text-status-ok' : status === 'error' ? 'text-status-error' : 'text-status-warn'}>
-                  {ready}/{desired}
-                </span>
-              </td>
-              <td class="px-4 py-3 font-mono text-xs text-text-muted" title={image}>
-                {shortImage}
-              </td>
-              <td class="px-4 py-3 text-text-muted">
-                {d.metadata?.creationTimestamp
-                  ? formatRelativeTime(d.metadata.creationTimestamp)
-                  : '-'}
-              </td>
-              <Show when={!props.readOnly}>
-                <td class="px-4 py-3">
-                  <div class="flex gap-2">
-                    <button
-                      class="rounded px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1);
-                      }}
-                    >
-                      +
-                    </button>
-                    <button
-                      class="rounded px-2 py-1 text-xs text-neon-yellow hover:bg-neon-yellow/10 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1));
-                      }}
-                    >
-                      -
-                    </button>
-                    <button
-                      class="rounded px-2 py-1 text-xs text-neon-purple hover:bg-neon-purple/10 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || '');
-                      }}
-                    >
-                      ↻
-                    </button>
-                  </div>
-                </td>
-              </Show>
-            </tr>
+            <span class={status === 'ok' ? 'text-status-ok' : status === 'error' ? 'text-status-error' : 'text-status-warn'}>
+              {ready}/{desired}
+            </span>
           );
-        }}
-        </For>
-      </tbody>
-    </table>
-  </Show>
-);
+        },
+        sortable: true,
+      },
+      {
+        id: 'image',
+        header: 'Image',
+        accessor: (d) => {
+          const image = d.spec?.template?.spec?.containers?.[0]?.image || '-';
+          return image.split('/').pop()?.split('@')[0] || image;
+        },
+        mono: true,
+      },
+      {
+        id: 'age',
+        header: 'Age',
+        accessor: (d) => d.metadata?.creationTimestamp ?? '',
+        cell: (v) => <span class="text-text-muted">{v ? formatRelativeTime(v) : '-'}</span>,
+        sortable: true,
+      },
+    ];
+
+    if (!props.readOnly) {
+      cols.push({
+        id: 'actions',
+        header: 'Actions',
+        accessor: () => null,
+        cell: (_, d) => {
+          const desired = d.spec?.replicas || 0;
+          return (
+            <div class="flex gap-2">
+              <button
+                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1);
+                }}
+              >
+                +
+              </button>
+              <button
+                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1));
+                }}
+              >
+                -
+              </button>
+              <button
+                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || '');
+                }}
+              >
+                ↻
+              </button>
+            </div>
+          );
+        },
+      });
+    }
+
+    return cols;
+  };
+
+  return (
+    <DataTable
+      data={props.deployments}
+      columns={columns()}
+      rowKey={(d) => `${d.metadata?.namespace}/${d.metadata?.name}`}
+      defaultSort={{ column: 'name', direction: 'asc' }}
+      emptyTitle="No deployments found"
+    />
+  );
+};
 
 export default DeploymentsTable;

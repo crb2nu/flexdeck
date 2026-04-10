@@ -24,37 +24,12 @@ export interface DetailPanelProps {
   children?: JSX.Element;
 }
 
-const statusColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-  ok: {
-    bg: 'rgba(0, 240, 255, 0.1)',
-    border: 'rgba(0, 240, 255, 0.3)',
-    text: '#00f0ff',
-    glow: '0 0 20px rgba(0, 240, 255, 0.3)'
-  },
-  warn: {
-    bg: 'rgba(252, 238, 10, 0.1)',
-    border: 'rgba(252, 238, 10, 0.3)',
-    text: '#fcee0a',
-    glow: '0 0 20px rgba(252, 238, 10, 0.3)'
-  },
-  error: {
-    bg: 'rgba(255, 0, 60, 0.1)',
-    border: 'rgba(255, 0, 60, 0.3)',
-    text: '#ff003c',
-    glow: '0 0 20px rgba(255, 0, 60, 0.3)'
-  },
-  running: {
-    bg: 'rgba(10, 255, 104, 0.1)',
-    border: 'rgba(10, 255, 104, 0.3)',
-    text: '#0aff68',
-    glow: '0 0 20px rgba(10, 255, 104, 0.3)'
-  },
-  pending: {
-    bg: 'rgba(189, 0, 255, 0.1)',
-    border: 'rgba(189, 0, 255, 0.3)',
-    text: '#bd00ff',
-    glow: '0 0 20px rgba(189, 0, 255, 0.3)'
-  }
+const statusColors: Record<string, { bg: string; border: string; text: string }> = {
+  ok: { bg: 'rgba(0, 240, 255, 0.08)', border: 'rgba(0, 240, 255, 0.2)', text: '#00f0ff' },
+  warn: { bg: 'rgba(252, 238, 10, 0.08)', border: 'rgba(252, 238, 10, 0.2)', text: '#fcee0a' },
+  error: { bg: 'rgba(255, 0, 60, 0.08)', border: 'rgba(255, 0, 60, 0.2)', text: '#ff003c' },
+  running: { bg: 'rgba(10, 255, 104, 0.08)', border: 'rgba(10, 255, 104, 0.2)', text: '#0aff68' },
+  pending: { bg: 'rgba(189, 0, 255, 0.08)', border: 'rgba(189, 0, 255, 0.2)', text: '#bd00ff' },
 };
 
 const DetailPanel: Component<DetailPanelProps> = (props) => {
@@ -64,7 +39,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
   return (
     <div
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-[rgba(8,14,28,0.96)] backdrop-blur-sm border-t border-neon-cyan/20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
     >
       {/* Header */}
       <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">
@@ -76,7 +51,6 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
               classList={{ 'animate-pulse': props.status === 'running' }}
               style={{
                 background: statusStyle()!.text,
-                'box-shadow': statusStyle()!.glow
               }}
             />
           </Show>
@@ -129,7 +103,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
                 onClick={() => setActiveTab(tab.id)}
                 class="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 border"
                 classList={{
-                  'bg-neon-cyan/15 border-neon-cyan/30 text-neon-cyan': activeTab() === tab.id,
+                  'bg-white/10 border-white/[0.08] text-white': activeTab() === tab.id,
                   'border-transparent text-white/60 hover:text-white': activeTab() !== tab.id
                 }}
               >
@@ -163,7 +137,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
                 class="flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 border active:scale-95"
                 classList={{
                   'bg-white/5 border-white/20 hover:bg-white/10': !action.variant || action.variant === 'default',
-                  'bg-neon-cyan/15 border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/25': action.variant === 'primary',
+                  'bg-white/10 border-white/20 text-white hover:bg-white/15': action.variant === 'primary',
                   'bg-status-error/15 border-status-error/40 text-status-error hover:bg-status-error/25': action.variant === 'danger'
                 }}
               >
@@ -177,9 +151,6 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
         </div>
       </Show>
 
-      {/* Corner accents */}
-      <div class="absolute top-0 left-0 w-6 h-6 border-l-2 border-t-2 border-neon-cyan/40 pointer-events-none" />
-      <div class="absolute top-0 right-0 w-6 h-6 border-r-2 border-t-2 border-neon-cyan/40 pointer-events-none" />
     </div>
   );
 };

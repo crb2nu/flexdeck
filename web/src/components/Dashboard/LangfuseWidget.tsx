@@ -238,10 +238,10 @@ const LangfuseWidget: Component = () => {
       {/* Header */}
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/5">
         <div class="flex items-center gap-2">
-          <span class="text-xs text-neon-purple">◈</span>
+          <span class="text-xs text-text-dim">◈</span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">Langfuse</span>
           <Show when={displayData().healthy !== null}>
-            <span class={`w-1.5 h-1.5 rounded-full ${displayData().healthy ? 'bg-neon-green' : 'bg-red-500'}`} />
+            <span class={`w-1.5 h-1.5 rounded-full ${displayData().healthy ? 'bg-status-ok' : 'bg-red-500'}`} />
           </Show>
           <Show when={stablePanel.status()}>
             {(status) => (
@@ -258,7 +258,7 @@ const LangfuseWidget: Component = () => {
                 onClick={() => setActiveTab(tab)}
                 class={`px-2 py-0.5 text-[9px] font-mono rounded transition-colors ${
                   activeTab() === tab
-                    ? 'bg-neon-purple/20 text-neon-purple'
+                    ? 'bg-white/10 text-white'
                     : 'text-text-dim hover:text-text-main'
                 }`}
               >
@@ -271,7 +271,7 @@ const LangfuseWidget: Component = () => {
 
       {/* Body */}
       <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`} style={{ 'max-height': '280px' }}>
-        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-purple/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
           when={!stablePanel.showBlockingLoading()}
           fallback={
@@ -300,11 +300,11 @@ const LangfuseWidget: Component = () => {
               <div class="grid grid-cols-2 gap-2">
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">Total Cost</div>
-                  <div class="text-sm font-mono text-neon-purple font-semibold">{formatCost(totalCost())}</div>
+                  <div class="text-sm font-mono text-text-main font-semibold">{formatCost(totalCost())}</div>
                 </div>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">Tokens</div>
-                  <div class="text-sm font-mono text-neon-cyan font-semibold">{formatTokens(totalTokens())}</div>
+                  <div class="text-sm font-mono text-text-main font-semibold">{formatTokens(totalTokens())}</div>
                 </div>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">API Calls</div>
@@ -312,7 +312,7 @@ const LangfuseWidget: Component = () => {
                 </div>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">Errors</div>
-                  <div class={`text-sm font-mono font-semibold ${totalErrors() > 0 ? 'text-red-400' : 'text-neon-green'}`}>
+                  <div class={`text-sm font-mono font-semibold ${totalErrors() > 0 ? 'text-red-400' : 'text-status-ok'}`}>
                     {totalErrors()}
                   </div>
                 </div>
@@ -330,14 +330,14 @@ const LangfuseWidget: Component = () => {
                       <div class="text-[9px] text-text-dim mb-0.5">Traces</div>
                       <Sparkline
                         data={displayData().dailyMetrics.slice(-7).map(d => d.countTraces)}
-                        color="var(--neon-cyan, #22d3ee)"
+                        color="rgba(255,255,255,0.5)"
                       />
                     </div>
                     <div>
                       <div class="text-[9px] text-text-dim mb-0.5">Cost</div>
                       <Sparkline
                         data={displayData().dailyMetrics.slice(-7).map(d => d.totalCost)}
-                        color="var(--neon-purple, #a855f7)"
+                        color="rgba(255,255,255,0.35)"
                       />
                     </div>
                   </div>
@@ -364,7 +364,7 @@ const LangfuseWidget: Component = () => {
                                   class="h-full rounded-full"
                                   style={{
                                     width: `${Math.min(pct, 100)}%`,
-                                    background: 'linear-gradient(90deg, var(--neon-purple, #a855f7), var(--neon-cyan, #22d3ee))',
+                                    background: 'linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.2))',
                                   }}
                                 />
                               </div>
@@ -393,7 +393,7 @@ const LangfuseWidget: Component = () => {
                     <div class="px-3 py-2 hover:bg-white/[0.02] transition-colors">
                       <div class="flex items-center justify-between mb-1">
                         <span class="text-[11px] font-mono text-text-main truncate flex-1">{model.model}</span>
-                        <span class="text-[10px] font-mono text-neon-purple ml-2">{formatCost(model.totalCost)}</span>
+                        <span class="text-[10px] font-mono text-text-muted ml-2">{formatCost(model.totalCost)}</span>
                       </div>
                       <div class="flex items-center gap-3 text-[9px] text-text-dim">
                         <span>{model.totalCalls} calls</span>
@@ -423,14 +423,14 @@ const LangfuseWidget: Component = () => {
                   {(trace) => (
                     <div class="px-3 py-2 hover:bg-white/[0.02] transition-colors group">
                       <div class="flex items-start gap-2">
-                        <span class="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-neon-purple/60" />
+                        <span class="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-white/30" />
                         <div class="flex-1 min-w-0">
                           <div class="flex items-center gap-1.5 mb-0.5">
                             <span class="text-[10px] font-mono text-text-main truncate">
                               {trace.name || trace.id?.slice(0, 8)}
                             </span>
                             <Show when={trace.totalCost}>
-                              <span class="text-[9px] text-neon-purple">{formatCost(trace.totalCost!)}</span>
+                              <span class="text-[9px] text-text-muted">{formatCost(trace.totalCost!)}</span>
                             </Show>
                           </div>
                           <div class="flex items-center gap-2 text-[9px] text-text-dim">

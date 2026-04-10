@@ -117,12 +117,12 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
             <div class="flex items-center gap-3">
               <div class="space-y-1">
                 <div class="text-xs uppercase tracking-wider text-text-dim">Branch</div>
-                <span class="rounded bg-neon-purple/20 px-2 py-0.5 text-xs font-mono text-neon-purple">{branch()}</span>
+                <span class="rounded bg-white/10 px-2 py-0.5 text-xs font-mono text-text-muted">{branch()}</span>
               </div>
               <Show when={prUrl()}>
                 <div class="space-y-1">
                   <div class="text-xs uppercase tracking-wider text-text-dim">PR</div>
-                  <a href={prUrl()!} target="_blank" rel="noopener noreferrer" class="text-xs text-neon-cyan hover:underline">
+                  <a href={prUrl()!} target="_blank" rel="noopener noreferrer" class="text-xs text-white hover:underline">
                     View PR
                   </a>
                 </div>

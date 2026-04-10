@@ -72,39 +72,6 @@ const PulseCard: Component<PulseCardProps> = (props) => {
     if (refreshTimeoutId) clearTimeout(refreshTimeoutId);
   });
 
-  const colorClasses = createMemo(() => {
-    switch (props.color) {
-      case 'purple':
-        return {
-          icon: 'text-neon-purple',
-          glow: 'group-hover:[box-shadow:0_0_30px_rgba(168,85,247,0.15)]',
-          border: 'group-hover:border-neon-purple/30',
-          textShadow: '[text-shadow:0_0_20px_rgba(168,85,247,0.3)]',
-        };
-      case 'green':
-        return {
-          icon: 'text-status-ok',
-          glow: 'group-hover:[box-shadow:0_0_30px_rgba(34,197,94,0.15)]',
-          border: 'group-hover:border-status-ok/30',
-          textShadow: '[text-shadow:0_0_20px_rgba(34,197,94,0.3)]',
-        };
-      case 'orange':
-        return {
-          icon: 'text-status-warn',
-          glow: 'group-hover:[box-shadow:0_0_30px_rgba(249,115,22,0.15)]',
-          border: 'group-hover:border-status-warn/30',
-          textShadow: '[text-shadow:0_0_20px_rgba(249,115,22,0.3)]',
-        };
-      default:
-        return {
-          icon: 'text-neon-cyan',
-          glow: 'group-hover:[box-shadow:0_0_30px_rgba(0,217,255,0.15)]',
-          border: 'group-hover:border-neon-cyan/30',
-          textShadow: '[text-shadow:0_0_20px_rgba(0,217,255,0.3)]',
-        };
-    }
-  });
-
   const trendIcon = createMemo(() => {
     switch (effectiveState().trend) {
       case 'up': return '↑';
@@ -122,21 +89,14 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   });
 
   const statusChip = createMemo(() => {
-    if (props.loading && stableState()) return { label: 'refreshing', class: 'text-neon-cyan border-neon-cyan/20 bg-neon-cyan/10' };
+    if (props.loading && stableState()) return { label: 'refreshing', class: 'text-text-dim border-white/10 bg-white/5' };
     if (props.error && stableState()) return { label: 'stale', class: 'text-status-warn border-status-warn/20 bg-status-warn/10' };
     if (isRefreshing()) return { label: 'updated', class: 'text-status-ok border-status-ok/20 bg-status-ok/10' };
     return null;
   });
 
   return (
-    <div class={`glass-panel-hover group relative flex min-h-[100px] sm:min-h-[120px] flex-col gap-1 sm:gap-2 p-3 sm:p-4 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden ${colorClasses().glow} ${colorClasses().border}`}>
-      {/* Subtle gradient overlay on hover */}
-      <div class="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-      <div class={`absolute inset-0 pointer-events-none transition-opacity duration-300 ${isRefreshing() ? 'opacity-100' : 'opacity-0'}`}>
-        <div class="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent text-neon-cyan/70" />
-        <div class="absolute inset-0 bg-gradient-to-br from-neon-cyan/[0.045] via-transparent to-neon-purple/[0.035]" />
-      </div>
-
+    <div class="glass-panel-hover group relative flex min-h-[100px] sm:min-h-[120px] flex-col gap-1 sm:gap-2 p-3 sm:p-4 transition-colors overflow-hidden">
       {/* Header */}
       <div class="relative flex items-center justify-between">
         <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-text-muted">
@@ -145,13 +105,13 @@ const PulseCard: Component<PulseCardProps> = (props) => {
         <div class="flex items-center gap-2">
           <Show when={statusChip()}>
             {(chip) => (
-              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider transition-opacity duration-200 ${chip().class}`}>
+              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider transition-opacity duration-150 ${chip().class}`}>
                 {chip().label}
               </span>
             )}
           </Show>
           <Show when={props.icon}>
-            <span class={`text-lg sm:text-xl opacity-40 group-hover:opacity-100 transition-all duration-300 ${colorClasses().icon}`}>
+            <span class="text-lg sm:text-xl text-text-muted opacity-40 group-hover:opacity-70 transition-opacity">
               {props.icon}
             </span>
           </Show>
@@ -162,8 +122,8 @@ const PulseCard: Component<PulseCardProps> = (props) => {
       <div class="relative flex flex-1 flex-col justify-center">
         <Show when={props.loading && !stableState()}>
           <div class="flex items-center gap-2 sm:gap-3">
-            <div class="h-4 w-4 sm:h-6 sm:w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
-            <span class="text-[10px] sm:text-xs text-text-dim animate-pulse">Loading...</span>
+            <div class="h-4 w-4 sm:h-6 sm:w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
+            <span class="text-[10px] sm:text-xs text-text-dim">Loading...</span>
           </div>
         </Show>
 
@@ -176,7 +136,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class={`font-mono text-2xl sm:text-[32px] font-bold tracking-tight text-text-main transition-all duration-300 ${colorClasses().textShadow} ${isRefreshing() ? 'translate-y-[-1px] opacity-95' : 'translate-y-0 opacity-100'}`}>
+            <div class={`font-mono text-2xl sm:text-[32px] font-bold tracking-tight text-text-main transition-opacity ${isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
@@ -186,12 +146,12 @@ const PulseCard: Component<PulseCardProps> = (props) => {
             </Show>
           </div>
           <Show when={effectiveState().sub}>
-            <div class={`text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate transition-opacity duration-300 ${isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
+            <div class={`text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate transition-opacity ${isRefreshing() ? 'opacity-80' : 'opacity-100'}`}>
               {effectiveState().sub}
             </div>
           </Show>
           <Show when={effectiveState().sparkData && effectiveState().sparkData!.length >= 2}>
-            <div class={`mt-1 sm:mt-2 h-4 sm:h-5 transition-opacity duration-300 ${isRefreshing() ? 'opacity-85' : 'opacity-100'}`}>
+            <div class={`mt-1 sm:mt-2 h-4 sm:h-5 transition-opacity ${isRefreshing() ? 'opacity-80' : 'opacity-100'}`}>
               <Sparkline
                 data={effectiveState().sparkData!}
                 width={typeof window !== 'undefined' && window.innerWidth < 640 ? 80 : 120}
@@ -210,12 +170,6 @@ const PulseCard: Component<PulseCardProps> = (props) => {
           {effectiveState().meta}
         </div>
       </Show>
-
-      {/* Animated corner accent */}
-      <div class="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none">
-        <div class={`absolute top-0 right-0 w-px h-8 bg-gradient-to-b from-transparent via-current to-transparent opacity-20 group-hover:opacity-60 transition-opacity ${colorClasses().icon}`} />
-        <div class={`absolute top-0 right-0 h-px w-8 bg-gradient-to-l from-transparent via-current to-transparent opacity-20 group-hover:opacity-60 transition-opacity ${colorClasses().icon}`} />
-      </div>
     </div>
   );
 };

@@ -41,7 +41,7 @@ const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => (
                 <span class={`text-[10px] text-text-dim transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
                   &#9656;
                 </span>
-                <span class="font-medium text-text-main text-sm group-hover:text-neon-cyan transition-colors">
+                <span class="font-medium text-text-main text-sm group-hover:text-white transition-colors">
                   {cm.metadata?.name}
                 </span>
                 <span class="text-text-dim text-xs">{cm.metadata?.namespace}</span>
@@ -59,7 +59,7 @@ const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => (
                       <For each={Object.entries(props.cmData[key]?.data || {})}>
                         {([k, v]) => (
                           <div class="border-b border-white/5 last:border-0">
-                            <div class="px-3 py-1.5 text-xs font-mono text-neon-cyan">{k}</div>
+                            <div class="px-3 py-1.5 text-xs font-mono text-text-dim">{k}</div>
                             <pre class="px-3 pb-2 text-[11px] text-text-muted font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto">
                               {String(v)}
                             </pre>

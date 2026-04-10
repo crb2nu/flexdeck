@@ -72,22 +72,22 @@ const PipelineListView: Component<{
           <div class="flex items-center gap-3 text-xs font-mono">
             <Show when={stats().running > 0}>
               <span class="flex items-center gap-1">
-                <span class="w-2 h-2 rounded-full bg-neon-green animate-pulse" />
-                <span class="text-neon-green">{stats().running}</span>
+                <span class="w-2 h-2 rounded-full bg-status-ok animate-pulse" />
+                <span class="text-status-ok">{stats().running}</span>
                 <span class="text-text-dim">running</span>
               </span>
             </Show>
             <Show when={stats().failed > 0}>
               <span class="flex items-center gap-1">
-                <span class="w-2 h-2 rounded-full bg-neon-pink" />
-                <span class="text-neon-pink">{stats().failed}</span>
+                <span class="w-2 h-2 rounded-full bg-red-400" />
+                <span class="text-red-400">{stats().failed}</span>
                 <span class="text-text-dim">failed</span>
               </span>
             </Show>
             <Show when={stats().success > 0}>
               <span class="flex items-center gap-1">
-                <span class="w-2 h-2 rounded-full bg-neon-cyan" />
-                <span class="text-neon-cyan">{stats().success}</span>
+                <span class="w-2 h-2 rounded-full bg-white/40" />
+                <span class="text-text-muted">{stats().success}</span>
                 <span class="text-text-dim">passed</span>
               </span>
             </Show>
@@ -100,7 +100,7 @@ const PipelineListView: Component<{
           <select
             value={props.sort.field}
             onChange={(e) => handleSortFieldChange(e.currentTarget.value as PipelineSortField)}
-            class="rounded-md border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-text-main focus:border-neon-cyan focus:outline-none cursor-pointer"
+            class="rounded-md border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-text-main focus:border-white/20 focus:outline-none cursor-pointer"
           >
             <For each={SORT_OPTIONS}>
               {(option) => (
@@ -110,7 +110,7 @@ const PipelineListView: Component<{
           </select>
           <button
             onClick={toggleSortDirection}
-            class="px-2 py-1.5 rounded-md border border-white/10 bg-black/50 text-xs font-mono text-text-muted hover:text-text-main hover:border-neon-cyan/50 transition-colors"
+            class="px-2 py-1.5 rounded-md border border-white/10 bg-black/50 text-xs font-mono text-text-muted hover:text-text-main hover:border-white/20 transition-colors"
             title={props.sort.direction === 'asc' ? 'Ascending' : 'Descending'}
           >
             {props.sort.direction === 'asc' ? '↑ Asc' : '↓ Desc'}
@@ -122,7 +122,7 @@ const PipelineListView: Component<{
       <Show when={props.loading}>
         <div class="flex items-center justify-center p-8">
           <div class="flex items-center gap-3 text-text-muted">
-            <div class="w-5 h-5 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
+            <div class="w-5 h-5 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
             <span class="text-sm font-mono">Loading pipelines...</span>
           </div>
         </div>

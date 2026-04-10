@@ -87,7 +87,7 @@ const Pipeline: Component = () => {
             >
             <div class="p-4 border-b border-white/5 space-y-3">
                 <div class="flex items-center justify-between lg:hidden">
-                    <div class="text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan/70">Pipeline Controls</div>
+                    <div class="text-xs font-bold uppercase tracking-[0.18em] text-text-dim">Pipeline Controls</div>
                     <button
                       type="button"
                       class="h-8 w-8 rounded-md border border-white/10 bg-white/5 text-text-dim"
@@ -127,7 +127,7 @@ const Pipeline: Component = () => {
                     <input
                         type="text"
                         placeholder="Filter..."
-                        class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-neon-cyan focus:outline-none"
+                        class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-white/20 focus:outline-none"
                         value={repoFilter()}
                         onInput={(e) => setRepoFilter(e.currentTarget.value)}
                     />
@@ -145,7 +145,7 @@ const Pipeline: Component = () => {
                             <button
                                 class={`text-left px-3 py-2 rounded text-sm font-medium transition-colors group relative ${
                                     selectedRepo()?.path === repo.path
-                                        ? 'bg-neon-cyan/20 text-neon-cyan'
+                                        ? 'bg-white/10 text-white'
                                         : 'text-text-dim hover:bg-white/5'
                                 }`}
                                 onClick={() => {
@@ -159,7 +159,7 @@ const Pipeline: Component = () => {
                                 <div class="text-[10px] opacity-50 font-mono mt-0.5 flex items-center justify-between">
                                     <span>{repo.type}</span>
                                     <Show when={repo.hasConfig}>
-                                        <span class="w-1.5 h-1.5 rounded-full bg-neon-green shadow-[0_0_5px_rgba(10,255,104,0.5)]" title="Config found" />
+                                        <span class="w-1.5 h-1.5 rounded-full bg-status-ok" title="Config found" />
                                     </Show>
                                 </div>
                             </button>
@@ -181,7 +181,7 @@ const Pipeline: Component = () => {
                   <span class="text-sm leading-none">☰</span>
                   <span>Sidebar</span>
                 </button>
-                <div class="truncate text-[10px] font-mono uppercase tracking-widest text-neon-cyan/70">
+                <div class="truncate text-[10px] font-mono uppercase tracking-widest text-text-dim">
                   {mobileSectionLabel()}
                 </div>
             </div>
@@ -255,8 +255,8 @@ const Pipeline: Component = () => {
                             </span>
                             <Show when={isPipelineActive()}>
                                 <div class="flex items-center gap-1.5">
-                                    <div class="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse" />
-                                    <span class="text-[10px] text-neon-cyan uppercase tracking-wider">Active</span>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white/50 animate-pulse" />
+                                    <span class="text-[10px] text-text-muted uppercase tracking-wider">Active</span>
                                 </div>
                             </Show>
                         </div>
@@ -271,13 +271,13 @@ const Pipeline: Component = () => {
                             <button
                                 class={`flex items-center gap-2 px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider transition-all ${
                                     autoRefresh()
-                                        ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                                        ? 'bg-white/10 text-white border border-white/15'
                                         : 'bg-white/5 text-text-muted border border-white/10 hover:bg-white/10'
                                 }`}
                                 onClick={() => setAutoRefresh(!autoRefresh())}
                             >
                                 <div class={`w-1.5 h-1.5 rounded-full transition-colors ${
-                                    autoRefresh() ? 'bg-neon-cyan' : 'bg-text-dim'
+                                    autoRefresh() ? 'bg-white' : 'bg-text-dim'
                                 }`} />
                                 Auto-refresh: {autoRefresh() ? 'ON' : 'OFF'}
                             </button>
@@ -300,7 +300,7 @@ const Pipeline: Component = () => {
                                 <Show when={isLivePipelineId(pipelineData()?.id)}>
                                   <Show when={pipelineData()?.status === 'failed' || pipelineData()?.status === 'canceled'}>
                                     <button
-                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-green/10 text-neon-green border border-neon-green/20 hover:bg-neon-green/20 transition-all disabled:opacity-50"
+                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-status-ok/10 text-status-ok border border-status-ok/20 hover:bg-status-ok/20 transition-all disabled:opacity-50"
                                         onClick={handleRetryPipeline}
                                         disabled={pipelineActionLoading()}
                                     >
@@ -320,13 +320,13 @@ const Pipeline: Component = () => {
                                 <div class="flex items-center gap-1">
                                     <input
                                         type="text"
-                                        class="w-20 px-1.5 py-1 rounded text-[9px] sm:text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-neon-cyan focus:outline-none"
+                                        class="w-20 px-1.5 py-1 rounded text-[9px] sm:text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-white/20 focus:outline-none"
                                         value={triggerRef()}
                                         onInput={(e) => setTriggerRef(e.currentTarget.value)}
                                         placeholder="ref"
                                     />
                                     <button
-                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-neon-purple/10 text-neon-purple border border-neon-purple/20 hover:bg-neon-purple/20 transition-all disabled:opacity-50"
+                                        class="px-2 py-1 rounded text-[9px] sm:text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all disabled:opacity-50"
                                         onClick={handleTriggerPipeline}
                                         disabled={pipelineActionLoading() || !triggerRef()}
                                     >
@@ -340,8 +340,8 @@ const Pipeline: Component = () => {
                         <div
                             class="mx-3 mt-2 rounded border px-3 py-2 text-xs font-mono sm:mx-4"
                             classList={{
-                                'border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan': actionNotice()?.type === 'info',
-                                'border-neon-green/30 bg-neon-green/10 text-neon-green': actionNotice()?.type === 'success',
+                                'border-white/15 bg-white/5 text-text-muted': actionNotice()?.type === 'info',
+                                'border-status-ok/30 bg-status-ok/10 text-status-ok': actionNotice()?.type === 'success',
                                 'border-red-400/30 bg-red-400/10 text-red-300': actionNotice()?.type === 'error',
                             }}
                         >
@@ -367,7 +367,7 @@ const Pipeline: Component = () => {
                     {/* Job Details Panel */}
                     <Show when={selectedJob()}>
                       {(job) => (
-                        <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 backdrop-blur-sm flex flex-col animate-slide-up">
+                        <div class="h-[65vh] sm:h-80 border-t border-white/10 bg-black/60 flex flex-col animate-slide-up">
                             {/* Header */}
                             <div class="flex flex-col gap-3 p-4 border-b border-white/5 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="flex min-w-0 items-center gap-3">
@@ -437,7 +437,7 @@ const Pipeline: Component = () => {
                                     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
                                         <Show when={job().details?.script}>
                                             <div class="flex flex-col gap-2">
-                                                <div class="text-xs font-bold uppercase text-neon-cyan tracking-wider">Script</div>
+                                                <div class="text-xs font-bold uppercase text-text-muted tracking-wider">Script</div>
                                                 <div class="bg-black/50 rounded p-3 font-mono text-xs text-text-dim border border-white/5">
                                                     <For each={job().details?.script as string[]}>
                                                         {(line: string) => <div class="whitespace-pre-wrap">$ {line}</div>}
@@ -449,7 +449,7 @@ const Pipeline: Component = () => {
                                         <div class="flex flex-col gap-4">
                                             <Show when={job().details?.image}>
                                                 <div>
-                                                    <div class="text-xs font-bold uppercase text-neon-purple tracking-wider mb-1">Image</div>
+                                                    <div class="text-xs font-bold uppercase text-text-muted tracking-wider mb-1">Image</div>
                                                     <div class="font-mono text-sm text-white">{String(job().details?.image ?? '')}</div>
                                                 </div>
                                             </Show>

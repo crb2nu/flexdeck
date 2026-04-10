@@ -53,7 +53,7 @@ const ClusterSelector: Component = () => {
   });
 
   const statusColor = (status: string) => {
-    if (status === "connected") return "bg-neon-green";
+    if (status === "connected") return "bg-status-ok";
     if (status === "disconnected") return "bg-red-500";
     return "bg-yellow-500";
   };
@@ -67,7 +67,7 @@ const ClusterSelector: Component = () => {
     <Show when={enabled()}>
       <div class="relative">
         <button
-          class="flex h-10 md:h-9 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-text-muted hover:text-white hover:border-neon-cyan/30 transition-colors"
+          class="flex h-10 md:h-9 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-text-muted hover:text-white hover:border-white/20 transition-colors"
           onClick={() => {
             refetch();
             setOpen(!open());
@@ -103,7 +103,7 @@ const ClusterSelector: Component = () => {
             
             <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-sm shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
               <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
-                <div class="text-[10px] text-neon-cyan/50 tracking-widest px-2 font-bold">
+                <div class="text-[10px] text-text-muted tracking-widest px-2 font-bold">
                   CLUSTERS
                 </div>
                 <button class="md:hidden p-2 text-text-dim" onClick={() => setOpen(false)}>✕</button>
@@ -121,7 +121,7 @@ const ClusterSelector: Component = () => {
                     <button
                       class="flex w-full items-center gap-3 md:gap-2 rounded-lg md:rounded-md px-4 md:px-3 py-3 md:py-2 text-sm md:text-xs hover:bg-white/5 transition-all active:scale-[0.98]"
                       classList={{
-                        "bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20":
+                        "bg-white/10 text-white border border-white/20":
                           cluster.id === (activeClusterId() || currentCluster()?.id),
                         "text-text-muted border border-transparent": cluster.id !== (activeClusterId() || currentCluster()?.id),
                       }}
@@ -134,7 +134,7 @@ const ClusterSelector: Component = () => {
                         {cluster.name}
                       </span>
                       <Show when={cluster.isDefault}>
-                        <span class="text-[9px] text-neon-cyan/50 border border-neon-cyan/20 rounded px-1">
+                        <span class="text-[9px] text-text-muted border border-white/20 rounded px-1">
                           DEFAULT
                         </span>
                       </Show>

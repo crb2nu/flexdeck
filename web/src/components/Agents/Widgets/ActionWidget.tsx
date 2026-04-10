@@ -54,19 +54,19 @@ const ActionWidget: Component<ActionWidgetProps> = (props) => {
     const key = getActionKey(action);
     const result = results()[key];
     
-    if (result?.ok) return 'border-neon-green/30 text-neon-green bg-neon-green/10';
+    if (result?.ok) return 'border-status-ok/30 text-status-ok bg-status-ok/10';
     if (result && !result.ok) return 'border-red-500/30 text-red-400 bg-red-500/10';
     if (executing() === key) return 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10';
     
     return action.variant === 'danger'
       ? 'border-red-500/20 text-red-400 bg-red-500/5 hover:bg-red-500/10'
-      : 'border-neon-cyan/20 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10';
+      : 'border-white/15 text-white bg-white/5 hover:bg-white/10';
   };
 
   return (
     <div class="rounded-lg border border-white/10 bg-black/20 p-4">
       <div class="flex items-center gap-2 mb-3">
-        <span class="text-xs text-neon-purple">⚡</span>
+        <span class="text-xs text-text-muted">⚡</span>
         <span class="text-xs font-bold uppercase tracking-wider text-text-dim">
           {props.data.title || 'Quick Actions'}
         </span>
@@ -93,7 +93,7 @@ const ActionWidget: Component<ActionWidgetProps> = (props) => {
                   <span class="text-[9px] text-text-dim text-center">{action.description}</span>
                 </Show>
                 <Show when={result()}>
-                  <span class={`text-[9px] text-center ${result()!.ok ? 'text-neon-green' : 'text-red-400'}`}>
+                  <span class={`text-[9px] text-center ${result()!.ok ? 'text-status-ok' : 'text-red-400'}`}>
                     {result()!.ok ? '✓' : '✗'} {result()!.message}
                   </span>
                 </Show>

@@ -355,9 +355,9 @@ const AgentFlowGraph: Component<Props> = (props) => {
       {/* Stats overlay */}
       <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-[#0a1020]/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
         <span class="text-text-dim">Agents:</span>
-        <span class="font-mono text-neon-cyan">{props.nodes.length}</span>
+        <span class="font-mono text-white">{props.nodes.length}</span>
         <span class="text-text-dim ml-2">Edges:</span>
-        <span class="font-mono text-neon-purple">{props.edges.length}</span>
+        <span class="font-mono text-text-muted">{props.edges.length}</span>
       </div>
 
       {/* Legend */}
