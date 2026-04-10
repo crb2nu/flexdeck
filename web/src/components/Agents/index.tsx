@@ -306,7 +306,7 @@ const Agents: Component = () => {
       <div class="glass-panel flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div class="space-y-1">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-neon-cyan">
+            <span class="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-white">
               Loom HUD
             </span>
             <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">
@@ -324,7 +324,7 @@ const Agents: Component = () => {
             <button
               type="button"
               onClick={() => window.open(hudEntry().directUrl!, '_blank', 'noopener,noreferrer')}
-              class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+              class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
             >
               Open web HUD
             </button>
@@ -365,7 +365,7 @@ const Agents: Component = () => {
           )}>
             <Suspense fallback={
               <div class="flex items-center justify-center py-12">
-                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-purple" />
+                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white" />
               </div>
             }>
               <div class="space-y-4">
@@ -378,7 +378,7 @@ const Agents: Component = () => {
                         <button
                           type="button"
                           onClick={() => setActiveSection('registry')}
-                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-neon-cyan/20 hover:bg-white/7"
+                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/7"
                         >
                           <div class="text-sm font-medium text-text-main">Registry</div>
                           <div class="mt-1 text-xs leading-5 text-text-dim">Definitions, health checks, and manual agent controls remain available here when you need deeper tooling.</div>
@@ -386,7 +386,7 @@ const Agents: Component = () => {
                         <button
                           type="button"
                           onClick={() => setActiveSection('flow')}
-                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-neon-cyan/20 hover:bg-white/7"
+                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/7"
                         >
                           <div class="text-sm font-medium text-text-main">Flow graph</div>
                           <div class="mt-1 text-xs leading-5 text-text-dim">Switch to the relationship graph when you need to inspect topology instead of live operator pressure.</div>
@@ -452,7 +452,7 @@ const Agents: Component = () => {
                     </div>
                     <button
                       onClick={openCreateForm}
-                      class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+                      class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
                     >
                       + Add Agent
                     </button>

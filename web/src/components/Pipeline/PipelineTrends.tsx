@@ -109,7 +109,7 @@ const PipelineTrends: Component = () => {
 
       <Show when={loading()}>
         <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
         </div>
       </Show>
 
@@ -149,7 +149,7 @@ const PipelineTrends: Component = () => {
                   <div class="text-[10px] uppercase tracking-wider text-text-dim mb-0.5">
                     Avg Duration
                   </div>
-                  <div class="text-lg font-bold text-neon-cyan font-mono">
+                  <div class="text-lg font-bold text-text-main font-mono">
                     {formatDuration(trend.avg_duration_s)}
                   </div>
                 </div>
@@ -157,7 +157,7 @@ const PipelineTrends: Component = () => {
                   <div class="text-[10px] uppercase tracking-wider text-text-dim mb-0.5">
                     P95 Duration
                   </div>
-                  <div class="text-lg font-bold text-neon-purple font-mono">
+                  <div class="text-lg font-bold text-text-muted font-mono">
                     {formatDuration(trend.p95_duration_s)}
                   </div>
                 </div>

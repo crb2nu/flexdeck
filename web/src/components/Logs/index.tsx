@@ -93,7 +93,7 @@ const Logs: Component = () => {
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder='{namespace="default"}'
-              class="w-full rounded-md border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder-white/30 focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 transition-all font-mono"
+              class="w-full rounded-md border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder-white/30 focus:border-white/20 focus:outline-none focus:ring-1 focus:ring-white/15 transition-all font-mono"
             />
           </div>
 
@@ -101,7 +101,7 @@ const Logs: Component = () => {
             <select
               value={timeRange()}
               onChange={(e) => setTimeRange(e.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
             >
               <For each={LOG_TIME_RANGES}>{(range) => <option value={range.value}>{range.label}</option>}</For>
             </select>
@@ -109,7 +109,7 @@ const Logs: Component = () => {
             <select
               value={limit()}
               onChange={(e) => setLimit(parseInt(e.currentTarget.value))}
-              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-neon-cyan focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
             >
               <option value="50">50</option>
               <option value="100">100</option>
@@ -122,7 +122,7 @@ const Logs: Component = () => {
             <button
               onClick={fetchLogs}
               disabled={loading()}
-              class="rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+              class="rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
             >
               {loading() ? 'Loading...' : 'Query'}
             </button>
@@ -140,7 +140,7 @@ const Logs: Component = () => {
             >
               <button
                 onClick={startStreaming}
-                class="rounded-md bg-neon-purple/20 px-4 py-2 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30"
+                class="rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-white/20"
               >
                 Stream
               </button>
@@ -169,7 +169,7 @@ const Logs: Component = () => {
                 onClick={() => setShowSidebar(!showSidebar())}
                 class={`rounded-md px-3 py-2 text-sm font-medium transition-colors sm:border-l border-white/10 sm:ml-1 sm:pl-3 ${
                   showSidebar()
-                    ? 'bg-neon-purple/20 text-neon-purple'
+                    ? 'bg-white/10 text-white'
                     : 'bg-white/5 text-text-muted hover:bg-white/10 hover:text-text-main'
               }`}
               title="Query Builder & Stats"
@@ -222,7 +222,7 @@ const Logs: Component = () => {
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSidebar(false)} />
             <div class="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-xl border-t border-white/10 bg-[rgba(8,14,28,0.94)] p-4 shadow-2xl">
               <div class="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
-                <h3 class="text-xs font-mono uppercase tracking-[0.18em] text-neon-purple/70">Log Tools</h3>
+                <h3 class="text-xs font-mono uppercase tracking-[0.18em] text-text-muted">Log Tools</h3>
                 <button
                   type="button"
                   class="h-8 w-8 rounded-md border border-white/10 bg-white/5 text-text-dim"
@@ -272,8 +272,8 @@ const Logs: Component = () => {
                 </span>
               </Show>
               <Show when={streaming()}>
-                <span class="flex items-center gap-1 text-xs text-neon-purple">
-                  <span class="h-2 w-2 animate-pulse rounded-full bg-neon-purple" />
+                <span class="flex items-center gap-1 text-xs text-text-muted">
+                  <span class="h-2 w-2 animate-pulse rounded-full bg-text-muted" />
                   Streaming
                 </span>
               </Show>
@@ -307,7 +307,7 @@ const Logs: Component = () => {
                     title={searchRegex() ? 'Regex mode ON' : 'Enable regex search'}
                     class={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
                       searchRegex()
-                        ? 'bg-neon-purple/30 text-neon-purple border border-neon-purple/50'
+                        ? 'bg-white/10 text-white border border-white/20'
                         : 'text-text-dim hover:text-text-main'
                     }`}
                   >
@@ -320,8 +320,8 @@ const Logs: Component = () => {
               <TabBar
                 tabs={[
                   { id: 'list', label: 'TERMINAL' },
-                  { id: 'flow', label: 'FLOW', color: 'neon-cyan' },
-                  { id: 'rain', label: 'MATRIX', color: 'neon-green' },
+                  { id: 'flow', label: 'FLOW', color: 'white' },
+                  { id: 'rain', label: 'MATRIX', color: 'white' },
                 ]}
                 active={viewMode()}
                 onChange={setViewMode}
@@ -386,7 +386,7 @@ const Logs: Component = () => {
                             <td class="whitespace-nowrap px-3 py-1.5 text-text-dim w-24 align-top">
                               {formatTimestamp(entry.timestamp)}
                             </td>
-                            <td class="whitespace-nowrap px-3 py-1.5 text-neon-cyan w-32 align-top opacity-70 group-hover:opacity-100 truncate max-w-[8rem]" title={entry.labels.pod || entry.labels.container || '-'}>
+                            <td class="whitespace-nowrap px-3 py-1.5 text-text-muted w-32 align-top opacity-70 group-hover:opacity-100 truncate max-w-[8rem]" title={entry.labels.pod || entry.labels.container || '-'}>
                               {entry.labels.pod || entry.labels.container || '-'}
                             </td>
                             <td class="px-3 py-1.5 w-16 align-top">
@@ -437,7 +437,7 @@ const Logs: Component = () => {
                     <div class={`w-2 h-2 rounded-full ${
                       log().line.toLowerCase().includes('error') ? 'bg-red-500' :
                       log().line.toLowerCase().includes('warn') ? 'bg-yellow-500' :
-                      'bg-neon-cyan'
+                      'bg-white/40'
                     }`} />
                     <span class="text-sm font-semibold text-text-main">Log Entry</span>
                     <Show when={badge}>
@@ -483,7 +483,7 @@ const Logs: Component = () => {
                               onClick={() => copyToClipboard(`${key}="${value}"`, 'Label')}
                               title="Click to copy"
                             >
-                              <span class="text-neon-cyan">{key}</span>=<span class="text-text-main">{value}</span>
+                              <span class="text-white">{key}</span>=<span class="text-text-main">{value}</span>
                             </span>
                           )}
                         </For>
@@ -504,7 +504,7 @@ const Logs: Component = () => {
                 <div class="px-4 py-3 border-t border-white/10 bg-black/20 flex gap-2">
                   <button
                     onClick={() => copyToClipboard(log().line, 'Message')}
-                    class="px-4 py-2 text-xs font-mono rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 transition-colors"
+                    class="px-4 py-2 text-xs font-mono rounded bg-white/10 text-white border border-white/15 hover:bg-white/20 transition-colors"
                   >
                     Copy Message
                   </button>

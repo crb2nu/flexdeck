@@ -641,11 +641,11 @@ const HoloDeck: Component<Props> = (props) => {
             {info => (
                 <div class="absolute pointer-events-none z-20" style={{ left: `${info().x}px`, top: `${info().y}px` }}>
                     <div class="relative ml-4 mt-4">
-                        <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-neon-cyan/50" />
-                        <div class="rounded-sm border border-neon-cyan/30 bg-black/90 p-2 text-xs shadow-[0_0_15px_rgba(0,240,255,0.2)] min-w-[140px]">
+                        <div class="absolute -left-4 -top-4 h-4 w-4 border-l border-t border-white/20" />
+                        <div class="rounded-sm border border-white/15 bg-black/90 p-2 text-xs min-w-[140px]">
                             <div class="flex items-center gap-2 mb-1 border-b border-white/10 pb-1">
-                                <div class="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse" />
-                                <div class="font-bold text-neon-cyan uppercase tracking-wider">{info().type}</div>
+                                <div class="h-1.5 w-1.5 rounded-full bg-white/40 animate-pulse" />
+                                <div class="font-bold text-white uppercase tracking-wider">{info().type}</div>
                             </div>
                             <div class="font-mono text-white/90 mb-1">{info().title}</div>
                             <Show when={info().type === 'node' && info().status}>
@@ -656,7 +656,7 @@ const HoloDeck: Component<Props> = (props) => {
                             </Show>
                             <Show when={info().type === 'pod'}>
                                 <div class="text-[10px] mt-1 pt-1 border-t border-white/5 space-y-0.5">
-                                    <Show when={info().namespace}><div class="text-text-dim">ns: <span class="text-neon-purple">{info().namespace}</span></div></Show>
+                                    <Show when={info().namespace}><div class="text-text-dim">ns: <span class="text-text-muted">{info().namespace}</span></div></Show>
                                     <Show when={info().status}><div class={`inline-block px-1 rounded ${info().status === 'Running' ? 'bg-green-500/20 text-green-400' : (info().status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400')}`}>{info().status}</div></Show>
                                 </div>
                             </Show>
@@ -669,7 +669,7 @@ const HoloDeck: Component<Props> = (props) => {
 
         <div class="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
             <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/85 px-5 py-4 shadow-[0_0_25px_rgba(0,240,255,0.18)]">
-                <div class="text-[9px] uppercase tracking-[0.4em] text-neon-cyan/70">Cluster Core</div>
+                <div class="text-[9px] uppercase tracking-[0.4em] text-text-muted">Cluster Core</div>
                 <div class="flex items-end gap-2">
                     <span class={`text-3xl font-semibold ${healthState() === 'healthy' ? 'text-status-ok' : (healthState() === 'warning' ? 'text-status-warn' : 'text-status-error')}`}>{formatPercent(clusterHealth().healthPercent * 100, 0)}</span>
                     <span class={`text-[10px] uppercase tracking-wider ${healthState() === 'healthy' ? 'text-status-ok' : (healthState() === 'warning' ? 'text-status-warn' : 'text-status-error')}`}>{healthState().toUpperCase()}</span>

@@ -35,7 +35,7 @@ const OPERATOR_STATE_LABELS: Record<OperatorState, string> = {
 const OPERATOR_STATE_BADGE_CLASSES: Record<OperatorState, string> = {
   connecting: 'bg-white/10 text-text-dim',
   ready: 'bg-status-ok/20 text-status-ok',
-  partial: 'bg-neon-cyan/20 text-neon-cyan',
+  partial: 'bg-white/10 text-white',
   fallback: 'bg-status-warn/15 text-status-warn',
   stale: 'bg-status-warn/20 text-status-warn',
   offline: 'bg-white/10 text-text-dim',

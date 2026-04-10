@@ -200,7 +200,7 @@ const Alerts: Component = () => {
       <Show when={!loading() && tab() === 'silences'}>
         <div class="flex justify-end">
           <button
-            class="px-3 py-1.5 text-xs bg-neon-cyan/10 text-neon-cyan rounded-md hover:bg-neon-cyan/20"
+            class="px-3 py-1.5 text-xs bg-white/10 text-white rounded-md hover:bg-white/15"
             onClick={() => setShowSilenceForm(!showSilenceForm())}
           >
             {showSilenceForm() ? 'Cancel' : 'Create Silence'}
@@ -266,7 +266,7 @@ const Alerts: Component = () => {
               />
             </div>
             <button
-              class="px-3 py-1.5 text-xs bg-neon-cyan/20 text-neon-cyan rounded-md hover:bg-neon-cyan/30"
+              class="px-3 py-1.5 text-xs bg-white/10 text-white rounded-md hover:bg-white/15"
               onClick={handleCreateSilence}
               disabled={!silenceMatcherValue()}
             >

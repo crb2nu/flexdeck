@@ -55,7 +55,7 @@ const ShortcutsOverlay: Component = () => {
           {/* Header */}
           <div class="flex items-center justify-between mb-5">
             <h2 class="text-lg font-bold text-text-main flex items-center gap-2">
-              <span class="text-neon-cyan">⌨</span>
+              <span class="text-white">⌨</span>
               Keyboard Shortcuts
             </h2>
             <button

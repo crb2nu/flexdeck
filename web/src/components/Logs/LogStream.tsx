@@ -527,7 +527,7 @@ const LogStream: Component<Props> = (props) => {
       <Show when={isPaused()}>
         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
           <div class="bg-black/90 rounded-lg px-4 py-2 border border-white/20">
-            <div class="text-neon-cyan text-sm font-mono tracking-wider">PAUSED</div>
+            <div class="text-white text-sm font-mono tracking-wider">PAUSED</div>
             <div class="text-text-dim text-xs mt-1">{activeParticleCount} particles</div>
           </div>
         </div>

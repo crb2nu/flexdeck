@@ -167,7 +167,7 @@ const CommandPalette: Component = () => {
         >
           {/* Input Area */}
           <div class="flex items-center gap-3 border-b border-white/5 px-4 py-3">
-            <span class="text-neon-cyan text-lg">›</span>
+            <span class="text-white text-lg">›</span>
             <input
               ref={inputRef}
               type="text"
@@ -194,7 +194,7 @@ const CommandPalette: Component = () => {
               {(cmd, i) => (
                 <div
                   class={`flex cursor-pointer items-center justify-between rounded-lg px-4 py-3 transition-colors ${
-                    i() === selectedIndex() ? 'bg-neon-cyan/10' : 'hover:bg-white/5'
+                    i() === selectedIndex() ? 'bg-white/10' : 'hover:bg-white/5'
                   }`}
                   onClick={() => {
                     cmd.action();
@@ -205,7 +205,7 @@ const CommandPalette: Component = () => {
                 >
                   <div class="flex items-center gap-3">
                     <div class={`flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 ${
-                       i() === selectedIndex() ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-white/5 text-text-dim'
+                       i() === selectedIndex() ? 'bg-white/10 text-white' : 'bg-white/5 text-text-dim'
                     }`}>
                       {/* Simple Icon based on ID prefix */}
                       {cmd.id.startsWith('nav') ? '➜' : '⚡'}
@@ -218,7 +218,7 @@ const CommandPalette: Component = () => {
                     </div>
                   </div>
                   <Show when={i() === selectedIndex()}>
-                    <span class="text-xs text-neon-cyan">Press Enter</span>
+                    <span class="text-xs text-white">Press Enter</span>
                   </Show>
                 </div>
               )}

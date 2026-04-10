@@ -15,15 +15,15 @@ export interface StandardAgentCardProps {
 
 const StandardAgentCard: Component<StandardAgentCardProps> = (props) => {
   return (
-    <div class={`glass-panel p-4 ${props.isBuiltIn ? 'border-neon-cyan/40 shadow-[0_0_20px_rgba(0,217,255,0.1)]' : ''}`}>
+    <div class={`glass-panel p-4 ${props.isBuiltIn ? 'border-white/20' : ''}`}>
       <div class="mb-3 flex items-start justify-between">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
-            <h3 class={`font-medium truncate ${props.isBuiltIn ? 'text-neon-cyan' : 'text-text-main'}`}>
+            <h3 class={`font-medium truncate ${props.isBuiltIn ? 'text-white' : 'text-text-main'}`}>
               {props.agent.name}
             </h3>
             <Show when={props.isBuiltIn}>
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-neon-purple/20 text-neon-purple border border-neon-purple/30">
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-text-muted border border-white/15">
                 BUILT-IN
               </span>
             </Show>
@@ -56,13 +56,13 @@ const StandardAgentCard: Component<StandardAgentCardProps> = (props) => {
         <Show when={props.agent.metadata?.backend === 'flexinfer'}>
           <div class="flex justify-between">
             <span class="text-text-dim">Backend</span>
-            <span class="text-neon-purple">FlexInfer</span>
+            <span class="text-text-muted">FlexInfer</span>
           </div>
         </Show>
         <Show when={props.agent.model}>
           <div class="flex justify-between">
             <span class="text-text-dim">Model</span>
-            <span class="text-neon-purple truncate max-w-[150px]">{props.agent.model}</span>
+            <span class="text-text-muted truncate max-w-[150px]">{props.agent.model}</span>
           </div>
         </Show>
       </div>
@@ -84,8 +84,8 @@ const StandardAgentCard: Component<StandardAgentCardProps> = (props) => {
           onClick={() => props.onChat(props.agent)}
           class={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
             props.isBuiltIn
-              ? 'bg-neon-cyan/20 border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/30 hover:shadow-[0_0_15px_rgba(0,217,255,0.3)]'
-              : 'bg-neon-cyan/10 border border-neon-cyan/20 text-neon-cyan hover:bg-neon-cyan/20 hover:shadow-[0_0_10px_rgba(0,217,255,0.2)]'
+              ? 'bg-white/10 border border-white/20 text-white hover:bg-white/15'
+              : 'bg-white/10 border border-white/15 text-white hover:bg-white/15'
           }`}
         >
           Chat

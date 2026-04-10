@@ -88,7 +88,7 @@ const QueryBuilder: Component<Props> = (props) => {
           <label class="text-xs font-mono text-text-muted uppercase tracking-wider">Label Selectors</label>
           <button
             onClick={addLabel}
-            class="text-[10px] text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+            class="text-[10px] text-white hover:text-white/80 transition-colors"
           >
             + Add Label
           </button>
@@ -100,7 +100,7 @@ const QueryBuilder: Component<Props> = (props) => {
                 <select
                   value={label.key}
                   onChange={(e) => updateLabel(index(), 'key', e.currentTarget.value)}
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
+                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
                 >
                   <option value="">Select label...</option>
                   <For each={COMMON_LABELS}>
@@ -110,7 +110,7 @@ const QueryBuilder: Component<Props> = (props) => {
                 <select
                   value={label.operator}
                   onChange={(e) => updateLabel(index(), 'operator', e.currentTarget.value as LabelSelector['operator'])}
-                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-neon-cyan/50 focus:outline-none"
+                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-white/20 focus:outline-none"
                 >
                   <For each={LABEL_OPERATORS}>
                     {(op) => <option value={op}>{op}</option>}
@@ -121,7 +121,7 @@ const QueryBuilder: Component<Props> = (props) => {
                   value={label.value}
                   onInput={(e) => updateLabel(index(), 'value', e.currentTarget.value)}
                   placeholder="value"
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-neon-cyan/50 focus:outline-none"
+                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none"
                 />
                 <Show when={labels().length > 1}>
                   <button
@@ -145,7 +145,7 @@ const QueryBuilder: Component<Props> = (props) => {
           <label class="text-xs font-mono text-text-muted uppercase tracking-wider">Line Filters</label>
           <button
             onClick={addLineFilter}
-            class="text-[10px] text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+            class="text-[10px] text-white hover:text-white/80 transition-colors"
           >
             + Add Filter
           </button>
@@ -157,7 +157,7 @@ const QueryBuilder: Component<Props> = (props) => {
                 <select
                   value={filter.operator}
                   onChange={(e) => updateLineFilter(index(), 'operator', e.currentTarget.value as LineFilter['operator'])}
-                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-neon-cyan/50 focus:outline-none"
+                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-white/20 focus:outline-none"
                 >
                   <For each={LINE_OPERATORS}>
                     {(op) => <option value={op}>{op}</option>}
@@ -168,7 +168,7 @@ const QueryBuilder: Component<Props> = (props) => {
                   value={filter.value}
                   onInput={(e) => updateLineFilter(index(), 'value', e.currentTarget.value)}
                   placeholder={filter.operator.includes('~') ? 'regex pattern' : 'contains text'}
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-neon-cyan/50 focus:outline-none"
+                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none"
                 />
                 <button
                   onClick={() => removeLineFilter(index())}
@@ -199,7 +199,7 @@ const QueryBuilder: Component<Props> = (props) => {
           </button>
         </div>
         <Show when={showPreview()}>
-          <div class="bg-black/40 border border-white/10 rounded p-2 font-mono text-xs text-neon-cyan break-all">
+          <div class="bg-black/40 border border-white/10 rounded p-2 font-mono text-xs text-white break-all">
             {buildQuery()}
           </div>
         </Show>
@@ -208,7 +208,7 @@ const QueryBuilder: Component<Props> = (props) => {
       {/* Apply Button */}
       <button
         onClick={applyQuery}
-        class="w-full rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+        class="w-full rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
       >
         Apply Query
       </button>

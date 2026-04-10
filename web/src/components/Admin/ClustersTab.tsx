@@ -88,7 +88,7 @@ const ClustersTab: Component = () => {
   };
 
   const statusColor = (status: string) => {
-    if (status === "connected") return "bg-neon-green";
+    if (status === "connected") return "bg-status-ok";
     if (status === "disconnected") return "bg-red-500";
     return "bg-yellow-500";
   };
@@ -101,7 +101,7 @@ const ClustersTab: Component = () => {
           CLUSTER REGISTRY
         </h3>
         <button
-          class="rounded-md bg-neon-cyan/10 border border-neon-cyan/30 px-3 py-1.5 text-xs font-mono text-neon-cyan hover:bg-neon-cyan/20 transition-colors"
+          class="rounded-md bg-white/10 border border-white/20 px-3 py-1.5 text-xs font-mono text-white hover:bg-white/15 transition-colors"
           onClick={() => setShowAdd(true)}
         >
           + ADD CLUSTER
@@ -116,7 +116,7 @@ const ClustersTab: Component = () => {
               <label class="text-[10px] text-text-dim block mb-1">NAME</label>
               <input
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newName()}
                 onInput={(e) => setNewName(e.currentTarget.value)}
                 placeholder="production"
@@ -126,7 +126,7 @@ const ClustersTab: Component = () => {
               <label class="text-[10px] text-text-dim block mb-1">HOST</label>
               <input
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newHost()}
                 onInput={(e) => setNewHost(e.currentTarget.value)}
                 placeholder="https://k8s.example.com:6443"
@@ -138,7 +138,7 @@ const ClustersTab: Component = () => {
               </label>
               <input
                 type="password"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newToken()}
                 onInput={(e) => setNewToken(e.currentTarget.value)}
                 placeholder="eyJ..."
@@ -150,7 +150,7 @@ const ClustersTab: Component = () => {
               </label>
               <input
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newNamespace()}
                 onInput={(e) => setNewNamespace(e.currentTarget.value)}
               />
@@ -158,7 +158,7 @@ const ClustersTab: Component = () => {
           </div>
           <div class="flex gap-2">
             <button
-              class="rounded bg-neon-cyan/20 border border-neon-cyan/30 px-4 py-1.5 text-xs text-neon-cyan font-mono hover:bg-neon-cyan/30 disabled:opacity-50"
+              class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono hover:bg-white/15 disabled:opacity-50"
               onClick={handleAdd}
               disabled={!newName().trim() || !newHost().trim() || adding()}
             >
@@ -197,7 +197,7 @@ const ClustersTab: Component = () => {
                   </span>
                 </div>
                 <Show when={cluster.isDefault}>
-                  <span class="text-[9px] text-neon-cyan border border-neon-cyan/30 rounded px-1.5 py-0.5 font-mono">
+                  <span class="text-[9px] text-text-muted border border-white/20 rounded px-1.5 py-0.5 font-mono">
                     DEFAULT
                   </span>
                 </Show>
@@ -212,7 +212,7 @@ const ClustersTab: Component = () => {
                   <span
                     class={
                       cluster.status === "connected"
-                        ? "text-neon-green"
+                        ? "text-status-ok"
                         : cluster.status === "disconnected"
                           ? "text-red-400"
                           : "text-yellow-400"
@@ -226,7 +226,7 @@ const ClustersTab: Component = () => {
               {/* Actions */}
               <div class="flex gap-2 pt-1 border-t border-white/5">
                 <button
-                  class="text-[10px] text-text-dim hover:text-neon-cyan font-mono"
+                  class="text-[10px] text-text-dim hover:text-white font-mono"
                   onClick={() => handleTest(cluster.id)}
                   disabled={testing() === cluster.id}
                 >
@@ -234,7 +234,7 @@ const ClustersTab: Component = () => {
                 </button>
                 <Show when={!cluster.isDefault}>
                   <button
-                    class="text-[10px] text-text-dim hover:text-neon-cyan font-mono"
+                    class="text-[10px] text-text-dim hover:text-white font-mono"
                     onClick={() => handleSetDefault(cluster.id)}
                   >
                     SET DEFAULT

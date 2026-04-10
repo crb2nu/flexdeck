@@ -13,7 +13,7 @@ function pct(v: number): string {
 function utilizationColor(pct: number): string {
   if (pct >= 90) return 'bg-status-error';
   if (pct >= 75) return 'bg-status-warn';
-  if (pct >= 50) return 'bg-neon-cyan/70';
+  if (pct >= 50) return 'bg-white/40';
   return 'bg-status-ok';
 }
 

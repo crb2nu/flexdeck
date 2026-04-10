@@ -37,19 +37,19 @@ const metricToneClasses: Record<NonNullable<HUDConsoleMetric['tone']>, string> =
   ok: 'text-status-ok',
   warn: 'text-status-warn',
   error: 'text-status-error',
-  cyan: 'text-neon-cyan',
-  purple: 'text-neon-purple',
+  cyan: 'text-white',
+  purple: 'text-text-muted',
 };
 
 const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
   return (
-    <div class="glass-panel corner-accents overflow-hidden border border-neon-cyan/10 bg-gradient-to-br from-[#06111f] via-[#081627] to-[#050a12] shadow-[0_0_50px_rgba(0,240,255,0.06)]">
+    <div class="glass-panel overflow-hidden border border-white/10 bg-[rgba(15,20,35,0.95)]">
       <div class="relative px-4 py-4 md:px-5 md:py-5">
-        <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent opacity-80" />
+        <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-80" />
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-neon-cyan">
+              <span class="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-white">
                 Loom HUD
               </span>
               <Show when={props.badge}>
@@ -77,7 +77,7 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
                   disabled={action.disabled}
                   class={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     action.variant === 'primary'
-                      ? 'bg-neon-cyan/20 text-neon-cyan hover:bg-neon-cyan/30'
+                      ? 'bg-white/10 text-white hover:bg-white/20'
                       : action.variant === 'danger'
                         ? 'bg-status-error/20 text-status-error hover:bg-status-error/30'
                         : 'bg-white/10 text-text-main hover:bg-white/20'
@@ -116,7 +116,7 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
           <div class="mt-4 flex flex-col gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
             <div class="space-y-1">
               <Show when={props.modeLabel}>
-                <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-neon-cyan/80">
+                <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-text-muted">
                   {props.modeLabel}
                 </div>
               </Show>

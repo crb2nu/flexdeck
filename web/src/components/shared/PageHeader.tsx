@@ -32,7 +32,7 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
         <h1 class="text-lg font-bold text-text-main">
           {props.title}
           <Show when={props.accent}>
-            <span class="text-neon-cyan">{props.accent}</span>
+            <span class="text-white">{props.accent}</span>
           </Show>
         </h1>
         <Show when={props.subtitle}>

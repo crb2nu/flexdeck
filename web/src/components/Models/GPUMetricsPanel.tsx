@@ -199,16 +199,16 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
 
   return (
     <Show when={!error() && (metrics().utilization != null || metrics().vramUsed != null)}>
-      <div class="rounded-md bg-neon-cyan/5 p-2 space-y-1.5">
+      <div class="rounded-md bg-white/5 p-2 space-y-1.5">
         <div class="flex items-center justify-between">
-          <div class="text-[10px] font-medium text-neon-cyan uppercase tracking-wider">
+          <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider">
             GPU Metrics {isAMD() ? '(ROCm)' : '(NVIDIA)'}
             {multiGPU() ? ` [${devices().length} GPUs]` : ''}
           </div>
           <Show when={multiGPU()}>
             <button
               onClick={() => setShowDevices(!showDevices())}
-              class="text-[10px] text-neon-cyan/60 hover:text-neon-cyan transition-colors"
+              class="text-[10px] text-text-muted/60 hover:text-text-muted transition-colors"
             >
               {showDevices() ? 'Hide' : 'Show'} devices
             </button>
@@ -220,11 +220,11 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
           <div class="space-y-0.5">
             <div class="flex justify-between text-xs">
               <span class="text-text-dim">Utilization</span>
-              <span class="text-neon-cyan font-mono">{metrics().utilization!.toFixed(0)}%</span>
+              <span class="text-text-muted font-mono">{metrics().utilization!.toFixed(0)}%</span>
             </div>
             <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
-                class="h-full rounded-full bg-neon-cyan transition-all"
+                class="h-full rounded-full bg-white/40 transition-all"
                 style={{ width: `${metrics().utilization}%` }}
               />
             </div>
@@ -236,14 +236,14 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
           <div class="space-y-0.5">
             <div class="flex justify-between text-xs">
               <span class="text-text-dim">VRAM</span>
-              <span class="text-neon-cyan font-mono">
+              <span class="text-text-muted font-mono">
                 {formatBytes(metrics().vramUsed!)} / {formatBytes(metrics().vramTotal!)}
               </span>
             </div>
             <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
                 class={`h-full rounded-full transition-all ${
-                  vramPercent()! > 90 ? 'bg-status-error' : 'bg-neon-purple'
+                  vramPercent()! > 90 ? 'bg-status-error' : 'bg-white/40'
                 }`}
                 style={{ width: `${vramPercent()}%` }}
               />
@@ -316,18 +316,18 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
                       <div class="flex items-center gap-2">
                         <span class="text-[9px] text-text-dim w-8">Util</span>
                         <div class="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                          <div class="h-full rounded-full bg-neon-cyan" style={{ width: `${dev.utilization}%` }} />
+                          <div class="h-full rounded-full bg-white/40" style={{ width: `${dev.utilization}%` }} />
                         </div>
-                        <span class="text-[9px] font-mono text-neon-cyan w-8 text-right">{dev.utilization!.toFixed(0)}%</span>
+                        <span class="text-[9px] font-mono text-text-muted w-8 text-right">{dev.utilization!.toFixed(0)}%</span>
                       </div>
                     </Show>
                     <Show when={devVramPct() != null}>
                       <div class="flex items-center gap-2">
                         <span class="text-[9px] text-text-dim w-8">VRAM</span>
                         <div class="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                          <div class={`h-full rounded-full ${devVramPct()! > 90 ? 'bg-status-error' : 'bg-neon-purple'}`} style={{ width: `${devVramPct()}%` }} />
+                          <div class={`h-full rounded-full ${devVramPct()! > 90 ? 'bg-status-error' : 'bg-white/40'}`} style={{ width: `${devVramPct()}%` }} />
                         </div>
-                        <span class="text-[9px] font-mono text-neon-purple w-8 text-right">{devVramPct()!.toFixed(0)}%</span>
+                        <span class="text-[9px] font-mono text-text-dim w-8 text-right">{devVramPct()!.toFixed(0)}%</span>
                       </div>
                     </Show>
                     <div class="flex gap-3 text-[9px]">

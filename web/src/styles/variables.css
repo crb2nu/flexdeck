@@ -1,6 +1,6 @@
 :root {
-  /* --- Colors: Cyberpunk Palette --- */
-  /* Neon Accents */
+  /* --- Colors: Status Palette --- */
+  /* Accent colors — used ONLY for status semantics, not decoration */
   --neon-cyan: #00f0ff;
   --neon-pink: #ff003c;
   --neon-yellow: #fcee0a;
@@ -8,9 +8,17 @@
   --neon-green: #0aff68;
 
   /* Backgrounds */
-  --bg-deep: #050a14;
-  --bg-dark: #0b1020;
-  --bg-panel: rgba(16, 24, 40, 0.7);
+  --bg-deep: #0a0e1a;
+  --bg-dark: #0f1423;
+  --bg-panel: rgba(16, 22, 36, 0.95);
+
+  /* Surfaces */
+  --surface-primary: rgba(15, 20, 35, 0.95);
+  --surface-elevated: rgba(20, 26, 42, 0.98);
+
+  /* Borders */
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
 
   /* Text */
   --text-main: #ffffff;
@@ -24,17 +32,17 @@
   --color-ready: var(--neon-cyan);
   --color-accent: var(--neon-purple);
 
-  /* --- Glassmorphism --- */
-  --glass-bg: rgba(10, 16, 32, 0.88);
-  --glass-blur: blur(4px);
+  /* --- Glass Panel (redefined: solid, no blur) --- */
+  --glass-bg: rgba(15, 20, 35, 0.95);
+  --glass-blur: none;
   --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --glass-highlight: rgba(255, 255, 255, 0.05);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --glass-highlight: rgba(255, 255, 255, 0.03);
 
   /* --- Geometry --- */
   --radius-s: 4px;
-  --radius-m: 8px;
-  --radius-l: 16px;
+  --radius-m: 6px;
+  --radius-l: 12px;
   --radius-pill: 9999px;
   --space-xs: 4px;
   --space-s: 8px;
@@ -45,6 +53,10 @@
   /* --- Typography --- */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+
+  /* --- Transitions --- */
+  --transition-fast: 100ms;
+  --transition-normal: 150ms;
 
   /* --- Aliases for Legacy/Shared Components --- */
   --accent-primary: var(--neon-cyan);

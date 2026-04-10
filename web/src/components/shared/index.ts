@@ -1,3 +1,4 @@
+export { default as DataTable } from './DataTable';
 export { default as PulseCard } from './PulseCard';
 export { default as GlassPanel } from './GlassPanel';
 export { default as StatusDot } from './StatusDot';
@@ -21,3 +22,4 @@ export type { LoadingStateProps } from './LoadingState';
 export type { EmptyStateProps } from './EmptyState';
 export type { ErrorStateProps } from './ErrorState';
 export type { OperationsSidebarItem, OperationsSidebarNavProps } from './OperationsSidebarNav';
+export type { ColumnDef, DataTableProps } from './DataTable';

@@ -28,26 +28,26 @@ export function getStatusColor(
   const token = getVisualStatusToken(status, rawStatus);
   switch (token) {
     case 'success':
-      return '#00f0ff'; // neon-cyan
+      return '#22c55e'; // green-500
     case 'running':
-      return '#0aff68'; // neon-green
+      return '#94a3b8'; // slate-400 (neutral)
     case 'failed':
     case 'canceled':
     case 'cancelled':
     case 'canceling':
-      return '#ff003c'; // neon-pink/red
+      return '#ef4444'; // red-500
     case 'manual':
-      return '#bd00ff'; // neon-purple
+      return '#a78bfa'; // violet-400
     case 'created':
-      return '#ffd166'; // amber
+      return '#fbbf24'; // amber-400
     case 'preparing':
-      return '#ffb347'; // orange
+      return '#fb923c'; // orange-400
     case 'waiting_for_resource':
-      return '#ff9f43'; // deep orange
+      return '#f97316'; // orange-500
     case 'scheduled':
-      return '#c084fc'; // violet
+      return '#c084fc'; // violet-300
     case 'pending':
-      return '#fcee0a'; // neon-yellow
+      return '#eab308'; // yellow-500
     case 'skipped':
       return 'rgba(255,255,255,0.3)';
     default:

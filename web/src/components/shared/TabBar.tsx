@@ -34,7 +34,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
           <For each={props.tabs}>
             {(tab) => {
               const isActive = () => props.active === tab.id;
-              const c = tab.color ?? 'neon-cyan';
+              const c = tab.color ?? 'white';
               return (
                 <button
                   onClick={() => props.onChange(tab.id)}
@@ -69,7 +69,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
                 onClick={() => props.onChange(tab.id)}
                 class={`flex items-center gap-1.5 rounded-t px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                   isActive()
-                    ? `border-b-2 border-${tab.color ?? 'neon-cyan'} text-${tab.color ?? 'neon-cyan'}`
+                    ? `border-b-2 border-${tab.color ?? 'white'} text-${tab.color ?? 'white'}`
                     : 'text-text-dim hover:text-text-muted'
                 }`}
               >

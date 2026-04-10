@@ -23,16 +23,16 @@ const SystemCore: Component = () => {
   const coreColor = createMemo(() => {
     if (healthStore.loading) return 'text-text-dim';
     if (healthStore.error) return 'text-red-500';
-    if (healthRatio() >= 0.8) return 'text-neon-cyan';
+    if (healthRatio() >= 0.8) return 'text-white';
     if (healthRatio() >= 0.5) return 'text-yellow-500';
     return 'text-red-500';
   });
 
   const pulseSpeed = createMemo(() => {
-    if (healthStore.loading) return 'animate-ping-slow';
-    if (healthStore.error) return 'animate-ping-fast';
-    if (healthRatio() >= 0.8) return 'animate-ping-slow';
-    return 'animate-ping-normal';
+    if (healthStore.loading) return 'animate-pulse';
+    if (healthStore.error) return 'animate-pulse';
+    if (healthRatio() >= 0.8) return 'animate-pulse';
+    return 'animate-pulse';
   });
 
   const statusLabel = createMemo(() => {
@@ -45,7 +45,7 @@ const SystemCore: Component = () => {
   });
 
   const featureStatusDot = (enabled: boolean) =>
-    enabled ? 'bg-neon-green' : 'bg-red-500/60';
+    enabled ? 'bg-status-ok' : 'bg-red-500/60';
 
   const featureLabel = (name: string) => {
     const labels: Record<string, string> = {
@@ -109,8 +109,8 @@ const SystemCore: Component = () => {
 
       {/* Hover Tooltip — real health breakdown */}
       <div class="absolute right-full top-1/2 -translate-y-1/2 mr-4 hidden w-56 group-hover:block animate-fade-in-scale">
-        <div class="bg-[#050a14]/90 border border-neon-cyan/30 rounded-lg p-3 shadow-[0_0_20px_rgba(0,217,255,0.1)]">
-          <div class="text-[10px] text-neon-cyan/50 tracking-widest mb-1">SYSTEM STATUS</div>
+        <div class="bg-[#050a14]/90 border border-white/15 rounded-lg p-3">
+          <div class="text-[10px] text-text-muted tracking-widest mb-1">SYSTEM STATUS</div>
           <div class={`text-xs font-mono mb-2 ${coreColor()}`}>{statusLabel()}</div>
 
           {/* Feature breakdown */}
@@ -120,7 +120,7 @@ const SystemCore: Component = () => {
                 <div class="flex items-center gap-2 text-xs">
                   <span class={`w-1.5 h-1.5 rounded-full ${featureStatusDot(feature.enabled)}`} />
                   <span class="text-text-muted flex-1">{featureLabel(name)}</span>
-                  <span class={`text-[10px] font-mono ${feature.enabled ? 'text-neon-green' : 'text-red-400'}`}>
+                  <span class={`text-[10px] font-mono ${feature.enabled ? 'text-status-ok' : 'text-red-400'}`}>
                     {feature.enabled ? 'ON' : 'OFF'}
                   </span>
                 </div>
@@ -132,7 +132,7 @@ const SystemCore: Component = () => {
           <div class="h-1 w-full bg-white/10 rounded-full overflow-hidden">
             <div
               class={`h-full rounded-full transition-all duration-500 ${
-                healthRatio() >= 0.8 ? 'bg-neon-cyan' :
+                healthRatio() >= 0.8 ? 'bg-white/40' :
                 healthRatio() >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'
               }`}
               style={{ width: `${healthRatio() * 100}%` }}

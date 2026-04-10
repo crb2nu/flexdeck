@@ -72,10 +72,10 @@ const AppLayout: Component<ParentProps> = (props) => {
   });
 
   return (
-    <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-neon-cyan/30 overflow-hidden relative">
+    <div class="flex h-screen w-full flex-col bg-bg-deep text-text-main font-sans selection:bg-white/20 overflow-hidden relative">
       {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
-        <header class="border-b border-white/5 bg-[rgba(11,16,32,0.74)] backdrop-blur-md relative z-40">
+        <header class="border-b border-white/[0.08] bg-bg-dark relative z-40">
         <div class="flex h-16 items-center justify-between px-4 md:px-6">
           {/* Left: Logo & Mobile Toggle */}
           <div class="flex items-center gap-3">
@@ -103,13 +103,11 @@ const AppLayout: Component<ParentProps> = (props) => {
               </Show>
             </button>
 
-            <div class="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/20">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 border border-white/[0.08]">
               <span class="font-mono text-xl font-bold text-white">F</span>
-              {/* Breathing border */}
-              <div class="absolute inset-0 rounded-lg border border-neon-cyan/40 animate-breathe" style={{ "will-change": "opacity" }} />
             </div>
             <h1 class="text-xl font-bold tracking-tight text-white hidden sm:block">
-              Flex<span class="text-neon-cyan">Deck</span>
+              FlexDeck
             </h1>
           </div>
 
@@ -146,7 +144,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Show when={mobileMenuOpen()}>
           <div
             id={mobileNavId}
-            class="md:hidden fixed inset-x-0 top-16 z-[70] bg-[rgba(8,14,28,0.94)] backdrop-blur-xl border-b border-white/10 animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            class="md:hidden fixed inset-x-0 top-16 z-[70] bg-bg-dark border-b border-white/[0.08] animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
             onClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             style={{ 'padding-bottom': 'max(0.75rem, env(safe-area-inset-bottom))' }}
@@ -158,13 +156,13 @@ const AppLayout: Component<ParentProps> = (props) => {
                   onClick={() => closeMobileMenu()}
                   class="flex items-center justify-between rounded-xl px-4 py-3 text-base font-medium transition-all duration-200 border active:scale-[0.98] min-h-[52px]"
                   classList={{
-                    'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20 shadow-[0_0_15px_rgba(0,240,255,0.1)]': isNavItemActive(location.pathname, item),
+                    'bg-white/10 text-white border-white/[0.08]': isNavItemActive(location.pathname, item),
                     'text-text-muted border-transparent hover:bg-white/5': !isNavItemActive(location.pathname, item),
                   }}
                 >
                   <span class="tracking-wide">{item.label}</span>
                   <Show when={isNavItemActive(location.pathname, item)}>
-                    <div class="w-2 h-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
+                    <div class="w-1.5 h-1.5 rounded-full bg-white/60" />
                   </Show>
                 </A>
               )}</For>
@@ -172,34 +170,23 @@ const AppLayout: Component<ParentProps> = (props) => {
           </div>
           {/* Backdrop */}
           <div
-            class="fixed inset-x-0 top-16 bottom-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+            class="fixed inset-x-0 top-16 bottom-0 z-[60] bg-black/50 md:hidden"
             onClick={(event) => closeMobileMenuFromBackdrop(event)}
           />
         </Show>
 
-        {/* Sentient Health Glow Bar */}
-        <div class="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden" style={{ "will-change": "transform, opacity" }}>
-          {/* Base glow that breathes */}
-          <div
-            class="absolute inset-0 animate-breathe motion-reduce:animate-none"
-            style={{
-              "will-change": "opacity",
-              background: healthStore.error
-                ? 'linear-gradient(90deg, transparent, #ef4444, transparent)'
-                : healthStore.ok
-                ? 'linear-gradient(90deg, transparent, var(--neon-cyan), transparent)'
-                : 'linear-gradient(90deg, transparent, #eab308, transparent)',
-            }}
-          />
-          {/* Scan line sweep */}
-          <div
-            class="absolute inset-y-0 w-24 animate-scan-line motion-reduce:animate-none"
-            style={{
-              "will-change": "transform",
-              background: 'linear-gradient(90deg, transparent, rgba(0,217,255,0.6), transparent)',
-            }}
-          />
-        </div>
+        {/* Health status indicator — thin solid line */}
+        <div
+          class="absolute bottom-0 left-0 right-0 h-px"
+          style={{
+            background: healthStore.error
+              ? '#ef4444'
+              : healthStore.ok
+              ? '#94a3b8'
+              : '#eab308',
+            opacity: 0.4,
+          }}
+        />
       </header>
       </Show>
 
@@ -208,8 +195,8 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Suspense fallback={
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
-                    <div class="h-12 w-12 border-4 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
-                    <div class="text-neon-cyan/50 font-mono text-sm tracking-widest animate-pulse">INITIALIZING...</div>
+                    <div class="h-10 w-10 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
+                    <div class="text-text-muted font-mono text-sm tracking-wide">Loading...</div>
                 </div>
             </div>
         }>

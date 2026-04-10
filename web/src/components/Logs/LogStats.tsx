@@ -92,12 +92,12 @@ const LogStats: Component<Props> = (props) => {
 
         {/* Info */}
         <div class="flex items-center gap-2">
-          <div class="w-2 h-2 rounded-full bg-neon-cyan" />
+          <div class="w-2 h-2 rounded-full bg-white/40" />
           <span class="text-xs text-text-muted flex-1">Info</span>
-          <span class="text-xs font-mono text-neon-cyan">{stats().info}</span>
+          <span class="text-xs font-mono text-text-muted">{stats().info}</span>
           <div class="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden">
             <div
-              class="h-full bg-neon-cyan rounded-full transition-all"
+              class="h-full bg-white/40 rounded-full transition-all"
               style={{ width: `${stats().total > 0 ? (stats().info / stats().total) * 100 : 0}%` }}
             />
           </div>
@@ -124,7 +124,7 @@ const LogStats: Component<Props> = (props) => {
           <span class={`text-sm font-mono ${
             errorRate() > 10 ? 'text-status-error' :
             errorRate() > 5 ? 'text-status-warn' :
-            'text-neon-green'
+            'text-status-ok'
           }`}>
             {errorRate().toFixed(1)}%
           </span>
@@ -134,7 +134,7 @@ const LogStats: Component<Props> = (props) => {
             class={`h-full rounded-full transition-all ${
               errorRate() > 10 ? 'bg-status-error' :
               errorRate() > 5 ? 'bg-status-warn' :
-              'bg-neon-green'
+              'bg-status-ok'
             }`}
             style={{ width: `${Math.min(errorRate(), 100)}%` }}
           />

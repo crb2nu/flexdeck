@@ -25,7 +25,7 @@ function pushHistory(arr: number[], val: number | null): number[] {
 
 function utilColor(val: number): string {
   if (val >= 80) return 'text-status-error';
-  if (val >= 50) return 'text-neon-cyan';
+  if (val >= 50) return 'text-text-muted';
   return 'text-status-ok';
 }
 
@@ -68,7 +68,7 @@ const ModelGPUTable: Component = () => {
   return (
     <Show when={!error() && models().length > 0}>
       <div class="glass-panel p-4">
-        <div class="text-[10px] font-medium text-neon-purple uppercase tracking-wider mb-2">
+        <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
           GPU Usage by Model
         </div>
         <div class="overflow-x-auto">
@@ -107,7 +107,7 @@ const ModelGPUTable: Component = () => {
                       </td>
                       <td class="py-1.5 pr-3 text-right font-mono">
                         <Show when={m.vramUsedPercent != null} fallback={<span class="text-text-dim">-</span>}>
-                          <span class={m.vramUsedPercent! > 90 ? 'text-status-error' : 'text-neon-purple'}>
+                          <span class={m.vramUsedPercent! > 90 ? 'text-status-error' : 'text-text-dim'}>
                             {m.vramUsedPercent!.toFixed(0)}%
                           </span>
                         </Show>

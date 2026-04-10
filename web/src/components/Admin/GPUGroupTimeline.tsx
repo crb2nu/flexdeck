@@ -36,7 +36,7 @@ function stateSegmentColor(state: string): string {
   switch (state) {
     case 'Active': return 'bg-status-ok';
     case 'Queued': return 'bg-status-warn';
-    case 'Preempted': return 'bg-neon-purple';
+    case 'Preempted': return 'bg-white/30';
     default: return 'bg-white/10';
   }
 }
@@ -45,7 +45,7 @@ function stateTextColor(state: string): string {
   switch (state) {
     case 'Active': return 'text-status-ok';
     case 'Queued': return 'text-status-warn';
-    case 'Preempted': return 'text-neon-purple';
+    case 'Preempted': return 'text-text-dim';
     default: return 'text-text-dim';
   }
 }
@@ -270,7 +270,7 @@ const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
               <span class="text-[9px] text-text-dim">Queued</span>
             </div>
             <div class="flex items-center gap-1">
-              <div class="w-2.5 h-2.5 rounded-sm bg-neon-purple opacity-80" />
+              <div class="w-2.5 h-2.5 rounded-sm bg-white/30 opacity-80" />
               <span class="text-[9px] text-text-dim">Preempted</span>
             </div>
             <div class="flex items-center gap-1">

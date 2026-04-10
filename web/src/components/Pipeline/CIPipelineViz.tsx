@@ -823,11 +823,11 @@ const CIPipelineViz: Component<{
                 }}
               />
               <h2 class="text-lg font-bold text-white tracking-wide">
-                PIPELINE <span class="text-neon-cyan font-mono">#{pipelineDisplayId()}</span>
+                PIPELINE <span class="text-text-muted font-mono">#{pipelineDisplayId()}</span>
               </h2>
             </div>
             <div class="px-3 py-1 rounded-full bg-white/5 border border-white/10">
-              <span class="text-xs font-mono text-neon-purple">{pipeline().ref}</span>
+              <span class="text-xs font-mono text-text-muted">{pipeline().ref}</span>
             </div>
           </div>
           
@@ -1105,13 +1105,13 @@ const CIPipelineViz: Component<{
                               <span class="text-red-400">Click to view error</span>
                             </Show>
                             <Show when={job.status === 'manual'}>
-                              <span class="text-neon-purple">Click to trigger</span>
+                              <span class="text-text-muted">Click to trigger</span>
                             </Show>
                             <Show when={job.status === 'running'}>
-                              <span class="text-neon-green">Click to view output</span>
+                              <span class="text-text-muted">Click to view output</span>
                             </Show>
                             <Show when={job.status === 'success'}>
-                              <span class="text-neon-cyan">Click to view logs</span>
+                              <span class="text-text-muted">Click to view logs</span>
                             </Show>
                             <Show when={job.status === 'pending'}>
                               <span class="text-yellow-400">Waiting...</span>
@@ -1142,25 +1142,25 @@ const CIPipelineViz: Component<{
       <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/5 bg-black/85">
         <div class="flex justify-around text-center">
           <div>
-            <div class="text-2xl font-bold text-neon-cyan font-mono">
+            <div class="text-2xl font-bold text-text-main font-mono">
               {footerStats().passed}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Passed</div>
           </div>
           <div>
-            <div class="text-2xl font-bold text-neon-green font-mono">
+            <div class="text-2xl font-bold text-text-main font-mono">
               {footerStats().running}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Running</div>
           </div>
           <div>
-            <div class="text-2xl font-bold text-neon-purple font-mono">
+            <div class="text-2xl font-bold text-text-muted font-mono">
               {footerStats().manual}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Manual</div>
           </div>
           <div>
-            <div class="text-2xl font-bold text-neon-pink font-mono">
+            <div class="text-2xl font-bold text-red-400 font-mono">
               {footerStats().failed}
             </div>
             <div class="text-[10px] uppercase tracking-wider text-text-muted">Failed</div>
@@ -1170,22 +1170,22 @@ const CIPipelineViz: Component<{
 
       {/* Decorative elements */}
       <div class="absolute top-4 right-4 flex items-center gap-2 text-[10px] font-mono text-text-muted uppercase tracking-widest">
-        <div class="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse" />
+        <div class="w-1.5 h-1.5 rounded-full bg-white/50 animate-pulse" />
         <span>Live</span>
       </div>
 
       {/* Title overlay */}
       <div class="absolute top-20 left-1/2 -translate-x-1/2 text-center pointer-events-none">
-        <div class="text-[10px] font-mono uppercase tracking-[0.4em] text-neon-cyan/50 mb-1">
+        <div class="text-[10px] font-mono uppercase tracking-[0.4em] text-text-dim mb-1">
           Continuous Integration
         </div>
         <div 
           class="text-2xl font-bold tracking-widest text-white"
-          style={{ 'text-shadow': '0 0 30px rgba(0, 240, 255, 0.3)' }}
+          style={{}}
         >
           PIPELINE ORCHESTRATOR
         </div>
-        <div class="h-px w-48 mx-auto mt-3 bg-gradient-to-r from-transparent via-neon-cyan/50 to-transparent" />
+        <div class="h-px w-48 mx-auto mt-3 bg-white/10" />
       </div>
 
       <style>{`
@@ -1205,9 +1205,9 @@ const CIPipelineViz: Component<{
 
         /* Status transition animations */
         @keyframes success-burst {
-          0% { transform: scale(1); box-shadow: 0 0 0 rgba(0, 240, 255, 0); }
-          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(0, 240, 255, 0.6); }
-          100% { transform: scale(1); box-shadow: 0 0 20px rgba(0, 240, 255, 0.2); }
+          0% { transform: scale(1); box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(34, 197, 94, 0.4); }
+          100% { transform: scale(1); box-shadow: 0 0 10px rgba(34, 197, 94, 0.15); }
         }
 
         @keyframes error-shake {
@@ -1217,9 +1217,9 @@ const CIPipelineViz: Component<{
         }
 
         @keyframes start-glow {
-          0% { box-shadow: 0 0 0 rgba(10, 255, 104, 0); }
-          50% { box-shadow: 0 0 40px rgba(10, 255, 104, 0.6), 0 0 60px rgba(10, 255, 104, 0.3); }
-          100% { box-shadow: 0 0 20px rgba(10, 255, 104, 0.3); }
+          0% { box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+          50% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.25); }
+          100% { box-shadow: 0 0 8px rgba(255, 255, 255, 0.1); }
         }
 
         .animate-success-burst {

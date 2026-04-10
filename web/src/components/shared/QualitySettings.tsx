@@ -102,7 +102,7 @@ const QualitySettings: Component<{
           }}
         >
           <span class="text-text-muted">Quality:</span>
-          <span class="text-neon-cyan">{quality()}</span>
+          <span class="text-white">{quality()}</span>
           <span class="text-text-dim ml-1">{isOpen() ? '▲' : '▼'}</span>
         </button>
 
@@ -143,7 +143,7 @@ const QualitySettings: Component<{
                     {option.label}
                   </span>
                   {quality() === option.level && (
-                    <span class="text-neon-cyan">✓</span>
+                    <span class="text-white">✓</span>
                   )}
                 </div>
                 <div class="text-[10px] text-text-dim mt-0.5">{option.description}</div>
@@ -215,7 +215,7 @@ const QualitySettings: Component<{
         </div>
         <div class="flex justify-between items-center text-text-dim">
           <span>Target FPS</span>
-          <span class="text-neon-cyan">{currentConfig().targetFPS}</span>
+          <span class="text-white">{currentConfig().targetFPS}</span>
         </div>
       </div>
     </div>

@@ -49,7 +49,7 @@ const Services: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Controls */}
-      <div class="glass-panel corner-accents flex flex-col gap-3 px-4 py-3">
+      <div class="glass-panel flex flex-col gap-3 px-4 py-3">
         {/* Tabs row */}
         <div class="flex items-center justify-between">
           <TabBar
@@ -69,7 +69,7 @@ const Services: Component = () => {
                 placeholder="Search by name..."
                 value={searchTerm()}
                 onInput={(e) => setSearchTerm(e.currentTarget.value)}
-                class="w-full rounded-md bg-black/40 border border-white/10 px-3 py-1.5 pl-8 text-sm text-text-main placeholder-text-dim focus:border-neon-cyan focus:outline-none transition-colors"
+                class="w-full rounded-md bg-black/40 border border-white/10 px-3 py-1.5 pl-8 text-sm text-text-main placeholder-text-dim focus:border-white/20 focus:outline-none transition-colors"
               />
               <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -89,7 +89,7 @@ const Services: Component = () => {
 
           {/* Namespace filter */}
           <select
-            class="rounded-md bg-black/40 px-3 py-1.5 text-sm text-text-main border border-white/10 focus:border-neon-cyan focus:outline-none"
+            class="rounded-md bg-black/40 px-3 py-1.5 text-sm text-text-main border border-white/10 focus:border-white/20 focus:outline-none"
             value={namespaceFilter()}
             onChange={(e) => setNamespaceFilter(e.currentTarget.value)}
           >
@@ -103,7 +103,7 @@ const Services: Component = () => {
           <Show when={searchTerm() || namespaceFilter()}>
             <button
               onClick={clearFilters}
-              class="text-xs text-text-dim hover:text-neon-cyan transition-colors"
+              class="text-xs text-text-dim hover:text-white transition-colors"
             >
               Clear filters
             </button>
@@ -112,7 +112,7 @@ const Services: Component = () => {
       </div>
 
       {/* Content */}
-      <div class="glass-panel corner-accents flex-1 overflow-auto">
+      <div class="glass-panel flex-1 overflow-auto">
         <Show when={loading()}>
           <LoadingState size="lg" />
         </Show>

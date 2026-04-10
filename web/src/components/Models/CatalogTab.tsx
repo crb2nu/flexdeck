@@ -220,12 +220,12 @@ const CatalogTab: Component = () => {
               value={query()}
               onInput={(event) => setQuery(event.currentTarget.value)}
               placeholder="Search model, catalog, namespace, or tag..."
-              class="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-text-main placeholder:text-text-dim/60 focus:border-neon-cyan/50 focus:outline-none"
+              class="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-text-main placeholder:text-text-dim/60 focus:border-white/20 focus:outline-none"
             />
             <select
               value={sourceFilter()}
               onChange={(event) => setSourceFilter(event.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-white/20 focus:outline-none"
             >
               <option value="all">All sources</option>
               <For each={sourceOptions()}>{(source) => <option value={source}>{source}</option>}</For>
@@ -233,7 +233,7 @@ const CatalogTab: Component = () => {
             <select
               value={catalogFilter()}
               onChange={(event) => setCatalogFilter(event.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-neon-cyan/50 focus:outline-none"
+              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-white/20 focus:outline-none"
             >
               <option value="all">All catalogs</option>
               <For each={catalogOptions()}>{(catalog) => <option value={catalog}>{catalog}</option>}</For>
@@ -305,7 +305,7 @@ const CatalogTab: Component = () => {
                                 onClick={() => void handleRegister(row)}
                                 disabled={!supported || busy()}
                                 title={supported ? 'Add to local registry' : `Unsupported source: ${row.source}`}
-                                class="rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-1 text-[10px] font-mono text-neon-cyan transition-opacity disabled:opacity-40"
+                                class="rounded border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-mono text-white transition-opacity disabled:opacity-40"
                               >
                                 {busy() ? 'Working...' : alreadyRegistered() ? 'In Registry' : 'Add to Registry'}
                               </button>
@@ -313,7 +313,7 @@ const CatalogTab: Component = () => {
                                 onClick={() => void handleDownload(row)}
                                 disabled={!supported || busy()}
                                 title={supported ? 'Queue model download' : `Unsupported source: ${row.source}`}
-                                class="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-1 text-[10px] font-mono text-neon-purple transition-opacity disabled:opacity-40"
+                                class="rounded border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-mono text-text-muted transition-opacity disabled:opacity-40"
                               >
                                 Queue Download
                               </button>

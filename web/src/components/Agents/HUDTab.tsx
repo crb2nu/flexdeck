@@ -173,7 +173,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const taskStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'text-status-ok';
-      case 'in_progress': return 'text-neon-cyan';
+      case 'in_progress': return 'text-white';
       case 'blocked': return 'text-status-error';
       default: return 'text-text-dim';
     }
@@ -264,7 +264,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
           label="Task backlog"
           value={`${taskBacklog()}`}
           detail={`${pendingTasks().length} pending · ${inProgressTasks().length} active`}
-          tone={taskBacklog() > 0 ? 'text-neon-cyan' : 'text-text-main'}
+          tone={taskBacklog() > 0 ? 'text-white' : 'text-text-main'}
         />
         <OverviewSignalCard
           label="Approvals"
@@ -276,7 +276,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
           label="Feed health"
           value={feedStateLabel()}
           detail={latestTimelineEvent()?.summary || 'Waiting for live timeline events'}
-          tone={feedStateTone() === 'ok' ? 'text-status-ok' : feedStateTone() === 'warn' ? 'text-status-warn' : 'text-neon-cyan'}
+          tone={feedStateTone() === 'ok' ? 'text-status-ok' : feedStateTone() === 'warn' ? 'text-status-warn' : 'text-white'}
         />
       </div>
 
@@ -530,9 +530,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                         <div
                           class={`h-1.5 flex-1 rounded-full ${
                             step.status === 'completed' ? 'bg-status-ok' :
-                            step.status === 'running' ? 'bg-neon-cyan animate-pulse' :
+                            step.status === 'running' ? 'bg-white/40 animate-pulse' :
                             step.status === 'failed' ? 'bg-status-error' :
-                            i() === wf.currentStep ? 'bg-neon-cyan/50' :
+                            i() === wf.currentStep ? 'bg-white/30' :
                             'bg-white/10'
                           }`}
                           title={`${step.name}: ${step.status}`}

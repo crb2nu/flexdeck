@@ -32,8 +32,8 @@ const Toast: Component<ToastProps> = (props) => {
 
   const typeStyles: Record<ToastType, { bg: string; border: string; icon: string }> = {
     success: {
-      bg: 'bg-neon-green/10',
-      border: 'border-neon-green/30',
+      bg: 'bg-status-ok/10',
+      border: 'border-status-ok/30',
       icon: '✓',
     },
     error: {
@@ -42,8 +42,8 @@ const Toast: Component<ToastProps> = (props) => {
       icon: '✕',
     },
     info: {
-      bg: 'bg-neon-cyan/10',
-      border: 'border-neon-cyan/30',
+      bg: 'bg-white/10',
+      border: 'border-white/20',
       icon: 'ℹ',
     },
   };

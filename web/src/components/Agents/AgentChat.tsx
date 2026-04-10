@@ -293,20 +293,20 @@ const AgentChat: Component<AgentChatProps> = (props) => {
   const formatMarkdown = (text: string) => {
     // Simple markdown-like formatting
     return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="text-neon-cyan">$1</strong>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1 rounded text-neon-purple">$1</code>')
+      .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1 rounded text-text-muted">$1</code>')
       .replace(/\n/g, '<br/>');
   };
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in-scale">
-      <div class="flex h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-neon-cyan/30 bg-[#060a14] shadow-[0_0_60px_rgba(0,217,255,0.15)]">
+      <div class="flex h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-white/15 bg-[#060a14]">
         
         {/* Header */}
-        <div class="flex items-center justify-between border-b border-neon-cyan/20 bg-[#030508]/95 px-6 py-4">
+        <div class="flex items-center justify-between border-b border-white/15 bg-[#030508]/95 px-6 py-4">
             <div class="flex items-center gap-4">
-                <div class="relative flex h-12 w-12 items-center justify-center rounded-lg border border-neon-cyan/50 bg-neon-cyan/10">
+                <div class="relative flex h-12 w-12 items-center justify-center rounded-lg border border-white/20 bg-white/10">
                     <span class="text-2xl">{props.agent.metadata?.backend === 'flexinfer' ? '\u2B22' : '\u2B21'}</span>
                     <div class={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-[#060a14] ${
                       connectionStatus() === 'connected' ? 'bg-status-success' : 
@@ -314,17 +314,17 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                     }`} />
                 </div>
                 <div>
-                    <h3 class="font-bold text-neon-cyan text-lg tracking-wide">{props.agent.name}</h3>
-                    <div class="flex items-center gap-3 text-xs text-neon-cyan/60 font-mono">
+                    <h3 class="font-bold text-white text-lg tracking-wide">{props.agent.name}</h3>
+                    <div class="flex items-center gap-3 text-xs text-text-dim font-mono">
                         <span class="flex items-center gap-1.5">
                           <span class="relative flex h-2 w-2">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-cyan opacity-75" />
-                            <span class="relative inline-flex rounded-full h-2 w-2 bg-neon-cyan" />
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-white" />
                           </span>
                           CONNECTED
                         </span>
                         {props.agent.metadata?.backend === 'flexinfer' && (
-                          <span class="px-2 py-0.5 rounded bg-neon-purple/20 text-neon-purple border border-neon-purple/30">
+                          <span class="px-2 py-0.5 rounded bg-white/10 text-text-muted border border-white/15">
                             FLEXINFER
                           </span>
                         )}
@@ -333,7 +333,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
             </div>
             <button 
                 onClick={props.onClose}
-                class="rounded-lg px-3 py-2 text-sm text-neon-cyan/50 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors font-mono"
+                class="rounded-lg px-3 py-2 text-sm text-text-dim hover:bg-white/10 hover:text-white transition-colors font-mono"
             >
                 ESC ✕
             </button>
@@ -346,7 +346,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                     <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div class={`max-w-[85%] rounded-lg p-4 ${
                             msg.role === 'user' 
-                                ? 'bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan shadow-[0_0_20px_rgba(0,217,255,0.1)]' 
+                                ? 'bg-white/10 border border-white/15 text-white'
                                 : msg.role === 'system'
                                 ? 'bg-status-error/10 border border-status-error/30 text-status-error'
                                 : 'bg-[#0c1220] border border-white/10 text-text-main shadow-lg'
@@ -372,9 +372,9 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                             <Show when={msg.widgets}>
                                 <div class="mt-4 border-t border-white/10 pt-3 space-y-3">
                                     <div class="text-[10px] text-text-dim uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <div class="h-px flex-1 bg-gradient-to-r from-neon-cyan/30 to-transparent" />
+                                        <div class="h-px flex-1 bg-gradient-to-r from-white/20 to-transparent" />
                                         Generated Interface
-                                        <div class="h-px flex-1 bg-gradient-to-l from-neon-cyan/30 to-transparent" />
+                                        <div class="h-px flex-1 bg-gradient-to-l from-white/20 to-transparent" />
                                     </div>
                                     <ErrorBoundary fallback={(err) => (
                                         <div class="text-xs text-status-error bg-status-error/10 rounded p-2">
@@ -400,8 +400,8 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                                                       <DeploymentWidget data={widget.data} />
                                                   </Show>
                                                   <Show when={widget.type === 'agent-config'}>
-                                                      <div class="bg-black/40 border border-neon-purple/30 rounded-lg p-3">
-                                                          <div class="text-neon-purple text-xs mb-2 font-bold">AGENT CONFIGURATION</div>
+                                                      <div class="bg-black/40 border border-white/15 rounded-lg p-3">
+                                                          <div class="text-text-muted text-xs mb-2 font-bold">AGENT CONFIGURATION</div>
                                                           <pre class="text-[11px] text-text-main overflow-x-auto">{JSON.stringify(widget.data, null, 2)}</pre>
                                                       </div>
                                                   </Show>
@@ -424,9 +424,9 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                 <div class="flex justify-start">
                     <div class="bg-[#0c1220] border border-white/10 rounded-lg p-4 flex items-center gap-3">
                         <div class="flex items-center gap-1">
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "0ms"}} />
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "150ms"}} />
-                            <div class="w-2 h-2 bg-neon-cyan rounded-full animate-bounce" style={{"animation-delay": "300ms"}} />
+                            <div class="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{"animation-delay": "0ms"}} />
+                            <div class="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{"animation-delay": "150ms"}} />
+                            <div class="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{"animation-delay": "300ms"}} />
                         </div>
                         <span class="text-xs text-text-dim">Processing...</span>
                     </div>
@@ -438,7 +438,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
 
         {/* Input Area */}
         <div class="border-t border-white/10 bg-[#030508] p-4">
-            <div class="relative flex items-end gap-2 rounded-xl border border-white/10 bg-white/5 p-2 focus-within:border-neon-cyan/50 focus-within:shadow-[0_0_30px_rgba(0,217,255,0.1)] transition-all">
+            <div class="relative flex items-end gap-2 rounded-xl border border-white/10 bg-white/5 p-2 focus-within:border-white/20 transition-all">
                 <textarea
                     ref={inputRef}
                     value={input()}
@@ -452,7 +452,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                 <button
                     onClick={handleSend}
                     disabled={!input().trim() || isTyping()}
-                    class="mb-0.5 rounded-lg bg-neon-cyan/20 p-2.5 text-neon-cyan hover:bg-neon-cyan/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all group"
+                    class="mb-0.5 rounded-lg bg-white/10 p-2.5 text-white hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all group"
                 >
                     <svg class="w-5 h-5 group-hover:translate-x-0.5 transition-transform" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
@@ -461,7 +461,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
             </div>
             <div class="mt-2 flex items-center justify-between text-[10px] text-text-dim px-1">
                 <span>
-                    <span class="text-neon-cyan">SHIFT + ENTER</span> for new line
+                    <span class="text-white">SHIFT + ENTER</span> for new line
                 </span>
                 <span class="opacity-60">
                     {props.agent.metadata?.backend === 'flexinfer' ? 'FlexInfer \u00B7 LiteLLM' : props.agent.model || 'Standard Agent'}

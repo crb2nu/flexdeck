@@ -134,7 +134,7 @@ const AgentFormModal: Component<AgentFormModalProps> = (props) => {
           <button
             onClick={props.onSubmit}
             disabled={props.actionLoading === 'form' || !props.formData.id || !props.formData.name || !props.formData.url}
-            class="flex-1 rounded-md bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+            class="flex-1 rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
           >
             {props.actionLoading === 'form' ? 'Saving...' : props.editingAgent ? 'Save' : 'Add'}
           </button>

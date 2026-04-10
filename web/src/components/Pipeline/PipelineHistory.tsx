@@ -87,9 +87,9 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'success': return 'text-neon-green';
+      case 'success': return 'text-status-ok';
       case 'failed': return 'text-red-400';
-      case 'running': return 'text-neon-cyan';
+      case 'running': return 'text-white';
       case 'pending': return 'text-yellow-400';
       case 'canceled': return 'text-text-dim';
       default: return 'text-text-muted';
@@ -98,9 +98,9 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
   const getStatusBg = (status: string) => {
     switch (status) {
-      case 'success': return 'bg-neon-green/20 border-neon-green/30';
+      case 'success': return 'bg-status-ok/20 border-status-ok/30';
       case 'failed': return 'bg-red-400/20 border-red-400/30';
-      case 'running': return 'bg-neon-cyan/20 border-neon-cyan/30';
+      case 'running': return 'bg-white/10 border-white/20';
       case 'pending': return 'bg-yellow-400/20 border-yellow-400/30';
       case 'canceled': return 'bg-white/5 border-white/10';
       default: return 'bg-white/5 border-white/10';
@@ -128,7 +128,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
         <div class="flex flex-wrap items-center gap-3">
           <label class="text-xs text-text-dim uppercase tracking-wider">Project</label>
           <select
-            class="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:border-neon-cyan focus:outline-none"
+            class="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:border-white/20 focus:outline-none"
             onChange={(e) => {
               const val = e.currentTarget.value;
               setSelectedProjectId(val ? parseInt(val) : null);
@@ -144,7 +144,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
           <button
             type="button"
             disabled={selectedProjectId() === null || loading()}
-            class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:border-neon-cyan/30 hover:text-text-main disabled:opacity-50"
+            class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:border-white/20 hover:text-text-main disabled:opacity-50"
             onClick={() => {
               const id = selectedProjectId();
               if (id === null) return;
@@ -159,7 +159,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
       <Show when={loading()}>
         <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
         </div>
       </Show>
 
@@ -204,7 +204,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
                       #{run.pipeline_id}
                     </td>
                     <td class="px-4 py-2">
-                      <span class="px-1.5 py-0.5 text-[10px] rounded bg-neon-purple/20 text-neon-purple">
+                      <span class="px-1.5 py-0.5 text-[10px] rounded bg-white/10 text-text-muted">
                         {run.ref}
                       </span>
                     </td>
@@ -223,9 +223,9 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
                             {(stage) => (
                               <span
                                 class={`w-2 h-2 rounded-full ${
-                                  stage.status === 'success' ? 'bg-neon-green' :
+                                  stage.status === 'success' ? 'bg-status-ok' :
                                   stage.status === 'failed' ? 'bg-red-400' :
-                                  stage.status === 'running' ? 'bg-neon-cyan' :
+                                  stage.status === 'running' ? 'bg-white/50' :
                                   'bg-white/20'
                                 }`}
                                 title={`${stage.name}: ${stage.status} (${formatDuration(stage.duration_s)})`}

@@ -95,7 +95,7 @@ function mobileDrawer() {
 
 function mobileBackdrop() {
   return Array.from(document.querySelectorAll('div')).find((element) =>
-    typeof element.className === 'string' && element.className.includes('bg-black/40'),
+    typeof element.className === 'string' && element.className.includes('bg-black/50'),
   ) as HTMLDivElement | undefined;
 }
 

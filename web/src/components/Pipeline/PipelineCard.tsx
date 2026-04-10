@@ -50,35 +50,11 @@ const PipelineCard: Component<{
   return (
     <div
       onClick={props.onClick}
-      class="relative rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] group"
+      class="relative rounded-lg cursor-pointer transition-colors duration-150 hover:bg-white/[0.03] group border border-white/[0.08] bg-[rgba(15,20,35,0.95)]"
       classList={{
-        'ring-2 ring-neon-green/50': isActive(),
-      }}
-      style={{
-        background: 'linear-gradient(135deg, rgba(10, 16, 32, 0.95) 0%, rgba(5, 10, 20, 0.95) 100%)',
-        border: `1px solid ${statusColor()}30`,
+        'ring-1 ring-white/20': isActive(),
       }}
     >
-      {/* Active indicator pulse */}
-      <Show when={isActive()}>
-        <div
-          class="absolute inset-0 rounded-lg animate-pulse pointer-events-none"
-          style={{
-            background: `linear-gradient(135deg, ${statusColor()}10 0%, transparent 50%)`,
-          }}
-        />
-      </Show>
-
-      {/* Corner accents */}
-      <div
-        class="absolute top-0 left-0 w-2 h-2 border-l-2 border-t-2 rounded-tl-lg"
-        style={{ 'border-color': statusColor() }}
-      />
-      <div
-        class="absolute bottom-0 right-0 w-2 h-2 border-r-2 border-b-2 rounded-br-lg"
-        style={{ 'border-color': statusColor() }}
-      />
-
       <div class="p-4">
         {/* Header row */}
         <div class="flex items-center justify-between mb-3">
@@ -88,7 +64,6 @@ const PipelineCard: Component<{
               classList={{ 'animate-pulse': isActive() }}
               style={{
                 background: statusColor(),
-                'box-shadow': `0 0 8px ${statusColor()}`,
               }}
             />
             <span class="text-sm font-mono text-white truncate font-medium">
@@ -105,7 +80,7 @@ const PipelineCard: Component<{
         {/* Branch and pipeline ID */}
         <Show when={props.pipeline}>
           <div class="flex items-center gap-2 mb-3">
-            <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-neon-purple">
+            <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-text-muted">
               {props.pipeline!.ref}
             </span>
             <span
@@ -162,14 +137,6 @@ const PipelineCard: Component<{
         </Show>
       </div>
 
-      {/* Hover overlay */}
-      <div
-        class="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-        style={{
-          background: `linear-gradient(135deg, ${statusColor()}05 0%, transparent 100%)`,
-          'box-shadow': `inset 0 0 30px ${statusColor()}10`,
-        }}
-      />
     </div>
   );
 };

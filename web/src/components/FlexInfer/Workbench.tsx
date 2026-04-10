@@ -360,8 +360,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
       <div
         class={`glass-panel overflow-hidden border border-white/10 shadow-[0_18px_60px_rgba(0,0,0,0.24)] ${
           isAdminSurface()
-            ? 'bg-gradient-to-br from-status-warn/10 via-white/5 to-neon-purple/10'
-            : 'bg-gradient-to-br from-neon-cyan/10 via-white/5 to-neon-purple/10'
+            ? 'bg-gradient-to-br from-status-warn/10 via-white/5 to-white/3'
+            : 'bg-white/5'
         }`}
       >
         <div class="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-start xl:justify-between">
@@ -376,7 +376,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${getReliabilityClasses(reliabilityHeadline().level)}`}>
                 {reliabilityHeadline().label}
               </span>
-              <span class="rounded-full bg-neon-purple/20 px-2.5 py-1 text-[10px] font-medium text-neon-purple">
+              <span class="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-text-muted">
                 Router {proxyEnabled() ? (routerInfo()?.healthy ? 'healthy' : 'watching') : 'disabled'}
               </span>
             </div>
@@ -410,14 +410,14 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <div class="flex w-full flex-wrap gap-2 xl:justify-end">
               <button
                 onClick={() => void refreshWorkbench()}
-                class="min-h-[40px] rounded-md bg-neon-cyan/20 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30"
+                class="min-h-[40px] rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/15"
               >
                 Refresh all
               </button>
               <button
                 onClick={() => void controller.discoverModels()}
                 disabled={controller.discoverLoading()}
-                class="min-h-[40px] rounded-md bg-neon-purple/20 px-3 py-1.5 text-sm font-medium text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50"
+                class="min-h-[40px] rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/15 disabled:opacity-50"
               >
                 {controller.discoverLoading() ? 'Syncing...' : 'Sync CRDs'}
               </button>
@@ -452,7 +452,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchStatCard
           label="Controller"
           value={`${controller.crdModels().length}`}
-          tone="text-neon-cyan"
+          tone="text-text-muted"
           note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
         />
         <WorkbenchStatCard
@@ -464,7 +464,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchStatCard
           label="Supply chain"
           value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
-          tone="text-neon-purple"
+          tone="text-text-dim"
           note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
         />
         <WorkbenchStatCard
@@ -502,24 +502,92 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               loading={controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading()}
             />
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div class="glass-panel p-4">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Control plane</div>
-                <div class="mt-2 text-sm text-text-main">Model phases, CRD health, and reliability are grouped in a single lane.</div>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <WorkbenchStatCard
+            label="Controller"
+            value={`${controller.crdModels().length}`}
+            tone="text-text-muted"
+            note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
+          />
+          <WorkbenchStatCard
+            label="Telemetry"
+            value={proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '—'}
+            tone="text-status-ok"
+            note={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`}
+          />
+          <WorkbenchStatCard
+            label="Supply chain"
+            value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
+            tone="text-text-dim"
+            note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
+          />
+          <WorkbenchStatCard
+            label="Freshness"
+            value={freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
+            tone="text-text-main"
+            note={freshnessNote([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
+          />
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div class="glass-panel p-4">
+            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Recommended next stop</div>
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <OverviewFocusCard
+                title="Control plane"
+                detail="Use this when model phase, reliability, or CRD health is the first question."
+                stat={`${controller.crdModels().length} models`}
+                tone="text-text-muted"
+                onClick={() => setActiveSection('control-plane')}
+              />
+              <OverviewFocusCard
+                title="Telemetry"
+                detail="Queue depth, error rate, and router coverage are grouped here for incident triage."
+                stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
+                tone="text-status-ok"
+                onClick={() => setActiveSection('telemetry')}
+              />
+              <OverviewFocusCard
+                title="Supply chain"
+                detail="Catalog sync and cache job readiness stay together so release artifacts are easy to read."
+                stat={`${supplyChainSummary().readyCacheCount} ready`}
+                tone="text-text-dim"
+                onClick={() => setActiveSection('supply-chain')}
+              />
+              <OverviewFocusCard
+                title="Intake"
+                detail="Registry search, staged candidates, and deployment intake stay isolated from controller triage."
+                stat={`${searchResults().length} staged`}
+                tone="text-text-main"
+                onClick={() => setActiveSection('intake')}
+              />
+            </div>
+          </div>
+
+          <div class="glass-panel overflow-hidden">
+            <div class="border-b border-white/5 px-4 py-3">
+              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Operational notes</div>
+            </div>
+            <div class="space-y-3 p-4 text-sm text-text-dim">
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Control plane first</div>
+                <div class="mt-1 text-xs">The controller lane leads with phase and reliability so degraded models rise to the top immediately.</div>
               </div>
-              <div class="glass-panel p-4">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Telemetry</div>
-                <div class="mt-2 text-sm text-text-main">Proxy totals, queue depth, and routing health stay together for fast triage.</div>
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Telemetry</div>
+                <div class="mt-1 text-xs">Proxy totals, queue depth, and routing health stay together for fast triage.</div>
               </div>
-              <div class="glass-panel p-4">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Supply chain</div>
-                <div class="mt-2 text-sm text-text-main">Catalog sync and cache pipeline readiness stay aligned with release artifacts.</div>
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Supply chain</div>
+                <div class="mt-1 text-xs">Catalog sync and cache pipeline readiness stay aligned with release artifacts.</div>
               </div>
-              <div class="glass-panel p-4">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Intake</div>
-                <div class="mt-2 text-sm text-text-main">Registry search and deployment intake stay isolated from control-plane triage.</div>
+              <div class="rounded-md border border-white/5 bg-black/20 p-3">
+                <div class="font-medium text-text-main">Intake</div>
+                <div class="mt-1 text-xs">Registry search and deployment intake stay isolated from control-plane triage.</div>
               </div>
             </div>
+          </div>
+        </div>
           </section>
 
           <section id="control-plane" class={activeSection() === 'control-plane' ? 'scroll-mt-6 space-y-4 xl:scroll-mt-8' : 'hidden'}>
@@ -535,13 +603,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <div class="flex flex-wrap gap-2">
               <button
                 onClick={() => void controller.fetchCRDModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload CRDs
               </button>
               <button
                 onClick={() => void controller.fetchRegistryModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload registry
               </button>
@@ -585,7 +653,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                         <td class="px-4 py-3">
                           <div class="flex flex-wrap gap-1.5">
                             <ModelFlag tone={row.model.spec.serverless?.enabled === false ? 'bg-white/10 text-text-dim' : 'bg-status-ok/20 text-status-ok'} label={row.model.spec.serverless ? 'Serverless' : 'Static'} />
-                            <ModelFlag tone={row.model.spec.gpu?.shared ? 'bg-neon-purple/20 text-neon-purple' : 'bg-white/10 text-text-dim'} label={row.model.spec.gpu?.shared ? `Shared ${row.model.spec.gpu.shared}` : 'Dedicated'} />
+                            <ModelFlag tone={row.model.spec.gpu?.shared ? 'bg-white/10 text-text-muted' : 'bg-white/10 text-text-dim'} label={row.model.spec.gpu?.shared ? `Shared ${row.model.spec.gpu.shared}` : 'Dedicated'} />
                             <ModelFlag tone={row.adapters.length > 0 ? 'bg-status-ok/20 text-status-ok' : 'bg-white/10 text-text-dim'} label={row.adapters.length > 0 ? `${row.adapters.length} LoRA` : 'No LoRA'} />
                           </div>
                           <div class="mt-2 text-[10px] text-text-dim">
@@ -616,7 +684,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                             <button
                               onClick={() => void controller.handleCRDAction('activate', row.model)}
                               disabled={controller.crdActionLoading() === `${row.model.namespace}/${row.model.name}/activate`}
-                              class="rounded-md bg-neon-cyan/20 px-2.5 py-1 text-[10px] font-medium text-neon-cyan disabled:opacity-50"
+                              class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
                             >
                               Activate
                             </button>
@@ -659,13 +727,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <div class="flex flex-wrap gap-2">
               <button
                 onClick={() => void refreshFlexInferProxy()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload proxy
               </button>
               <button
                 onClick={() => void refreshFlexInferRouter()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload router
               </button>
@@ -678,7 +746,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Proxy snapshot</div>
             <div class="mt-3 grid grid-cols-2 gap-3">
               <WorkbenchStatCard label="Health" value={proxyHealthLabel()} tone={proxyHealthTone()} note={proxyHealth()?.message || proxyHealth()?.mode || 'FlexInfer proxy'} />
-              <WorkbenchStatCard label="Models" value={`${proxyTotals()?.modelCount ?? 0}`} tone="text-neon-cyan" note={proxyEnabled() ? 'live counts from metrics endpoint' : 'disabled'} />
+              <WorkbenchStatCard label="Models" value={`${proxyTotals()?.modelCount ?? 0}`} tone="text-text-muted" note={proxyEnabled() ? 'live counts from metrics endpoint' : 'disabled'} />
             </div>
             <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
               <MiniMetric label="Requests" value={`${proxyTotals()?.requestsTotal?.toLocaleString() || '0'}`} />
@@ -809,7 +877,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               <WorkbenchStatCard
                 label="Partial"
                 value={`${controller.reliabilitySummary().partial}`}
-                tone="text-neon-cyan"
+                tone="text-text-muted"
                 note="Telemetry is present but incomplete"
               />
             </div>
@@ -835,13 +903,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <div class="flex flex-wrap gap-2">
               <button
                 onClick={() => void refreshFlexInferCatalogs()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-purple/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload catalogs
               </button>
               <button
                 onClick={() => void refreshFlexInferCaches()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-purple/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload caches
               </button>
@@ -874,7 +942,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                           {catalog.namespace} · {catalog.source}
                         </div>
                       </div>
-                      <span class="rounded-full bg-neon-cyan/20 px-2.5 py-1 text-[10px] font-medium text-neon-cyan">
+                      <span class="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white">
                         {catalog.models?.length || 0} models
                       </span>
                     </div>
@@ -977,13 +1045,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               <button
                 onClick={() => void controller.handleSearch()}
                 disabled={controller.searching() || !controller.searchQuery().trim()}
-                class="rounded-md bg-neon-cyan/20 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-50"
+                class="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/15 disabled:opacity-50"
               >
                 {controller.searching() ? 'Searching...' : 'Search'}
               </button>
               <button
                 onClick={() => void controller.fetchRegistryModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-neon-cyan/30 hover:text-text-main"
+                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
               >
                 Reload registry
               </button>
@@ -998,7 +1066,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
               <select
                 value={controller.searchSource()}
                 onChange={(e) => controller.setSearchSource(e.currentTarget.value as 'huggingface' | 'civitai')}
-                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
               >
                 <option value="huggingface">HuggingFace</option>
                 <option value="civitai">CivitAI</option>
@@ -1009,7 +1077,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                 onInput={(e) => controller.setSearchQuery(e.currentTarget.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void controller.handleSearch()}
                 placeholder="Search models..."
-                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main placeholder:text-text-dim/60 focus:border-neon-cyan/50 focus:outline-none"
+                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main placeholder:text-text-dim/60 focus:border-white/20 focus:outline-none"
               />
               <div class="text-[11px] text-text-dim">
                 Search results remain actionable even when the controller is degraded.
@@ -1036,7 +1104,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                       <button
                         onClick={() => void controller.handleRegister(model.source, model.source_id)}
                         disabled={controller.actionLoading() === model.source_id}
-                        class="rounded-md bg-neon-cyan/20 px-2.5 py-1 text-[10px] font-medium text-neon-cyan disabled:opacity-50"
+                        class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
                       >
                         {controller.actionLoading() === model.source_id ? '...' : 'Register'}
                       </button>
@@ -1150,6 +1218,25 @@ const WorkbenchStatCard: Component<{ label: string; value: string; tone: string;
   </div>
 );
 
+const OverviewFocusCard: Component<{
+  title: string;
+  detail: string;
+  stat: string;
+  tone: string;
+  onClick: () => void;
+}> = (props) => (
+  <button
+    type="button"
+    onClick={props.onClick}
+    class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/15 hover:bg-white/7"
+  >
+    <div class={`text-sm font-semibold ${props.tone}`}>{props.title}</div>
+    <div class="mt-2 text-[11px] leading-5 text-text-dim">{props.detail}</div>
+    <div class="mt-4 text-xs font-medium text-text-main">{props.stat}</div>
+  </button>
+);
+
+
 const WorkbenchSectionHeader: Component<{
   kicker: string;
   title: string;
@@ -1173,7 +1260,7 @@ const WorkbenchSectionHeader: Component<{
           Updated {props.updatedAt ? new Date(props.updatedAt).toLocaleTimeString() : '—'}
         </span>
         <Show when={props.loading}>
-          <span class="rounded-full bg-white/5 px-2.5 py-1 text-neon-cyan">Refreshing</span>
+          <span class="rounded-full bg-white/5 px-2.5 py-1 text-text-muted">Refreshing</span>
         </Show>
       </div>
     </div>
@@ -1203,13 +1290,13 @@ function phaseTone(phase?: string): string {
     case 'Ready':
       return 'bg-status-ok/20 text-status-ok';
     case 'Loading':
-      return 'bg-neon-cyan/20 text-neon-cyan';
+      return 'bg-white/10 text-white';
     case 'Pending':
       return 'bg-status-warn/20 text-status-warn';
     case 'Failed':
       return 'bg-status-error/20 text-status-error';
     case 'Preempted':
-      return 'bg-neon-purple/20 text-neon-purple';
+      return 'bg-white/10 text-text-muted';
     default:
       return 'bg-white/10 text-text-dim';
   }
@@ -1224,7 +1311,7 @@ function cachePhaseTone(phase?: string): string {
     case 'Publishing':
     case 'Quantizing':
     case 'Finetuning':
-      return 'bg-neon-cyan/20 text-neon-cyan';
+      return 'bg-white/10 text-white';
     default:
       return 'bg-white/10 text-text-dim';
   }

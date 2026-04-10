@@ -14,7 +14,7 @@ interface UseStablePanelStateOptions<T> {
 export function stablePanelStatusClasses(status: StablePanelStatus): string {
   switch (status) {
     case 'refreshing':
-      return 'text-neon-cyan border-neon-cyan/20 bg-neon-cyan/10';
+      return 'text-white border-white/20 bg-white/10';
     case 'stale':
       return 'text-status-warn border-status-warn/20 bg-status-warn/10';
     case 'updated':

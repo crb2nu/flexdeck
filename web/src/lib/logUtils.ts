@@ -50,7 +50,7 @@ export function getLogLevelColorForLevel(level: LogLevel): string {
     case 'debug':
       return '#6b7280'; // gray-500
     default:
-      return '#00f0ff'; // neon-cyan
+      return '#94a3b8'; // slate-400
   }
 }
 

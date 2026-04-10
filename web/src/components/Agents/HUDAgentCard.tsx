@@ -25,12 +25,12 @@ const HUDAgentCard: Component<HUDAgentCardProps> = (props) => {
   };
 
   return (
-    <div class="glass-panel p-4 border-neon-purple/30 shadow-[0_0_15px_rgba(168,85,247,0.08)]">
+    <div class="glass-panel p-4 border-white/15">
       <div class="mb-3 flex items-start justify-between">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <h3 class="font-medium truncate text-text-main">{props.agent.name}</h3>
-            <span class="rounded-full border border-neon-purple/30 bg-neon-purple/15 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neon-purple">
+            <span class="rounded-full border border-white/15 bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-text-muted">
               HUD
             </span>
           </div>
@@ -62,13 +62,13 @@ const HUDAgentCard: Component<HUDAgentCardProps> = (props) => {
         <Show when={hudMeta().branch}>
           <div class="rounded-lg bg-white/5 px-2 py-2">
             <div class="text-[10px] uppercase tracking-[0.18em] text-text-dim">Branch</div>
-            <div class="mt-1 font-mono text-neon-purple truncate">{hudMeta().branch as string}</div>
+            <div class="mt-1 font-mono text-text-muted truncate">{hudMeta().branch as string}</div>
           </div>
         </Show>
         <Show when={hudMeta().pr_url}>
           <div class="rounded-lg bg-white/5 px-2 py-2">
             <div class="text-[10px] uppercase tracking-[0.18em] text-text-dim">PR</div>
-            <a href={hudMeta().pr_url as string} target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-neon-cyan hover:underline">
+            <a href={hudMeta().pr_url as string} target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-white hover:underline">
               View PR
             </a>
           </div>
@@ -120,7 +120,7 @@ const HUDAgentCard: Component<HUDAgentCardProps> = (props) => {
       <div class="flex gap-2">
         <button
           onClick={() => props.onOpenSessions(props.agent)}
-          class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all bg-neon-purple/15 border border-neon-purple/30 text-neon-purple hover:bg-neon-purple/25 hover:shadow-[0_0_12px_rgba(168,85,247,0.2)]"
+          class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all bg-white/10 border border-white/15 text-text-muted hover:bg-white/15"
         >
           Open sessions
         </button>

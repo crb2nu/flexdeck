@@ -82,7 +82,7 @@ const AlertsPanel: Component = () => {
         class="flex items-center justify-between px-3 py-2 border-b border-white/5 w-full hover:bg-white/[0.02] transition-colors"
       >
         <div class="flex items-center gap-2">
-          <span class={`text-xs ${firingAlerts().length > 0 ? 'text-red-400 animate-pulse' : 'text-neon-cyan'}`}>
+          <span class={`text-xs ${firingAlerts().length > 0 ? 'text-red-400 animate-pulse' : 'text-text-dim'}`}>
             {firingAlerts().length > 0 ? '⚠' : '◉'}
           </span>
           <span class="text-xs font-mono text-text-main uppercase tracking-wider">Alerts</span>
@@ -104,7 +104,7 @@ const AlertsPanel: Component = () => {
             )}
           </Show>
           <Show when={allActiveAlerts().length === 0 && !loading()}>
-            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-neon-green/10 text-neon-green border border-neon-green/20">
+            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-status-ok/10 text-status-ok border border-status-ok/20">
               all clear
             </span>
           </Show>
@@ -122,7 +122,7 @@ const AlertsPanel: Component = () => {
       {/* Body */}
       <Show when={!collapsed()}>
         <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`} style={{ 'max-height': '220px' }}>
-          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
           <Show
             when={!stablePanel.showBlockingLoading()}
             fallback={
@@ -145,7 +145,7 @@ const AlertsPanel: Component = () => {
               when={allActiveAlerts().length > 0}
               fallback={
                 <div class="px-3 py-4 text-center">
-                  <span class="text-neon-green/60 text-lg">✓</span>
+                  <span class="text-status-ok/60 text-lg">✓</span>
                   <p class="text-xs text-text-dim mt-1">No active alerts</p>
                 </div>
               }

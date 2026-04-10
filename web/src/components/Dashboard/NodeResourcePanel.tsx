@@ -110,7 +110,7 @@ const NodeResourcePanel: Component = () => {
   };
 
   const barColor = (pct: number) =>
-    pct > 90 ? 'bg-status-error' : pct > 70 ? 'bg-status-warn' : 'bg-neon-cyan';
+    pct > 90 ? 'bg-status-error' : pct > 70 ? 'bg-status-warn' : 'bg-status-ok';
 
   const gpuNodes = () => displayNodes().filter((n) => n.gpu != null);
   const nonGpuNodes = () => displayNodes().filter((n) => n.gpu == null);
@@ -137,7 +137,7 @@ const NodeResourcePanel: Component = () => {
 
       <Show when={stablePanel.showBlockingLoading()}>
         <div class="flex items-center justify-center py-6">
-          <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-neon-cyan" />
+          <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
         </div>
       </Show>
 
@@ -149,7 +149,7 @@ const NodeResourcePanel: Component = () => {
 
       <Show when={stablePanel.hasStableValue() || (!loading() && !error())}>
         <div class={`relative space-y-2 transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
-          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neon-cyan/70 to-transparent transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
           <Show when={error() && stablePanel.hasStableValue()}>
             <div class="rounded-md border border-status-warn/10 bg-status-warn/5 px-2 py-1 text-[10px] text-status-warn/90">
               Metrics refresh delayed. Showing last good snapshot.
@@ -175,7 +175,7 @@ const NodeResourcePanel: Component = () => {
                       <span class="text-xs font-mono text-text-main">{n.node}</span>
                     </div>
                     <div class="flex items-center gap-1.5">
-                      <span class="text-[9px] px-1.5 py-0.5 rounded bg-neon-purple/20 text-neon-purple font-medium">
+                      <span class="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-text-dim font-medium">
                         {gpu().gpuCount} GPU
                       </span>
                       <Show when={gpu().temperature != null}>
@@ -203,7 +203,7 @@ const NodeResourcePanel: Component = () => {
                           style={{ width: `${gpu().utilization}%` }}
                         />
                       </div>
-                      <span class="text-[9px] font-mono text-neon-cyan w-8 text-right">
+                      <span class="text-[9px] font-mono text-text-dim w-8 text-right">
                         {gpu().utilization!.toFixed(0)}%
                       </span>
                     </div>
@@ -215,11 +215,11 @@ const NodeResourcePanel: Component = () => {
                       <span class="text-[9px] text-text-dim w-10">VRAM</span>
                       <div class="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                         <div
-                          class={`h-full rounded-full transition-all ${vramPct()! > 90 ? 'bg-status-error' : 'bg-neon-purple'}`}
+                          class={`h-full rounded-full transition-all ${vramPct()! > 90 ? 'bg-status-error' : 'bg-white/40'}`}
                           style={{ width: `${vramPct()}%` }}
                         />
                       </div>
-                      <span class="text-[9px] font-mono text-neon-purple w-8 text-right">
+                      <span class="text-[9px] font-mono text-text-dim w-8 text-right">
                         {formatBytes(gpu().vramUsed!)}
                       </span>
                     </div>

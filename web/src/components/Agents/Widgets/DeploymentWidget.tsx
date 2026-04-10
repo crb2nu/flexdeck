@@ -94,7 +94,7 @@ const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
       {/* Header */}
       <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5">
         <div class="flex items-center gap-2">
-          <span class="text-neon-purple text-sm">⎈</span>
+          <span class="text-text-muted text-sm">⎈</span>
           <h4 class="text-xs font-bold uppercase tracking-wider text-text-dim">
             Model Deployments
           </h4>
@@ -112,7 +112,7 @@ const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
       {/* Loading */}
       <Show when={loading()}>
         <div class="flex items-center justify-center py-8 gap-2">
-          <div class="h-4 w-4 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
+          <div class="h-4 w-4 border-2 border-white/15 border-t-white rounded-full animate-spin" />
           <span class="text-xs text-text-dim font-mono">Discovering models...</span>
         </div>
       </Show>
@@ -148,7 +148,7 @@ const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
                     <div class="flex items-center gap-3 mt-0.5 text-[10px] text-text-dim font-mono">
                       <span>{dep.namespace}</span>
                       <Show when={dep.hardware}>
-                        <span class="text-neon-purple/70">{dep.hardware}</span>
+                        <span class="text-text-dim">{dep.hardware}</span>
                       </Show>
                     </div>
                   </div>

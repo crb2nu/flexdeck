@@ -75,21 +75,21 @@ const ComingSoon: Component = () => {
       <canvas ref={canvasRef} class="absolute inset-0 z-0 opacity-30" />
       
       <div class="glass-panel relative z-10 flex h-full items-center justify-center bg-transparent">
-        <div class="text-center p-12 border border-neon-cyan/20 bg-[#050a14]/80 rounded-2xl shadow-[0_0_50px_rgba(0,217,255,0.1)]">
+        <div class="text-center p-12 border border-white/15 bg-[#050a14]/80 rounded-2xl">
           <div class="mb-6 flex justify-center">
-             <div class="relative h-20 w-20 flex items-center justify-center rounded-full border-2 border-neon-cyan/50 bg-neon-cyan/10 animate-pulse">
-                <span class="text-4xl text-neon-cyan">◈</span>
-                <div class="absolute inset-0 rounded-full border border-neon-cyan/30 animate-ping opacity-20" />
+             <div class="relative h-20 w-20 flex items-center justify-center rounded-full border-2 border-white/20 bg-white/10 animate-pulse">
+                <span class="text-4xl text-white">◈</span>
+                <div class="absolute inset-0 rounded-full border border-white/15 animate-pulse opacity-20" />
              </div>
           </div>
           
-          <h2 class="mb-2 text-4xl font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-neon-cyan to-neon-purple font-mono uppercase">
+          <h2 class="mb-2 text-4xl font-bold tracking-widest text-white font-mono uppercase">
             {pageName()}
           </h2>
           
-          <div class="h-px w-full bg-gradient-to-r from-transparent via-neon-cyan/50 to-transparent my-4" />
+          <div class="h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent my-4" />
           
-          <p class="text-neon-cyan/70 font-mono text-sm tracking-wider uppercase">
+          <p class="text-text-muted font-mono text-sm tracking-wider uppercase">
             System Module Offline
           </p>
           <p class="text-text-dim text-xs mt-2">

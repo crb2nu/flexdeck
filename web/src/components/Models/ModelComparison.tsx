@@ -2,8 +2,8 @@ import { Component, createMemo, createResource, createSignal, For, Show } from '
 import { api, modelsApi } from '../../lib/api';
 import type { FlexInferModel, ModelComparisonData } from '../../lib/types';
 
-const COLORS = ['text-neon-cyan', 'text-neon-purple', 'text-status-ok'];
-const BG_COLORS = ['bg-neon-cyan', 'bg-neon-purple', 'bg-status-ok'];
+const COLORS = ['text-white', 'text-text-muted', 'text-status-ok'];
+const BG_COLORS = ['bg-white/50', 'bg-white/30', 'bg-status-ok'];
 
 interface ModelComparisonGpuEntry {
   modelName: string;
@@ -92,7 +92,7 @@ const ModelComparison: Component = () => {
               <button
                 class={`px-3 py-1 text-xs rounded-md border transition-all ${
                   selected().includes(model.name)
-                    ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                    ? 'bg-white/10 text-white border-white/15'
                     : 'text-text-dim hover:bg-white/5 border-white/10'
                 }`}
                 onClick={() => toggleSelect(model.name)}
@@ -108,11 +108,11 @@ const ModelComparison: Component = () => {
         {/* View mode toggle */}
         <div class="flex gap-2">
           <button
-            class={`px-3 py-1 text-xs rounded-md ${viewMode() === 'table' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-dim'}`}
+            class={`px-3 py-1 text-xs rounded-md ${viewMode() === 'table' ? 'bg-white/10 text-white' : 'text-text-dim'}`}
             onClick={() => setViewMode('table')}
           >Table</button>
           <button
-            class={`px-3 py-1 text-xs rounded-md ${viewMode() === 'chart' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-dim'}`}
+            class={`px-3 py-1 text-xs rounded-md ${viewMode() === 'chart' ? 'bg-white/10 text-white' : 'text-text-dim'}`}
             onClick={() => setViewMode('chart')}
           >Chart</button>
         </div>

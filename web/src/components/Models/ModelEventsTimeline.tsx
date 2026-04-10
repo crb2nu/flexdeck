@@ -66,7 +66,7 @@ const ModelEventsTimeline: Component<{ namespace: string; name: string }> = (pro
           </For>
           <Show when={events().length > 20 && !showAll()}>
             <button
-              class="text-xs text-neon-cyan/70 hover:text-neon-cyan mt-1"
+              class="text-xs text-text-dim hover:text-white mt-1"
               onClick={() => setShowAll(true)}
             >
               Show all {events().length} events
