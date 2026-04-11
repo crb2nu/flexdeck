@@ -95,6 +95,48 @@ body {
   .heading-label {
     @apply text-[11px] font-medium uppercase tracking-wide text-text-dim;
   }
+
+  /* Skeleton shimmer — loading placeholder */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 25%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.03) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Glow ring — for focused/active elements */
+  .glow-ring-blue {
+    box-shadow: var(--glow-blue);
+  }
+  .glow-ring-violet {
+    box-shadow: var(--glow-violet);
+  }
+
+  /* Accent stripe — colored left border indicator */
+  .accent-stripe {
+    position: relative;
+  }
+  .accent-stripe::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--color-blue);
+    opacity: 0;
+    transition: opacity var(--transition-normal) ease;
+  }
+  .accent-stripe:hover::before,
+  .accent-stripe.active::before {
+    opacity: 1;
+  }
 }
 
 /* --- Animations (functional only, ≤150ms) --- */
@@ -249,6 +291,53 @@ body {
   animation: gradient-shift 8s ease infinite;
 }
 
+/* Skeleton loading shimmer */
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Glow pulse — subtle glow throb for active/important elements */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 240, 255, 0.1); }
+  50% { box-shadow: 0 0 16px rgba(0, 240, 255, 0.25); }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Number pop — for value changes */
+@keyframes number-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.animate-number-pop {
+  animation: number-pop 0.2s var(--ease-out-back);
+}
+
+/* Breathe — gentle border pulse for hints */
+@keyframes breathe {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.1); }
+  50% { border-color: rgba(255, 255, 255, 0.2); }
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+/* Spin-once — for refresh buttons */
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-once {
+  animation: spin-once 0.5s var(--ease-out-expo);
+}
+
 /* --- Focus States --- */
 :focus-visible {
   outline: 2px solid var(--color-blue);
@@ -259,4 +348,19 @@ body {
 ::selection {
   background: rgba(0, 240, 255, 0.2);
   color: var(--text-main);
+}
+
+/* --- Reduced Motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .skeleton {
+    animation: none;
+    background: rgba(255, 255, 255, 0.04);
+  }
 }

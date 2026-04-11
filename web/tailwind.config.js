@@ -59,24 +59,50 @@ export default {
       boxShadow: {
         glass: '0 1px 2px rgba(0, 0, 0, 0.3)',
         elevated: '0 2px 8px rgba(0, 0, 0, 0.4)',
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        'glow-blue': 'var(--glow-blue)',
+        'glow-red': 'var(--glow-red)',
+        'glow-amber': 'var(--glow-amber)',
+        'glow-violet': 'var(--glow-violet)',
+        'glow-emerald': 'var(--glow-emerald)',
       },
       transitionDuration: {
         fast: 'var(--transition-fast)',
         normal: 'var(--transition-normal)',
+      },
+      transitionTimingFunction: {
+        'out-expo': 'var(--ease-out-expo)',
+        'out-back': 'var(--ease-out-back)',
+        'spring': 'var(--ease-spring)',
       },
       keyframes: {
         fadeInScale: {
           '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        shimmer: {
+          '0%': { backgroundPosition: '200% 0' },
+          '100%': { backgroundPosition: '-200% 0' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 8px rgba(0, 240, 255, 0.1)' },
+          '50%': { boxShadow: '0 0 16px rgba(0, 240, 255, 0.25)' },
+        },
       },
       animation: {
         'fade-in-scale': 'fadeInScale 0.15s ease-out',
+        shimmer: 'shimmer 1.5s ease-in-out infinite',
+        'glow-pulse': 'glow-pulse 2s ease-in-out infinite',
       },
     },
   },
   plugins: [
-    function ({ addUtilities }) {
+    function ({ addUtilities, addVariant }) {
+      addVariant('motion-safe', '@media (prefers-reduced-motion: no-preference)');
+      addVariant('motion-reduce', '@media (prefers-reduced-motion: reduce)');
       addUtilities({
         '.motion-reduce\\:animate-none': {
           '@media (prefers-reduced-motion: reduce)': {
