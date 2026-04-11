@@ -54,12 +54,11 @@ body {
 
   .surface-hover {
     @apply surface;
-    transition: background var(--transition-fast) ease, border-color var(--transition-fast) ease;
+    transition: background var(--transition-fast) ease;
   }
 
   .surface-hover:hover {
     background: var(--surface-elevated);
-    border-color: rgba(255, 255, 255, 0.12);
   }
 
 

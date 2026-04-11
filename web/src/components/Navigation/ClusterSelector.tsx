@@ -67,7 +67,7 @@ const ClusterSelector: Component = () => {
     <Show when={enabled()}>
       <div class="relative">
         <button
-          class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:text-white hover:border-white/20 hover:bg-white/[0.08] transition-all duration-200"
+          class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:text-white hover:bg-white/[0.08] transition-colors duration-150"
           onClick={() => {
             refetch();
             setOpen(!open());
@@ -119,7 +119,7 @@ const ClusterSelector: Component = () => {
                 >
                   {(cluster) => (
                     <button
-                      class="flex w-full items-center gap-3 md:gap-2 rounded-lg md:rounded-md px-4 md:px-3 py-3 md:py-2 text-sm md:text-xs hover:bg-white/5 transition-all active:scale-[0.98]"
+                      class="flex w-full items-center gap-3 md:gap-2 rounded-lg md:rounded-md px-4 md:px-3 py-3 md:py-2 text-sm md:text-xs hover:bg-white/5 transition-colors"
                       classList={{
                         "bg-white/10 text-white border border-white/20":
                           cluster.id === (activeClusterId() || currentCluster()?.id),

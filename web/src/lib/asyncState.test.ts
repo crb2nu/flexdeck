@@ -39,6 +39,23 @@ describe('asyncState', () => {
     expect(state.updatedAt()).toBe(0);
   });
 
+  it('skips loading on background refresh (stale-while-revalidate)', () => {
+    const state = createAsyncValueState<string>('');
+
+    // Initial load: loading should be set
+    startAsyncValueState(state);
+    expect(state.loading()).toBe(true);
+
+    // Complete the first load
+    completeAsyncValueState(state, 'data');
+    expect(state.loading()).toBe(false);
+    expect(state.updatedAt()).toBeGreaterThan(0);
+
+    // Background refresh: loading should NOT be set since we already have data
+    startAsyncValueState(state);
+    expect(state.loading()).toBe(false);
+  });
+
   it('manages shared async status controller transitions', () => {
     const controller = createAsyncStatusController({
       workflowAction: null as string | null,

@@ -1,4 +1,4 @@
-import { Component, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { Component, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import Sparkline from './Sparkline';
 
 interface PulseCardProps {
@@ -24,8 +24,6 @@ interface StablePulseCardState {
 
 const PulseCard: Component<PulseCardProps> = (props) => {
   const [stableState, setStableState] = createSignal<StablePulseCardState | null>(null);
-  const [isRefreshing, setIsRefreshing] = createSignal(false);
-  let refreshTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastStableSignature = '';
 
   const currentState = createMemo<StablePulseCardState>(() => ({
@@ -60,16 +58,6 @@ const PulseCard: Component<PulseCardProps> = (props) => {
     if (signature === lastStableSignature) return;
     lastStableSignature = signature;
     setStableState(nextState);
-    if (refreshTimeoutId) clearTimeout(refreshTimeoutId);
-    setIsRefreshing(true);
-    refreshTimeoutId = setTimeout(() => {
-      refreshTimeoutId = null;
-      setIsRefreshing(false);
-    }, 320);
-  });
-
-  onCleanup(() => {
-    if (refreshTimeoutId) clearTimeout(refreshTimeoutId);
   });
 
   const trendIcon = createMemo(() => {
@@ -91,13 +79,12 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   const statusChip = createMemo(() => {
     if (props.loading && stableState()) return { label: 'refreshing', class: 'text-text-dim border-white/10 bg-white/5' };
     if (props.error && stableState()) return { label: 'stale', class: 'text-status-warn border-status-warn/20 bg-status-warn/10' };
-    if (isRefreshing()) return { label: 'updated', class: 'text-status-ok border-status-ok/30 bg-status-ok/10 shadow-[0_0_6px_rgba(0,240,255,0.1)]' };
     return null;
   });
 
   return (
     <div
-      class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 transition-all overflow-hidden border-l-2"
+      class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 overflow-hidden border-l-2"
       style={{
         'border-left-color': props.color === 'purple' ? 'rgba(189, 0, 255, 0.3)'
           : props.color === 'green' ? 'rgba(10, 255, 104, 0.3)'
@@ -119,7 +106,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
             )}
           </Show>
           <Show when={props.icon}>
-            <span class="text-lg sm:text-xl text-text-muted opacity-30 group-hover:opacity-60 group-hover:scale-110 transition-all duration-200">
+            <span class="text-lg sm:text-xl text-text-muted opacity-30 group-hover:opacity-50 transition-opacity duration-150">
               {props.icon}
             </span>
           </Show>
@@ -144,7 +131,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class={`font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main transition-all duration-200 ${isRefreshing() ? 'opacity-90 scale-[1.02]' : 'opacity-100 scale-100'}`}>
+            <div class="font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main">
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
@@ -154,12 +141,12 @@ const PulseCard: Component<PulseCardProps> = (props) => {
             </Show>
           </div>
           <Show when={effectiveState().sub}>
-            <div class={`text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate transition-opacity ${isRefreshing() ? 'opacity-80' : 'opacity-100'}`}>
+            <div class="text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate">
               {effectiveState().sub}
             </div>
           </Show>
           <Show when={effectiveState().sparkData && effectiveState().sparkData!.length >= 2}>
-            <div class={`mt-1 sm:mt-2 h-4 sm:h-5 transition-opacity ${isRefreshing() ? 'opacity-80' : 'opacity-100'}`}>
+            <div class="mt-1 sm:mt-2 h-4 sm:h-5">
               <Sparkline
                 data={effectiveState().sparkData!}
                 width={typeof window !== 'undefined' && window.innerWidth < 640 ? 80 : 120}
