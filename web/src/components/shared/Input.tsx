@@ -14,7 +14,7 @@ const Input: Component<InputProps> = (props) => {
         <span class="absolute left-2.5 text-text-muted pointer-events-none">{local.icon}</span>
       </Show>
       <input
-        class={`w-full rounded-md border border-white/10 bg-white/5 text-sm text-white placeholder:text-text-muted transition-colors duration-100 focus:border-white/20 focus:bg-white/[0.07] focus:outline-none ${local.icon ? 'pl-8' : 'pl-3'} ${local.onClear && local.value ? 'pr-8' : 'pr-3'} py-1.5`}
+        class={`w-full rounded-md border border-white/10 bg-white/5 text-sm text-white placeholder:text-text-muted transition-all duration-150 hover:border-white/15 focus:border-white/20 focus:bg-white/[0.07] focus:shadow-[0_0_0_1px_rgba(255,255,255,0.1)] focus:outline-none ${local.icon ? 'pl-8' : 'pl-3'} ${local.onClear && local.value ? 'pr-8' : 'pr-3'} py-1.5`}
         value={local.value}
         {...rest}
       />

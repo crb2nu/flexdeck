@@ -12,10 +12,10 @@ export interface BadgeProps {
 
 const toneClasses: Record<BadgeTone, string> = {
   default: 'bg-white/5 border-white/10 text-text-dim',
-  ok: 'bg-status-ok/10 border-status-ok/20 text-status-ok',
-  warn: 'bg-status-warn/10 border-status-warn/20 text-status-warn',
-  error: 'bg-status-error/10 border-status-error/20 text-status-error',
-  info: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+  ok: 'bg-status-ok/10 border-status-ok/20 text-status-ok hover:shadow-[0_0_8px_rgba(0,240,255,0.12)]',
+  warn: 'bg-status-warn/10 border-status-warn/20 text-status-warn hover:shadow-[0_0_8px_rgba(252,238,10,0.1)]',
+  error: 'bg-status-error/10 border-status-error/20 text-status-error hover:shadow-[0_0_8px_rgba(255,0,60,0.12)]',
+  info: 'bg-violet-500/10 border-violet-500/20 text-violet-400 hover:shadow-[0_0_8px_rgba(189,0,255,0.12)]',
 };
 
 const sizeClasses: Record<BadgeSize, string> = {
@@ -29,7 +29,7 @@ const Badge: Component<BadgeProps> = (props) => {
 
   return (
     <span
-      class={`inline-flex items-center rounded-md border font-medium ${sizeClasses[size()]} ${toneClasses[tone()]} ${props.class || ''}`}
+      class={`inline-flex items-center rounded-md border font-medium transition-all duration-150 ${sizeClasses[size()]} ${toneClasses[tone()]} ${props.class || ''}`}
     >
       {props.children}
     </span>

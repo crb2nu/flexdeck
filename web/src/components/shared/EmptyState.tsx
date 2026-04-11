@@ -25,7 +25,7 @@ const EmptyState: Component<EmptyStateProps> = (props) => {
   };
 
   return (
-    <div class={`flex items-center justify-center text-text-dim ${isSmall() ? 'h-48' : 'flex-1 py-16'}`}>
+    <div class={`flex items-center justify-center text-text-dim animate-fade-in ${isSmall() ? 'h-48' : 'flex-1 py-16'}`}>
       <div class="text-center">
         {renderIcon()}
         <h3 class={`${isSmall() ? 'text-sm' : 'text-xl'} font-medium text-text-main mb-1`}>
