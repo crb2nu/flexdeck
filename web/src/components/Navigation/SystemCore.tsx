@@ -70,25 +70,32 @@ const SystemCore: Component = () => {
 
   return (
     <div
-      class="relative flex items-center justify-center p-1.5 group cursor-pointer"
+      class="relative flex items-center justify-center p-1.5 group cursor-pointer rounded-md transition-all duration-200 hover:bg-white/5"
       title={statusLabel()}
       onClick={() => fetchHealth()}
     >
       <span
-        class={`w-2 h-2 rounded-full ${dotColor()} ${healthStore.loading ? 'animate-pulse' : ''}`}
+        class={`w-2 h-2 rounded-full transition-all duration-500 ${dotColor()} ${healthStore.loading ? 'animate-pulse' : ''}`}
+        style={{
+          'box-shadow': !healthStore.loading && !healthStore.error && healthRatio() >= 0.8
+            ? '0 0 6px rgba(74, 222, 128, 0.4), 0 0 2px rgba(74, 222, 128, 0.2)'
+            : healthStore.error
+            ? '0 0 6px rgba(239, 68, 68, 0.4)'
+            : 'none',
+        }}
       />
 
       {/* Hover Tooltip */}
       <div class="absolute right-full top-1/2 -translate-y-1/2 mr-3 hidden w-52 group-hover:block animate-scale-in z-50">
         <div class="surface p-3">
           <div class="heading-label mb-1">System status</div>
-          <div class={`text-xs mb-2 ${coreColor()}`}>{statusLabel()}</div>
+          <div class={`text-xs mb-2 transition-colors duration-300 ${coreColor()}`}>{statusLabel()}</div>
 
           <div class="space-y-1.5 mb-2">
             <For each={features()}>
               {([name, feature]) => (
-                <div class="flex items-center gap-2 text-xs">
-                  <span class={`w-1.5 h-1.5 rounded-full ${featureStatusDot(feature.enabled)}`} />
+                <div class="flex items-center gap-2 text-xs transition-opacity duration-200 hover:opacity-100 opacity-90">
+                  <span class={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${featureStatusDot(feature.enabled)}`} />
                   <span class="text-text-muted flex-1">{featureLabel(name)}</span>
                   <span class={`text-[10px] font-mono ${feature.enabled ? 'text-status-ok' : 'text-red-400'}`}>
                     {feature.enabled ? 'ON' : 'OFF'}
