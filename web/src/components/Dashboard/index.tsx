@@ -542,7 +542,7 @@ const Dashboard: Component = () => {
                               <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>{cpuUsage.toFixed(1)}%</span>
                             </div>
                             <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                              <div class="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
+                              <div class="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
                             </div>
                           </div>
                         );
@@ -558,7 +558,7 @@ const Dashboard: Component = () => {
                               <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>{formatBytes(metrics?.memoryUsed || 0)} / {formatBytes(metrics?.memoryLimit || 0)}</span>
                             </div>
                             <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                              <div class="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
+                              <div class="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
                             </div>
                           </div>
                         );
@@ -609,7 +609,7 @@ const Dashboard: Component = () => {
                               <span class="font-mono" style={{ color: getUsageColor(cpuUsage) }}>{cpuUsage.toFixed(1)}%</span>
                             </div>
                             <div class="h-1 bg-white/10 rounded-full overflow-hidden">
-                              <div class="h-full transition-all duration-500" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
+                              <div class="h-full transition-[width] duration-300" style={{ width: `${Math.min(cpuUsage, 100)}%`, background: getUsageGradient(cpuUsage) }} />
                             </div>
                           </div>
                           <div>
@@ -618,7 +618,7 @@ const Dashboard: Component = () => {
                               <span class="font-mono" style={{ color: getUsageColor(memPercent) }}>{formatBytes(metrics?.memoryUsed || 0)}</span>
                             </div>
                             <div class="h-1 bg-white/10 rounded-full overflow-hidden">
-                              <div class="h-full transition-all duration-500" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
+                              <div class="h-full transition-[width] duration-300" style={{ width: `${Math.min(memPercent, 100)}%`, background: getUsageGradient(memPercent) }} />
                             </div>
                           </div>
                         </div>

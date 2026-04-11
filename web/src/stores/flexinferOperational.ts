@@ -84,22 +84,20 @@ export async function refreshFlexInferProxy(): Promise<void> {
     flexinferProxyApi.metrics(),
   ]);
 
-  if (healthResult.status === 'fulfilled') {
-    proxyHealthState[1](healthResult.value);
-  } else {
-    proxyHealthState[1](null);
-  }
+  batch(() => {
+    proxyHealthState[1](healthResult.status === 'fulfilled' ? healthResult.value : null);
 
-  if (metricsResult.status === 'fulfilled') {
-    completeAsyncValueState(proxyMetricsState, metricsResult.value);
-  } else {
-    failAsyncValueState(
-      proxyMetricsState,
-      metricsResult.reason instanceof Error
-        ? metricsResult.reason.message
-        : 'Failed to fetch proxy metrics',
-    );
-  }
+    if (metricsResult.status === 'fulfilled') {
+      completeAsyncValueState(proxyMetricsState, metricsResult.value);
+    } else {
+      failAsyncValueState(
+        proxyMetricsState,
+        metricsResult.reason instanceof Error
+          ? metricsResult.reason.message
+          : 'Failed to fetch proxy metrics',
+      );
+    }
+  });
 }
 
 export async function refreshFlexInferRouter(): Promise<void> {

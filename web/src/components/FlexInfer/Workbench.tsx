@@ -530,7 +530,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                 <tbody>
                   <For each={modelRows()}>
                     {(row) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
+                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3">
                           <div class="font-medium text-text-main">{row.model.name}</div>
                           <div class="font-mono text-[10px] text-text-dim">{row.model.namespace}</div>
@@ -679,7 +679,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                     }
                   >
                     {([name, metrics]) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
+                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3 font-mono text-text-main">{name}</td>
                         <td class="px-4 py-3 text-right font-mono text-text-muted">{metrics.requestsTotal.toFixed(0)}</td>
                         <td class="px-4 py-3 text-right font-mono text-text-muted">{metrics.queueDepth.toFixed(0)}</td>
@@ -723,7 +723,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                     }
                   >
                     {(entry) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
+                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3 font-mono text-text-main">{entry.model_name}</td>
                         <td class="px-4 py-3 font-mono text-text-dim">{entry.litellm_params?.api_base || entry.litellm_params?.model || '—'}</td>
                         <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.litellm_params?.rpm || '—'}</td>
@@ -865,7 +865,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                     }
                   >
                     {(cache) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
+                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3">
                           <div class="font-medium text-text-main">{cache.name}</div>
                           <div class="font-mono text-[10px] text-text-dim">{cache.namespace}</div>
@@ -1010,7 +1010,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                     }
                   >
                     {(model) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5">
+                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3">
                           <div class="font-medium text-text-main">{model.name}</div>
                           <div class="font-mono text-[10px] text-text-dim">{model.source}</div>

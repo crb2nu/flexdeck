@@ -70,12 +70,12 @@ const SystemCore: Component = () => {
 
   return (
     <div
-      class="relative flex items-center justify-center p-1.5 group cursor-pointer rounded-md transition-all duration-200 hover:bg-white/5"
+      class="relative flex items-center justify-center p-1.5 group cursor-pointer rounded-md transition-colors duration-150 hover:bg-white/5"
       title={statusLabel()}
       onClick={() => fetchHealth()}
     >
       <span
-        class={`w-2 h-2 rounded-full transition-all duration-500 ${dotColor()} ${healthStore.loading ? 'animate-pulse' : ''}`}
+        class={`w-2 h-2 rounded-full transition-colors duration-300 ${dotColor()} ${healthStore.loading ? 'animate-pulse' : ''}`}
         style={{
           'box-shadow': !healthStore.loading && !healthStore.error && healthRatio() >= 0.8
             ? '0 0 6px rgba(74, 222, 128, 0.4), 0 0 2px rgba(74, 222, 128, 0.2)'
@@ -107,7 +107,7 @@ const SystemCore: Component = () => {
 
           <div class="h-1 w-full bg-white/10 rounded-full overflow-hidden">
             <div
-              class={`h-full rounded-full transition-all duration-500 ${
+              class={`h-full rounded-full transition-[width] duration-300 ${
                 healthRatio() >= 0.8 ? 'bg-white/40' :
                 healthRatio() >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'
               }`}

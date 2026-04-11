@@ -61,7 +61,10 @@ export function clearAsyncValueState<T>(state: AsyncValueState<T>, value: T): vo
 }
 
 export function startAsyncValueState<T>(state: AsyncValueState<T>): void {
-  state.setLoading(true);
+  // Only show loading on initial fetch; background refreshes stay silent
+  if (state.updatedAt() === 0) {
+    state.setLoading(true);
+  }
 }
 
 export function completeAsyncValueState<T>(state: AsyncValueState<T>, value: T): void {

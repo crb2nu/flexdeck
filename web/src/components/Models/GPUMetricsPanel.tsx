@@ -224,7 +224,7 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
             </div>
             <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
-                class="h-full rounded-full bg-white/40 transition-all"
+                class="h-full rounded-full bg-white/40 transition-[width] duration-300"
                 style={{ width: `${metrics().utilization}%` }}
               />
             </div>
@@ -242,7 +242,7 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
             </div>
             <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
-                class={`h-full rounded-full transition-all ${
+                class={`h-full rounded-full transition-[width] duration-300 ${
                   vramPercent()! > 90 ? 'bg-status-error' : 'bg-white/40'
                 }`}
                 style={{ width: `${vramPercent()}%` }}

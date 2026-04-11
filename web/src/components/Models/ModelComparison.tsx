@@ -137,7 +137,7 @@ const ModelComparison: Component = () => {
                   {(metric) => {
                     const best = bestValue(metric.key, metric.higher);
                     return (
-                      <tr class="hover:bg-white/5">
+                      <tr class="hover:bg-white/5 transition-colors">
                         <td class="px-4 py-2 text-text-dim">{metric.label}</td>
                         <For each={comparisonData()}>
                           {(model) => {
@@ -156,7 +156,7 @@ const ModelComparison: Component = () => {
                     );
                   }}
                 </For>
-                <tr class="hover:bg-white/5">
+                <tr class="hover:bg-white/5 transition-colors">
                   <td class="px-4 py-2 text-text-dim">GPU Node</td>
                   <For each={comparisonData()}>
                     {(model) => (
