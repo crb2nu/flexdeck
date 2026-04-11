@@ -79,7 +79,7 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
-      <div class="glass-panel w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+      <div class="surface w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div class="flex items-center gap-3">

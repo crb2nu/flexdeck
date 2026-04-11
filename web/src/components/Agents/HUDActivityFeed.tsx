@@ -110,7 +110,7 @@ const HUDActivityFeed: Component<{
   };
 
   return (
-    <div class="glass-panel p-4">
+    <div class="surface p-4">
       <div class="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 class="text-sm font-medium text-text-main">Live timeline</h3>

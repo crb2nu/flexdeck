@@ -3,6 +3,8 @@ import { formatRelativeTime } from '../../lib/format';
 import type { K8sJob } from '../../lib/types';
 import StatusDot from '../shared/StatusDot';
 import type { Status } from '../shared/StatusDot';
+import Badge from '../shared/Badge';
+import type { BadgeTone } from '../shared/Badge';
 import DataTable from '../shared/DataTable';
 import type { ColumnDef } from '../shared/DataTable';
 
@@ -51,16 +53,8 @@ const columns: ColumnDef<K8sJob>[] = [
     cell: (_, j) => {
       const status = getJobStatus(j);
       const label = status === 'ok' ? 'Complete' : status === 'error' ? 'Failed' : status === 'running' ? 'Running' : 'Pending';
-      return (
-        <span class={`px-2 py-0.5 rounded text-xs ${
-          status === 'ok' ? 'bg-status-ok/10 text-status-ok' :
-          status === 'error' ? 'bg-status-error/10 text-status-error' :
-          status === 'running' ? 'bg-status-ok/10 text-status-ok' :
-          'bg-white/5 text-text-muted'
-        }`}>
-          {label}
-        </span>
-      );
+      const tone: BadgeTone = status === 'ok' ? 'ok' : status === 'error' ? 'error' : status === 'running' ? 'ok' : 'default';
+      return <Badge tone={tone} size="md">{label}</Badge>;
     },
   },
   {

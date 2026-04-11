@@ -21,8 +21,8 @@ const StatusDot: Component<StatusDotProps> = (props) => {
     warn: 'bg-status-warn',
     error: 'bg-status-error',
     running: 'bg-status-ok',
-    pending: 'bg-yellow-400',
-    scaling: 'bg-violet-400',
+    pending: 'bg-status-warn',
+    scaling: 'bg-[var(--color-violet)]',
     unknown: 'bg-gray-500',
   };
 

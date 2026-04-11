@@ -3,6 +3,7 @@ import { formatRelativeTime } from '../../lib/format';
 import type { K8sDeployment } from '../../lib/types';
 import StatusDot from '../shared/StatusDot';
 import type { Status } from '../shared/StatusDot';
+import Button from '../shared/Button';
 import DataTable from '../shared/DataTable';
 import type { ColumnDef } from '../shared/DataTable';
 
@@ -90,34 +91,10 @@ const DeploymentsTable: Component<DeploymentsTableProps> = (props) => {
         cell: (_, d) => {
           const desired = d.spec?.replicas || 0;
           return (
-            <div class="flex gap-2">
-              <button
-                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1);
-                }}
-              >
-                +
-              </button>
-              <button
-                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1));
-                }}
-              >
-                -
-              </button>
-              <button
-                class="rounded px-2 py-1 text-xs text-text-dim hover:bg-white/5 hover:text-white transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || '');
-                }}
-              >
-                ↻
-              </button>
+            <div class="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1); }}>+</Button>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1)); }}>-</Button>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || ''); }}>↻</Button>
             </div>
           );
         },

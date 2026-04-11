@@ -67,7 +67,7 @@ const ClusterSelector: Component = () => {
     <Show when={enabled()}>
       <div class="relative">
         <button
-          class="flex h-10 md:h-9 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-text-muted hover:text-white hover:border-white/20 transition-colors"
+          class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:text-white hover:border-white/20 transition-colors"
           onClick={() => {
             refetch();
             setOpen(!open());
@@ -103,8 +103,8 @@ const ClusterSelector: Component = () => {
             
             <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-sm shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
               <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
-                <div class="text-[10px] text-text-muted tracking-widest px-2 font-bold">
-                  CLUSTERS
+                <div class="heading-label px-2">
+                  Clusters
                 </div>
                 <button class="md:hidden p-2 text-text-dim" onClick={() => setOpen(false)}>✕</button>
               </div>
@@ -112,7 +112,7 @@ const ClusterSelector: Component = () => {
                 <For
                   each={clusters() || []}
                   fallback={
-                    <div class="px-3 py-4 md:py-2 text-[11px] font-mono text-text-dim text-center">
+                    <div class="px-3 py-4 md:py-2 text-[11px] text-text-dim text-center">
                       No clusters available
                     </div>
                   }
@@ -130,7 +130,7 @@ const ClusterSelector: Component = () => {
                       <span
                         class={`h-2 w-2 md:h-1.5 md:w-1.5 rounded-full flex-shrink-0 ${statusColor(cluster.status)}`}
                       />
-                      <span class="flex-1 truncate text-left font-mono">
+                      <span class="flex-1 truncate text-left">
                         {cluster.name}
                       </span>
                       <Show when={cluster.isDefault}>

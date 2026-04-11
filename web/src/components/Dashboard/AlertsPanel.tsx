@@ -75,7 +75,7 @@ const AlertsPanel: Component = () => {
   ]);
 
   return (
-    <div class="glass-panel flex flex-col overflow-hidden" id="alerts-panel">
+    <div class="surface flex flex-col overflow-hidden" id="alerts-panel">
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed())}

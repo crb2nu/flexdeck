@@ -89,7 +89,7 @@ const PipelineTrends: Component = () => {
 
   return (
     <div class="p-4 overflow-y-auto flex-1">
-      <div class="glass-panel mb-4 flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="surface mb-4 flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="min-w-0">
           <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Pipeline Trends</div>
           <div class="mt-1 text-lg font-semibold text-text-main">Execution trend telemetry</div>
@@ -114,7 +114,7 @@ const PipelineTrends: Component = () => {
       </Show>
 
       <Show when={error()}>
-        <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
+        <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
           <span>!</span>
           {error()}
         </div>
@@ -132,7 +132,7 @@ const PipelineTrends: Component = () => {
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <For each={trends()}>
           {(trend) => (
-            <div class="glass-panel-hover p-4 flex flex-col gap-3">
+            <div class="surface-hover p-4 flex flex-col gap-3">
               {/* Header */}
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-text-main font-mono truncate" title={trend.project_name || `Project #${trend.project_id}`}>

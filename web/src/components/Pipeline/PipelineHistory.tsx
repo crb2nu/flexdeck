@@ -109,7 +109,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
 
   return (
     <div class="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
-      <div class="glass-panel flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="surface flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="min-w-0">
           <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Pipeline History</div>
           <div class="mt-1 text-lg font-semibold text-text-main">Execution history browser</div>
@@ -164,7 +164,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
       </Show>
 
       <Show when={error()}>
-        <div class="glass-panel flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
+        <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
           <span>!</span>
           {error()}
         </div>
@@ -184,7 +184,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
       </Show>
 
       <Show when={history().length > 0}>
-        <div class="glass-panel overflow-hidden">
+        <div class="surface overflow-hidden">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-white/10 text-left text-[10px] uppercase tracking-wider text-text-dim">

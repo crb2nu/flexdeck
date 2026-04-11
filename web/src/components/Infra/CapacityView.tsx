@@ -87,7 +87,7 @@ const CapacityView: Component<Props> = (props) => {
 
       {/* Pressure items */}
       <Show when={snap().pressureItems.length > 0}>
-        <div class="glass-panel overflow-hidden">
+        <div class="surface overflow-hidden">
           <div class="border-b border-white/5 px-4 py-2.5">
             <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
               Pressure Items
@@ -126,7 +126,7 @@ const CapacityView: Component<Props> = (props) => {
 
       {/* Hot nodes heatmap */}
       <Show when={snap().hotNodes.length > 0}>
-        <div class="glass-panel p-4">
+        <div class="surface p-4">
           <div class="mb-3">
             <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">Hot Nodes</span>
           </div>
@@ -151,7 +151,7 @@ const CapacityView: Component<Props> = (props) => {
 
       {/* Namespace efficiency */}
       <Show when={snap().efficiencyByNs.length > 0}>
-        <div class="glass-panel overflow-hidden">
+        <div class="surface overflow-hidden">
           <div class="border-b border-white/5 px-4 py-2.5">
             <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
               Allocation Efficiency by Namespace

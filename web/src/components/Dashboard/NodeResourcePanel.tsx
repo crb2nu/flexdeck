@@ -116,7 +116,7 @@ const NodeResourcePanel: Component = () => {
   const nonGpuNodes = () => displayNodes().filter((n) => n.gpu == null);
 
   return (
-    <div class="glass-panel p-4 space-y-3">
+    <div class="surface p-4 space-y-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <h3 class="text-xs font-bold uppercase tracking-widest text-text-main">

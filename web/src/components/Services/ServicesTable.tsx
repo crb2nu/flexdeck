@@ -1,5 +1,6 @@
 import { Component } from 'solid-js';
 import type { K8sService } from '../../lib/types';
+import Badge from '../shared/Badge';
 import DataTable from '../shared/DataTable';
 import type { ColumnDef } from '../shared/DataTable';
 
@@ -21,17 +22,7 @@ const columns: ColumnDef<K8sService>[] = [
     id: 'type',
     header: 'Type',
     accessor: (s) => s.spec?.type ?? '',
-    cell: (_, s) => (
-      <span class={`rounded px-2 py-0.5 text-xs ${
-        s.spec?.type === 'LoadBalancer'
-          ? 'bg-white/5 text-text-main'
-          : s.spec?.type === 'NodePort'
-            ? 'bg-white/5 text-text-dim'
-            : 'bg-white/5 text-text-muted'
-      }`}>
-        {s.spec?.type}
-      </span>
-    ),
+    cell: (_, s) => <Badge size="md">{s.spec?.type}</Badge>,
     sortable: true,
   },
   {

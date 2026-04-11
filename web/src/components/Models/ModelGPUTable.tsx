@@ -67,7 +67,7 @@ const ModelGPUTable: Component = () => {
 
   return (
     <Show when={!error() && models().length > 0}>
-      <div class="glass-panel p-4">
+      <div class="surface p-4">
         <div class="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
           GPU Usage by Model
         </div>

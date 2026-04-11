@@ -234,7 +234,7 @@ const LangfuseWidget: Component = () => {
   };
 
   return (
-    <div class="glass-panel flex flex-col overflow-hidden" id="langfuse-widget">
+    <div class="surface flex flex-col overflow-hidden" id="langfuse-widget">
       {/* Header */}
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/5">
         <div class="flex items-center gap-2">

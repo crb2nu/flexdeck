@@ -62,7 +62,7 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
     >
       <table class="w-full text-sm">
         <thead
-          class="border-b border-white/[0.08] text-left text-xs uppercase text-text-muted"
+          class="border-b border-white/[0.08] text-left text-xs uppercase text-text-dim"
           classList={{ 'sticky top-0 bg-bg-dark z-10': props.stickyHeader !== false }}
         >
           <tr>
@@ -92,7 +92,7 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
           <For each={sortedData()}>
             {(row) => (
               <tr
-                class="border-b border-white/5 hover:bg-white/[0.03] transition-colors"
+                class="border-b border-white/5 hover:bg-white/[0.03] transition-colors even:bg-white/[0.02]"
                 classList={{ 'cursor-pointer': !!props.onRowClick }}
                 onClick={props.onRowClick ? () => props.onRowClick!(row) : undefined}
               >

@@ -38,9 +38,9 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
               return (
                 <button
                   onClick={() => props.onChange(tab.id)}
-                  class={`rounded px-3 ${size() === 'sm' ? 'py-1 text-xs' : 'py-1.5 text-sm'} font-medium transition-colors whitespace-nowrap ${
+                  class={`rounded px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                     isActive()
-                      ? `bg-${c}/20 text-${c}`
+                      ? 'bg-white/10 text-white'
                       : 'text-text-dim hover:text-text-main'
                   }`}
                 >

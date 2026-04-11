@@ -7,7 +7,7 @@ interface GlassPanelProps {
 }
 
 const GlassPanel: Component<GlassPanelProps> = (props) => {
-  const baseClass = props.hover ? 'glass-panel-hover' : 'glass-panel';
+  const baseClass = props.hover ? 'surface-hover' : 'surface';
 
   return (
     <div class={`${baseClass} ${props.class || ''}`}>

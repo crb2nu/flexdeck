@@ -148,7 +148,7 @@ const Alerts: Component = () => {
         <div class="space-y-2">
           <For each={groupedAlerts()}>
             {([name, group]) => (
-              <div class="glass-panel overflow-hidden">
+              <div class="surface overflow-hidden">
                 <button
                   class="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 transition-colors"
                   onClick={() => toggleExpand(name)}
@@ -208,7 +208,7 @@ const Alerts: Component = () => {
         </div>
 
         <Show when={showSilenceForm()}>
-          <div class="glass-panel p-4 space-y-3">
+          <div class="surface p-4 space-y-3">
             <div class="flex gap-3">
               <div class="flex-1">
                 <label class="text-xs text-text-dim block mb-1">Matcher Name</label>
@@ -278,7 +278,7 @@ const Alerts: Component = () => {
         <div class="space-y-2">
           <For each={silences()}>
             {(silence) => (
-              <div class="glass-panel px-4 py-3">
+              <div class="surface px-4 py-3">
                 <div class="flex items-center gap-3">
                   <span class={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                     silence.status?.state === 'active' ? 'text-status-ok bg-status-ok/10' :

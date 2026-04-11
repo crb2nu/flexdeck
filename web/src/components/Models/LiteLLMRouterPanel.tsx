@@ -25,18 +25,18 @@ const LiteLLMRouterPanel: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="glass-panel p-3 text-sm text-status-error">{error()}</div>
+        <div class="surface p-3 text-sm text-status-error">{error()}</div>
       </Show>
 
       <Show when={loading() && !data()}>
-        <div class="glass-panel flex items-center justify-center py-8">
+        <div class="surface flex items-center justify-center py-8">
           <div class="text-text-dim animate-pulse">Loading router info...</div>
         </div>
       </Show>
 
       <Show when={data()}>
         {/* Health status */}
-        <div class="glass-panel px-4 py-3 flex items-center gap-3">
+        <div class="surface px-4 py-3 flex items-center gap-3">
           <div class={`w-2 h-2 rounded-full ${data()!.healthy ? 'bg-status-ok' : 'bg-status-error'}`} />
           <span class="text-sm font-medium text-text-main">LiteLLM Proxy</span>
           <span class="text-xs text-text-dim">
@@ -48,7 +48,7 @@ const LiteLLMRouterPanel: Component = () => {
         </div>
 
         {/* Model routing table */}
-        <div class="glass-panel overflow-hidden">
+        <div class="surface overflow-hidden">
           <div class="px-4 py-2 border-b border-white/5">
             <span class="text-xs font-mono text-text-main uppercase tracking-wider">Model Routing Table</span>
           </div>

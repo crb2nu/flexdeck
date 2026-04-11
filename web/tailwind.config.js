@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Neon accents — used for status semantics only
-        neon: {
-          cyan: 'var(--neon-cyan)',
-          pink: 'var(--neon-pink)',
-          yellow: 'var(--neon-yellow)',
-          purple: 'var(--neon-purple)',
-          green: 'var(--neon-green)',
+        // Semantic palette
+        semantic: {
+          blue: 'var(--color-blue)',
+          red: 'var(--color-red)',
+          amber: 'var(--color-amber)',
+          violet: 'var(--color-violet)',
+          emerald: 'var(--color-emerald)',
         },
         // Backgrounds
         bg: {
@@ -29,7 +29,7 @@ export default {
           dim: 'var(--text-dim)',
           muted: 'var(--text-muted)',
         },
-        // Semantic
+        // Semantic status
         status: {
           ok: 'var(--color-ok)',
           warn: 'var(--color-warn)',
@@ -37,9 +37,6 @@ export default {
         },
         accent: {
           DEFAULT: 'var(--color-accent)',
-          primary: 'var(--accent-primary)',
-          secondary: 'var(--accent-secondary)',
-          tertiary: 'var(--accent-tertiary)',
         },
       },
       fontFamily: {
@@ -72,14 +69,9 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
-        spinSlow: {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        },
       },
       animation: {
         'fade-in-scale': 'fadeInScale 0.15s ease-out',
-        'spin-slow': 'spinSlow 12s linear infinite',
       },
     },
   },

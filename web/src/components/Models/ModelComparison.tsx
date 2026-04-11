@@ -84,7 +84,7 @@ const ModelComparison: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       {/* Model selector */}
-      <div class="glass-panel px-4 py-3">
+      <div class="surface px-4 py-3">
         <div class="text-xs text-text-dim mb-2">Select 2-3 models to compare (Ready phase only):</div>
         <div class="flex flex-wrap gap-2">
           <For each={readyModels()}>
@@ -118,7 +118,7 @@ const ModelComparison: Component = () => {
         </div>
 
         <Show when={viewMode() === 'table'}>
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <table class="w-full text-xs">
               <thead>
                 <tr class="border-b border-white/5 text-text-dim">
@@ -172,7 +172,7 @@ const ModelComparison: Component = () => {
         </Show>
 
         <Show when={viewMode() === 'chart'}>
-          <div class="glass-panel p-4 space-y-4">
+          <div class="surface p-4 space-y-4">
             <For each={metrics}>
               {(metric) => {
                 const vals = comparisonData().map(d => (d as any)[metric.key]).filter((v: any) => v !== null);
@@ -211,7 +211,7 @@ const ModelComparison: Component = () => {
       </Show>
 
       <Show when={selected().length < 2}>
-        <div class="glass-panel flex items-center justify-center py-8">
+        <div class="surface flex items-center justify-center py-8">
           <div class="text-text-dim text-sm">Select at least 2 models to compare</div>
         </div>
       </Show>

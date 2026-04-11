@@ -25,7 +25,7 @@ const ErrorState: Component<ErrorStateProps> = (props) => {
   if (variant() === 'full') {
     return (
       <div class="flex flex-1 items-center justify-center py-16">
-        <div class="glass-panel flex flex-col items-center gap-3 p-6 text-center max-w-sm">
+        <div class="surface flex flex-col items-center gap-3 p-6 text-center max-w-sm">
           <span class="text-2xl">&#9888;</span>
           <p class="text-sm text-status-error">{props.message}</p>
           <Show when={props.onRetry}>
@@ -43,7 +43,7 @@ const ErrorState: Component<ErrorStateProps> = (props) => {
 
   // banner (default)
   return (
-    <div class="glass-panel flex items-center justify-between p-4 text-sm text-status-error">
+    <div class="surface flex items-center justify-between p-4 text-sm text-status-error">
       <span>{props.message}</span>
       <Show when={props.onRetry}>
         <button

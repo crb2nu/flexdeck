@@ -379,7 +379,7 @@ describe('Workbench', () => {
     });
 
     const text = pageText();
-    expect(text).toContain('Live FlexInfer operations workbench');
+    expect(text).toContain('FlexInfer Workbench');
     expect(text).toContain('Operator briefing');
     expect(text).toContain('READY');
     expect(text).toContain('STALE · poll fallback');
@@ -410,7 +410,7 @@ describe('Workbench', () => {
     });
 
     const text = pageText();
-    expect(text).toContain('Router disabled');
+    expect(text).toContain('Proxy Disabled');
     expect(text).toContain('DISABLED · feature disabled');
   });
 });

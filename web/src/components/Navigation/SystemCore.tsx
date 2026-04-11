@@ -60,60 +60,30 @@ const SystemCore: Component = () => {
     return labels[name] || name;
   };
 
+  const dotColor = createMemo(() => {
+    if (healthStore.loading) return 'bg-white/30';
+    if (healthStore.error) return 'bg-red-500';
+    if (healthRatio() >= 0.8) return 'bg-status-ok';
+    if (healthRatio() >= 0.5) return 'bg-yellow-500';
+    return 'bg-red-500';
+  });
+
   return (
     <div
-      class="relative flex items-center justify-center p-2 group cursor-pointer"
-      title={`AI SYSTEM CORE: ${statusLabel()}`}
+      class="relative flex items-center justify-center p-1.5 group cursor-pointer"
+      title={statusLabel()}
       onClick={() => fetchHealth()}
     >
-      <div class="absolute inset-0 flex items-center justify-center">
-        <div
-          class={`h-8 w-8 rounded-full border border-current opacity-20 ${coreColor()} ${pulseSpeed()}`}
-        />
-      </div>
-      <div class="absolute inset-0 flex items-center justify-center">
-        <div
-          class={`h-12 w-12 rounded-full border border-current opacity-10 ${coreColor()} animate-spin-slow`}
-        />
-      </div>
+      <span
+        class={`w-2 h-2 rounded-full ${dotColor()} ${healthStore.loading ? 'animate-pulse' : ''}`}
+      />
 
-      {/* Core Graphic */}
-      <div
-        class={`relative z-10 font-bold tracking-widest ${coreColor()} transition-colors duration-500`}
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle cx="12" cy="12" r="4" fill="currentColor" fill-opacity="0.8">
-            <animate
-              attributeName="opacity"
-              values="0.8;0.4;0.8"
-              dur="3s"
-              repeatCount="indefinite"
-            />
-          </circle>
-          <path d="M12 2V4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M12 20V22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M22 12L20 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M4 12L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M19.0718 19.0718L17.6576 17.6576" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M6.34315 6.34315L4.92893 4.92893" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M19.0718 4.92893L17.6576 6.34315" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M6.34315 17.6576L4.92893 19.0718" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
-      </div>
+      {/* Hover Tooltip */}
+      <div class="absolute right-full top-1/2 -translate-y-1/2 mr-3 hidden w-52 group-hover:block animate-scale-in z-50">
+        <div class="surface p-3">
+          <div class="heading-label mb-1">System status</div>
+          <div class={`text-xs mb-2 ${coreColor()}`}>{statusLabel()}</div>
 
-      {/* Hover Tooltip — real health breakdown */}
-      <div class="absolute right-full top-1/2 -translate-y-1/2 mr-4 hidden w-56 group-hover:block animate-fade-in-scale">
-        <div class="bg-[#050a14]/90 border border-white/15 rounded-lg p-3">
-          <div class="text-[10px] text-text-muted tracking-widest mb-1">SYSTEM STATUS</div>
-          <div class={`text-xs font-mono mb-2 ${coreColor()}`}>{statusLabel()}</div>
-
-          {/* Feature breakdown */}
           <div class="space-y-1.5 mb-2">
             <For each={features()}>
               {([name, feature]) => (
@@ -128,7 +98,6 @@ const SystemCore: Component = () => {
             </For>
           </div>
 
-          {/* Health bar */}
           <div class="h-1 w-full bg-white/10 rounded-full overflow-hidden">
             <div
               class={`h-full rounded-full transition-all duration-500 ${
@@ -139,8 +108,8 @@ const SystemCore: Component = () => {
             />
           </div>
 
-          <div class="text-[9px] text-text-dim mt-1.5 text-right">
-            {enabledCount()}/{totalCount()} subsystems • click to refresh
+          <div class="text-[10px] text-text-dim mt-1.5 text-right">
+            {enabledCount()}/{totalCount()} subsystems
           </div>
         </div>
       </div>
