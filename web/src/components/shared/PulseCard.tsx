@@ -91,12 +91,20 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   const statusChip = createMemo(() => {
     if (props.loading && stableState()) return { label: 'refreshing', class: 'text-text-dim border-white/10 bg-white/5' };
     if (props.error && stableState()) return { label: 'stale', class: 'text-status-warn border-status-warn/20 bg-status-warn/10' };
-    if (isRefreshing()) return { label: 'updated', class: 'text-status-ok border-status-ok/20 bg-status-ok/10' };
+    if (isRefreshing()) return { label: 'updated', class: 'text-status-ok border-status-ok/30 bg-status-ok/10 shadow-[0_0_6px_rgba(0,240,255,0.1)]' };
     return null;
   });
 
   return (
-    <div class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 transition-colors overflow-hidden">
+    <div
+      class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 transition-all overflow-hidden border-l-2"
+      style={{
+        'border-left-color': props.color === 'purple' ? 'rgba(189, 0, 255, 0.3)'
+          : props.color === 'green' ? 'rgba(10, 255, 104, 0.3)'
+          : props.color === 'orange' ? 'rgba(249, 115, 22, 0.3)'
+          : 'rgba(0, 240, 255, 0.3)',
+      }}
+    >
       {/* Header */}
       <div class="relative flex items-center justify-between">
         <span class="heading-label">
@@ -111,7 +119,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
             )}
           </Show>
           <Show when={props.icon}>
-            <span class="text-lg sm:text-xl text-text-muted opacity-40 group-hover:opacity-70 transition-opacity">
+            <span class="text-lg sm:text-xl text-text-muted opacity-30 group-hover:opacity-60 group-hover:scale-110 transition-all duration-200">
               {props.icon}
             </span>
           </Show>
@@ -136,7 +144,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class={`font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main transition-opacity ${isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
+            <div class={`font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main transition-all duration-200 ${isRefreshing() ? 'opacity-90 scale-[1.02]' : 'opacity-100 scale-100'}`}>
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
