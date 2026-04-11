@@ -96,16 +96,16 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   });
 
   return (
-    <div class="glass-panel-hover group relative flex min-h-[100px] sm:min-h-[120px] flex-col gap-1 sm:gap-2 p-3 sm:p-4 transition-colors overflow-hidden">
+    <div class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 transition-colors overflow-hidden">
       {/* Header */}
       <div class="relative flex items-center justify-between">
-        <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <span class="heading-label">
           {props.title}
         </span>
         <div class="flex items-center gap-2">
           <Show when={statusChip()}>
             {(chip) => (
-              <span class={`rounded-full border px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider transition-opacity duration-150 ${chip().class}`}>
+              <span class={`rounded-md border px-1.5 py-0.5 text-[9px] font-medium transition-opacity duration-150 ${chip().class}`}>
                 {chip().label}
               </span>
             )}
@@ -136,7 +136,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class={`font-mono text-2xl sm:text-[32px] font-bold tracking-tight text-text-main transition-opacity ${isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
+            <div class={`font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main transition-opacity ${isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
@@ -166,7 +166,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
       {/* Meta */}
       <Show when={effectiveState().meta && (stableState() || (!props.loading && !props.error))}>
-        <div class="relative mt-auto font-mono text-[11px] text-text-dim border-t border-white/5 pt-2">
+        <div class="relative mt-auto font-mono text-[10px] text-text-dim">
           {effectiveState().meta}
         </div>
       </Show>

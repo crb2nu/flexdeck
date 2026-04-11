@@ -1,5 +1,6 @@
 import { Component, For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
+import Button from '../shared/Button';
 
 export interface HUDConsoleMetric {
   label: string;
@@ -43,48 +44,29 @@ const metricToneClasses: Record<NonNullable<HUDConsoleMetric['tone']>, string> =
 
 const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
   return (
-    <div class="glass-panel overflow-hidden border border-white/10 bg-[rgba(15,20,35,0.95)]">
-      <div class="relative px-4 py-4 md:px-5 md:py-5">
-        <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-80" />
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div class="space-y-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-white">
-                Loom HUD
-              </span>
-              <Show when={props.badge}>
-                <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">
-                  {props.badge}
-                </span>
-              </Show>
-            </div>
-            <div class="max-w-3xl space-y-1">
-              <h2 class="text-2xl font-semibold tracking-tight text-text-main md:text-3xl">
-                {props.title}
-              </h2>
-              <p class="max-w-2xl text-sm leading-6 text-text-dim md:text-[15px]">
-                {props.subtitle}
-              </p>
-            </div>
+    <div class="surface overflow-hidden">
+      <div class="px-4 py-4 md:px-5 md:py-5">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div class="space-y-1">
+            <h2 class="heading-page">
+              {props.title}
+            </h2>
+            <p class="max-w-2xl text-sm text-text-dim">
+              {props.subtitle}
+            </p>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
             <For each={props.actions || []}>
               {(action) => (
-                <button
-                  type="button"
+                <Button
+                  variant={action.variant === 'danger' ? 'danger' : action.variant === 'primary' ? 'primary' : 'secondary'}
+                  size="sm"
                   onClick={action.onClick}
                   disabled={action.disabled}
-                  class={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    action.variant === 'primary'
-                      ? 'bg-white/10 text-white hover:bg-white/20'
-                      : action.variant === 'danger'
-                        ? 'bg-status-error/20 text-status-error hover:bg-status-error/30'
-                        : 'bg-white/10 text-text-main hover:bg-white/20'
-                  }`}
                 >
                   {action.label}
-                </button>
+                </Button>
               )}
             </For>
           </div>
@@ -93,9 +75,9 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
         <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <For each={props.metrics}>
             {(metric) => (
-              <div class="rounded-xl border border-white/8 bg-white/5 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div class="surface px-3 py-2.5">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-[10px] font-mono uppercase tracking-[0.2em] text-text-dim">
+                  <span class="heading-label">
                     {metric.label}
                   </span>
                   <Show when={metric.detail}>
@@ -104,7 +86,7 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
                     </span>
                   </Show>
                 </div>
-                <div class={`mt-2 text-lg font-semibold tabular-nums ${metricToneClasses[metric.tone || 'cyan']}`}>
+                <div class={`mt-1.5 text-lg font-semibold tabular-nums ${metricToneClasses[metric.tone || 'cyan']}`}>
                   {metric.value}
                 </div>
               </div>
@@ -113,10 +95,10 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
         </div>
 
         <Show when={props.modeLabel || props.modeDescription || props.alert}>
-          <div class="mt-4 flex flex-col gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
+          <div class="mt-4 flex flex-col gap-2 surface px-3 py-2.5 md:flex-row md:items-center md:justify-between">
             <div class="space-y-1">
               <Show when={props.modeLabel}>
-                <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-text-muted">
+                <div class="heading-label">
                   {props.modeLabel}
                 </div>
               </Show>
@@ -129,7 +111,7 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
 
             <Show when={props.alert}>
               {(alert) => (
-                <div class={`rounded-lg border px-3 py-2 text-xs ${
+                <div class={`rounded-md border px-3 py-2 text-xs ${
                   alert().tone === 'error'
                     ? 'border-status-error/30 bg-status-error/10 text-status-error'
                     : alert().tone === 'ok'

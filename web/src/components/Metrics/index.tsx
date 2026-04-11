@@ -41,7 +41,7 @@ const Metrics: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       {/* Header */}
-      <div class="glass-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <div class="surface flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Tab bar */}
           <TabBar
@@ -204,7 +204,7 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
   };
 
   return (
-    <div class="glass-panel-hover group flex flex-col p-4 transition-all hover:border-white/10">
+    <div class="surface-hover group flex flex-col p-4 transition-all hover:border-white/10">
       {/* Header */}
       <div class="mb-3 flex items-center justify-between">
         <span class={`text-sm font-medium ${getColorClass(props.panel.color)}`}>

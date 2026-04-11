@@ -76,9 +76,9 @@ const AppLayout: Component<ParentProps> = (props) => {
       {/* Header — Sentient HUD */}
       <Show when={!isPublicView()}>
         <header class="border-b border-white/[0.08] bg-bg-dark relative z-40">
-        <div class="flex h-16 items-center justify-between px-4 md:px-6">
+        <div class="flex h-12 items-center justify-between px-4 md:px-6">
           {/* Left: Logo & Mobile Toggle */}
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2.5">
             <button
               type="button"
               aria-label={mobileMenuOpen() ? 'Close navigation menu' : 'Open navigation menu'}
@@ -90,33 +90,28 @@ const AppLayout: Component<ParentProps> = (props) => {
                 toggleMobileMenu();
               }}
               onPointerDown={(event) => event.stopPropagation()}
-              class="flex md:hidden h-8 w-8 items-center justify-center rounded-md bg-white/5 border border-white/10 text-text-dim hover:text-white transition-colors"
+              class="flex md:hidden h-7 w-7 items-center justify-center rounded-md bg-white/5 border border-white/10 text-text-dim hover:text-white transition-colors"
             >
               <Show when={!mobileMenuOpen()} fallback={
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               }>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </Show>
             </button>
 
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 border border-white/[0.08]">
-              <span class="font-mono text-xl font-bold text-white">F</span>
-            </div>
-            <h1 class="text-xl font-bold tracking-tight text-white hidden sm:block">
-              FlexDeck
-            </h1>
+            <span class="text-sm font-semibold tracking-tight text-white">FlexDeck</span>
           </div>
 
           {/* Center: Desktop Navigation */}
-          <nav class="hidden md:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
+          <nav class="hidden md:flex items-center gap-0.5 bg-white/5 rounded-md p-0.5 border border-white/5">
             <For each={navItems()}>{(item) => (
               <A
                 href={item.path}
-                class="rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 hover:text-white min-h-[36px] flex items-center"
+                class="rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 hover:text-white flex items-center"
                 classList={{
                   'bg-white/10 text-white shadow-sm': isNavItemActive(location.pathname, item),
                   'text-text-muted hover:bg-white/5': !isNavItemActive(location.pathname, item),
@@ -128,11 +123,9 @@ const AppLayout: Component<ParentProps> = (props) => {
           </nav>
 
           {/* Right: Status & Settings */}
-          <div class="flex items-center gap-2 md:gap-4">
-             {/* Key Hint for Command Palette */}
-             <div class="hidden lg:flex items-center gap-2 text-xs text-text-dim px-3 py-2 rounded-md border border-white/10 bg-white/5 min-h-[36px]">
-                <span class="text-xs">⌘K</span>
-                <span class="opacity-50 font-mono">CMD</span>
+          <div class="flex items-center gap-2 md:gap-3">
+             <div class="hidden lg:flex items-center text-xs text-text-dim px-2 py-1 rounded-md border border-white/10 bg-white/5">
+                <span>⌘K</span>
              </div>
 
             <ClusterSelector />
@@ -144,7 +137,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Show when={mobileMenuOpen()}>
           <div
             id={mobileNavId}
-            class="md:hidden fixed inset-x-0 top-16 z-[70] bg-bg-dark border-b border-white/[0.08] animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            class="md:hidden fixed inset-x-0 top-12 z-[70] bg-bg-dark border-b border-white/[0.08] animate-dropdown-in origin-top shadow-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto"
             onClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             style={{ 'padding-bottom': 'max(0.75rem, env(safe-area-inset-bottom))' }}
@@ -170,7 +163,7 @@ const AppLayout: Component<ParentProps> = (props) => {
           </div>
           {/* Backdrop */}
           <div
-            class="fixed inset-x-0 top-16 bottom-0 z-[60] bg-black/50 md:hidden"
+            class="fixed inset-x-0 top-12 bottom-0 z-[60] bg-black/50 md:hidden"
             onClick={(event) => closeMobileMenuFromBackdrop(event)}
           />
         </Show>
@@ -196,7 +189,7 @@ const AppLayout: Component<ParentProps> = (props) => {
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
                     <div class="h-10 w-10 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
-                    <div class="text-text-muted font-mono text-sm tracking-wide">Loading...</div>
+                    <div class="text-text-muted text-sm">Loading...</div>
                 </div>
             </div>
         }>

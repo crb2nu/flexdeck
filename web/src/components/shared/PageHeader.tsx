@@ -29,7 +29,7 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
   return (
     <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-lg font-bold text-text-main">
+        <h1 class="heading-page">
           {props.title}
           <Show when={props.accent}>
             <span class="text-white">{props.accent}</span>

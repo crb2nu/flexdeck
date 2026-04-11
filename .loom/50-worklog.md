@@ -170,3 +170,48 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S10] `docs/roadmap-reconciliation-2026-04-02.md`
   - [S11] `npm -C web run test -- --run src/AppLayout.test.tsx src/components/Agents/HUDTab.test.tsx src/components/FlexInfer/Workbench.test.tsx src/components/Dashboard/useDashboardSummaryState.test.tsx src/lib/freshness.test.ts src/components/Dashboard/statusSemantics.test.ts src/components/Agents/hudDegradedMode.test.ts`
   - [S12] `npm -C web run typecheck`
+
+### 2026-04-03 (Reopened Planning Bundle Review + Execution Reset)
+
+- What changed:
+  - Reviewed the restored March planning diffs on `codex/reopen-planning-baseline` against current `main` and the newer `.loom` implementation/worklog records.
+  - Confirmed that the March operator-coherence plan is now merged work rather than active backlog.
+  - Confirmed that the old API-sync addendum is no longer the default next slice because its named CRD, proxy-metric, and HUD-claim gaps are already represented in the current codebase.
+  - Rewrote the planning docs around a new baseline: preserve useful historical context, reset the branch to a truthful current state, and recommend `Pipeline Controller Confidence` as the next execution slice.
+- Why:
+  - User asked for both a review of the reopened planning changes and a fresh execution plan.
+- What’s next:
+  - If we keep this branch planning-only, review the remaining non-plan diffs (`ROADMAP.md`, `server`) and decide whether to preserve or exclude them.
+  - Cut a fresh implementation branch for `Pipeline Controller Confidence` if we want to move directly into code.
+  - Follow with dashboard-shell coverage once the pipeline controller slice lands.
+- Sources:
+  - [S1] `git diff --stat`
+  - [S2] `git log --oneline --decorate -8`
+  - [S3] `.loom/00-index.md`
+  - [S4] `.loom/10-research.md`
+  - [S5] `.loom/20-product-spec.md`
+  - [S6] `.loom/30-implementation-plan.md`
+  - [S7] `rg -n "hostPath|compilationCache|flashLoader|maxBlockSize|swapSpace|reconfigureCooldown|reconfiguredAt|originalMaxNumSeqs|reconfiguredMaxNumSeqs|evictedAt|cache\.quantization|capabilities|quantize" internal/k8s/models_crd.go web/src/lib/types.ts`
+  - [S8] `rg -n "swap_signals|queued_requests_total|endpoint_changes_total|endpoint_count|routing_decisions_total|routing_target_hits_total|routing_key_cardinality|rate_limited_total|activation_retries_total|activation_failures_total" internal/api/handlers/flexinfer_proxy.go`
+  - [S9] `rg -n "expires_at|expiresAt|updated_at|updatedAt|FileClaim" internal/api/handlers/hud_contracts.go web/src/lib/types.ts`
+  - [S10] `rg --files web/src | rg '\.test\.(ts|tsx)$' | sort | rg 'AppLayout|Dashboard|FlexInfer|Agents|Pipeline|Models'`
+
+### 2026-04-04 (Parallel Confidence Slice Planning)
+
+- What changed:
+  - Converted the recommended next-slice notes into an explicit `parallel-slice-ship` execution plan.
+  - Defined three slices with ownership boundaries, branch names, acceptance criteria, and validation commands.
+  - Chose `Pipeline Controller Confidence` and `Dashboard Shell Confidence` as the two parallel implementation slices because they touch different ownership zones and already have adjacent test scaffolding.
+- Why:
+  - User asked to resume the planning work and start structuring shippable slices rather than leaving the branch at a generic “next candidate” level.
+- What’s next:
+  - Get approval to spawn sub-agents on fresh slice branches.
+  - Keep this planning branch doc-only while implementation proceeds on `feat/pipeline-controller-confidence` and `feat/dashboard-shell-confidence`.
+  - Integrate the two slices onto `feat/confidence-wave` once both are locally validated.
+- Sources:
+  - [S1] `.loom/30-implementation-plan.md`
+  - [S2] `web/src/components/Pipeline/usePipelineController.ts`
+  - [S3] `web/src/components/Pipeline/index.test.tsx`
+  - [S4] `web/src/components/Dashboard/index.tsx`
+  - [S5] `web/src/components/Dashboard/useDashboardSummaryState.test.tsx`
+  - [S6] `rg --files web/src | rg '\.test\.(ts|tsx)$' | sort | rg 'Pipeline|Dashboard|Agents|Models'`

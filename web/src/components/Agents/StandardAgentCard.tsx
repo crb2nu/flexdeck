@@ -15,7 +15,7 @@ export interface StandardAgentCardProps {
 
 const StandardAgentCard: Component<StandardAgentCardProps> = (props) => {
   return (
-    <div class={`glass-panel p-4 ${props.isBuiltIn ? 'border-white/20' : ''}`}>
+    <div class={`surface p-4 ${props.isBuiltIn ? 'border-white/20' : ''}`}>
       <div class="mb-3 flex items-start justify-between">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">

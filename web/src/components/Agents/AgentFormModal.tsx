@@ -27,7 +27,7 @@ export interface AgentFormModalProps {
 const AgentFormModal: Component<AgentFormModalProps> = (props) => {
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div class="glass-panel w-full max-w-md p-6">
+      <div class="surface w-full max-w-md p-6">
         <h3 class="mb-4 text-lg font-medium text-text-main">
           {props.editingAgent ? 'Edit Agent' : 'Add Agent'}
         </h3>

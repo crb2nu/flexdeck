@@ -47,7 +47,7 @@ const SecretsTable: Component<SecretsTableProps> = (props) => (
                   {secret.metadata?.name}
                 </span>
                 <span class="text-text-dim text-xs">{secret.metadata?.namespace}</span>
-                <span class="text-[10px] font-mono text-text-dim px-1.5 py-0.5 rounded bg-white/5">
+                <span class="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-mono text-text-dim">
                   {secretType}
                 </span>
                 <span class="text-text-dim/50 text-xs ml-auto">{dataKeys.length} keys</span>

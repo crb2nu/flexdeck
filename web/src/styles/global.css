@@ -43,53 +43,27 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* --- Glass Panel Component (solid surface, no blur) --- */
+/* --- Surface Components --- */
 @layer components {
-  .glass-panel {
-    background: var(--glass-bg);
-    border: var(--glass-border);
+  .surface {
+    background: var(--surface-bg);
+    border: var(--surface-border);
     border-radius: var(--radius-m);
-    box-shadow: var(--glass-shadow);
+    box-shadow: var(--surface-shadow);
   }
 
-  .glass-panel-hover {
-    @apply glass-panel;
+  .surface-hover {
+    @apply surface;
     transition: background var(--transition-fast) ease, border-color var(--transition-fast) ease;
   }
 
-  .glass-panel-hover:hover {
+  .surface-hover:hover {
     background: var(--surface-elevated);
     border-color: rgba(255, 255, 255, 0.12);
   }
 
-  /* Colored glass panels — now just tinted borders, no glows */
-  .glass-panel-cyan {
-    @apply glass-panel;
-    border-color: rgba(0, 217, 255, 0.15);
-  }
 
-  .glass-panel-purple {
-    @apply glass-panel;
-    border-color: rgba(168, 85, 247, 0.15);
-  }
-
-  .glass-panel-green {
-    @apply glass-panel;
-    border-color: rgba(34, 197, 94, 0.15);
-  }
-
-  .glass-panel-orange {
-    @apply glass-panel;
-    border-color: rgba(249, 115, 22, 0.15);
-  }
-
-  /* glass-overlay — no blur applied since --glass-blur is none */
-  .glass-overlay {
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-  }
-
-  /* Status indicator dot — color only, no glow */
+  /* Status indicator dot */
   .status-dot {
     @apply inline-block w-2 h-2 rounded-full;
   }
@@ -109,19 +83,17 @@ body {
     background: var(--status-error);
   }
 
-
-  /* Glow utilities — neutralized */
-  .glow-cyan,
-  .glow-purple,
-  .glow-green,
-  .glow-orange {
-    box-shadow: none;
+  /* --- Heading Utilities --- */
+  .heading-page {
+    @apply text-lg font-semibold tracking-tight text-white;
   }
 
-  /* Text glow utilities — neutralized */
-  .text-glow-cyan,
-  .text-glow-purple {
-    text-shadow: none;
+  .heading-section {
+    @apply text-sm font-semibold text-white;
+  }
+
+  .heading-label {
+    @apply text-[11px] font-medium uppercase tracking-wide text-text-dim;
   }
 }
 
@@ -277,20 +249,9 @@ body {
   animation: gradient-shift 8s ease infinite;
 }
 
-/* Legacy class stubs — no-ops for backward compat until removed */
-.animate-pulse-glow,
-.animate-shimmer,
-.animate-float,
-.animate-border-glow,
-.animate-glow-pulse,
-.animate-beam-down,
-.animate-success-burst {
-  animation: none;
-}
-
 /* --- Focus States --- */
 :focus-visible {
-  outline: 2px solid var(--neon-cyan);
+  outline: 2px solid var(--color-blue);
   outline-offset: 2px;
 }
 

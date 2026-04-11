@@ -49,7 +49,7 @@ const ShortcutsOverlay: Component = () => {
         onClick={() => setVisible(false)}
       >
         <div
-          class="glass-panel max-w-lg w-full mx-4 p-6 animate-fadeInScale"
+          class="surface max-w-lg w-full mx-4 p-6 animate-fadeInScale"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

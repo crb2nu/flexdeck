@@ -25,7 +25,7 @@ const HUDAgentCard: Component<HUDAgentCardProps> = (props) => {
   };
 
   return (
-    <div class="glass-panel p-4 border-white/15">
+    <div class="surface p-4 border-white/15">
       <div class="mb-3 flex items-start justify-between">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">

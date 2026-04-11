@@ -6,7 +6,7 @@ const Models: Component = () => {
   return (
     <PageScrollBody contentClass="gap-4">
     <ErrorBoundary fallback={(err) => (
-      <div class="glass-panel p-4 text-sm text-status-error border border-status-error/20">
+      <div class="surface p-4 text-sm text-status-error border border-status-error/20">
         FlexInfer workbench failed to render: {err.message}
       </div>
     )}>

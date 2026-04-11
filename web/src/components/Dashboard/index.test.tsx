@@ -403,7 +403,7 @@ describe('Dashboard shell', () => {
 
     expect(pageText()).toContain('Pods 1/1');
     expect(pageText()).toContain('Nodes 1/1');
-    expect(pageText()).toContain('AI Models 2/3');
+    expect(pageText()).toContain('Models 2/3');
     expect(pageText()).toContain('Inference 12.5');
     expect(pageText()).toContain('Agents 4');
     expect(document.querySelector('[data-testid="topology-graph"]')).toBeTruthy();

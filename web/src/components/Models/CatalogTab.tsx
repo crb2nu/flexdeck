@@ -190,30 +190,30 @@ const CatalogTab: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="glass-panel p-3 text-sm text-status-error">{error()}</div>
+        <div class="surface p-3 text-sm text-status-error">{error()}</div>
       </Show>
       <Show when={actionError()}>
-        <div class="glass-panel p-3 text-sm text-status-error">{actionError()}</div>
+        <div class="surface p-3 text-sm text-status-error">{actionError()}</div>
       </Show>
       <Show when={actionNotice()}>
-        <div class="glass-panel p-3 text-sm text-status-ok">{actionNotice()}</div>
+        <div class="surface p-3 text-sm text-status-ok">{actionNotice()}</div>
       </Show>
 
       <Show when={loading() && catalogs().length === 0}>
-        <div class="glass-panel flex items-center justify-center py-8">
+        <div class="surface flex items-center justify-center py-8">
           <div class="text-text-dim animate-pulse">Loading model catalogs...</div>
         </div>
       </Show>
 
       <Show when={catalogs().length === 0 && !loading()}>
-        <div class="glass-panel p-6 text-center">
+        <div class="surface p-6 text-center">
           <p class="text-text-dim text-sm">No ModelCatalog CRDs found.</p>
           <p class="text-text-dim text-xs mt-1">Deploy ModelCatalog resources to your cluster to see them here.</p>
         </div>
       </Show>
 
       <Show when={catalogs().length > 0}>
-        <div class="glass-panel p-4 flex flex-col gap-3">
+        <div class="surface p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-3">
             <input
               type="text"
@@ -259,7 +259,7 @@ const CatalogTab: Component = () => {
               filteredRows().filter((row) => `${row.namespace}/${row.catalogName}` === catalogID);
 
             return (
-              <div class="glass-panel-hover p-4 flex flex-col gap-3">
+              <div class="surface-hover p-4 flex flex-col gap-3">
                 <div class="flex items-center justify-between">
                   <span class="text-sm font-medium text-text-main font-mono">{catalog.name}</span>
                   <span class={`text-xs font-medium ${sourceColor(catalog.source)}`}>{catalog.source}</span>
@@ -331,7 +331,7 @@ const CatalogTab: Component = () => {
       </div>
 
       <Show when={catalogs().length > 0 && filteredRows().length === 0}>
-        <div class="glass-panel p-4 text-sm text-text-dim">
+        <div class="surface p-4 text-sm text-text-dim">
           No models match the current query and filters.
         </div>
       </Show>
