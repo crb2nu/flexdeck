@@ -78,7 +78,7 @@ const AppLayout: Component<ParentProps> = (props) => {
         <header class="border-b border-white/[0.08] bg-bg-dark relative z-40">
         <div class="flex h-12 items-center justify-between px-4 md:px-6">
           {/* Left: Logo & Mobile Toggle */}
-          <div class="flex items-center gap-2.5">
+          <div class="group flex items-center gap-2.5">
             <button
               type="button"
               aria-label={mobileMenuOpen() ? 'Close navigation menu' : 'Open navigation menu'}
@@ -103,7 +103,9 @@ const AppLayout: Component<ParentProps> = (props) => {
               </Show>
             </button>
 
-            <span class="text-sm font-semibold tracking-tight text-white">FlexDeck</span>
+            <span class="text-sm font-semibold tracking-tight text-white transition-colors duration-200 hover:text-[#00f0ff] cursor-default select-none">
+              Flex<span class="text-text-dim transition-colors duration-200 group-hover:text-white">Deck</span>
+            </span>
           </div>
 
           {/* Center: Desktop Navigation */}
@@ -113,7 +115,7 @@ const AppLayout: Component<ParentProps> = (props) => {
                 href={item.path}
                 class="rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 hover:text-white flex items-center"
                 classList={{
-                  'bg-white/10 text-white shadow-sm': isNavItemActive(location.pathname, item),
+                  'bg-white/10 text-white shadow-[0_1px_3px_rgba(0,0,0,0.3),0_0_8px_rgba(0,240,255,0.06)]': isNavItemActive(location.pathname, item),
                   'text-text-muted hover:bg-white/5': !isNavItemActive(location.pathname, item),
                 }}
               >
@@ -124,7 +126,7 @@ const AppLayout: Component<ParentProps> = (props) => {
 
           {/* Right: Status & Settings */}
           <div class="flex items-center gap-2 md:gap-3">
-             <div class="hidden lg:flex items-center text-xs text-text-dim px-2 py-1 rounded-md border border-white/10 bg-white/5">
+             <div class="hidden lg:flex items-center text-xs text-text-dim px-2 py-1 rounded-md border border-white/10 bg-white/5 animate-breathe">
                 <span>⌘K</span>
              </div>
 
@@ -163,21 +165,23 @@ const AppLayout: Component<ParentProps> = (props) => {
           </div>
           {/* Backdrop */}
           <div
-            class="fixed inset-x-0 top-12 bottom-0 z-[60] bg-black/50 md:hidden"
+            class="fixed inset-x-0 top-12 bottom-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden animate-fade-in"
             onClick={(event) => closeMobileMenuFromBackdrop(event)}
           />
         </Show>
 
-        {/* Health status indicator — thin solid line */}
+        {/* Health status indicator — animated accent line */}
         <div
-          class="absolute bottom-0 left-0 right-0 h-px"
+          class="absolute bottom-0 left-0 right-0 h-[2px] transition-all duration-500"
           style={{
             background: healthStore.error
-              ? '#ef4444'
+              ? 'linear-gradient(90deg, #ff003c, #ff4d6d, #ff003c)'
               : healthStore.ok
-              ? '#94a3b8'
-              : '#eab308',
-            opacity: 0.4,
+              ? 'linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.3), transparent)'
+              : 'linear-gradient(90deg, #eab308, #fbbf24, #eab308)',
+            'background-size': healthStore.ok ? '200% 100%' : '100% 100%',
+            animation: healthStore.ok ? 'none' : 'gradient-shift 3s ease infinite',
+            opacity: healthStore.error ? 0.8 : 0.5,
           }}
         />
       </header>
@@ -188,8 +192,11 @@ const AppLayout: Component<ParentProps> = (props) => {
         <Suspense fallback={
             <div class="flex h-full w-full items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
-                    <div class="h-10 w-10 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
-                    <div class="text-text-muted text-sm">Loading...</div>
+                    <div class="relative">
+                      <div class="h-10 w-10 border-2 border-white/[0.06] rounded-full" />
+                      <div class="absolute inset-0 h-10 w-10 border-2 border-transparent border-t-white/40 rounded-full animate-spin" />
+                    </div>
+                    <div class="text-text-muted text-xs font-medium tracking-wide">Loading</div>
                 </div>
             </div>
         }>
