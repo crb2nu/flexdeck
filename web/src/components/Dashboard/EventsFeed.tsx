@@ -58,7 +58,7 @@ const EventsFeed: Component = () => {
   };
 
   return (
-    <div class="glass-panel flex flex-col overflow-hidden" style={{ 'max-height': '280px' }}>
+    <div class="surface flex flex-col overflow-hidden" style={{ 'max-height': '280px' }}>
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/5">
         <div class="flex items-center gap-2">
           <span class="text-xs text-text-dim">⚡</span>

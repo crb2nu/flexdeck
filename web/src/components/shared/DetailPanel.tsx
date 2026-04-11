@@ -25,11 +25,11 @@ export interface DetailPanelProps {
 }
 
 const statusColors: Record<string, { bg: string; border: string; text: string }> = {
-  ok: { bg: 'rgba(0, 240, 255, 0.08)', border: 'rgba(0, 240, 255, 0.2)', text: '#00f0ff' },
-  warn: { bg: 'rgba(252, 238, 10, 0.08)', border: 'rgba(252, 238, 10, 0.2)', text: '#fcee0a' },
-  error: { bg: 'rgba(255, 0, 60, 0.08)', border: 'rgba(255, 0, 60, 0.2)', text: '#ff003c' },
-  running: { bg: 'rgba(10, 255, 104, 0.08)', border: 'rgba(10, 255, 104, 0.2)', text: '#0aff68' },
-  pending: { bg: 'rgba(189, 0, 255, 0.08)', border: 'rgba(189, 0, 255, 0.2)', text: '#bd00ff' },
+  ok: { bg: 'rgba(0, 240, 255, 0.08)', border: 'rgba(0, 240, 255, 0.2)', text: 'var(--color-blue)' },
+  warn: { bg: 'rgba(252, 238, 10, 0.08)', border: 'rgba(252, 238, 10, 0.2)', text: 'var(--color-amber)' },
+  error: { bg: 'rgba(255, 0, 60, 0.08)', border: 'rgba(255, 0, 60, 0.2)', text: 'var(--color-red)' },
+  running: { bg: 'rgba(10, 255, 104, 0.08)', border: 'rgba(10, 255, 104, 0.2)', text: 'var(--color-emerald)' },
+  pending: { bg: 'rgba(189, 0, 255, 0.08)', border: 'rgba(189, 0, 255, 0.2)', text: 'var(--color-violet)' },
 };
 
 const DetailPanel: Component<DetailPanelProps> = (props) => {
@@ -62,18 +62,18 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
           {/* Title & subtitle */}
           <div class="min-w-0">
-            <h3 class="text-base sm:text-lg font-bold text-white font-mono tracking-wide truncate">
+            <h3 class="text-base sm:text-lg font-semibold text-white tracking-tight truncate">
               {props.title}
             </h3>
             <Show when={props.subtitle}>
-              <p class="text-[10px] sm:text-xs text-text-muted font-mono truncate">{props.subtitle}</p>
+              <p class="text-[10px] sm:text-xs text-text-muted truncate">{props.subtitle}</p>
             </Show>
           </div>
 
           {/* Status badge */}
           <Show when={props.status && statusStyle()}>
             <div
-              class="hidden sm:block px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border"
+              class="hidden sm:block px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wide border"
               style={{
                 background: statusStyle()!.bg,
                 'border-color': statusStyle()!.border,
@@ -101,7 +101,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
             {(tab) => (
               <button
                 onClick={() => setActiveTab(tab.id)}
-                class="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 border"
+                class="flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 border"
                 classList={{
                   'bg-white/10 border-white/[0.08] text-white': activeTab() === tab.id,
                   'border-transparent text-white/60 hover:text-white': activeTab() !== tab.id
@@ -134,7 +134,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
             {(action) => (
               <button
                 onClick={action.onClick}
-                class="flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 border active:scale-95"
+                class="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all duration-150 flex items-center justify-center gap-2 border active:scale-95"
                 classList={{
                   'bg-white/5 border-white/20 hover:bg-white/10': !action.variant || action.variant === 'default',
                   'bg-white/10 border-white/20 text-white hover:bg-white/15': action.variant === 'primary',

@@ -82,7 +82,7 @@ const ComputeView: Component<Props> = (props) => {
 
       {/* OOM banner */}
       <Show when={snap().oomKilledCount > 0}>
-        <div class="glass-panel flex items-start gap-3 border border-status-error/30 bg-status-error/5 p-3">
+        <div class="surface flex items-start gap-3 border border-status-error/30 bg-status-error/5 p-3">
           <span class="text-status-error text-lg leading-none">!</span>
           <div>
             <div class="text-sm font-semibold text-status-error">
@@ -103,7 +103,7 @@ const ComputeView: Component<Props> = (props) => {
       </Show>
 
       {/* Node table */}
-      <div class="glass-panel overflow-hidden">
+      <div class="surface overflow-hidden">
         <div class="border-b border-white/5 px-4 py-2.5">
           <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">Nodes</span>
         </div>

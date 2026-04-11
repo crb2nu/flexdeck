@@ -50,7 +50,7 @@ const NetworkingView: Component<Props> = (props) => {
       </div>
 
       {/* Ingress table */}
-      <div class="glass-panel overflow-hidden">
+      <div class="surface overflow-hidden">
         <div class="border-b border-white/5 px-4 py-2.5">
           <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">Ingresses</span>
         </div>
@@ -122,7 +122,7 @@ const NetworkingView: Component<Props> = (props) => {
 
       {/* Policy gaps */}
       <Show when={snap().policyGaps.length > 0}>
-        <div class="glass-panel p-4">
+        <div class="surface p-4">
           <div class="mb-3 flex items-center gap-2">
             <span class="text-status-warn">⚠</span>
             <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">

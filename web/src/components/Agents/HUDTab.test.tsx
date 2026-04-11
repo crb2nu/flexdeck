@@ -211,7 +211,7 @@ describe('HUDTab', () => {
     });
 
     const text = pageText();
-    expect(text).toContain('Live HUD operations');
+    expect(text).toContain('HUD');
     expect(text).toContain('Degraded feed');
     expect(text).toContain('Timeline state is stale');
     expect(text).toContain('Presence');
@@ -244,7 +244,7 @@ describe('HUDTab', () => {
     });
 
     await vi.waitFor(() => {
-      expect(pageText()).not.toContain('Loading HUD signals...');
+      expect(pageText()).not.toContain('Loading...');
     });
   });
 
@@ -291,15 +291,18 @@ describe('HUDTab', () => {
     expect(text).not.toContain('Degraded feed');
   });
 
-  it('renders overview focus as a briefing surface instead of the full queue stack', async () => {
+  it('renders overview focus as signal cards instead of the full queue stack', async () => {
     cleanup = mount(() => <HUDTab focus="overview" />);
 
+    // Wait for data to load (1/1 = 1 active agent out of 1 total)
     await vi.waitFor(() => {
-      expect(pageText()).toContain('Live posture');
+      expect(pageText()).toContain('1/1');
     });
 
     const text = pageText();
-    expect(text).toContain('Operator notes');
+    expect(text).toContain('Task backlog');
+    expect(text).toContain('Approvals');
+    expect(text).toContain('Feed health');
     expect(text).not.toContain('Claim ledger');
     expect(text).not.toContain('Workflow queue');
   });

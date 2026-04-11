@@ -1,5 +1,9 @@
-import { Component, For, Show } from 'solid-js';
+import { Component, Show } from 'solid-js';
 import { TabBar, LoadingState, ErrorState } from '../shared';
+import PageHeader from '../shared/PageHeader';
+import Input from '../shared/Input';
+import Select from '../shared/Select';
+import Button from '../shared/Button';
 import { useServicesController } from './useServicesController';
 import DeploymentsTable from './DeploymentsTable';
 import StatefulSetsTable from './StatefulSetsTable';
@@ -46,10 +50,18 @@ const Services: Component = () => {
     tabs,
   } = useServicesController();
 
+  const searchIcon = (
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  );
+
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
+      <PageHeader title="Services" />
+
       {/* Controls */}
-      <div class="glass-panel flex flex-col gap-3 px-4 py-3">
+      <div class="surface flex flex-col gap-3 px-4 py-3">
         {/* Tabs row */}
         <div class="flex items-center justify-between">
           <TabBar
@@ -61,58 +73,32 @@ const Services: Component = () => {
 
         {/* Filters row */}
         <div class="flex items-center gap-3">
-          {/* Search input */}
-          <div class="flex items-center gap-2 flex-1 max-w-xs">
-            <div class="relative flex-1">
-              <input
-                type="text"
-                placeholder="Search by name..."
-                value={searchTerm()}
-                onInput={(e) => setSearchTerm(e.currentTarget.value)}
-                class="w-full rounded-md bg-black/40 border border-white/10 px-3 py-1.5 pl-8 text-sm text-text-main placeholder-text-dim focus:border-white/20 focus:outline-none transition-colors"
-              />
-              <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <Show when={searchTerm()}>
-                <button
-                  onClick={() => setSearchTerm('')}
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-main"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </Show>
-            </div>
-          </div>
+          <Input
+            class="flex-1 max-w-xs"
+            placeholder="Search by name..."
+            value={searchTerm()}
+            onInput={(e) => setSearchTerm(e.currentTarget.value)}
+            icon={searchIcon}
+            onClear={searchTerm() ? () => setSearchTerm('') : undefined}
+          />
 
-          {/* Namespace filter */}
-          <select
-            class="rounded-md bg-black/40 px-3 py-1.5 text-sm text-text-main border border-white/10 focus:border-white/20 focus:outline-none"
+          <Select
             value={namespaceFilter()}
             onChange={(e) => setNamespaceFilter(e.currentTarget.value)}
-          >
-            <option value="">All namespaces</option>
-            <For each={namespaces()}>
-              {(ns) => <option value={ns}>{ns}</option>}
-            </For>
-          </select>
+            placeholder="All namespaces"
+            options={namespaces().map((ns: string) => ({ value: ns, label: ns }))}
+          />
 
-          {/* Clear filters */}
           <Show when={searchTerm() || namespaceFilter()}>
-            <button
-              onClick={clearFilters}
-              class="text-xs text-text-dim hover:text-white transition-colors"
-            >
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
               Clear filters
-            </button>
+            </Button>
           </Show>
         </div>
       </div>
 
       {/* Content */}
-      <div class="glass-panel flex-1 overflow-auto">
+      <div class="surface flex-1 overflow-auto">
         <Show when={loading()}>
           <LoadingState size="lg" />
         </Show>

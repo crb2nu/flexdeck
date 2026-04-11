@@ -59,7 +59,7 @@ const StorageView: Component<Props> = (props) => {
       </div>
 
       {/* PVC table */}
-      <div class="glass-panel overflow-hidden">
+      <div class="surface overflow-hidden">
         <div class="border-b border-white/5 px-4 py-2.5">
           <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
             Persistent Volume Claims

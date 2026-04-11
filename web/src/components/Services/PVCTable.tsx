@@ -2,6 +2,8 @@ import { Component } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
 import StatusDot from '../shared/StatusDot';
 import type { Status } from '../shared/StatusDot';
+import Badge from '../shared/Badge';
+import type { BadgeTone } from '../shared/Badge';
 import DataTable from '../shared/DataTable';
 import type { ColumnDef } from '../shared/DataTable';
 
@@ -33,15 +35,10 @@ const columns: ColumnDef<any>[] = [
     id: 'phase',
     header: 'Status',
     accessor: (pvc) => pvc.status?.phase || 'Unknown',
-    cell: (phase: string) => (
-      <span class={`px-2 py-0.5 rounded text-xs ${
-        phase === 'Bound' ? 'bg-status-ok/10 text-status-ok' :
-        phase === 'Pending' ? 'bg-status-warn/10 text-status-warn' :
-        'bg-white/5 text-text-muted'
-      }`}>
-        {phase}
-      </span>
-    ),
+    cell: (phase: string) => {
+      const tone: BadgeTone = phase === 'Bound' ? 'ok' : phase === 'Pending' ? 'warn' : 'default';
+      return <Badge tone={tone} size="md">{phase}</Badge>;
+    },
   },
   {
     id: 'capacity',

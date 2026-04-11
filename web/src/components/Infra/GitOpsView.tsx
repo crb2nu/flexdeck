@@ -122,7 +122,7 @@ const GitOpsView: Component<Props> = (props) => {
       </div>
 
       {/* Resources table */}
-      <div class="glass-panel overflow-hidden">
+      <div class="surface overflow-hidden">
         <div class="border-b border-white/5 px-4 py-2.5">
           <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
             Flux Resources
@@ -160,7 +160,7 @@ const GitOpsView: Component<Props> = (props) => {
 
       {/* Sources */}
       <Show when={snap().sources.length > 0}>
-        <div class="glass-panel overflow-hidden">
+        <div class="surface overflow-hidden">
           <div class="border-b border-white/5 px-4 py-2.5">
             <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">Sources</span>
           </div>

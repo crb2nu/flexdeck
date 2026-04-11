@@ -165,124 +165,132 @@ const Dashboard: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto md:overflow-hidden p-2 sm:p-3 md:p-4">
-      {/* Pulse Cards Grid */}
-      <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 min-w-0">
-        <PulseCard
-          title="Pods"
-          value={`${podSummary().ready}/${podSummary().total}`}
-          sub={`${podSummary().namespaces} namespaces`}
-          loading={isLoading()}
-          error={k8sCardError()}
-          meta={dataStateLabel(k8sDataState())}
-          icon="⬡"
-        />
+      {/* Pulse Cards — Cluster */}
+      <div class="space-y-3 min-w-0">
+        <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-4">
+          <PulseCard
+            title="Pods"
+            value={`${podSummary().ready}/${podSummary().total}`}
+            sub={`${podSummary().namespaces} namespaces`}
+            loading={isLoading()}
+            error={k8sCardError()}
+            meta={dataStateLabel(k8sDataState())}
+            icon="⬡"
+          />
 
-        <PulseCard
-          title="Nodes"
-          value={`${nodeSummary().ready}/${nodeSummary().total}`}
-          sub="cluster nodes"
-          loading={isLoading()}
-          error={k8sCardError()}
-          meta={dataStateLabel(k8sDataState())}
-          icon="◈"
-        />
+          <PulseCard
+            title="Nodes"
+            value={`${nodeSummary().ready}/${nodeSummary().total}`}
+            sub="cluster nodes"
+            loading={isLoading()}
+            error={k8sCardError()}
+            meta={dataStateLabel(k8sDataState())}
+            icon="◈"
+          />
 
-        <PulseCard
-          title="CPU"
-          value={formatPercent(cpuPercent())}
-          sub="cluster utilization"
-          loading={resourceLoading()}
-          error={resourceCardError()}
-          meta={dataStateLabel(resourceDataState())}
-          icon="⚡"
-          sparkData={cpuHistory()}
-          trend={cpuHistory().length >= 2 ? (cpuHistory()[cpuHistory().length - 1] > cpuHistory()[cpuHistory().length - 2] ? 'up' : 'down') : undefined}
-        />
+          <PulseCard
+            title="CPU"
+            value={formatPercent(cpuPercent())}
+            sub="cluster utilization"
+            loading={resourceLoading()}
+            error={resourceCardError()}
+            meta={dataStateLabel(resourceDataState())}
+            icon="⚡"
+            sparkData={cpuHistory()}
+            trend={cpuHistory().length >= 2 ? (cpuHistory()[cpuHistory().length - 1] > cpuHistory()[cpuHistory().length - 2] ? 'up' : 'down') : undefined}
+          />
 
-        <PulseCard
-          title="Memory"
-          value={formatBytes(memUsed())}
-          sub="used across cluster"
-          loading={resourceLoading()}
-          error={resourceCardError()}
-          meta={dataStateLabel(resourceDataState())}
-          icon="◉"
-          sparkData={memHistory()}
-        />
+          <PulseCard
+            title="Memory"
+            value={formatBytes(memUsed())}
+            sub="used across cluster"
+            loading={resourceLoading()}
+            error={resourceCardError()}
+            meta={dataStateLabel(resourceDataState())}
+            icon="◉"
+            sparkData={memHistory()}
+          />
+        </div>
 
-        <PulseCard
-          title="AI Models"
-          value={`${modelCount().deployed}/${modelCount().total}`}
-          sub="deployed models"
-          loading={modelCount().loading}
-          error={modelCardError()}
-          meta={dataStateLabel(modelDataState())}
-          icon="◆"
-        />
+        {/* AI Operations */}
+        <div class="border-t border-white/[0.06] pt-3">
+          <div class="heading-label mb-2">AI Operations</div>
+          <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-3">
+            <PulseCard
+              title="Models"
+              value={`${modelCount().deployed}/${modelCount().total}`}
+              sub="deployed models"
+              loading={modelCount().loading}
+              error={modelCardError()}
+              meta={dataStateLabel(modelDataState())}
+              icon="◆"
+            />
 
-        <PulseCard
-          title="Inference"
-          value={
-            inferenceFeatureEnabled()
-              ? (inferenceHealth().totalTps > 0 ? `${inferenceHealth().totalTps.toFixed(1)}` : '0')
-              : '—'
-          }
-          sub={
-            inferenceFeatureEnabled()
-              ? `${inferenceHealth().modelCount} models · queue ${inferenceHealth().queueDepth}`
-              : 'flexinfer_proxy feature disabled'
-          }
-          loading={inferenceFeatureEnabled() ? inferenceHealth().loading : false}
-          error={inferenceCardError()}
-          meta={
-            inferenceFeatureEnabled()
-              ? dataStateLabel(
-                  inferenceDataState(),
-                  inferenceDataState() === 'partial' && inferenceHealth().error
-                    ? inferenceHealth().error
-                    : undefined,
-                )
-              : dataStateLabel('disabled', 'feature disabled')
-          }
-          icon="⚡"
-          color={inferenceFeatureEnabled() ? 'purple' : 'orange'}
-          sparkData={inferenceFeatureEnabled() ? tpsHistory() : undefined}
-          trend={
-            inferenceFeatureEnabled() && tpsHistory().length >= 2
-              ? (tpsHistory()[tpsHistory().length - 1] > tpsHistory()[tpsHistory().length - 2] ? 'up' : 'down')
-              : undefined
-          }
-        />
+            <PulseCard
+              title="Inference"
+              value={
+                inferenceFeatureEnabled()
+                  ? (inferenceHealth().totalTps > 0 ? `${inferenceHealth().totalTps.toFixed(1)}` : '0')
+                  : '—'
+              }
+              sub={
+                inferenceFeatureEnabled()
+                  ? `${inferenceHealth().modelCount} models · queue ${inferenceHealth().queueDepth}`
+                  : 'feature disabled'
+              }
+              loading={inferenceFeatureEnabled() ? inferenceHealth().loading : false}
+              error={inferenceCardError()}
+              meta={
+                inferenceFeatureEnabled()
+                  ? dataStateLabel(
+                      inferenceDataState(),
+                      inferenceDataState() === 'partial' && inferenceHealth().error
+                        ? inferenceHealth().error
+                        : undefined,
+                    )
+                  : dataStateLabel('disabled', 'feature disabled')
+              }
+              icon="⚡"
+              color={inferenceFeatureEnabled() ? 'purple' : 'orange'}
+              sparkData={inferenceFeatureEnabled() ? tpsHistory() : undefined}
+              trend={
+                inferenceFeatureEnabled() && tpsHistory().length >= 2
+                  ? (tpsHistory()[tpsHistory().length - 1] > tpsHistory()[tpsHistory().length - 2] ? 'up' : 'down')
+                  : undefined
+              }
+            />
 
-        <PulseCard
-          title="Agents"
-          value={agentFeatureEnabled() ? `${agentActivity().activeAgents}` : '—'}
-          sub={
-            agentFeatureEnabled()
-              ? (loomHUDPullEnabled()
-                ? `${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`
-                : `${agentActivity().totalTasks} sessions observed · push mode`)
-              : 'loom_hud feature disabled'
-          }
-          loading={agentFeatureEnabled() ? agentActivity().loading : false}
-          error={agentCardError()}
-          meta={
-            agentFeatureEnabled()
-              ? dataStateLabel(
-                  agentDataState(),
-                  loomHUDPushEnabled() && !loomHUDPullEnabled() ? 'push mode' : undefined,
-                )
-              : dataStateLabel('disabled', 'feature disabled')
-          }
-          icon="◎"
-          color={agentFeatureEnabled() ? 'green' : 'orange'}
-        />
+            <PulseCard
+              title="Agents"
+              value={agentFeatureEnabled() ? `${agentActivity().activeAgents}` : '—'}
+              sub={
+                agentFeatureEnabled()
+                  ? (loomHUDPullEnabled()
+                    ? `${agentActivity().totalTasks} completed · ${agentActivity().pendingApprovals} approvals`
+                    : `${agentActivity().totalTasks} sessions · push mode`)
+                  : 'feature disabled'
+              }
+              loading={agentFeatureEnabled() ? agentActivity().loading : false}
+              error={agentCardError()}
+              meta={
+                agentFeatureEnabled()
+                  ? dataStateLabel(
+                      agentDataState(),
+                      loomHUDPushEnabled() && !loomHUDPullEnabled() ? 'push mode' : undefined,
+                    )
+                  : dataStateLabel('disabled', 'feature disabled')
+              }
+              icon="◎"
+              color={agentFeatureEnabled() ? 'green' : 'orange'}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Main Content: Visualization + Events */}
       <div class="flex flex-1 flex-col lg:flex-row gap-4 overflow-visible lg:overflow-hidden min-h-0">
       {/* Visualization Panel */}
-      <div class="glass-panel flex-1 min-h-[400px] lg:min-h-0 overflow-hidden relative flex flex-col">
+      <div class="surface flex-1 min-h-[400px] lg:min-h-0 overflow-hidden relative flex flex-col">
         {/* Controls */}
         <div class="absolute left-2 right-2 top-2 z-10 flex flex-col items-end gap-2 sm:left-auto sm:right-4 sm:top-4 sm:flex-row sm:items-center">
            {/* Connection status indicator */}
@@ -293,7 +301,7 @@ const Dashboard: Component = () => {
                connectionStatus() === 'error' ? 'bg-red-500' :
                'bg-gray-500'
              }`} />
-             <span class="text-[9px] sm:text-[10px] font-mono uppercase text-text-dim">
+             <span class="text-[10px] sm:text-xs text-text-dim">
                {connectionStatus() === 'connected' ? 'LIVE' :
                 connectionStatus() === 'connecting' ? 'CONNECTING' :
                 connectionStatus() === 'error' ? 'OFFLINE' : 'DISCONNECTED'}
@@ -334,7 +342,7 @@ const Dashboard: Component = () => {
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <span class="text-lg">◈</span>
-          <span class="text-[10px] font-mono font-bold tracking-widest uppercase">Inspect Events</span>
+          <span class="text-[10px] font-medium uppercase tracking-wide">Events</span>
         </button>
 
         {/* Filter Panel */}
@@ -668,7 +676,7 @@ const Dashboard: Component = () => {
           <div class="flex lg:hidden items-center justify-between mb-2 pb-2 border-b border-white/5">
             <div class="flex items-center gap-2">
               <div class="w-2 h-2 rounded-full bg-white/40" />
-              <span class="text-xs font-mono text-text-dim uppercase tracking-widest font-bold">Observability</span>
+              <span class="heading-label">Observability</span>
             </div>
             <button 
               onClick={() => setShowObservability(false)}

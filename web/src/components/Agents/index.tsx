@@ -5,6 +5,8 @@ import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { LoadingState, EmptyState, ErrorState, OperationsSidebarNav } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
+import PageHeader from '../shared/PageHeader';
+import Button from '../shared/Button';
 import { getHudEntryState } from '../../lib/featureFlags';
 import { healthStore } from '../../stores/health';
 import AgentChat from './AgentChat';
@@ -125,55 +127,13 @@ const Agents: Component = () => {
   }, { defer: true }));
 
   const sectionNav = createMemo(() => [
-    {
-      id: 'overview' as const,
-      label: 'Overview',
-      eyebrow: 'Cockpit',
-      detail: 'Start with a live HUD briefing, then move into a focused lane.',
-      group: 'Primary',
-    },
-    {
-      id: 'presence' as const,
-      label: 'Presence & tasks',
-      eyebrow: 'Live HUD',
-      detail: 'Who is active and how much slice work is building.',
-      group: 'Live HUD',
-    },
-    {
-      id: 'workflows' as const,
-      label: 'Workflow queue',
-      eyebrow: 'Live HUD',
-      detail: 'Approvals, rejections, and in-flight execution.',
-      group: 'Live HUD',
-    },
-    {
-      id: 'claims' as const,
-      label: 'Claim ledger',
-      eyebrow: 'Live HUD',
-      detail: 'File pressure and conflict hotspots across the workspace.',
-      group: 'Live HUD',
-    },
-    {
-      id: 'timeline' as const,
-      label: 'Timeline',
-      eyebrow: 'Live HUD',
-      detail: 'Heartbeat and workflow event feed health.',
-      group: 'Live HUD',
-    },
-    {
-      id: 'registry' as const,
-      label: 'Registry',
-      eyebrow: 'Tooling',
-      detail: 'Definitions, health checks, and manual agent tools.',
-      group: 'Tooling',
-    },
-    {
-      id: 'flow' as const,
-      label: 'Flow graph',
-      eyebrow: 'Tooling',
-      detail: 'Relationship view for registered agents.',
-      group: 'Tooling',
-    },
+    { id: 'overview' as const, label: 'Overview', group: 'Primary' },
+    { id: 'presence' as const, label: 'Presence & tasks', group: 'Live HUD' },
+    { id: 'workflows' as const, label: 'Workflow queue', group: 'Live HUD' },
+    { id: 'claims' as const, label: 'Claim ledger', group: 'Live HUD' },
+    { id: 'timeline' as const, label: 'Timeline', group: 'Live HUD' },
+    { id: 'registry' as const, label: 'Registry', group: 'Tooling' },
+    { id: 'flow' as const, label: 'Flow graph', group: 'Tooling' },
   ]);
 
   const hudFocus = createMemo(() => {
@@ -303,41 +263,27 @@ const Agents: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      <div class="glass-panel flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="space-y-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-white">
-              Loom HUD
-            </span>
-            <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] text-text-dim">
-              Operations console
-            </span>
-          </div>
-          <h2 class="text-xl font-semibold tracking-tight text-text-main">Live agent control plane</h2>
-          <p class="max-w-3xl text-sm text-text-dim">
-            The HUD is the primary surface now. Registry, graph, and manual agent tools remain available, but they sit behind the live operational view.
-          </p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <Show when={hudEntry().directEntryEnabled && hudEntry().directUrl}>
-            <button
-              type="button"
-              onClick={() => window.open(hudEntry().directUrl!, '_blank', 'noopener,noreferrer')}
-              class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
-            >
-              Open web HUD
-            </button>
-          </Show>
-          <button
+      <PageHeader title="Agents">
+        <Show when={hudEntry().directEntryEnabled && hudEntry().directUrl}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open(hudEntry().directUrl!, '_blank', 'noopener,noreferrer')}
+          >
+            Open web HUD
+          </Button>
+        </Show>
+        <Show when={isToolingSection()}>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => { fetchAgents(); fetchGraph(); }}
-            disabled={loading() || !isToolingSection()}
-            class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loading()}
           >
             Refresh registry
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Show>
+      </PageHeader>
 
       <Show when={error() && isToolingSection()}>
         <ErrorState message={error()} />
@@ -349,8 +295,8 @@ const Agents: Component = () => {
       >
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
           <OperationsSidebarNav
-            title="Operations lanes"
-            description="The live HUD and the older registry tools now share one page shell. Pick a lane on the left instead of scanning the whole surface at once."
+            title="Agents"
+            description=""
             items={sectionNav()}
             active={activeSection()}
             onChange={(section) => setActiveSection(section as OperationsSection)}
@@ -359,7 +305,7 @@ const Agents: Component = () => {
           <div class="min-w-0">
         <Show when={!isToolingSection()}>
           <ErrorBoundary fallback={(err) => (
-            <div class="glass-panel border border-status-error/20 p-4 text-sm text-status-error">
+            <div class="surface border-status-error/20 p-4 text-sm text-status-error">
               HUD error: {err.message}
             </div>
           )}>
@@ -368,48 +314,7 @@ const Agents: Component = () => {
                 <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white" />
               </div>
             }>
-              <div class="space-y-4">
-                <HUDTab focus={hudFocus()} />
-                <Show when={activeSection() === 'overview'}>
-                  <div class="grid gap-4 lg:grid-cols-2">
-                    <div class="glass-panel p-4">
-                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Tooling lanes</div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection('registry')}
-                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/7"
-                        >
-                          <div class="text-sm font-medium text-text-main">Registry</div>
-                          <div class="mt-1 text-xs leading-5 text-text-dim">Definitions, health checks, and manual agent controls remain available here when you need deeper tooling.</div>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection('flow')}
-                          class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/20 hover:bg-white/7"
-                        >
-                          <div class="text-sm font-medium text-text-main">Flow graph</div>
-                          <div class="mt-1 text-xs leading-5 text-text-dim">Switch to the relationship graph when you need to inspect topology instead of live operator pressure.</div>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div class="glass-panel p-4">
-                      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">Operating posture</div>
-                      <div class="mt-3 space-y-3 text-sm text-text-dim">
-                        <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                          <div class="font-medium text-text-main">Live HUD first</div>
-                          <div class="mt-1 text-xs">Presence, work queue, claims, and the timeline now act as the primary control plane.</div>
-                        </div>
-                        <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                          <div class="font-medium text-text-main">Tooling second</div>
-                          <div class="mt-1 text-xs">Registry and graph views are still available, but they no longer compete with the live operations surface for attention.</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Show>
-              </div>
+              <HUDTab focus={hudFocus()} />
             </Suspense>
           </ErrorBoundary>
         </Show>
@@ -445,17 +350,11 @@ const Agents: Component = () => {
 
               <Show when={activeSection() === 'registry'}>
                 <div class="space-y-4">
-                  <div class="glass-panel flex items-center justify-between px-4 py-3">
-                    <div>
-                      <div class="text-sm font-medium text-text-main">Registry support</div>
-                      <div class="text-xs text-text-dim">Agent definitions, graph relationships, and health checks live here when you need them.</div>
-                    </div>
-                    <button
-                      onClick={openCreateForm}
-                      class="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
-                    >
+                  <div class="surface flex items-center justify-between px-4 py-3">
+                    <span class="heading-section">Registry</span>
+                    <Button variant="primary" size="sm" onClick={openCreateForm}>
                       + Add Agent
-                    </button>
+                    </Button>
                   </div>
 
                   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

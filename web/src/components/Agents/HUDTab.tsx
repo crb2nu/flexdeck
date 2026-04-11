@@ -252,93 +252,46 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const latestTimelineEvent = () => timeline()[0];
 
   const overviewPanel = () => (
-    <div class="space-y-4">
-      <div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <OverviewSignalCard
-          label="Presence"
-          value={`${activePresence()}/${presence().length || 0}`}
-          detail={`${idlePresence()} idle · ${offlinePresence()} offline`}
-          tone={activePresence() > 0 ? 'text-status-ok' : 'text-status-warn'}
-        />
-        <OverviewSignalCard
-          label="Task backlog"
-          value={`${taskBacklog()}`}
-          detail={`${pendingTasks().length} pending · ${inProgressTasks().length} active`}
-          tone={taskBacklog() > 0 ? 'text-white' : 'text-text-main'}
-        />
-        <OverviewSignalCard
-          label="Approvals"
-          value={`${awaitingApprovalWorkflows()}`}
-          detail={nextWorkflow() ? nextWorkflow()!.definitionId : 'No workflows waiting'}
-          tone={awaitingApprovalWorkflows() > 0 ? 'text-status-warn' : 'text-status-ok'}
-        />
-        <OverviewSignalCard
-          label="Feed health"
-          value={feedStateLabel()}
-          detail={latestTimelineEvent()?.summary || 'Waiting for live timeline events'}
-          tone={feedStateTone() === 'ok' ? 'text-status-ok' : feedStateTone() === 'warn' ? 'text-status-warn' : 'text-white'}
-        />
-      </div>
-
-      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <div class="glass-panel p-4">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Live posture</div>
-          <div class="mt-3 grid gap-3 md:grid-cols-2">
-            <OverviewNoteCard
-              title="Presence and tasks"
-              detail="Use the presence lane to see who is active and whether new slice work is accumulating faster than it is clearing."
-            />
-            <OverviewNoteCard
-              title="Workflow lane"
-              detail="Approvals and cancellations stay isolated so release decisions do not get buried inside the general activity stream."
-            />
-            <OverviewNoteCard
-              title="Claim pressure"
-              detail={pullEnabled()
-                ? `${claims().length} active claims with ${claimConflictCount()} conflict${claimConflictCount() === 1 ? '' : 's'} detected.`
-                : 'Claims are unavailable in push-only mode.'}
-            />
-            <OverviewNoteCard
-              title="Timeline"
-              detail={latestTimelineEvent()
-                ? `Latest event: ${latestTimelineEvent()!.summary}`
-                : 'The event feed has not emitted any timeline entries yet.'}
-            />
-          </div>
-        </div>
-
-        <div class="glass-panel p-4">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Operator notes</div>
-          <div class="mt-3 space-y-3 text-sm text-text-dim">
-            <div class="rounded-md border border-white/5 bg-black/20 p-3">
-              <div class="font-medium text-text-main">Use the sidebar to narrow scope</div>
-              <div class="mt-1 text-xs">This overview is the briefing surface. Move to a focused lane when you need detailed presence, workflows, claims, or the live feed.</div>
-            </div>
-            <div class="rounded-md border border-white/5 bg-black/20 p-3">
-              <div class="font-medium text-text-main">Feed health is advisory</div>
-              <div class="mt-1 text-xs">When the feed is stale or degraded, treat timeline freshness as soft signal and confirm actions against pull data.</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <OverviewSignalCard
+        label="Presence"
+        value={`${activePresence()}/${presence().length || 0}`}
+        detail={`${idlePresence()} idle · ${offlinePresence()} offline`}
+        tone={activePresence() > 0 ? 'text-status-ok' : 'text-status-warn'}
+      />
+      <OverviewSignalCard
+        label="Task backlog"
+        value={`${taskBacklog()}`}
+        detail={`${pendingTasks().length} pending · ${inProgressTasks().length} active`}
+        tone={taskBacklog() > 0 ? 'text-white' : 'text-text-main'}
+      />
+      <OverviewSignalCard
+        label="Approvals"
+        value={`${awaitingApprovalWorkflows()}`}
+        detail={nextWorkflow() ? nextWorkflow()!.definitionId : 'None waiting'}
+        tone={awaitingApprovalWorkflows() > 0 ? 'text-status-warn' : 'text-status-ok'}
+      />
+      <OverviewSignalCard
+        label="Feed health"
+        value={feedStateLabel()}
+        detail={latestTimelineEvent()?.summary || 'No events yet'}
+        tone={feedStateTone() === 'ok' ? 'text-status-ok' : feedStateTone() === 'warn' ? 'text-status-warn' : 'text-white'}
+      />
     </div>
   );
 
   const presencePanel = () => (
     <div class="space-y-4">
-      <div class="glass-panel p-4">
+      <div class="surface p-4">
         <div class="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-text-main">Presence map</h3>
-            <p class="text-[11px] text-text-dim">Who is active, what they are editing, and where pressure is building.</p>
-          </div>
-          <span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-mono uppercase tracking-[0.16em] text-text-dim">
-            {presence().length} agents
+          <h3 class="heading-section">Presence map</h3>
+          <span class="text-xs font-mono text-text-dim tabular-nums">
+            {presence().length}
           </span>
         </div>
         <Show when={presence().length === 0}>
-          <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-            No active HUD agents are visible yet. Once the first heartbeat lands, live presence will appear here with file activity and conflict signals.
+          <div class="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-text-dim">
+            No agents online
           </div>
         </Show>
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -381,13 +334,10 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         </div>
       </div>
 
-      <div class="glass-panel p-4">
+      <div class="surface p-4">
         <div class="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-text-main">Task board</h3>
-            <p class="text-[11px] text-text-dim">Pending work, active execution, and recently completed slices.</p>
-          </div>
-          <span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-mono uppercase tracking-[0.16em] text-text-dim">
+          <h3 class="heading-section">Task board</h3>
+          <span class="text-xs font-mono text-text-dim tabular-nums">
             {taskBacklog()} open
           </span>
         </div>
@@ -400,7 +350,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
               </For>
               <Show when={pendingTasks().length === 0}>
                 <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-                  No queued work. The backlog is clear.
+                  No pending tasks
                 </div>
               </Show>
             </div>
@@ -413,7 +363,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
               </For>
               <Show when={inProgressTasks().length === 0}>
                 <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-                  Nothing in flight right now.
+                  None active
                 </div>
               </Show>
             </div>
@@ -426,7 +376,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
               </For>
               <Show when={completedTasks().length === 0}>
                 <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-                  Recent completions will show here.
+                  No recent completions
                 </div>
               </Show>
             </div>
@@ -438,28 +388,23 @@ const HUDTab: Component<HUDTabProps> = (props) => {
 
   const claimsPanel = () => (
     <Show when={pullEnabled()} fallback={
-      <div class="glass-panel p-4 text-sm text-text-dim">
-        Claim data is only available when HUD pull mode is enabled.
+      <div class="surface p-4 text-sm text-text-dim">
+        Push mode — claims unavailable
       </div>
     }>
-      <div class="glass-panel p-4">
+      <div class="surface p-4">
         <div class="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-text-main">Claim ledger</h3>
-            <p class="text-[11px] text-text-dim">File claims grouped by agent with conflicts called out first.</p>
-          </div>
-          <span class={`rounded-full border px-2 py-1 text-[10px] font-mono uppercase tracking-[0.16em] ${
-            claimConflictCount() > 0
-              ? 'border-status-error/30 bg-status-error/10 text-status-error'
-              : 'border-white/10 bg-white/5 text-text-dim'
-          }`}>
-            {claimConflictCount()} conflict{claimConflictCount() === 1 ? '' : 's'}
-          </span>
+          <h3 class="heading-section">Claim ledger</h3>
+          <Show when={claimConflictCount() > 0}>
+            <span class="text-xs text-status-error">
+              {claimConflictCount()} conflict{claimConflictCount() === 1 ? '' : 's'}
+            </span>
+          </Show>
         </div>
 
         <Show when={claims().length === 0}>
-          <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-            No active file claims. The workspace is clear for the next slice.
+          <div class="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-text-dim">
+            No active claims
           </div>
         </Show>
 
@@ -492,24 +437,21 @@ const HUDTab: Component<HUDTabProps> = (props) => {
 
   const workflowsPanel = () => (
     <Show when={pullEnabled()} fallback={
-      <div class="glass-panel p-4 text-sm text-text-dim">
-        Workflow controls are only available when HUD pull mode is enabled.
+      <div class="surface p-4 text-sm text-text-dim">
+        Push mode — workflows unavailable
       </div>
     }>
-      <div class="glass-panel p-4">
+      <div class="surface p-4">
         <div class="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-text-main">Workflow queue</h3>
-            <p class="text-[11px] text-text-dim">Direct approvals, rejections, and cancel actions are available from here.</p>
-          </div>
-          <span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-mono uppercase tracking-[0.16em] text-text-dim">
+          <h3 class="heading-section">Workflow queue</h3>
+          <span class="text-xs font-mono text-text-dim tabular-nums">
             {awaitingApprovalWorkflows()} waiting
           </span>
         </div>
 
         <Show when={workflows().length > 0} fallback={
-          <div class="rounded-lg border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-text-dim">
-            No active workflows. Approval and cancel controls appear here when a run enters the queue.
+          <div class="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-text-dim">
+            No active workflows
           </div>
         }>
           <div class="flex flex-col gap-3">
@@ -588,7 +530,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     <HUDActivityFeed
       initialEvents={timeline()}
       enabled={pullEnabled()}
-      emptyMessage="No timeline entries yet. Live operations will appear here as soon as agents heartbeat, claim files, or transition workflows."
+      emptyMessage="No events"
       onConnectionStateChange={(connection) => patchState({ eventsConnection: connection })}
     />
   );
@@ -600,9 +542,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   return (
     <div class="flex flex-col gap-4">
       <HUDConsoleScaffold
-        title="Live HUD operations"
-        subtitle="Loom HUD turns the old registry page into a control surface. Presence, claim pressure, task backlog, approvals, and feed health are surfaced first, with registry tooling kept as a secondary path."
-        badge={hudMode().modeLabel}
+        title="HUD"
+        subtitle={hudMode().modeLabel || 'Live operations'}
+        badge={undefined}
         modeLabel={hudMode().modeLabel}
         modeDescription={hudMode().modeDescription}
         metrics={metrics()}
@@ -621,8 +563,8 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         } : undefined}
       >
         <Show when={isInitialLoading()}>
-          <div class="glass-panel flex items-center justify-center py-10">
-            <div class="text-text-dim animate-pulse">Loading HUD signals...</div>
+          <div class="flex items-center justify-center py-10">
+            <div class="text-text-dim animate-pulse text-sm">Loading...</div>
           </div>
         </Show>
 
@@ -680,20 +622,10 @@ const OverviewSignalCard: Component<{
   detail: string;
   tone: string;
 }> = (props) => (
-  <div class="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
-    <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">{props.label}</div>
-    <div class={`mt-2 text-2xl font-semibold ${props.tone}`}>{props.value}</div>
-    <div class="mt-1 text-xs text-text-dim">{props.detail}</div>
-  </div>
-);
-
-const OverviewNoteCard: Component<{
-  title: string;
-  detail: string;
-}> = (props) => (
-  <div class="rounded-md border border-white/5 bg-black/20 p-3">
-    <div class="font-medium text-text-main">{props.title}</div>
-    <div class="mt-1 text-xs leading-5 text-text-dim">{props.detail}</div>
+  <div class="surface px-4 py-3">
+    <div class="heading-label">{props.label}</div>
+    <div class={`mt-1.5 text-xl font-semibold tabular-nums ${props.tone}`}>{props.value}</div>
+    <div class="mt-0.5 text-xs text-text-dim">{props.detail}</div>
   </div>
 );
 

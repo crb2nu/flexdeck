@@ -126,7 +126,7 @@ const FluxStatus: Component = () => {
         >
           <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
             <Show when={totalCount() > 0}>
-              <div class="glass-panel px-4 py-3">
+              <div class="surface px-4 py-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <SyncSummaryChip label="In Sync" state="in-sync" value={syncSummary()['in-sync']} />
                   <SyncSummaryChip label="Drifting" state="drifting" value={syncSummary().drifting} />
@@ -138,7 +138,7 @@ const FluxStatus: Component = () => {
 
             {/* Sources */}
             <Show when={sources().length > 0}>
-              <div class="glass-panel overflow-hidden">
+              <div class="surface overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-white/5">
                   <span class="text-xs text-status-ok">&#9679;</span>
                   <span class="text-xs font-mono text-text-main uppercase tracking-wider">
@@ -158,7 +158,7 @@ const FluxStatus: Component = () => {
 
             {/* Kustomizations */}
             <Show when={kustomizations().length > 0}>
-              <div class="glass-panel overflow-hidden">
+              <div class="surface overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-white/5">
                   <span class="text-xs text-text-dim">&#9671;</span>
                   <span class="text-xs font-mono text-text-main uppercase tracking-wider">
@@ -186,7 +186,7 @@ const FluxStatus: Component = () => {
 
             {/* HelmReleases */}
             <Show when={helmReleases().length > 0}>
-              <div class="glass-panel overflow-hidden">
+              <div class="surface overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-white/5">
                   <span class="text-xs text-text-dim">&#9032;</span>
                   <span class="text-xs font-mono text-text-main uppercase tracking-wider">
@@ -245,7 +245,7 @@ const FluxStatus: Component = () => {
       {/* Toast */}
       <Show when={toast()}>
         <div class="fixed bottom-4 right-4 z-50 animate-fade-in-scale">
-          <div class="glass-panel px-4 py-2 text-sm text-white border border-white/20">
+          <div class="surface px-4 py-2 text-sm text-white border border-white/20">
             {toast()}
           </div>
         </div>

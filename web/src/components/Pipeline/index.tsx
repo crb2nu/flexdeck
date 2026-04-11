@@ -188,7 +188,7 @@ const Pipeline: Component = () => {
             {/* Trends Tab */}
             <Show when={pageTab() === 'trends'}>
                 <ErrorBoundary fallback={(err) => (
-                    <div class="glass-panel m-4 p-4 text-sm text-status-error border border-status-error/20">
+                    <div class="surface m-4 p-4 text-sm text-status-error border border-status-error/20">
                         Failed to load Trends: {err.message}
                     </div>
                 )}>
@@ -201,7 +201,7 @@ const Pipeline: Component = () => {
             {/* History Tab */}
             <Show when={pageTab() === 'history'}>
                 <ErrorBoundary fallback={(err) => (
-                    <div class="glass-panel m-4 p-4 text-sm text-status-error border border-status-error/20">
+                    <div class="surface m-4 p-4 text-sm text-status-error border border-status-error/20">
                         Failed to load History: {err.message}
                     </div>
                 )}>

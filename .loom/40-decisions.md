@@ -161,3 +161,29 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S2] `web/src/components/Models/InferenceTab.tsx`
   - [S3] `web/src/components/Models/ProxyTab.tsx`
   - [S4] `web/src/components/Models/PipelinesTab.tsx`
+
+### 2026-04-03: Treat the March operator-coherence plan as completed history, not active backlog
+
+- Decision: Reframe the reopened March planning bundle as archived rationale plus carry-forward context, and build the next plan from current April evidence instead of from the old future-tense slice list.
+- Rationale: The central March objectives have already merged on `main` through the FlexInfer/Loom operator-surface and pipeline state-alignment slices. Leaving the old docs in future tense would create false backlog and invite redundant work.
+- Alternatives considered:
+  - Keep the March plan mostly intact and simply add notes that some parts shipped.
+  - Delete the old planning context entirely.
+- Consequences: The planning docs become more accurate and easier to resume from, but they now explicitly distinguish historical context from active execution intent.
+- Sources:
+  - [S1] `git log --oneline --decorate -8`
+  - [S2] `.loom/30-implementation-plan.md`
+  - [S3] `.loom/50-worklog.md`
+
+### 2026-04-03: Do not use the old API-sync addendum as the default next implementation slice without fresh drift evidence
+
+- Decision: Keep the March API-sync addendum as historical context, but do not treat it as the active next build plan unless a fresh audit shows new drift.
+- Rationale: The specific CRD, proxy-metric, and HUD-claim gaps named in the addendum are already represented in the current repo-local code, so reheating that plan would spend effort rediscovering solved work.
+- Alternatives considered:
+  - Continue with the API-sync slice anyway for completeness.
+  - Delete the addendum entirely.
+- Consequences: The next slice selection shifts toward confidence and cleanup work, while preserving the addendum as a useful audit pattern for future upstream parity checks.
+- Sources:
+  - [S1] `rg -n "hostPath|compilationCache|flashLoader|maxBlockSize|swapSpace|reconfigureCooldown|reconfiguredAt|originalMaxNumSeqs|reconfiguredMaxNumSeqs|evictedAt|cache\.quantization|capabilities|quantize" internal/k8s/models_crd.go web/src/lib/types.ts`
+  - [S2] `rg -n "swap_signals|queued_requests_total|endpoint_changes_total|endpoint_count|routing_decisions_total|routing_target_hits_total|routing_key_cardinality|rate_limited_total|activation_retries_total|activation_failures_total" internal/api/handlers/flexinfer_proxy.go`
+  - [S3] `rg -n "expires_at|expiresAt|updated_at|updatedAt|FileClaim" internal/api/handlers/hud_contracts.go web/src/lib/types.ts`

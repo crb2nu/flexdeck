@@ -1,21 +1,26 @@
 # Loom Context Pack
 
-## Current Goal (2026-04-02)
-- Continue the next post-integration enhancement round for FlexDeck after the recent FlexInfer and Loom HUD UX shipments.
-- Prioritize operational coherence, shared data flows, and regression resistance over net-new subsystem scope.
-- Keep `.loom/` and reconciliation notes aligned with the local implementation state while preserving `ROADMAP.md` as a merged-history artifact.
+## Current Goal (2026-04-03)
+- Convert the reopened planning stash into a current execution baseline instead of carrying pre-merge assumptions forward.
+- Treat the operational-coherence wave as completed merged work, then define the next highest-value slice from live gaps.
+- Keep planning artifacts truthful about what is historical context, what is already shipped on `main`, and what is still only a candidate.
 
-## Current Status Summary (2026-04-02)
-- Phase 3 Deep FlexInfer & Loom Integration and Phase 3.5 contract hardening are already marked shipped in the roadmap, so this cycle remains a follow-through wave rather than a feature-introduction wave. (`ROADMAP.md:93`, `ROADMAP.md:122`)
-- Recent delivery clustered around the new unified FlexInfer workbench (`7081375`) and the follow-up inference-surface polish (`5314331`). Commands: `git show --stat --summary 7081375`, `git show --stat --summary 5314331`
-- Both `/flexinfer` and `/models` now route to the same FlexInfer surface, and admin reuses that workbench with `surface="admin"`. (`web/src/index.tsx:39`, `web/src/index.tsx:40`, `web/src/components/Models/index.tsx:12`, `web/src/components/Admin/FlexInferTab.tsx:12`)
-- Slice 1 is implemented locally on `codex/flexinfer-loom-next-phase`: Dashboard, shared freshness helpers, and Loom HUD now treat `disabled` and `fallback` as first-class operator states instead of collapsing them into stale/offline wording. (`web/src/lib/freshness.ts:1`, `web/src/components/Dashboard/statusSemantics.ts:1`, `web/src/components/Agents/hudDegradedMode.ts:1`)
-- Slice 2 is implemented locally on `codex/flexinfer-loom-next-phase`: FlexInfer summary ownership now lives in the shared `flexinferSummary` + `flexinferSurface` layer consumed by both Dashboard and Workbench. (`web/src/lib/flexinferSummary.ts:1`, `web/src/stores/flexinferSurface.ts:1`, `web/src/components/Dashboard/useDashboardSummaryState.ts:1`, `web/src/components/FlexInfer/Workbench.tsx:1`)
-- Slice 3 is implemented locally on `codex/flexinfer-loom-next-phase`: legacy `InferenceTab` / `ProxyTab` / `PipelinesTab` no longer carry independent polling or API logic and instead delegate to the canonical workbench surface. (`web/src/components/Models/LegacyWorkbenchAdapter.tsx:1`, `web/src/components/Models/InferenceTab.tsx:1`, `web/src/components/Models/ProxyTab.tsx:1`, `web/src/components/Models/PipelinesTab.tsx:1`)
-- Slice 4 remains the active gap: the new shared surface contracts are stabilized, but component-level regression coverage still needs to catch up around `AppLayout`, `HUDTab`, and the workbench surface.
-- Codebase indexing is healthy for repo ID `services/flexdeck` (`1952` chunks) while the older alias `services-flexdeck` is stale and should not be used for this cycle. Commands: `codebase_memory__codebase_stats(repo_id="services/flexdeck")`, `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
-- Local branch/worktree hygiene is complete enough to execute from one focused next-phase branch instead of a backlog of superseded feature worktrees. Command: `git branch -vv && git worktree list --porcelain`
-- `origin/main` already includes the scheduling fix from MR `!67`, so the current branch baseline includes the GitOps deployment affinity change before the FlexInfer/HUD follow-through work. Sources: `git log --oneline --decorate -8 origin/main`, `gitlab__get_merge_request(project="services/flexdeck", merge_request_iid=67)`
+## Current Status Summary (2026-04-03)
+- `main` is at `67d2cd6`, which already includes the FlexInfer/Loom operator-surface merge and both follow-on pipeline state merges. Command: `git log --oneline --decorate -8`
+- The March 28 planning bundle preserved strong direction, but its primary objectives are now complete on `main`:
+  - shared operator-state vocabulary for Dashboard, FlexInfer, and Loom HUD
+  - shared FlexInfer summary/data ownership
+  - legacy model tabs neutralized as thin adapters
+  - pipeline detail, trends, and history aligned to the same state language
+- The older API-sync addendum is no longer a good "next slice" by default because the specific CRD, proxy-metric, and HUD-claim gaps it identified are already represented in the current repo-local code. Commands: `rg -n "hostPath|compilationCache|flashLoader|maxBlockSize|swapSpace|reconfigureCooldown|reconfiguredAt|originalMaxNumSeqs|reconfiguredMaxNumSeqs|evictedAt|cache\.quantization|capabilities|quantize" internal/k8s/models_crd.go web/src/lib/types.ts`, `rg -n "swap_signals|queued_requests_total|endpoint_changes_total|endpoint_count|routing_decisions_total|routing_target_hits_total|routing_key_cardinality|rate_limited_total|activation_retries_total|activation_failures_total" internal/api/handlers/flexinfer_proxy.go`, `rg -n "expires_at|expiresAt|updated_at|updatedAt|FileClaim" internal/api/handlers/hud_contracts.go web/src/lib/types.ts`
+- The most useful preserved facts from the reopened bundle are still:
+  - canonical codebase-memory repo ID `services/flexdeck`
+  - stale alias `services-flexdeck`
+  - the reminder to verify upstream `flexinfer` / `loom-core` contracts before assuming parity work is needed
+- The freshest actionable gap is confidence and cleanup rather than architecture reinvention:
+  - some high-churn orchestration files still lack direct component/controller tests
+  - the retained legacy adapters still need an eventual end-state decision
+  - the reopened planning branch still carries a tiny `ROADMAP.md` tweak plus a `server` binary artifact that should not be mistaken for plan work
 
 ## Quick Links
 - Workspace snapshot: `00-workspace-snapshot.md`
@@ -28,33 +33,21 @@
 - Roadmap reconciliation note: `../docs/roadmap-reconciliation-2026-04-02.md`
 
 ## Success Criteria For This Cycle
-- Dashboard, FlexInfer, and Loom HUD present a consistent state/freshness vocabulary for operators.
-- FlexInfer data ownership is consolidated enough that the workbench, dashboard summaries, and any retained legacy views do not drift.
-- High-churn UX surfaces gain component-level regression coverage rather than utility-only coverage.
-- Planning/governance artifacts explicitly separate local branch progress from merged roadmap status so future sessions do not overstate what is shipped.
+- The reopened planning docs describe merged work in past tense and stop presenting completed slices as pending execution.
+- The next slice is selected from live, evidenced gaps rather than from stale pre-merge assumptions.
+- The planning branch is clearly scoped to docs/governance and does not accidentally carry build artifacts into future execution work.
+- Future sessions can resume from `.loom/` without re-litigating which March concerns are already solved.
 
 ## Risks
-- Remaining component coverage may lag behind the shared-surface refactor long enough for regressions to slip into mobile nav or HUD/workbench operator states.
-- Local implementation status could be mistaken for merged roadmap status unless reconciliation notes stay synchronized with branch progress.
+- Historical planning context can accidentally become pseudo-backlog if completed work is not explicitly archived as done.
+- The preserved `server` binary and small `ROADMAP.md` tweak could leak into a future planning commit unless handled intentionally.
+- If we pick the next slice without a live gap audit, we risk re-implementing work that already landed.
 
 ## Sources
-- `ROADMAP.md:93`
-- `ROADMAP.md:122`
-- `web/src/index.tsx:39`
-- `web/src/index.tsx:40`
-- `web/src/components/Models/index.tsx:12`
-- `web/src/components/Admin/FlexInferTab.tsx:12`
-- `web/src/lib/polling.ts:23`
-- `web/src/lib/freshness.ts:1`
-- `web/src/components/Dashboard/statusSemantics.ts:1`
-- `web/src/components/Agents/hudDegradedMode.ts:1`
-- `web/src/lib/flexinferSummary.ts:1`
-- `web/src/stores/flexinferSurface.ts:1`
-- `web/src/components/Models/LegacyWorkbenchAdapter.tsx:1`
-- Command: `git show --stat --summary 7081375`
-- Command: `git show --stat --summary 5314331`
-- Command: `git branch -vv && git worktree list --porcelain`
-- Command: `git log --oneline --decorate -8 origin/main`
-- `gitlab__get_merge_request(project="services/flexdeck", merge_request_iid=67)`
-- `codebase_memory__codebase_stats(repo_id="services/flexdeck")`
-- `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+- `git log --oneline --decorate -8`
+- `.loom/30-implementation-plan.md`
+- `.loom/50-worklog.md`
+- `rg -n "hostPath|compilationCache|flashLoader|maxBlockSize|swapSpace|reconfigureCooldown|reconfiguredAt|originalMaxNumSeqs|reconfiguredMaxNumSeqs|evictedAt|cache\.quantization|capabilities|quantize" internal/k8s/models_crd.go web/src/lib/types.ts`
+- `rg -n "swap_signals|queued_requests_total|endpoint_changes_total|endpoint_count|routing_decisions_total|routing_target_hits_total|routing_key_cardinality|rate_limited_total|activation_retries_total|activation_failures_total" internal/api/handlers/flexinfer_proxy.go`
+- `rg -n "expires_at|expiresAt|updated_at|updatedAt|FileClaim" internal/api/handlers/hud_contracts.go web/src/lib/types.ts`
+- `git diff --stat`

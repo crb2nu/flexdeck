@@ -1,118 +1,52 @@
-# MCP Inventory (Refreshed 2026-03-03 08:45 EST)
-
-## Addendum (2026-03-06 10:46 EST)
-
-### Scope
-- Workspace: `/Users/cblevins/workspace/services/flexdeck`
-- Active Loom profile: `full`
-- Inventory mode: loom-proxy resources/templates (paged)
-- Focus for this cycle: performance planning, Redis usage audit, and Tavily-backed external research
-
-### Runtime Snapshot
-- `loom://config` now reports:
-  - `serverCount: 45`
-  - `toolCount: 472`
-  - active profile `full`
-- `loom://tools/index` reports:
-  - `totalTools: 472`
-  - `totalPages: 5`
-  - `pageSize: 100`
-- Relevant servers confirmed available for this cycle:
-  - `tavily`
-  - `redis`
-  - `codebase_memory`
-  - `gitlab`
-  - `grafana`
-  - `prometheus`
-  - `loki`
-
-### Codebase Index Readiness
-- Initial semantic index job on repo `services/flexdeck` failed:
-  - job `7df1990d849e1bc8`
-  - failure: Morph embeddings API returned HTTP 400 (`The decoder prompt cannot be empty`)
-- Fallback lexical-only index succeeded:
-  - job `7be4645795f5a89f`
-  - status `done`
-  - `files_total: 217`
-  - `chunks_total: 2311`
-- Current stats after fallback indexing:
-  - `total_chunks: 1952`
-  - by language: `go 817`, `typescript 1121`, `javascript 14`
-  - by chunk type: `function 863`, `method 396`, `class 359`, `module 217`, `variable 36`
-
-### Operating Notes
-- For this session, semantic retrieval should be treated as degraded because embeddings are failing at index time in the current environment.
-- Lexical code search and local repo inspection are sufficient for planning, hotspot analysis, and implementation slicing.
-- Tavily is available and suitable for external validation of caching, visibility-aware polling, and dashboard UX guidance.
+# MCP Inventory (Carry-Forward Baseline Reviewed 2026-04-03)
 
 ## Scope
 - Workspace: `/Users/cblevins/workspace/services/flexdeck`
-- Active Loom profile: `full`
-- Inventory mode: loom-proxy resources/templates (paged)
+- Planning branch: `codex/reopen-planning-baseline`
+- Inventory status for this turn: review-only carry-forward from the verified `2026-03-28` / `2026-03-31` planning cycle
+- Focus for this cycle: preserve the still-useful runtime/index assumptions while resetting the execution plan around the current merged baseline
 
-## Runtime Mode Detection
-- `list_mcp_resources()` returns loom top-level resources:
-  - `loom://config`
-  - `loom://servers`
-  - `loom://tools`
-  - `loom://tools/index`
-  - `loom://health`
-- `list_mcp_resource_templates()` confirms paged endpoints:
-  - `loom://tools/page/{page}`
-  - `loom://tools/server/{server}/page/{page}`
-- Result: loom-mode is active; inventory should use paged `loom://tools/*` resources to avoid truncation.
-
-## Runtime Snapshot
-- `loom/config`:
-  - `serverCount: 44`
-  - `toolCount: 472`
-  - `active profile: full`
-- `loom/tools/index`:
-  - `totalTools: 472`
+## What Remains Canonical
+The reopened March inventory is still useful for a few facts that future sessions should keep treating as canonical until re-verified:
+- loom-mode was active during the last full inventory refresh
+- the runtime snapshot reported:
+  - `serverCount: 46`
+  - `toolCount: 498`
   - `totalPages: 5`
-  - `pageSize: 100`
-- `loom/health`:
-  - Core planning/ops servers report healthy (`agent_context`, `codebase_memory`, `git`, `gitlab`, `prometheus`, `loki`, `grafana`, `flux`, `k8s_apps_k3s`, `devbox`, `quality`).
+- the live codebase-memory repo ID was `services/flexdeck`
+- the alias `services-flexdeck` was stale and returned zero chunks
 
-## Tool Count Snapshot (Top Servers)
-- `agent_context: 80`
-- `jobsearch: 66`
-- `gitlab: 30`
-- `flexinfer: 19`
-- `codebase_memory: 17`
-- `github/git/devbox: 11 each`
+## What This File Is Not Claiming
+- This file does **not** claim that `46` servers / `498` tools were re-verified on `2026-04-03`.
+- This turn did not re-run loom inventory discovery because the user request was to review and refresh the reopened planning bundle, not to produce a fresh runtime census.
+- Any task that depends on exact current server/tool counts should re-run the live loom inventory first.
 
-## Index/Search Readiness
-- `codebase_memory__codebase_stats(repo_id="services-flexdeck")` currently fails:
-  - `dial tcp 192.168.50.176:6333: connect: no route to host`
-- Impact:
-  - Semantic code search/index stats are unavailable in this session.
-- Fallback in this cycle:
-  - Use repo-local truth (`rg`, `git log`, `nl -ba`, targeted file reads) for planning evidence.
+## Current Planning Takeaways
+- The preserved inventory still supports planning because the most important operational fact for this repo remains the canonical index ID: `services/flexdeck`.
+- The reopened planning docs should preserve that repo-ID guidance, but should stop using the March inventory snapshot as evidence that unfinished implementation slices still exist.
+- Before starting any new cross-repo contract work, re-validate live loom inventory and codebase index health instead of assuming the March runtime snapshot is still exact.
 
-## Constraints And Operating Notes
-- Prefer `loom://tools/index` + page resources over `loom://tools` to avoid payload truncation.
-- Health is point-in-time; validate again before operational actions.
-- For this planning cycle, parallelize read-only inventory calls, then consolidate centrally in `.loom` docs.
+## Revalidation Triggers
+Re-run full inventory before:
+- relying on current server/tool totals in docs or automation
+- starting a new codebase-memory-heavy planning pass
+- making another cross-repo API parity claim about `flexinfer` or `loom-core`
+- debugging any MCP/runtime failure that could have changed tool availability
 
-## Delegation Plan Rationale
-- Read-heavy discovery can be safely sharded by:
-  - resource type (`config`, `servers`, `tools/index`, `health`)
-  - paged tool inventory slices
-- Synthesis and priority decisions stay single-threaded to avoid conflicting plan narratives.
-
-## Sources
+## Preserved Sources From The Last Verified Refresh
 - `list_mcp_resources()`
 - `list_mcp_resource_templates()`
 - `read_mcp_resource(server="loom", uri="loom://config")`
 - `read_mcp_resource(server="loom", uri="loom://servers")`
 - `read_mcp_resource(server="loom", uri="loom://tools/index")`
-- `read_mcp_resource(server="loom", uri="loom://health")`
-- `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
-- Command: `loom tools list --json --limit 500`
-- `read_mcp_resource(server="loom", uri="loom://config")` on 2026-03-06
-- `read_mcp_resource(server="loom", uri="loom://tools/index")` on 2026-03-06
-- `codebase_memory__codebase_index_poll(job_id="7df1990d849e1bc8")`
-- `codebase_memory__codebase_index_start(repo_id="services/flexdeck", embeddings=false)`
-- `codebase_memory__codebase_index_poll(job_id="7be4645795f5a89f")`
 - `codebase_memory__codebase_stats(repo_id="services/flexdeck")`
+- `codebase_memory__codebase_stats(repo_id="services-flexdeck")`
+- `gitlab__get_project(project="services/flexinfer")`
+- `gitlab__get_project(project="services/loom-core")`
+
+## Review Sources For This Turn
+- `git log --oneline --decorate -8`
+- `git diff --stat`
+- `.loom/10-research.md`
+- `.loom/20-product-spec.md`
+- `.loom/30-implementation-plan.md`

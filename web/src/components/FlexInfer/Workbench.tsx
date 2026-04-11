@@ -55,6 +55,8 @@ import {
   requestsForModel,
 } from '../Models/inferenceMetrics';
 import OperationsSidebarNav from '../shared/OperationsSidebarNav';
+import Button from '../shared/Button';
+import PageHeader from '../shared/PageHeader';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -357,93 +359,30 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 
   return (
     <div class="mx-auto flex w-full max-w-[1680px] min-w-0 flex-col gap-4 pb-6">
-      <div
-        class={`glass-panel overflow-hidden border border-white/10 shadow-[0_18px_60px_rgba(0,0,0,0.24)] ${
-          isAdminSurface()
-            ? 'bg-gradient-to-br from-status-warn/10 via-white/5 to-white/3'
-            : 'bg-white/5'
-        }`}
-      >
-        <div class="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-start xl:justify-between">
-          <div class="min-w-0 space-y-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">
-                FlexInfer Workbench
-              </span>
-              <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${proxyHealthClass()}`}>
-                Proxy {proxyHealthLabel()}
-              </span>
-              <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${getReliabilityClasses(reliabilityHeadline().level)}`}>
-                {reliabilityHeadline().label}
-              </span>
-              <span class="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-text-muted">
-                Router {proxyEnabled() ? (routerInfo()?.healthy ? 'healthy' : 'watching') : 'disabled'}
-              </span>
-            </div>
-            <div>
-              <h2 class="text-2xl font-semibold tracking-tight text-text-main sm:text-[2rem]">
-                Live FlexInfer operations workbench
-              </h2>
-              <p class="mt-2 max-w-3xl text-sm leading-6 text-text-dim">
-                Inspect controller CRDs, inference telemetry, cache pipelines, catalogs, and proxy routing from one operator-focused surface.
-              </p>
-            </div>
-            <div class="flex flex-wrap gap-2 text-[11px] text-text-dim">
-              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Mode: {managementMode()}
-              </span>
-              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                CRDs {controller.crdModels().length}
-              </span>
-              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Registry {controller.registryModels().length}
-              </span>
-              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Catalogs {supplyChainSummary().catalogCount}
-              </span>
-              <span class="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Caches {supplyChainSummary().cacheCount}
-              </span>
-            </div>
-          </div>
-          <div class="flex w-full flex-col items-start gap-3 xl:max-w-sm xl:items-end">
-            <div class="flex w-full flex-wrap gap-2 xl:justify-end">
-              <button
-                onClick={() => void refreshWorkbench()}
-                class="min-h-[40px] rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/15"
-              >
-                Refresh all
-              </button>
-              <button
-                onClick={() => void controller.discoverModels()}
-                disabled={controller.discoverLoading()}
-                class="min-h-[40px] rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-white/15 disabled:opacity-50"
-              >
-                {controller.discoverLoading() ? 'Syncing...' : 'Sync CRDs'}
-              </button>
-            </div>
-            <div class="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-text-dim">
-              <div class="font-medium text-text-main">
-                {isAdminSurface() ? 'Admin surface' : 'GitOps surface'}
-              </div>
-              <div class="mt-1 leading-5">
-                {isAdminSurface()
-                  ? 'Read-write management context. Use the sections below to inspect and patch live models.'
-                  : 'Read-first control plane view. The backend is treated as the source of truth.'}
-              </div>
-            </div>
-          </div>
+      <PageHeader title="FlexInfer Workbench">
+        <div class="flex items-center gap-2">
+          <span class={`rounded-md px-2 py-0.5 text-[10px] font-medium ${proxyHealthClass()}`}>
+            Proxy {proxyHealthLabel()}
+          </span>
+          <span class={`rounded-md px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses(reliabilityHeadline().level)}`}>
+            {reliabilityHeadline().label}
+          </span>
+          <span class="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-medium text-text-muted">
+            {managementMode()}
+          </span>
         </div>
-        <div class="border-t border-white/5 px-4 py-3 sm:px-5">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Section rail</div>
-          <div class="mt-1 text-xs text-text-dim">
-            Use the rail below to switch the visible lane and keep the surface focused on one operator task.
-          </div>
+        <div class="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={() => void refreshWorkbench()}>
+            Refresh all
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => void controller.discoverModels()} disabled={controller.discoverLoading()}>
+            {controller.discoverLoading() ? 'Syncing...' : 'Sync CRDs'}
+          </Button>
         </div>
-      </div>
+      </PageHeader>
 
       <Show when={controller.error()}>
-        <div class="glass-panel border border-status-error/20 p-4 text-sm text-status-error">
+        <div class="surface border-status-error/20 p-4 text-sm text-status-error">
           {controller.error()}
         </div>
       </Show>
@@ -477,8 +416,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
         <OperationsSidebarNav
-          title="Workbench sections"
-          description="Stay in one operational lane at a time. Overview is the briefing; the other sections are focused triage."
+          title="Workbench"
+          description=""
           items={sectionNav()}
           active={activeSection()}
           onChange={(section) => changeSection(section as WorkbenchSectionId)}
@@ -489,7 +428,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             <WorkbenchSectionHeader
               kicker="Overview"
               title="Operator briefing"
-              subtitle="A compact read on fleet health, request pressure, supply readiness, and the next lane to investigate."
+              subtitle=""
               updatedAt={Math.max(controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt())}
               state={resolveOperatorState({
                 loading: controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading() || catalogLoading() || cacheLoading(),
@@ -529,64 +468,31 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           />
         </div>
 
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <div class="glass-panel p-4">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Recommended next stop</div>
-            <div class="mt-3 grid gap-3 md:grid-cols-2">
-              <OverviewFocusCard
-                title="Control plane"
-                detail="Use this when model phase, reliability, or CRD health is the first question."
-                stat={`${controller.crdModels().length} models`}
-                tone="text-text-muted"
-                onClick={() => setActiveSection('control-plane')}
-              />
-              <OverviewFocusCard
-                title="Telemetry"
-                detail="Queue depth, error rate, and router coverage are grouped here for incident triage."
-                stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
-                tone="text-status-ok"
-                onClick={() => setActiveSection('telemetry')}
-              />
-              <OverviewFocusCard
-                title="Supply chain"
-                detail="Catalog sync and cache job readiness stay together so release artifacts are easy to read."
-                stat={`${supplyChainSummary().readyCacheCount} ready`}
-                tone="text-text-dim"
-                onClick={() => setActiveSection('supply-chain')}
-              />
-              <OverviewFocusCard
-                title="Intake"
-                detail="Registry search, staged candidates, and deployment intake stay isolated from controller triage."
-                stat={`${searchResults().length} staged`}
-                tone="text-text-main"
-                onClick={() => setActiveSection('intake')}
-              />
-            </div>
-          </div>
-
-          <div class="glass-panel overflow-hidden">
-            <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Operational notes</div>
-            </div>
-            <div class="space-y-3 p-4 text-sm text-text-dim">
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Control plane first</div>
-                <div class="mt-1 text-xs">The controller lane leads with phase and reliability so degraded models rise to the top immediately.</div>
-              </div>
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Telemetry</div>
-                <div class="mt-1 text-xs">Proxy totals, queue depth, and routing health stay together for fast triage.</div>
-              </div>
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Supply chain</div>
-                <div class="mt-1 text-xs">Catalog sync and cache pipeline readiness stay aligned with release artifacts.</div>
-              </div>
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Intake</div>
-                <div class="mt-1 text-xs">Registry search and deployment intake stay isolated from control-plane triage.</div>
-              </div>
-            </div>
-          </div>
+        <div class="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <OverviewFocusCard
+            title="Control plane"
+            stat={`${controller.crdModels().length} models`}
+            tone="text-text-muted"
+            onClick={() => setActiveSection('control-plane')}
+          />
+          <OverviewFocusCard
+            title="Telemetry"
+            stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
+            tone="text-status-ok"
+            onClick={() => setActiveSection('telemetry')}
+          />
+          <OverviewFocusCard
+            title="Supply chain"
+            stat={`${supplyChainSummary().readyCacheCount} ready`}
+            tone="text-text-dim"
+            onClick={() => setActiveSection('supply-chain')}
+          />
+          <OverviewFocusCard
+            title="Intake"
+            stat={`${searchResults().length} staged`}
+            tone="text-text-main"
+            onClick={() => setActiveSection('intake')}
+          />
         </div>
           </section>
 
@@ -594,31 +500,21 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchSectionHeader
           kicker="Controller"
           title="CRD fleet"
-          subtitle="Live FlexInfer resources from the controller, prioritized by operational risk."
+          subtitle=""
           updatedAt={controllerUpdatedAt()}
           state={controllerSectionState()}
           stateDetail={controllerSectionDetail()}
           loading={controller.loading() || controller.controllerDataLoading()}
           action={
             <div class="flex flex-wrap gap-2">
-              <button
-                onClick={() => void controller.fetchCRDModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload CRDs
-              </button>
-              <button
-                onClick={() => void controller.fetchRegistryModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload registry
-              </button>
+              <Button variant="secondary" size="sm" onClick={() => void controller.fetchCRDModels()}>Reload CRDs</Button>
+              <Button variant="secondary" size="sm" onClick={() => void controller.fetchRegistryModels()}>Reload registry</Button>
             </div>
           }
         />
 
         <Show when={modelRows().length > 0} fallback={<WorkbenchEmpty message="No FlexInfer CRDs found yet." />}>
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
                 <thead>
@@ -718,32 +614,22 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchSectionHeader
           kicker="Telemetry"
           title="Proxy and router health"
-          subtitle="FlexInfer proxy metrics, LiteLLM routing, and per-model request pressure."
+          subtitle=""
           updatedAt={telemetryUpdatedAt()}
           state={telemetrySectionState()}
           stateDetail={telemetrySectionDetail()}
           loading={proxyLoading() || routerLoading()}
           action={
             <div class="flex flex-wrap gap-2">
-              <button
-                onClick={() => void refreshFlexInferProxy()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload proxy
-              </button>
-              <button
-                onClick={() => void refreshFlexInferRouter()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload router
-              </button>
+              <Button variant="secondary" size="sm" onClick={() => void refreshFlexInferProxy()}>Reload proxy</Button>
+              <Button variant="secondary" size="sm" onClick={() => void refreshFlexInferRouter()}>Reload router</Button>
             </div>
           }
         />
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div class="glass-panel p-4">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Proxy snapshot</div>
+          <div class="surface p-4">
+            <div class="heading-label">Proxy snapshot</div>
             <div class="mt-3 grid grid-cols-2 gap-3">
               <WorkbenchStatCard label="Health" value={proxyHealthLabel()} tone={proxyHealthTone()} note={proxyHealth()?.message || proxyHealth()?.mode || 'FlexInfer proxy'} />
               <WorkbenchStatCard label="Models" value={`${proxyTotals()?.modelCount ?? 0}`} tone="text-text-muted" note={proxyEnabled() ? 'live counts from metrics endpoint' : 'disabled'} />
@@ -766,9 +652,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </Show>
           </div>
 
-          <div class="glass-panel overflow-hidden xl:col-span-2">
+          <div class="surface overflow-hidden xl:col-span-2">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Per-model telemetry</div>
+              <div class="heading-label">Per-model telemetry</div>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
@@ -811,9 +697,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Router table</div>
+              <div class="heading-label">Router table</div>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
@@ -853,8 +739,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </Show>
           </div>
 
-          <div class="glass-panel p-4">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Model detail coverage</div>
+          <div class="surface p-4">
+            <div class="heading-label">Model detail coverage</div>
             <div class="mt-3 grid grid-cols-2 gap-3">
               <WorkbenchStatCard
                 label="Inference unavailable"
@@ -894,39 +780,29 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchSectionHeader
           kicker="Supply chain"
           title="Catalogs and caches"
-          subtitle="Track upstream catalogs, cache job phases, and release readiness."
+          subtitle=""
           updatedAt={supplyChainUpdatedAt()}
           state={supplyChainSectionState()}
           stateDetail={supplyChainSectionDetail()}
           loading={catalogLoading() || cacheLoading()}
           action={
             <div class="flex flex-wrap gap-2">
-              <button
-                onClick={() => void refreshFlexInferCatalogs()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload catalogs
-              </button>
-              <button
-                onClick={() => void refreshFlexInferCaches()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload caches
-              </button>
+              <Button variant="secondary" size="sm" onClick={() => void refreshFlexInferCatalogs()}>Reload catalogs</Button>
+              <Button variant="secondary" size="sm" onClick={() => void refreshFlexInferCaches()}>Reload caches</Button>
             </div>
           }
         />
 
         <Show when={catalogError()}>
-          <div class="glass-panel border border-status-error/20 p-4 text-sm text-status-error">
+          <div class="surface border border-status-error/20 p-4 text-sm text-status-error">
             {catalogError()}
           </div>
         </Show>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Catalogs</div>
+              <div class="heading-label">Catalogs</div>
             </div>
             <div class="divide-y divide-white/5">
               <For
@@ -964,9 +840,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </div>
           </div>
 
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Cache jobs</div>
+              <div class="heading-label">Cache jobs</div>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
@@ -1035,33 +911,24 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         <WorkbenchSectionHeader
           kicker="Intake"
           title="Registry search and deployment intake"
-          subtitle="Search HuggingFace or CivitAI, then register or download directly into the registry."
+          subtitle=""
           updatedAt={controllerUpdatedAt()}
           state={controllerSectionState()}
           stateDetail={controllerSectionDetail()}
           loading={controller.loading()}
           action={
             <div class="flex flex-wrap gap-2">
-              <button
-                onClick={() => void controller.handleSearch()}
-                disabled={controller.searching() || !controller.searchQuery().trim()}
-                class="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/15 disabled:opacity-50"
-              >
+              <Button variant="primary" size="sm" onClick={() => void controller.handleSearch()} disabled={controller.searching() || !controller.searchQuery().trim()}>
                 {controller.searching() ? 'Searching...' : 'Search'}
-              </button>
-              <button
-                onClick={() => void controller.fetchRegistryModels()}
-                class="rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:border-white/20 hover:text-text-main"
-              >
-                Reload registry
-              </button>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void controller.fetchRegistryModels()}>Reload registry</Button>
             </div>
           }
         />
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div class="glass-panel p-4 xl:col-span-1">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Search</div>
+          <div class="surface p-4 xl:col-span-1">
+            <div class="heading-label">Search</div>
             <div class="mt-3 space-y-3">
               <select
                 value={controller.searchSource()}
@@ -1079,15 +946,12 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
                 placeholder="Search models..."
                 class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main placeholder:text-text-dim/60 focus:border-white/20 focus:outline-none"
               />
-              <div class="text-[11px] text-text-dim">
-                Search results remain actionable even when the controller is degraded.
-              </div>
             </div>
           </div>
 
-          <div class="glass-panel overflow-hidden xl:col-span-2">
+          <div class="surface overflow-hidden xl:col-span-2">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Search results</div>
+              <div class="heading-label">Search results</div>
             </div>
             <div class="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
               <For
@@ -1120,9 +984,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div class="glass-panel overflow-hidden">
+          <div class="surface overflow-hidden">
             <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Registry models</div>
+              <div class="heading-label">Registry models</div>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
@@ -1183,25 +1047,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             </div>
           </div>
 
-          <div class="glass-panel overflow-hidden">
-            <div class="border-b border-white/5 px-4 py-3">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">Operational notes</div>
-            </div>
-            <div class="space-y-3 p-4 text-sm text-text-dim">
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Control plane</div>
-                <div class="mt-1 text-xs">Controller data is refreshed continuously and highlighted by phase and reliability first.</div>
-              </div>
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Proxy telemetry</div>
-                <div class="mt-1 text-xs">Queue depth, request totals, and routing health are surfaced together to shorten triage.</div>
-              </div>
-              <div class="rounded-md border border-white/5 bg-black/20 p-3">
-                <div class="font-medium text-text-main">Cache pipeline</div>
-                <div class="mt-1 text-xs">Ablation, quantization, finetune, and publishing stages are treated as release artifacts.</div>
-              </div>
-            </div>
-          </div>
         </div>
           </section>
         </div>
@@ -1211,16 +1056,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
 };
 
 const WorkbenchStatCard: Component<{ label: string; value: string; tone: string; note: string }> = (props) => (
-  <div class="glass-panel p-4">
-    <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">{props.label}</div>
-    <div class={`mt-2 text-2xl font-semibold ${props.tone}`}>{props.value}</div>
-    <div class="mt-1 text-xs text-text-dim">{props.note}</div>
+  <div class="surface p-3">
+    <div class="heading-label">{props.label}</div>
+    <div class={`mt-1.5 text-xl font-semibold ${props.tone}`}>{props.value}</div>
+    <div class="mt-0.5 text-xs text-text-dim">{props.note}</div>
   </div>
 );
 
 const OverviewFocusCard: Component<{
   title: string;
-  detail: string;
   stat: string;
   tone: string;
   onClick: () => void;
@@ -1228,11 +1072,10 @@ const OverviewFocusCard: Component<{
   <button
     type="button"
     onClick={props.onClick}
-    class="rounded-2xl border border-white/8 bg-white/5 p-4 text-left transition-colors hover:border-white/15 hover:bg-white/7"
+    class="surface-hover rounded-md p-3 text-left"
   >
     <div class={`text-sm font-semibold ${props.tone}`}>{props.title}</div>
-    <div class="mt-2 text-[11px] leading-5 text-text-dim">{props.detail}</div>
-    <div class="mt-4 text-xs font-medium text-text-main">{props.stat}</div>
+    <div class="mt-1 text-xs font-medium text-text-main">{props.stat}</div>
   </button>
 );
 
@@ -1247,21 +1090,19 @@ const WorkbenchSectionHeader: Component<{
   loading: boolean;
   action?: any;
 }> = (props) => (
-  <div class="glass-panel flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+  <div class="surface flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
     <div class="min-w-0">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">{props.kicker}</div>
-      <div class="mt-1 text-lg font-semibold text-text-main">{props.title}</div>
-      <div class="mt-1 max-w-3xl text-sm text-text-dim">{props.subtitle}</div>
-      <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-dim">
-        <span class={`rounded-full px-2.5 py-1 ${operatorStateBadgeClass(props.state)}`}>
+      <div class="flex items-center gap-3">
+        <h3 class="heading-section">{props.title}</h3>
+        <span class={`rounded-md px-2 py-0.5 text-[10px] font-medium ${operatorStateBadgeClass(props.state)}`}>
           {operatorStateLabel(props.state, props.stateDetail)}
         </span>
-        <span class="rounded-full bg-white/5 px-2.5 py-1">
-          Updated {props.updatedAt ? new Date(props.updatedAt).toLocaleTimeString() : '—'}
-        </span>
         <Show when={props.loading}>
-          <span class="rounded-full bg-white/5 px-2.5 py-1 text-text-muted">Refreshing</span>
+          <span class="rounded-md bg-white/5 px-2 py-0.5 text-[10px] text-text-muted">Refreshing</span>
         </Show>
+      </div>
+      <div class="mt-1 text-xs text-text-dim">
+        Updated {props.updatedAt ? new Date(props.updatedAt).toLocaleTimeString() : '—'}
       </div>
     </div>
     <Show when={props.action}>
@@ -1271,7 +1112,7 @@ const WorkbenchSectionHeader: Component<{
 );
 
 const WorkbenchEmpty: Component<{ message: string }> = (props) => (
-  <div class="glass-panel p-6 text-center text-sm text-text-dim">{props.message}</div>
+  <div class="surface p-4 text-center text-sm text-text-dim">{props.message}</div>
 );
 
 const ModelFlag: Component<{ tone: string; label: string }> = (props) => (
@@ -1280,7 +1121,7 @@ const ModelFlag: Component<{ tone: string; label: string }> = (props) => (
 
 const MiniMetric: Component<{ label: string; value: string }> = (props) => (
   <div class="rounded-md border border-white/5 bg-black/20 px-3 py-2">
-    <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-dim">{props.label}</div>
+    <div class="heading-label">{props.label}</div>
     <div class="mt-1 font-mono text-sm text-text-main">{props.value}</div>
   </div>
 );

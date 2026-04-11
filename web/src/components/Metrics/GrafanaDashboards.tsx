@@ -665,7 +665,7 @@ const GrafanaDashboards: Component = () => {
 
   return (
     <div class="flex flex-col gap-4">
-      <div class="glass-panel overflow-hidden border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.12))]">
+      <div class="surface overflow-hidden border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.12))]">
         <div class="flex flex-col gap-4 p-4 lg:flex-row lg:items-end lg:justify-between">
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">
@@ -710,7 +710,7 @@ const GrafanaDashboards: Component = () => {
       </div>
 
       <Show when={error()}>
-        <div class="glass-panel flex flex-col gap-2 p-4 text-sm text-status-error border border-status-error/20">
+        <div class="surface flex flex-col gap-2 p-4 text-sm text-status-error border border-status-error/20">
           <div class="flex items-center gap-3">
             <span class="text-lg font-bold">!</span>
             <span class="font-bold uppercase tracking-widest">Connection Error</span>
@@ -728,7 +728,7 @@ const GrafanaDashboards: Component = () => {
       </Show>
 
       <Show when={!loading() && dashboards().length === 0 && !error()}>
-        <div class="glass-panel p-8 text-center text-text-muted">
+        <div class="surface p-8 text-center text-text-muted">
           <div class="text-lg mb-2 text-text-main">No Grafana Dashboards</div>
           <p class="text-sm text-text-dim max-w-md mx-auto">
             Ensure GRAFANA_URL is reachable and anonymous access or GRAFANA_TOKEN is correctly configured.
@@ -737,7 +737,7 @@ const GrafanaDashboards: Component = () => {
       </Show>
 
       <Show when={!loading() && dashboards().length > 0 && filteredDashboards().length === 0}>
-        <div class="glass-panel p-8 text-center">
+        <div class="surface p-8 text-center">
           <div class="text-lg text-text-main">No dashboards match</div>
           <p class="mx-auto mt-2 max-w-md text-sm text-text-dim">
             Try a title, folder, datasource tag, or clear the search query to see the full catalog again.
@@ -749,7 +749,7 @@ const GrafanaDashboards: Component = () => {
         <For each={filteredDashboards()}>
           {(dash) => (
             <div
-              class={`glass-panel-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-all duration-200 ${
+              class={`surface-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-all duration-200 ${
                 expandedUid() === dash.uid
                   ? 'border-white/20 md:col-span-2 xl:col-span-3'
                   : ''

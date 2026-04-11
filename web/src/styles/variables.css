@@ -1,11 +1,11 @@
 :root {
-  /* --- Colors: Status Palette --- */
-  /* Accent colors — used ONLY for status semantics, not decoration */
-  --neon-cyan: #00f0ff;
-  --neon-pink: #ff003c;
-  --neon-yellow: #fcee0a;
-  --neon-purple: #bd00ff;
-  --neon-green: #0aff68;
+  /* --- Colors: Semantic Palette --- */
+  --color-blue: #00f0ff;
+  --color-red: #ff003c;
+  --color-amber: #fcee0a;
+  --color-violet: #bd00ff;
+  --color-emerald: #0aff68;
+
 
   /* Backgrounds */
   --bg-deep: #0a0e1a;
@@ -17,8 +17,8 @@
   --surface-elevated: rgba(20, 26, 42, 0.98);
 
   /* Borders */
-  --border-default: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-subtle: rgba(255, 255, 255, 0.06);
 
   /* Text */
   --text-main: #ffffff;
@@ -26,22 +26,27 @@
   --text-muted: rgba(255, 255, 255, 0.3);
 
   /* Semantic Map */
-  --color-ok: var(--neon-cyan);
-  --color-warn: var(--neon-yellow);
-  --color-error: var(--neon-pink);
-  --color-ready: var(--neon-cyan);
-  --color-accent: var(--neon-purple);
+  --color-ok: var(--color-blue);
+  --color-warn: var(--color-amber);
+  --color-error: var(--color-red);
+  --color-ready: var(--color-blue);
+  --color-accent: var(--color-violet);
 
-  /* --- Glass Panel (redefined: solid, no blur) --- */
-  --glass-bg: rgba(15, 20, 35, 0.95);
+  /* --- Surface (replaces glass-panel) --- */
+  --surface-bg: rgba(15, 20, 35, 0.95);
+  --surface-border: 1px solid var(--border-default);
+  --surface-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  /* Legacy glass aliases */
+  --glass-bg: var(--surface-bg);
   --glass-blur: none;
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --glass-border: var(--surface-border);
+  --glass-shadow: var(--surface-shadow);
   --glass-highlight: rgba(255, 255, 255, 0.03);
 
   /* --- Geometry --- */
   --radius-s: 4px;
-  --radius-m: 6px;
+  --radius-m: 8px;
   --radius-l: 12px;
   --radius-pill: 9999px;
   --space-xs: 4px;
@@ -59,11 +64,11 @@
   --transition-normal: 150ms;
 
   /* --- Aliases for Legacy/Shared Components --- */
-  --accent-primary: var(--neon-cyan);
-  --accent-secondary: var(--neon-purple);
-  --accent-tertiary: var(--neon-pink);
+  --accent-primary: var(--color-blue);
+  --accent-secondary: var(--color-violet);
+  --accent-tertiary: var(--color-red);
 
-  --status-ok: var(--neon-cyan);
-  --status-warn: var(--neon-yellow);
-  --status-error: var(--neon-pink);
+  --status-ok: var(--color-blue);
+  --status-warn: var(--color-amber);
+  --status-error: var(--color-red);
 }
