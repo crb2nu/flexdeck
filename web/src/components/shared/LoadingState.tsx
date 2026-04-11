@@ -2,7 +2,7 @@ import { Component, Show } from 'solid-js';
 
 export interface LoadingStateProps {
   message?: string;
-  variant?: 'spinner' | 'inline';
+  variant?: 'spinner' | 'inline' | 'skeleton';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -15,6 +15,21 @@ const SIZE_MAP = {
 const LoadingState: Component<LoadingStateProps> = (props) => {
   const variant = () => props.variant ?? 'spinner';
   const size = () => props.size ?? 'md';
+
+  if (variant() === 'skeleton') {
+    return (
+      <div class="flex flex-col gap-3 p-4 animate-fade-in">
+        <div class="skeleton h-4 w-3/4 rounded" />
+        <div class="skeleton h-4 w-1/2 rounded" />
+        <div class="skeleton h-8 w-full rounded-md" />
+        <div class="flex gap-3">
+          <div class="skeleton h-20 flex-1 rounded-md" />
+          <div class="skeleton h-20 flex-1 rounded-md" />
+          <div class="skeleton h-20 flex-1 rounded-md" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Show

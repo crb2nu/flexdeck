@@ -40,8 +40,8 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
                   onClick={() => props.onChange(tab.id)}
                   class={`rounded px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                     isActive()
-                      ? 'bg-white/10 text-white'
-                      : 'text-text-dim hover:text-text-main'
+                      ? 'bg-white/10 text-white shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
+                      : 'text-text-dim hover:text-text-main hover:bg-white/5'
                   }`}
                 >
                   <Show when={tab.icon}>
@@ -49,7 +49,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
                   </Show>
                   {tab.label}
                   <Show when={resolveCount(tab.count) != null && resolveCount(tab.count)! >= 0}>
-                    <span class={`ml-1.5 text-[10px] ${isActive() ? 'opacity-60' : 'opacity-40'}`}>
+                    <span class={`ml-1.5 text-[10px] font-mono tabular-nums ${isActive() ? 'opacity-70' : 'opacity-40'}`}>
                       {resolveCount(tab.count)}
                     </span>
                   </Show>
@@ -70,7 +70,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
                 class={`flex items-center gap-1.5 rounded-t px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                   isActive()
                     ? `border-b-2 border-${tab.color ?? 'white'} text-${tab.color ?? 'white'}`
-                    : 'text-text-dim hover:text-text-muted'
+                    : 'text-text-dim hover:text-white/60'
                 }`}
               >
                 <Show when={tab.icon}>
@@ -78,7 +78,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
                 </Show>
                 {tab.label}
                 <Show when={resolveCount(tab.count) != null && resolveCount(tab.count)! >= 0}>
-                  <span class={`text-[10px] ${isActive() ? 'opacity-60' : 'opacity-40'}`}>
+                  <span class={`text-[10px] font-mono tabular-nums ${isActive() ? 'opacity-70' : 'opacity-40'}`}>
                     {resolveCount(tab.count)}
                   </span>
                 </Show>

@@ -67,7 +67,7 @@ const ClusterSelector: Component = () => {
     <Show when={enabled()}>
       <div class="relative">
         <button
-          class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:text-white hover:border-white/20 transition-colors"
+          class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-text-muted hover:text-white hover:border-white/20 hover:bg-white/[0.08] transition-all duration-200"
           onClick={() => {
             refetch();
             setOpen(!open());
@@ -97,11 +97,11 @@ const ClusterSelector: Component = () => {
         <Show when={open()}>
           {/* Responsive container: Dropdown on desktop, Sheet on mobile */}
           <div
-            class="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-full z-50 md:mt-1 flex w-full flex-col md:w-64 animate-slide-up md:animate-fade-in"
+            class="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-full z-50 md:mt-1 flex w-full flex-col md:w-64 animate-slide-up md:animate-dropdown-in"
           >
-            <div class="md:hidden absolute inset-0 z-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+            <div class="md:hidden absolute inset-0 z-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} />
             
-            <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/10 bg-[rgba(8,14,28,0.94)] backdrop-blur-sm shadow-2xl overflow-hidden max-h-[70vh] md:max-h-none">
+            <div class="relative z-10 mt-auto md:mt-0 rounded-t-xl md:rounded-lg border-t md:border border-white/[0.12] bg-[rgba(8,14,28,0.96)] backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_1px_rgba(255,255,255,0.06)] overflow-hidden max-h-[70vh] md:max-h-none">
               <div class="p-4 md:p-2 border-b border-white/5 flex items-center justify-between">
                 <div class="heading-label px-2">
                   Clusters
@@ -147,7 +147,7 @@ const ClusterSelector: Component = () => {
           
           {/* Desktop-only click outside to close */}
           <div
-            class="hidden md:block fixed inset-0 z-40"
+            class="hidden md:block fixed inset-0 z-40 animate-fade-in"
             onClick={() => setOpen(false)}
           />
         </Show>

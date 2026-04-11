@@ -73,6 +73,7 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
                   classList={{
                     'text-right': col.align === 'right',
                     'cursor-pointer select-none hover:text-text-dim transition-colors': !!col.sortable,
+                    'text-text-muted border-b border-white/20': col.sortable && sortCol() === col.id,
                   }}
                   style={col.width ? { width: col.width } : undefined}
                   onClick={col.sortable ? () => handleSort(col.id) : undefined}
@@ -92,7 +93,7 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
           <For each={sortedData()}>
             {(row) => (
               <tr
-                class="border-b border-white/5 hover:bg-white/[0.03] transition-colors even:bg-white/[0.02]"
+                class="border-b border-white/5 hover:bg-white/[0.03] transition-colors duration-100 even:bg-white/[0.02]"
                 classList={{ 'cursor-pointer': !!props.onRowClick }}
                 onClick={props.onRowClick ? () => props.onRowClick!(row) : undefined}
               >
