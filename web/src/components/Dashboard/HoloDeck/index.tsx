@@ -25,7 +25,7 @@ import {
 } from './derivedState';
 import { TrafficManager } from './traffic';
 import { HoloEngine } from './engine';
-import { buildScene, type SceneContext } from './sceneBuilder';
+import { buildScene, computeSceneIds, diffScene, type SceneContext } from './sceneBuilder';
 
 export type { HoloDeckFilter } from './derivedState';
 
@@ -596,23 +596,87 @@ const HoloDeck: Component<Props> = (props) => {
     });
   });
 
+  let firstSceneBuild = true;
+
   createEffect(() => {
     const _sceneKey = sceneTopologyKey();
     untrack(() => {
-      while(dataGroup.children.length > 0) { const c = dataGroup.children[0]; dataGroup.remove(c); disposeObject(c); }
-      objectMap.clear(); dataMap.clear(); serviceToPodsMap.clear();
-      nodeVisuals.length = 0;
-      podVisuals.length = 0;
-      serviceVisuals.length = 0;
-      const fiAccelBefore = getFiAccelMetricsSnapshot();
-      const sceneBuildStartedAt = performance.now();
-      const ctx: SceneContext = { dataGroup, objectMap, dataMap, serviceToPodsMap, sharedGeoms, sharedMats, coreMatCache, scannerMatCache, edgeMatCache, podMatCache, podLineMatCache };
-      const res = buildScene(ctx, props.nodes, props.pods, props.services);
-      lastSceneBuildMs = performance.now() - sceneBuildStartedAt;
-      lastSceneAccelDelta = diffFiAccelMetrics(fiAccelBefore, getFiAccelMetricsSnapshot());
-      curves = res.curves; serviceCurves = res.serviceCurves;
-      rebuildVisualRefs();
-      applyFilterVisuals();
+      const nextIds = computeSceneIds(props.nodes, props.pods, props.services);
+      const diff = diffScene(objectMap, nextIds);
+      const isMinorUpdate = !firstSceneBuild && diff.removed.size + diff.added.size < diff.unchanged.size;
+
+      if (isMinorUpdate) {
+        // Diff-based update: remove departed, add new, reuse unchanged
+        for (const id of diff.removed) {
+          const obj = objectMap.get(id);
+          if (obj) { dataGroup.remove(obj); disposeObject(obj); }
+          objectMap.delete(id);
+          dataMap.delete(id);
+        }
+
+        // Build only the new entities via a full build into a temporary context,
+        // then cherry-pick new objects. This reuses the existing buildScene logic.
+        if (diff.added.size > 0) {
+          const tempGroup = new THREE.Group();
+          const tempObjectMap = new Map<string, THREE.Object3D>();
+          const tempDataMap = new Map<string, typeof dataMap extends Map<string, infer V> ? V : never>();
+          const tempServiceToPodsMap = new Map<string, string[]>();
+          const tempCtx: SceneContext = {
+            dataGroup: tempGroup, objectMap: tempObjectMap, dataMap: tempDataMap,
+            serviceToPodsMap: tempServiceToPodsMap, sharedGeoms, sharedMats,
+            coreMatCache, scannerMatCache, edgeMatCache, podMatCache, podLineMatCache,
+          };
+          const res = buildScene(tempCtx, props.nodes, props.pods, props.services);
+
+          // Adopt only the new objects from the temp build
+          for (const id of diff.added) {
+            const obj = tempObjectMap.get(id);
+            const data = tempDataMap.get(id);
+            if (obj) {
+              tempGroup.remove(obj);
+              dataGroup.add(obj);
+              objectMap.set(id, obj);
+              if (data) dataMap.set(id, data);
+            }
+          }
+          // Copy service-to-pods mappings for new services
+          for (const id of diff.added) {
+            if (id.startsWith('service-') && tempServiceToPodsMap.has(id)) {
+              serviceToPodsMap.set(id, tempServiceToPodsMap.get(id)!);
+            }
+          }
+
+          // Dispose leftover temp objects (unchanged entities that were rebuilt unnecessarily)
+          while (tempGroup.children.length > 0) {
+            const c = tempGroup.children[0];
+            tempGroup.remove(c);
+            disposeObject(c);
+          }
+
+          curves = res.curves;
+          serviceCurves = res.serviceCurves;
+        }
+
+        rebuildVisualRefs();
+        applyFilterVisuals();
+      } else {
+        // Full rebuild for first mount or major topology changes
+        while (dataGroup.children.length > 0) { const c = dataGroup.children[0]; dataGroup.remove(c); disposeObject(c); }
+        objectMap.clear(); dataMap.clear(); serviceToPodsMap.clear();
+        nodeVisuals.length = 0;
+        podVisuals.length = 0;
+        serviceVisuals.length = 0;
+        const fiAccelBefore = getFiAccelMetricsSnapshot();
+        const sceneBuildStartedAt = performance.now();
+        const ctx: SceneContext = { dataGroup, objectMap, dataMap, serviceToPodsMap, sharedGeoms, sharedMats, coreMatCache, scannerMatCache, edgeMatCache, podMatCache, podLineMatCache };
+        const res = buildScene(ctx, props.nodes, props.pods, props.services);
+        lastSceneBuildMs = performance.now() - sceneBuildStartedAt;
+        lastSceneAccelDelta = diffFiAccelMetrics(fiAccelBefore, getFiAccelMetricsSnapshot());
+        curves = res.curves; serviceCurves = res.serviceCurves;
+        rebuildVisualRefs();
+        applyFilterVisuals();
+        firstSceneBuild = false;
+      }
     });
   });
 
