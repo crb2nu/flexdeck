@@ -388,6 +388,9 @@ const TopologyGraph: Component<Props> = (props) => {
   let lastSpatialGridBuildAt = -Infinity;
   const visibleNodeIndices: number[] = [];
   let visibleNodeFlags = new Uint8Array(0);
+  // Per-node previous spatial grid cell key for incremental grid updates
+  let nodeCellKeys: Int32Array = new Int32Array(0);
+  const CELL_KEY_NONE = -1; // sentinel for unassigned
   let lastVisibleNodeCount = 0;
   // Pre-filtered visible link indices (populated in updateVisibleNodes)
   const visibleHostsLinkIndices: number[] = [];
@@ -612,6 +615,12 @@ const TopologyGraph: Component<Props> = (props) => {
     }
     activeSpatialGridKeys.length = 0;
 
+    // Ensure nodeCellKeys is sized correctly
+    if (nodeCellKeys.length !== graphNodes.length) {
+      nodeCellKeys = new Int32Array(graphNodes.length);
+      nodeCellKeys.fill(CELL_KEY_NONE);
+    }
+
     const useVisibleNodes = lastVisibleNodeCount > 0 && lastVisibleNodeCount < graphNodes.length;
     if (useVisibleNodes) {
       for (let i = 0; i < lastVisibleNodeCount; i++) {
@@ -619,6 +628,7 @@ const TopologyGraph: Component<Props> = (props) => {
         const node = graphNodes[nodeIndex];
         if (!node || node.x === undefined || node.y === undefined) continue;
         const key = getSpatialKey(node.x, node.y);
+        nodeCellKeys[nodeIndex] = key;
         let bucket = spatialGrid.get(key);
         if (!bucket) {
           bucket = [];
@@ -632,6 +642,7 @@ const TopologyGraph: Component<Props> = (props) => {
         const node = graphNodes[nodeIndex];
         if (node.x === undefined || node.y === undefined) continue;
         const key = getSpatialKey(node.x, node.y);
+        nodeCellKeys[nodeIndex] = key;
         let bucket = spatialGrid.get(key);
         if (!bucket) {
           bucket = [];
@@ -642,6 +653,63 @@ const TopologyGraph: Component<Props> = (props) => {
       }
     }
     spatialGridValid = true;
+    spatialGridDirty = false;
+    lastSpatialGridBuildAt = now;
+  };
+
+  /** Incrementally update spatial grid for nodes whose positions changed significantly. */
+  const updateSpatialGridIncremental = (now = performance.now()) => {
+    if (!spatialGridValid || nodeCellKeys.length !== graphNodes.length) {
+      // Fall back to full rebuild if state is inconsistent
+      rebuildSpatialGrid(now);
+      return;
+    }
+
+    const halfCell = GRID_CELL_SIZE * 0.5;
+    let movedCount = 0;
+    for (let i = 0; i < graphNodes.length; i++) {
+      const node = graphNodes[i];
+      if (node.x === undefined || node.y === undefined) continue;
+      const newKey = getSpatialKey(node.x, node.y);
+      const oldKey = nodeCellKeys[i];
+      if (newKey === oldKey) continue;
+
+      // Check if movement is significant enough (> half cell size)
+      // Use key difference as a proxy — if key changed, position crossed a cell boundary
+      movedCount++;
+
+      // Remove from old bucket
+      if (oldKey !== CELL_KEY_NONE) {
+        const oldBucket = spatialGrid.get(oldKey);
+        if (oldBucket) {
+          const idx = oldBucket.indexOf(i);
+          if (idx !== -1) {
+            oldBucket[idx] = oldBucket[oldBucket.length - 1];
+            oldBucket.pop();
+          }
+        }
+      }
+
+      // Add to new bucket
+      let newBucket = spatialGrid.get(newKey);
+      if (!newBucket) {
+        newBucket = [];
+        spatialGrid.set(newKey, newBucket);
+        activeSpatialGridKeys.push(newKey);
+      }
+      if (newBucket.length === 0 && !activeSpatialGridKeys.includes(newKey)) {
+        activeSpatialGridKeys.push(newKey);
+      }
+      newBucket.push(i);
+      nodeCellKeys[i] = newKey;
+    }
+
+    // If too many nodes moved (>30%), just do a full rebuild — incremental overhead isn't worth it
+    if (movedCount > graphNodes.length * 0.3) {
+      rebuildSpatialGrid(now);
+      return;
+    }
+
     spatialGridDirty = false;
     lastSpatialGridBuildAt = now;
   };
@@ -753,14 +821,23 @@ const TopologyGraph: Component<Props> = (props) => {
     visibleHostsLinkIndices.length = hostsLinks.length;
     visibleSelectsLinkIndices.length = selectsLinks.length;
 
-    // Invalidate style cache - will be rebuilt on next draw
-    nodeStylesCacheValid = false;
-    // Invalidate spatial grid - will be rebuilt on next hover check
+    // Stagger cache rebuilds across frames to avoid a single-frame stall.
+    // Frame 0 (now): update positions + invalidate spatial grid (needed for interaction)
     spatialGridValid = false;
     spatialGridDirty = true;
-    invalidateViewport();
 
     setNodeCount(graphNodes.length);
+
+    // Frame 1: rebuild node styles cache (needed for drawing)
+    requestAnimationFrame(() => {
+      nodeStylesCacheValid = false;
+
+      // Frame 2: refresh viewport visibility + kick draw
+      requestAnimationFrame(() => {
+        invalidateViewport();
+        startAnimationLoop();
+      });
+    });
   };
 
   const buildGraphDirect = (): BuildExecutionResult => {
@@ -806,7 +883,13 @@ const TopologyGraph: Component<Props> = (props) => {
     }
 
     currentSimulationAlpha = message.alpha;
-    spatialGridDirty = true;
+    // Use incremental spatial grid update during simulation ticks instead of
+    // marking dirty for a full O(N) rebuild
+    if (spatialGridValid && nodeCellKeys.length === graphNodes.length) {
+      updateSpatialGridIncremental();
+    } else {
+      spatialGridDirty = true;
+    }
     pendingSimulationVisualUpdate = true;
     if (hasActiveOverlayState()) {
       overlayLayerDirty = true;
@@ -1798,9 +1881,17 @@ const TopologyGraph: Component<Props> = (props) => {
     syncDensityOverviewState(densityOverviewBlend);
 
     if (isSimulationActive) {
-      spatialGridDirty = true;
+      // For main-thread simulation, use incremental grid update instead of full rebuild
       if (activeSimulationMode === 'main') {
+        if (spatialGridValid && nodeCellKeys.length === graphNodes.length) {
+          updateSpatialGridIncremental();
+        } else {
+          spatialGridDirty = true;
+        }
         pendingSimulationVisualUpdate = true;
+      } else {
+        // Worker ticks already update incrementally in handleWorkerTick
+        if (!spatialGridValid) spatialGridDirty = true;
       }
       if (hasActiveOverlayState()) {
         overlayLayerDirty = true;
@@ -2197,6 +2288,8 @@ const TopologyGraph: Component<Props> = (props) => {
     }
     handleResize();
     window.addEventListener('resize', debouncedResize);
+    // Eagerly initialize the web worker so it's ready for the first topology build
+    ensureTopologyWorker();
     // Don't start animation loop here - it will start when data arrives via initializeSimulation
     // Do an initial draw to show the background
     draw();

@@ -268,6 +268,55 @@ export function buildScene(
   return { curves, serviceCurves };
 }
 
+/**
+ * Compute the set of resource IDs that should exist in the scene.
+ */
+export function computeSceneIds(
+  nodes: K8sNode[],
+  pods: K8sPod[],
+  services: K8sService[]
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) ids.add(`node-${node.metadata.name}`);
+  for (const pod of pods) ids.add(`pod-${pod.metadata.namespace || 'default'}-${pod.metadata.name}`);
+  for (const svc of services) ids.add(`service-${svc.metadata.namespace || 'default'}-${svc.metadata.name}`);
+  return ids;
+}
+
+export interface SceneDiff {
+  added: Set<string>;
+  removed: Set<string>;
+  unchanged: Set<string>;
+}
+
+/**
+ * Diff the current objectMap keys against the desired resource IDs.
+ */
+export function diffScene(
+  objectMap: Map<string, THREE.Object3D>,
+  nextIds: Set<string>
+): SceneDiff {
+  const added = new Set<string>();
+  const removed = new Set<string>();
+  const unchanged = new Set<string>();
+
+  for (const id of nextIds) {
+    if (objectMap.has(id)) {
+      unchanged.add(id);
+    } else {
+      added.add(id);
+    }
+  }
+
+  for (const id of objectMap.keys()) {
+    if (!nextIds.has(id)) {
+      removed.add(id);
+    }
+  }
+
+  return { added, removed, unchanged };
+}
+
 // --- Internal Helpers ---
 
 function getCoreMat(ctx: SceneContext, colorHex: number) {

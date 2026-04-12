@@ -114,6 +114,7 @@ let eventSource: EventSource | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let watchFlushTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingWatchEvents: WatchEvent[] = [];
+let initialFetchInProgress = false;
 const WATCH_BATCH_MS = 75;
 
 const hashString = (value: string): number => {
@@ -422,6 +423,7 @@ const applyWatchEventToStore = (event: WatchEvent, flags: WatchChangeFlags) => {
 const flushPendingWatchEvents = () => {
   watchFlushTimeout = null;
   if (pendingWatchEvents.length === 0) return;
+  if (initialFetchInProgress) return; // defer until fetch completes
 
   const events = pendingWatchEvents;
   pendingWatchEvents = [];
@@ -450,6 +452,17 @@ const enqueueWatchEvent = (event: WatchEvent) => {
 
 // Fetch initial data via REST
 async function fetchInitialData() {
+  initialFetchInProgress = true;
+  try {
+    await fetchInitialDataInner();
+  } finally {
+    initialFetchInProgress = false;
+    // Flush any watch events that arrived during the fetch
+    if (pendingWatchEvents.length > 0) flushPendingWatchEvents();
+  }
+}
+
+async function fetchInitialDataInner() {
   const publicDomains = ['www.flexinfer.ai', 'codyblevins.com', 'www.codyblevins.com'];
   const isPublicView =
     typeof window !== "undefined" &&
@@ -637,11 +650,11 @@ function connectSSE(namespace?: string) {
     eventSource?.close();
     eventSource = null;
 
-    // Attempt reconnect after 5 seconds
+    // Attempt reconnect after 5 seconds — re-fetch baseline then reconnect SSE
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
     reconnectTimeout = setTimeout(() => {
       console.log("Attempting SSE reconnect...");
-      connectSSE(namespace);
+      connectK8sStream(namespace);
     }, 5000);
 
     // Fall back to polling while disconnected
@@ -664,11 +677,12 @@ function stopPolling() {
 }
 
 // Public API
-export function connectK8sStream(namespace?: string) {
-  // Fetch initial data first
-  fetchInitialData();
+export async function connectK8sStream(namespace?: string) {
+  // Fetch baseline snapshot before connecting SSE to prevent watch events
+  // from being overwritten by a stale REST response
+  await fetchInitialData();
 
-  // Then connect to SSE for updates
+  // Connect SSE only after the baseline is established
   connectSSE(namespace);
 }
 
