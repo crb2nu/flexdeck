@@ -1,3 +1,4 @@
+import { useHref, useNavigate } from '@solidjs/router';
 import { Component, For, Show, createMemo } from 'solid-js';
 
 export interface OperationsSidebarItem {
@@ -7,6 +8,9 @@ export interface OperationsSidebarItem {
   detail?: string;
   value?: string;
   group?: string;
+  href?: string;
+  replace?: boolean;
+  noScroll?: boolean;
 }
 
 export interface OperationsSidebarNavProps {
@@ -14,7 +18,7 @@ export interface OperationsSidebarNavProps {
   description: string;
   items: OperationsSidebarItem[];
   active: string;
-  onChange: (id: string) => void;
+  onChange?: (id: string) => void;
 }
 
 const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
@@ -51,32 +55,41 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
               </Show>
               <div class="flex flex-col gap-0.5">
                 <For each={group.items}>
-                  {(item) => (
-                    <button
-                      type="button"
-                      aria-pressed={props.active === item.id}
-                      aria-current={props.active === item.id ? 'true' : undefined}
-                      data-operations-nav-id={item.id}
-                      onClick={() => props.onChange(item.id)}
-                      class={`relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors duration-100 ${
-                        props.active === item.id
+                  {(item) => {
+                    const active = () => props.active === item.id;
+                    const itemClass = () =>
+                      `relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors duration-100 ${
+                        active()
                           ? 'bg-white/10 text-white'
                           : 'text-text-muted hover:bg-white/5 hover:text-text-dim'
-                      }`}
-                    >
-                      <div
-                        class={`absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-full transition-colors duration-100 ${
-                          props.active === item.id ? 'bg-white/50' : 'bg-transparent'
-                        }`}
-                      />
-                      <span class="text-sm truncate">{item.label}</span>
-                      <Show when={item.value}>
-                        <span class="ml-2 text-xs font-mono text-text-dim tabular-nums">
-                          {item.value}
-                        </span>
+                      }`;
+
+                    return (
+                      <Show
+                        when={item.href}
+                        fallback={
+                          <button
+                            type="button"
+                            aria-pressed={active()}
+                            aria-current={active() ? 'true' : undefined}
+                            data-operations-nav-id={item.id}
+                            onClick={() => props.onChange?.(item.id)}
+                            class={itemClass()}
+                          >
+                            <SidebarItemAccent active={active()} />
+                            <SidebarItemContent item={item} />
+                          </button>
+                        }
+                      >
+                        <SidebarLinkItem
+                          item={item}
+                          active={active()}
+                          class={itemClass()}
+                          onSelect={() => props.onChange?.(item.id)}
+                        />
                       </Show>
-                    </button>
-                  )}
+                    );
+                  }}
                 </For>
               </div>
             </div>
@@ -84,6 +97,69 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
         </For>
       </div>
     </aside>
+  );
+};
+
+const SidebarItemAccent: Component<{ active: boolean }> = (props) => (
+  <div
+    class={`absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-full transition-colors duration-100 ${
+      props.active ? 'bg-white/50' : 'bg-transparent'
+    }`}
+  />
+);
+
+const SidebarItemContent: Component<{ item: OperationsSidebarItem }> = (props) => (
+  <>
+    <span class="text-sm truncate">{props.item.label}</span>
+    <Show when={props.item.value}>
+      <span class="ml-2 text-xs font-mono text-text-dim tabular-nums">
+        {props.item.value}
+      </span>
+    </Show>
+  </>
+);
+
+const SidebarLinkItem: Component<{
+  item: OperationsSidebarItem;
+  active: boolean;
+  class: string;
+  onSelect?: () => void;
+}> = (props) => {
+  const navigate = useNavigate();
+  const href = useHref(() => props.item.href!);
+
+  const handleClick = (event: MouseEvent) => {
+    props.onSelect?.();
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    void navigate(props.item.href!, {
+      replace: props.item.replace,
+      scroll: props.item.noScroll === false,
+      resolve: false,
+    });
+  };
+
+  return (
+    <a
+      href={href()}
+      aria-current={props.active ? 'page' : undefined}
+      data-operations-nav-id={props.item.id}
+      onClick={handleClick}
+      class={props.class}
+    >
+      <SidebarItemAccent active={props.active} />
+      <SidebarItemContent item={props.item} />
+    </a>
   );
 };
 
