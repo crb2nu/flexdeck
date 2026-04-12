@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { HashRouter, Route } from '@solidjs/router';
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -205,7 +206,13 @@ import Workbench from './Workbench';
 function mount(factory: () => JSX.Element) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(() => <PageScrollBody>{factory()}</PageScrollBody>, container);
+  const RouteShell = () => <PageScrollBody>{factory()}</PageScrollBody>;
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/flexinfer" component={RouteShell} />
+      <Route path="/models" component={RouteShell} />
+    </HashRouter>
+  ), container);
   return () => {
     dispose();
     container.remove();
@@ -216,10 +223,10 @@ function pageText(): string {
   return document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function findSidebarButton(sectionId: string): HTMLButtonElement {
-  const button = document.querySelector(`[data-operations-nav-id="${sectionId}"]`) as HTMLButtonElement | null;
-  expect(button).toBeTruthy();
-  return button!;
+function findSidebarItem(sectionId: string): HTMLElement {
+  const item = document.querySelector(`[data-operations-nav-id="${sectionId}"]`) as HTMLElement | null;
+  expect(item).toBeTruthy();
+  return item!;
 }
 
 function sectionClass(id: string): string {
@@ -230,27 +237,11 @@ function sectionClass(id: string): string {
 
 describe('Workbench', () => {
   let cleanup: () => void = () => undefined;
-  let scrollIntoViewMock: ReturnType<typeof vi.fn>;
-  let scrollToMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     workbenchMocks.healthFeatures.flexinfer_proxy.enabled = true;
     workbenchMocks.healthFeatures.modelcache.enabled = true;
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      callback(0);
-      return 1;
-    });
-    scrollIntoViewMock = vi.fn();
-    scrollToMock = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoViewMock,
-    });
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      value: scrollToMock,
-    });
-    window.history.replaceState({}, '', '/models');
+    window.history.replaceState({}, '', '/#/models');
 
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
@@ -293,47 +284,43 @@ describe('Workbench', () => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
-    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
     vi.unstubAllGlobals();
-    window.history.replaceState({}, '', '/models');
+    window.history.replaceState({}, '', '/#/models');
   });
 
-  it('switches the visible lane from the sidebar rail inside the page shell', async () => {
+  it('switches the visible lane from the sidebar rail without losing the current route', async () => {
     cleanup = mount(() => <Workbench />);
 
     await vi.waitFor(() => {
       expect(pageText()).toContain('Operator briefing');
     });
 
-    expect(findSidebarButton('overview').getAttribute('aria-pressed')).toBe('true');
-    expect(findSidebarButton('telemetry').getAttribute('aria-pressed')).toBe('false');
+    expect(findSidebarItem('overview').tagName).toBe('A');
+    expect(findSidebarItem('overview').getAttribute('aria-current')).toBe('page');
+    expect(findSidebarItem('telemetry').getAttribute('aria-current')).toBeNull();
     expect(sectionClass('overview')).not.toContain('hidden');
     expect(sectionClass('telemetry')).toContain('hidden');
 
-    scrollToMock.mockClear();
-    findSidebarButton('telemetry').click();
+    findSidebarItem('telemetry').click();
 
     await vi.waitFor(() => {
       expect(sectionClass('telemetry')).not.toContain('hidden');
     });
 
-    expect(findSidebarButton('telemetry').getAttribute('aria-pressed')).toBe('true');
-    expect(findSidebarButton('telemetry').getAttribute('aria-current')).toBe('true');
-    expect(findSidebarButton('overview').getAttribute('aria-pressed')).toBe('false');
+    expect(findSidebarItem('telemetry').getAttribute('aria-current')).toBe('page');
+    expect(findSidebarItem('overview').getAttribute('aria-current')).toBeNull();
     expect(sectionClass('overview')).toContain('hidden');
-    expect(scrollToMock).toHaveBeenCalled();
-    expect(window.location.hash).toBe('#flexinfer-telemetry');
+    expect(window.location.hash).toBe('#/models?section=telemetry');
 
-    findSidebarButton('intake').click();
+    findSidebarItem('intake').click();
     await vi.waitFor(() => {
       expect(sectionClass('intake')).not.toContain('hidden');
     });
-    expect(window.location.hash).toBe('#flexinfer-intake');
+    expect(window.location.hash).toBe('#/models?section=intake');
   });
 
-  it('opens the hashed section on first render', async () => {
-    window.history.replaceState({}, '', '/models#flexinfer-supply-chain');
+  it('opens the section from router search params on first render', async () => {
+    window.history.replaceState({}, '', '/#/models?section=supply-chain');
 
     cleanup = mount(() => <Workbench />);
 
@@ -341,27 +328,28 @@ describe('Workbench', () => {
       expect(sectionClass('supply-chain')).not.toContain('hidden');
     });
 
-    expect(findSidebarButton('supply-chain').getAttribute('aria-pressed')).toBe('true');
+    expect(findSidebarItem('supply-chain').getAttribute('aria-current')).toBe('page');
     expect(sectionClass('overview')).toContain('hidden');
   });
 
-  it('falls back to the page scroll body when section nodes cannot scroll themselves', async () => {
-    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-
+  it('uses the same route-safe section flow from the overview cards', async () => {
     cleanup = mount(() => <Workbench />);
 
     await vi.waitFor(() => {
       expect(pageText()).toContain('Operator briefing');
     });
 
-    scrollToMock.mockClear();
-    findSidebarButton('telemetry').click();
+    const telemetryCard = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Telemetry'),
+    ) as HTMLButtonElement | undefined;
+    expect(telemetryCard).toBeTruthy();
+    telemetryCard!.click();
 
     await vi.waitFor(() => {
       expect(sectionClass('telemetry')).not.toContain('hidden');
     });
 
-    expect(scrollToMock).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/models?section=telemetry');
   });
 
   it('renders ready, stale, and partial section states from shared operator data', async () => {

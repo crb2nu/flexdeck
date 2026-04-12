@@ -1,3 +1,4 @@
+import { useLocation, useSearchParams } from '@solidjs/router';
 import { Component, For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import {
   operatorStateBadgeClass,
@@ -69,8 +70,6 @@ const workbenchSectionIds: WorkbenchSectionId[] = [
   'intake',
 ];
 
-const workbenchSectionHashPrefix = '#flexinfer-';
-
 interface WorkbenchProps {
   surface?: Surface;
 }
@@ -84,14 +83,15 @@ const controlPlaneOrder: Record<string, number> = {
   Ready: 5,
 };
 
-const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
-  const surface = () => props.surface ?? 'models';
-  const isAdminSurface = () => surface() === 'admin';
+const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   const managementMode = () => getFlexInferManagementMode(healthStore.features || {});
   const proxyEnabled = () => healthStore.features?.flexinfer_proxy?.enabled ?? false;
   const modelCacheEnabled = () => healthStore.features?.modelcache?.enabled ?? false;
-
-  const [activeSection, setActiveSection] = createSignal<WorkbenchSectionId>('overview');
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams<{ section?: string }>();
+  const activeSection = createMemo<WorkbenchSectionId>(() =>
+    readWorkbenchSectionFromQueryValue(searchParams.section) ?? 'overview',
+  );
   const activeTab = createMemo<ModelsTab>(() => (activeSection() === 'control-plane' ? 'controller' : 'proxy'));
   const noopSetActiveTab = () => undefined;
   const controller = useModelsController(activeTab, noopSetActiveTab, {
@@ -154,65 +154,18 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   };
 
   onMount(() => {
-    const hashSection = readWorkbenchSectionFromHash();
-    if (hashSection) {
-      setActiveSection(hashSection);
-      requestAnimationFrame(() => scrollSectionIntoView(hashSection, 'auto'));
-    } else {
-      syncWorkbenchSectionHash(activeSection());
-    }
-
     startFlexInferOperationalPolling();
     void refreshWorkbench();
-
-    if (typeof window !== 'undefined') {
-      const handleHashChange = () => {
-        const nextSection = readWorkbenchSectionFromHash();
-        if (nextSection) {
-          changeSection(nextSection, { syncHash: false, behavior: 'auto' });
-        }
-      };
-
-      window.addEventListener('hashchange', handleHashChange);
-      onCleanup(() => {
-        window.removeEventListener('hashchange', handleHashChange);
-      });
-    }
   });
   onCleanup(() => {
     stopFlexInferOperationalPolling();
   });
 
-  const scrollSectionIntoView = (
-    section: WorkbenchSectionId,
-    behavior: ScrollBehavior = 'smooth',
-  ) => {
-    const target = document.getElementById(section);
-    if (!target) return;
-
-    const viewport = resolvePageScrollViewport(target);
-    if (viewport) {
-      const offset = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - 12;
-      viewport.scrollTo({ top: Math.max(0, offset), left: 0, behavior });
-      return;
-    }
-
-    if (typeof target.scrollIntoView === 'function') {
-      target.scrollIntoView({ behavior, block: 'start' });
-    }
-  };
-
-  const changeSection = (
-    section: WorkbenchSectionId,
-    options?: { behavior?: ScrollBehavior; syncHash?: boolean }
-  ) => {
-    setActiveSection(section);
-    if (options?.syncHash !== false) {
-      syncWorkbenchSectionHash(section);
-    }
-    requestAnimationFrame(() => {
-      scrollSectionIntoView(section, options?.behavior ?? 'smooth');
-    });
+  const changeSection = (section: WorkbenchSectionId) => {
+    setSearchParams(
+      { section: section === 'overview' ? undefined : section },
+      { replace: true },
+    );
   };
 
   const controllerSectionState = createMemo<OperatorState>(() =>
@@ -318,6 +271,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     {
       id: 'overview' as const,
       label: 'Overview',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'overview'),
+      replace: true,
       eyebrow: 'Cockpit',
       value: freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()]),
       detail: `${controller.crdModels().length} CRDs · ${proxyTotals()?.requestsTotal ?? 0} requests`,
@@ -326,6 +281,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     {
       id: 'control-plane' as const,
       label: 'Control plane',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'control-plane'),
+      replace: true,
       eyebrow: 'CRDs',
       value: `${controller.crdModels().length}`,
       detail: reliabilityHeadline().label,
@@ -334,6 +291,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     {
       id: 'telemetry' as const,
       label: 'Telemetry',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'telemetry'),
+      replace: true,
       eyebrow: 'Proxy + router',
       value: `${proxyTotals()?.queueDepth ?? 0}`,
       detail: `${proxyTotals()?.requestsTotal ?? 0} requests`,
@@ -342,6 +301,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     {
       id: 'supply-chain' as const,
       label: 'Supply chain',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'supply-chain'),
+      replace: true,
       eyebrow: 'Catalogs + caches',
       value: `${supplyChainSummary().cacheCount}`,
       detail: `${supplyChainSummary().readyCacheCount} ready caches`,
@@ -350,6 +311,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
     {
       id: 'intake' as const,
       label: 'Intake',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'intake'),
+      replace: true,
       eyebrow: 'Registry + search',
       value: `${controller.registryModels().length}`,
       detail: `${controller.searchResults().length} staged results`,
@@ -393,7 +356,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
           description=""
           items={sectionNav()}
           active={activeSection()}
-          onChange={(section) => changeSection(section as WorkbenchSectionId)}
         />
 
         <div class="min-w-0 space-y-4">
@@ -446,25 +408,25 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
             title="Control plane"
             stat={`${controller.crdModels().length} models`}
             tone="text-text-muted"
-            onClick={() => setActiveSection('control-plane')}
+            onClick={() => changeSection('control-plane')}
           />
           <OverviewFocusCard
             title="Telemetry"
             stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
             tone="text-status-ok"
-            onClick={() => setActiveSection('telemetry')}
+            onClick={() => changeSection('telemetry')}
           />
           <OverviewFocusCard
             title="Supply chain"
             stat={`${supplyChainSummary().readyCacheCount} ready`}
             tone="text-text-dim"
-            onClick={() => setActiveSection('supply-chain')}
+            onClick={() => changeSection('supply-chain')}
           />
           <OverviewFocusCard
             title="Intake"
             stat={`${searchResults().length} staged`}
             tone="text-text-main"
-            onClick={() => setActiveSection('intake')}
+            onClick={() => changeSection('intake')}
           />
         </div>
           </section>
@@ -1183,26 +1145,38 @@ function isWorkbenchSectionId(value: string): value is WorkbenchSectionId {
   return workbenchSectionIds.includes(value as WorkbenchSectionId);
 }
 
-function readWorkbenchSectionFromHash(): WorkbenchSectionId | null {
-  if (typeof window === 'undefined') return null;
-  const hash = window.location.hash;
-  if (!hash.startsWith(workbenchSectionHashPrefix)) return null;
-
-  const rawSection = hash.slice(workbenchSectionHashPrefix.length);
+function readWorkbenchSectionFromQueryValue(value?: string | string[]): WorkbenchSectionId | null {
+  const rawSection = Array.isArray(value) ? value[0] : value;
+  if (!rawSection) return null;
   return isWorkbenchSectionId(rawSection) ? rawSection : null;
 }
 
-function syncWorkbenchSectionHash(section: WorkbenchSectionId) {
-  if (typeof window === 'undefined') return;
-  const nextHash = `${workbenchSectionHashPrefix}${section}`;
-  if (window.location.hash === nextHash) return;
-  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${nextHash}`);
-}
+function buildWorkbenchSectionHref(
+  pathname: string,
+  query: Record<string, string | string[] | undefined>,
+  section: WorkbenchSectionId,
+): string {
+  const params = new URLSearchParams();
 
-function resolvePageScrollViewport(target: HTMLElement): HTMLElement | null {
-  const nearestViewport = target.closest<HTMLElement>('[data-page-scroll-body]');
-  if (nearestViewport) return nearestViewport;
-  return document.querySelector<HTMLElement>('[data-page-scroll-body]');
+  for (const [key, value] of Object.entries(query)) {
+    if (key === 'section' || value == null) continue;
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        params.append(key, entry);
+      }
+      continue;
+    }
+
+    params.set(key, value);
+  }
+
+  if (section !== 'overview') {
+    params.set('section', section);
+  }
+
+  const search = params.toString();
+  return search ? `${pathname}?${search}` : pathname;
 }
 
 export default FlexInferWorkbench;
