@@ -28,7 +28,7 @@ const Sparkline: Component<SparklineProps> = (props) => {
     const range = max - min || 1;
     const w = width();
     const h = height();
-    const padding = 2;
+    const padding = 3;
 
     const xStep = (w - padding * 2) / (data.length - 1);
     const yScale = (h - padding * 2) / range;
@@ -51,7 +51,7 @@ const Sparkline: Component<SparklineProps> = (props) => {
     const range = max - min || 1;
     const w = width();
     const h = height();
-    const padding = 2;
+    const padding = 3;
 
     const xStep = (w - padding * 2) / (data.length - 1);
     const yScale = (h - padding * 2) / range;

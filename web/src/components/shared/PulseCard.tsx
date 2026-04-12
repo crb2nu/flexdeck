@@ -84,7 +84,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
   return (
     <div
-      class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 overflow-hidden border-l-2"
+      class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 border-l-2"
       style={{
         'border-left-color': props.color === 'purple' ? 'rgba(189, 0, 255, 0.3)'
           : props.color === 'green' ? 'rgba(10, 255, 104, 0.3)'
