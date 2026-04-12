@@ -213,8 +213,8 @@ const Dashboard: Component = () => {
         </div>
 
         {/* AI Operations */}
-        <div class="border-t border-white/[0.06] pt-3">
-          <div class="heading-label mb-2">AI Operations</div>
+        <div class="border-t border-white/[0.12] pt-4">
+          <div class="heading-section mb-2">AI Operations</div>
           <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-3">
             <PulseCard
               title="Models"

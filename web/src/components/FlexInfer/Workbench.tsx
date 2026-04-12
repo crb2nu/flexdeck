@@ -387,33 +387,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
         </div>
       </Show>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
-        <WorkbenchStatCard
-          label="Controller"
-          value={`${controller.crdModels().length}`}
-          tone="text-text-muted"
-          note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
-        />
-        <WorkbenchStatCard
-          label="Telemetry"
-          value={proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '—'}
-          tone="text-status-ok"
-          note={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`}
-        />
-        <WorkbenchStatCard
-          label="Supply chain"
-          value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
-          tone="text-text-dim"
-          note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
-        />
-        <WorkbenchStatCard
-          label="Freshness"
-          value={freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
-          tone="text-text-main"
-          note={freshnessNote([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
-        />
-      </div>
-
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
         <OperationsSidebarNav
           title="Workbench"
@@ -1055,8 +1028,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (props) => {
   );
 };
 
+const statCardBorder: Record<string, string> = {
+  'text-text-muted': 'rgba(255,255,255,0.1)',
+  'text-status-ok': 'rgba(0,240,255,0.3)',
+  'text-text-dim': 'rgba(189,0,255,0.3)',
+  'text-text-main': 'rgba(10,255,104,0.3)',
+};
+
 const WorkbenchStatCard: Component<{ label: string; value: string; tone: string; note: string }> = (props) => (
-  <div class="surface p-3">
+  <div class="surface border-l-2 p-3" style={{ 'border-left-color': statCardBorder[props.tone] ?? 'rgba(255,255,255,0.1)' }}>
     <div class="heading-label">{props.label}</div>
     <div class={`mt-1.5 text-xl font-semibold ${props.tone}`}>{props.value}</div>
     <div class="mt-0.5 text-xs text-text-dim">{props.note}</div>
@@ -1072,10 +1052,14 @@ const OverviewFocusCard: Component<{
   <button
     type="button"
     onClick={props.onClick}
-    class="surface-hover rounded-md p-3 text-left"
+    class="surface-hover flex items-center justify-between rounded-md border-l-2 p-3 text-left"
+    style={{ 'border-left-color': statCardBorder[props.tone] ?? 'rgba(255,255,255,0.1)' }}
   >
-    <div class={`text-sm font-semibold ${props.tone}`}>{props.title}</div>
-    <div class="mt-1 text-xs font-medium text-text-main">{props.stat}</div>
+    <div>
+      <div class={`text-sm font-semibold ${props.tone}`}>{props.title}</div>
+      <div class="mt-1 text-xs font-medium text-text-main">{props.stat}</div>
+    </div>
+    <span class="text-lg text-text-dim">&rsaquo;</span>
   </button>
 );
 
@@ -1120,7 +1104,7 @@ const ModelFlag: Component<{ tone: string; label: string }> = (props) => (
 );
 
 const MiniMetric: Component<{ label: string; value: string }> = (props) => (
-  <div class="rounded-md border border-white/5 bg-black/20 px-3 py-2">
+  <div class="surface px-3 py-2">
     <div class="heading-label">{props.label}</div>
     <div class="mt-1 font-mono text-sm text-text-main">{props.value}</div>
   </div>
