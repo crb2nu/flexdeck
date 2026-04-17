@@ -62,6 +62,20 @@ describe('featureFlags', () => {
     expect(getDefaultAdminTab(features)).toBe('audit');
   });
 
+  it('keeps the Phase 4 admin rollout tabs in stable order', () => {
+    const features: FeatureMap = {
+      rbac: { enabled: true },
+      audit: { enabled: true },
+      multi_cluster: { enabled: true },
+      flexinfer_proxy: { enabled: false },
+    };
+
+    expect(isAdminEnabled(features)).toBe(true);
+    expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(true);
+    expect(getAdminTabs(features).map((tab) => tab.id)).toEqual(['users', 'audit', 'clusters']);
+    expect(getDefaultAdminTab(features)).toBe('users');
+  });
+
   it('returns disabled HUD mode state when both pull and push are off', () => {
     const features: FeatureMap = {
       loom_hud: { enabled: false },
