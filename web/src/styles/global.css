@@ -54,11 +54,29 @@ body {
 
   .surface-hover {
     @apply surface;
-    transition: background var(--transition-fast) ease;
+    position: relative;
+    isolation: isolate;
+    transition: border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
   }
 
-  .surface-hover:hover {
+  .surface-hover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
     background: var(--surface-elevated);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast) ease;
+  }
+
+  .surface-hover:hover::before,
+  .surface-hover:focus-within::before {
+    opacity: 1;
+  }
+
+  .surface-hover > * {
+    position: relative;
   }
 
 

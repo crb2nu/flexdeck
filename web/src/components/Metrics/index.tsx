@@ -204,7 +204,7 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (props) 
   };
 
   return (
-    <div class="surface-hover group flex flex-col p-4 transition-all hover:border-white/10">
+    <div class="surface-hover group flex flex-col p-4 transition-colors hover:border-white/10">
       {/* Header */}
       <div class="mb-3 flex items-center justify-between">
         <span class={`text-sm font-medium ${getColorClass(props.panel.color)}`}>

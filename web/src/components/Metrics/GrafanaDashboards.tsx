@@ -749,7 +749,7 @@ const GrafanaDashboards: Component = () => {
         <For each={filteredDashboards()}>
           {(dash) => (
             <div
-              class={`surface-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-all duration-200 ${
+              class={`surface-hover flex cursor-pointer flex-col overflow-hidden p-4 transition-colors duration-150 ${
                 expandedUid() === dash.uid
                   ? 'border-white/20 md:col-span-2 xl:col-span-3'
                   : ''
