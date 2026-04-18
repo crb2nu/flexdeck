@@ -28,30 +28,30 @@ export function getStatusColor(
   const token = getVisualStatusToken(status, rawStatus);
   switch (token) {
     case 'success':
-      return '#22c55e'; // green-500
+      return '#22e076'; // --success
     case 'running':
-      return '#94a3b8'; // slate-400 (neutral)
+      return '#8cc0cc'; // --fg-secondary (neutral)
     case 'failed':
     case 'canceled':
     case 'cancelled':
     case 'canceling':
-      return '#ef4444'; // red-500
+      return '#ff3d71'; // --error
     case 'manual':
-      return '#a78bfa'; // violet-400
+      return '#b06cde'; // violet
     case 'created':
-      return '#fbbf24'; // amber-400
+      return '#ffb830'; // --warning
     case 'preparing':
-      return '#fb923c'; // orange-400
+      return '#ff8c4d'; // accent-light
     case 'waiting_for_resource':
-      return '#f97316'; // orange-500
+      return '#ff6b35'; // --accent
     case 'scheduled':
-      return '#c084fc'; // violet-300
+      return '#b06cde'; // violet
     case 'pending':
-      return '#eab308'; // yellow-500
+      return '#ffb830'; // --warning
     case 'skipped':
-      return 'rgba(255,255,255,0.3)';
+      return 'rgba(140,192,204,0.3)';
     default:
-      return '#ffffff';
+      return '#d4eef4'; // --fg-primary
   }
 }
 

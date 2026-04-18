@@ -81,7 +81,7 @@ const Pipeline: Component = () => {
               onClick={() => setMobileSidebarOpen(false)}
             />
             <div
-              class={`relative z-10 h-full w-72 max-w-[88vw] border-r border-white/10 bg-[rgba(8,14,28,0.94)] flex flex-col shadow-2xl transition-transform duration-300 lg:w-64 lg:max-w-none lg:bg-black/20 lg:shadow-none ${
+              class={`relative z-10 h-full w-72 max-w-[88vw] border-r border-white/10 bg-[rgba(13,22,27,0.94)] flex flex-col shadow-2xl transition-transform duration-300 lg:w-64 lg:max-w-none lg:bg-black/20 lg:shadow-none ${
                 mobileSidebarOpen() ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
               }`}
             >
@@ -171,7 +171,7 @@ const Pipeline: Component = () => {
         </div>
 
         {/* Main Content */}
-        <div class="flex-1 min-w-0 overflow-hidden relative bg-[#050a14] flex flex-col">
+        <div class="flex-1 min-w-0 overflow-hidden relative bg-[#060c10] flex flex-col">
             <div class="lg:hidden flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 bg-black/30">
                 <button
                   type="button"

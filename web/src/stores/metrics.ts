@@ -129,20 +129,20 @@ export function getPodMetrics(
   return metricsStore.pods.get(`${namespace}/${podName}`);
 }
 
-// Get color for resource usage (green -> yellow -> red)
+// Get color for resource usage (success -> warning -> error)
 export function getUsageColor(percent: number): string {
-  if (percent < 50) return "#0aff68"; // green
-  if (percent < 80) return "#fcee0a"; // yellow
-  return "#ff003c"; // red
+  if (percent < 50) return "#22e076"; // --success
+  if (percent < 80) return "#ffb830"; // --warning
+  return "#ff3d71"; // --error
 }
 
 // Get gradient for resource bar
 export function getUsageGradient(percent: number): string {
   if (percent < 50)
-    return "linear-gradient(90deg, rgba(10, 255, 104, 0.3), rgba(10, 255, 104, 0.6))";
+    return "linear-gradient(90deg, rgba(34, 224, 118, 0.3), rgba(34, 224, 118, 0.6))";
   if (percent < 80)
-    return "linear-gradient(90deg, rgba(252, 238, 10, 0.3), rgba(252, 238, 10, 0.6))";
-  return "linear-gradient(90deg, rgba(255, 0, 60, 0.3), rgba(255, 0, 60, 0.6))";
+    return "linear-gradient(90deg, rgba(255, 184, 48, 0.3), rgba(255, 184, 48, 0.6))";
+  return "linear-gradient(90deg, rgba(255, 61, 113, 0.3), rgba(255, 61, 113, 0.6))";
 }
 
 // Export the store for reactive access

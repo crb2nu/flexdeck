@@ -1015,12 +1015,12 @@ const TopologyGraph: Component<Props> = (props) => {
 
   const getNodeColor = (node: D3Node): string => {
     if (node.type === 'node') {
-      return node.status === 'ok' ? '#00d9ff' : '#ef4444';
+      return node.status === 'ok' ? '#00c8ff' : '#ff3d71';
     }
     if (node.namespace) {
       return getNamespaceColor(node.namespace, namespaceMap);
     }
-    const statusColors = { ok: '#22c55e', warn: '#f97316', error: '#ef4444' };
+    const statusColors = { ok: '#22e076', warn: '#ff6b35', error: '#ff3d71' };
     return statusColors[node.status];
   };
 
@@ -1702,7 +1702,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill();
 
       // Core layer - cyan
-      ctx.fillStyle = '#00d9ff';
+      ctx.fillStyle = '#00c8ff';
       ctx.beginPath();
       for (let i = 0; i < particleCount; i++) {
         const p = particlePositionsPool[i];

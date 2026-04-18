@@ -184,7 +184,7 @@ const PipelineTrends: Component = () => {
                 <div class="h-12 mt-1">
                   <MiniSparkline
                     data={trend.sparkline}
-                    color={trend.trend === 'up' ? '#ef4444' : trend.trend === 'down' ? '#22c55e' : '#00d9ff'}
+                    color={trend.trend === 'up' ? '#ff3d71' : trend.trend === 'down' ? '#22e076' : '#00c8ff'}
                   />
                 </div>
               </Show>

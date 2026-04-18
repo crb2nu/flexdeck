@@ -103,7 +103,7 @@ const AppLayout: Component<ParentProps> = (props) => {
               </Show>
             </button>
 
-            <span class="text-sm font-semibold tracking-tight text-white transition-colors duration-200 hover:text-[#00f0ff] cursor-default select-none">
+            <span class="text-sm font-semibold tracking-tight text-white transition-colors duration-200 hover:text-[#00c8ff] cursor-default select-none">
               Flex<span class="text-text-dim transition-colors duration-200 group-hover:text-white">Deck</span>
             </span>
           </div>
@@ -115,7 +115,7 @@ const AppLayout: Component<ParentProps> = (props) => {
                 href={item.path}
                 class="rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 hover:text-white flex items-center"
                 classList={{
-                  'bg-white/10 text-white shadow-[0_1px_3px_rgba(0,0,0,0.3),0_0_8px_rgba(0,240,255,0.06)]': isNavItemActive(location.pathname, item),
+                  'bg-white/10 text-white shadow-[0_1px_3px_rgba(0,0,0,0.3),0_0_8px_rgba(0,200,255,0.06)]': isNavItemActive(location.pathname, item),
                   'text-text-muted hover:bg-white/5': !isNavItemActive(location.pathname, item),
                 }}
               >
@@ -175,10 +175,10 @@ const AppLayout: Component<ParentProps> = (props) => {
           class="absolute bottom-0 left-0 right-0 h-[2px] transition-all duration-500"
           style={{
             background: healthStore.error
-              ? 'linear-gradient(90deg, #ff003c, #ff4d6d, #ff003c)'
+              ? 'linear-gradient(90deg, #ff3d71, #ff6b8f, #ff3d71)'
               : healthStore.ok
-              ? 'linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.3), transparent)'
-              : 'linear-gradient(90deg, #eab308, #fbbf24, #eab308)',
+              ? 'linear-gradient(90deg, transparent, rgba(0, 200, 255, 0.3), transparent)'
+              : 'linear-gradient(90deg, #ffb830, #ffc85a, #ffb830)',
             'background-size': healthStore.ok ? '200% 100%' : '100% 100%',
             animation: healthStore.ok ? 'none' : 'gradient-shift 3s ease infinite',
             opacity: healthStore.error ? 0.8 : 0.5,

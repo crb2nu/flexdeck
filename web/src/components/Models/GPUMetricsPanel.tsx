@@ -289,13 +289,13 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
             <Show when={history().temperature.length >= 2}>
               <div class="flex items-center gap-1">
                 <span class="text-[9px] text-text-dim w-6">Temp</span>
-                <Sparkline data={history().temperature} width={60} height={16} color="#f97316" />
+                <Sparkline data={history().temperature} width={60} height={16} color="#ff6b35" />
               </div>
             </Show>
             <Show when={history().power.length >= 2}>
               <div class="flex items-center gap-1">
                 <span class="text-[9px] text-text-dim w-6">Pwr</span>
-                <Sparkline data={history().power} width={60} height={16} color="#eab308" />
+                <Sparkline data={history().power} width={60} height={16} color="#ffb830" />
               </div>
             </Show>
           </div>

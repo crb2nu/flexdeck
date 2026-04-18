@@ -29,7 +29,7 @@ interface UIConfigState {
 
 const [uiConfigStore, setUIConfigStore] = createStore<UIConfigState>({
   title: 'FLEXDECK',
-  accent: '#00f0ff',
+  accent: '#00c8ff',
   links: [],
   launchpad: [],
   loading: true,
@@ -49,7 +49,7 @@ async function fetchUIConfig(): Promise<void> {
     const data = await response.json();
     setUIConfigStore({
       title: data.title || 'FLEXDECK',
-      accent: data.accent || '#00f0ff',
+      accent: data.accent || '#00c8ff',
       links: data.links || [],
       launchpad: data.launchpad || [],
       loading: false,

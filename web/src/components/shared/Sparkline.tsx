@@ -14,9 +14,9 @@ const Sparkline: Component<SparklineProps> = (props) => {
   const height = () => props.height ?? 24;
 
   const trendColor = createMemo(() => {
-    if (props.trend === 'up') return 'var(--color-success, #22c55e)';
-    if (props.trend === 'down') return 'var(--color-error, #ef4444)';
-    return props.color ?? 'var(--color-primary, #3b82f6)';
+    if (props.trend === 'up') return 'var(--success, #22e076)';
+    if (props.trend === 'down') return 'var(--error, #ff3d71)';
+    return props.color ?? 'var(--info, #00c8ff)';
   });
 
   const points = createMemo(() => {

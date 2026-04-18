@@ -205,8 +205,8 @@ const AgentChat: Component<AgentChatProps> = (props) => {
           type: 'bar',
           labels: ['10:00', '10:10', '10:20', '10:30', '10:40', '10:50'],
           datasets: [
-            { label: 'HTTP', data: [120, 150, 180, 140, 200, 250], color: '#00d9ff' },
-            { label: 'gRPC', data: [50, 60, 40, 80, 90, 100], color: '#a855f7' }
+            { label: 'HTTP', data: [120, 150, 180, 140, 200, 250], color: '#00c8ff' },
+            { label: 'gRPC', data: [50, 60, 40, 80, 90, 100], color: '#b06cde' }
           ]
         }
       }];
