@@ -2,12 +2,12 @@ import { Component, For, Show, createMemo } from 'solid-js';
 import type { MetricValue } from './usePrometheusMetricsController';
 
 const CHART_STROKE_COLORS: Record<string, string> = {
-  cyan: '#00d9ff',
-  purple: '#a855f7',
-  green: '#22c55e',
-  orange: '#f97316',
-  blue: '#60a5fa',
-  pink: '#ec4899',
+  cyan: '#00c8ff',
+  purple: '#b06cde',
+  green: '#22e076',
+  orange: '#ff6b35',
+  blue: '#4693a6',
+  pink: '#ff6b9d',
 };
 
 // Enhanced sparkline chart with grid and hover

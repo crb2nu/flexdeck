@@ -18,12 +18,12 @@ export interface EnhancedTooltipProps {
 }
 
 const statusColors: Record<string, string> = {
-  ok: '#00f0ff',
-  warn: '#fcee0a',
-  error: '#ff003c',
-  running: '#0aff68',
-  pending: '#bd00ff',
-  info: 'rgba(255, 255, 255, 0.7)'
+  ok: '#00c8ff',
+  warn: '#ffb830',
+  error: '#ff3d71',
+  running: '#22e076',
+  pending: '#b06cde',
+  info: 'rgba(212, 238, 244, 0.7)'
 };
 
 const EnhancedTooltip: Component<EnhancedTooltipProps> = (props) => {

@@ -95,8 +95,8 @@ export default {
           '100%': { backgroundPosition: '-200% 0' },
         },
         'glow-pulse': {
-          '0%, 100%': { boxShadow: '0 0 8px rgba(0, 240, 255, 0.1)' },
-          '50%': { boxShadow: '0 0 16px rgba(0, 240, 255, 0.25)' },
+          '0%, 100%': { boxShadow: '0 0 8px rgba(0, 200, 255, 0.1)' },
+          '50%': { boxShadow: '0 0 16px rgba(0, 200, 255, 0.25)' },
         },
       },
       animation: {

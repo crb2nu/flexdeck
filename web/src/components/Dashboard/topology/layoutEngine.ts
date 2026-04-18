@@ -52,8 +52,8 @@ export interface LayoutTuning {
 }
 
 export const namespaceColors = [
-  '#00d9ff', '#a855f7', '#22c55e', '#f97316', '#ec4899',
-  '#3b82f6', '#eab308', '#06b6d4', '#8b5cf6', '#10b981'
+  '#00c8ff', '#b06cde', '#22e076', '#ff6b35', '#ff6b9d',
+  '#4693a6', '#ffb830', '#2f6170', '#b06cde', '#22e076'
 ];
 
 export const getNamespaceColor = (namespace: string, namespaceMap: Map<string, number>): string => {

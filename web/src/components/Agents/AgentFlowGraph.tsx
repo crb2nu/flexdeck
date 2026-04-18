@@ -27,9 +27,9 @@ interface D3AgentLink extends d3.SimulationLinkDatum<D3AgentNode> {
 }
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
-  healthy: '#22c55e',
-  unhealthy: '#ef4444',
-  unknown: '#6b7280',
+  healthy: '#22e076',
+  unhealthy: '#ff3d71',
+  unknown: '#5c8a96',
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -52,7 +52,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
     return isBuiltIn ? 32 : 26;
   };
 
-  const getStatusColor = (status: AgentStatus): string => STATUS_COLORS[status] || '#6b7280';
+  const getStatusColor = (status: AgentStatus): string => STATUS_COLORS[status] || '#5c8a96';
 
   const initGraph = () => {
     if (!svgRef || props.nodes.length === 0) return;
@@ -98,7 +98,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#22c55e')
+      .attr('fill', '#22e076')
       .attr('opacity', 0.6);
 
     // Arrow marker for unhealthy/unknown links
@@ -112,7 +112,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#6b7280')
+      .attr('fill', '#5c8a96')
       .attr('opacity', 0.4);
 
     // Glow filter
@@ -202,8 +202,8 @@ const AgentFlowGraph: Component<Props> = (props) => {
     // Main circle background
     nodeElements.append('circle')
       .attr('r', d => getNodeRadius(d))
-      .attr('fill', '#0a1020')
-      .attr('stroke', d => d.type === 'cli-agent' ? '#a855f7' : getStatusColor(d.status))
+      .attr('fill', '#0d161b')
+      .attr('stroke', d => d.type === 'cli-agent' ? '#b06cde' : getStatusColor(d.status))
       .attr('stroke-width', d => {
         const isBuiltIn = d.id === 'agent-builder' || d.tags?.includes('built-in');
         return isBuiltIn ? 2.5 : 1.5;
@@ -233,7 +233,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
     nodeElements.append('text')
       .attr('text-anchor', 'middle')
       .attr('y', d => getNodeRadius(d) + 14)
-      .attr('fill', '#94a3b8')
+      .attr('fill', '#8cc0cc')
       .attr('font-size', '10px')
       .attr('font-family', 'Inter, system-ui, sans-serif')
       .text(d => d.name.length > 16 ? d.name.slice(0, 14) + '...' : d.name);
@@ -344,7 +344,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
   });
 
   return (
-    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14] rounded-lg border border-white/5">
+    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#060c10] rounded-lg border border-white/5">
       <svg
         ref={svgRef}
         width={dimensions().width}

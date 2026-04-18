@@ -57,7 +57,7 @@ const createEmptyParticle = (): Particle => ({
   targetY: 0,
   progress: 0,
   speed: 0,
-  color: '#0aff68',
+  color: '#22e076',
   size: 4,
   trailX: new Float32Array(MAX_TRAIL_LENGTH),
   trailY: new Float32Array(MAX_TRAIL_LENGTH),
@@ -793,17 +793,17 @@ const CIPipelineViz: Component<{
       ref={containerRef}
       class="relative w-full h-full min-h-[500px] overflow-hidden rounded-xl"
       style={{
-        background: 'linear-gradient(135deg, rgba(5, 10, 20, 0.95) 0%, rgba(10, 16, 32, 0.95) 100%)',
-        'border': '1px solid rgba(0, 240, 255, 0.1)'
+        background: 'linear-gradient(135deg, rgba(6, 12, 16, 0.95) 0%, rgba(13, 22, 27, 0.95) 100%)',
+        'border': '1px solid rgba(0, 200, 255, 0.1)'
       }}
     >
       {/* Animated background grid */}
-      <div 
+      <div
         class="absolute inset-0 pointer-events-none opacity-30"
         style={{
           'background-image': `
-            linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px)
+            linear-gradient(rgba(0, 200, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 200, 255, 0.03) 1px, transparent 1px)
           `,
           'background-size': '40px 40px',
           'animation': 'grid-pulse 4s ease-in-out infinite'
@@ -900,9 +900,9 @@ const CIPipelineViz: Component<{
         >
           <defs>
             <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="rgba(0, 240, 255, 0.5)" />
-              <stop offset="50%" stop-color="rgba(189, 0, 255, 0.5)" />
-              <stop offset="100%" stop-color="rgba(10, 255, 104, 0.5)" />
+              <stop offset="0%" stop-color="rgba(0, 200, 255, 0.5)" />
+              <stop offset="50%" stop-color="rgba(176, 108, 222, 0.5)" />
+              <stop offset="100%" stop-color="rgba(34, 224, 118, 0.5)" />
             </linearGradient>
             <filter id="glow">
               <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
@@ -954,8 +954,8 @@ const CIPipelineViz: Component<{
                         }}
                         style={{
                           background: hoveredJob() === job.id
-                            ? 'rgba(20, 30, 50, 0.9)'
-                            : 'rgba(10, 16, 32, 0.8)',
+                            ? 'rgba(27, 43, 51, 0.9)'
+                            : 'rgba(16, 28, 34, 0.8)',
                           border: `1px solid ${getStatusColor(job.status, job.rawStatus)}30`,
                           'box-shadow': hoveredJob() === job.id
                             ? getStatusGlow(job.status, job.rawStatus)
@@ -1021,9 +1021,9 @@ const CIPipelineViz: Component<{
                           <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
-                              background: 'rgba(189, 0, 255, 0.2)',
-                              border: '1px solid rgba(189, 0, 255, 0.5)',
-                              color: '#bd00ff'
+                              background: 'rgba(176, 108, 222, 0.2)',
+                              border: '1px solid rgba(176, 108, 222, 0.5)',
+                              color: '#b06cde'
                             }}
                             disabled={actionLoading() === job.id}
                             onClick={(e) => handlePlayJob(job, e)}
@@ -1037,9 +1037,9 @@ const CIPipelineViz: Component<{
                           <button
                             class="mt-3 w-full py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
-                              background: 'rgba(255, 0, 60, 0.2)',
-                              border: '1px solid rgba(255, 0, 60, 0.5)',
-                              color: '#ff003c'
+                              background: 'rgba(255, 61, 113, 0.2)',
+                              border: '1px solid rgba(255, 61, 113, 0.5)',
+                              color: '#ff3d71'
                             }}
                             disabled={actionLoading() === job.id}
                             onClick={(e) => handleRetryJob(job, e)}
@@ -1205,9 +1205,9 @@ const CIPipelineViz: Component<{
 
         /* Status transition animations */
         @keyframes success-burst {
-          0% { transform: scale(1); box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
-          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(34, 197, 94, 0.4); }
-          100% { transform: scale(1); box-shadow: 0 0 10px rgba(34, 197, 94, 0.15); }
+          0% { transform: scale(1); box-shadow: 0 0 0 rgba(34, 224, 118, 0); }
+          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(34, 224, 118, 0.4); }
+          100% { transform: scale(1); box-shadow: 0 0 10px rgba(34, 224, 118, 0.15); }
         }
 
         @keyframes error-shake {

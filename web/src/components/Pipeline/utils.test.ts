@@ -136,7 +136,7 @@ describe("pipeline utils", () => {
 
   it("prefers raw status for live display label/color", () => {
     expect(getStatusLabel("pending", "waiting_for_resource")).toBe("waiting for resource");
-    expect(getStatusColor("pending", "waiting_for_resource")).toBe("#f97316");
+    expect(getStatusColor("pending", "waiting_for_resource")).toBe("#ff6b35");
     expect(getStatusLabel("failed", "canceling")).toBe("canceling");
   });
 

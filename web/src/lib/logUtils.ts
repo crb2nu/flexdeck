@@ -44,13 +44,13 @@ export function getLogLevelBadgeForLevel(level: LogLevel): { text: string; class
 export function getLogLevelColorForLevel(level: LogLevel): string {
   switch (level) {
     case 'error':
-      return '#ef4444'; // red-500
+      return '#ff3d71'; // --error
     case 'warn':
-      return '#f59e0b'; // amber-500
+      return '#ffb830'; // --warning
     case 'debug':
-      return '#6b7280'; // gray-500
+      return '#5c8a96'; // --fg-muted
     default:
-      return '#94a3b8'; // slate-400
+      return '#8cc0cc'; // --fg-secondary
   }
 }
 

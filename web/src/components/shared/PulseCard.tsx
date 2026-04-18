@@ -151,7 +151,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
                 data={effectiveState().sparkData!}
                 width={typeof window !== 'undefined' && window.innerWidth < 640 ? 80 : 120}
                 height={typeof window !== 'undefined' && window.innerWidth < 640 ? 16 : 20}
-                color={props.color === 'purple' ? '#a855f7' : props.color === 'green' ? '#22c55e' : props.color === 'orange' ? '#f97316' : '#00d9ff'}
+                color={props.color === 'purple' ? '#b06cde' : props.color === 'green' ? '#22e076' : props.color === 'orange' ? '#ff6b35' : '#00c8ff'}
                 trend={effectiveState().trend}
               />
             </div>

@@ -316,8 +316,8 @@ body {
 
 /* Glow pulse — subtle glow throb for active/important elements */
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(0, 240, 255, 0.1); }
-  50% { box-shadow: 0 0 16px rgba(0, 240, 255, 0.25); }
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 200, 255, 0.1); }
+  50% { box-shadow: 0 0 16px rgba(0, 200, 255, 0.25); }
 }
 
 .animate-glow-pulse {
@@ -363,7 +363,7 @@ body {
 
 /* --- Selection --- */
 ::selection {
-  background: rgba(0, 240, 255, 0.2);
+  background: rgba(0, 200, 255, 0.2);
   color: var(--text-main);
 }
 

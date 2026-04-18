@@ -52,7 +52,7 @@ const createEmptyParticle = (): LogParticle => ({
   y: 0,
   z: 0,
   text: '',
-  color: '#00d9ff',
+  color: '#00c8ff',
   size: 10,
   speed: 0,
   angle: 0,

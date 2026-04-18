@@ -38,10 +38,10 @@ const ComingSoon: Component = () => {
 
     const draw = () => {
       // Semi-transparent black to create trail effect
-      ctx.fillStyle = 'rgba(5, 10, 20, 0.05)';
+      ctx.fillStyle = 'rgba(6, 12, 16, 0.05)';
       ctx.fillRect(0, 0, canvasRef!.width, canvasRef!.height);
 
-      ctx.fillStyle = '#00d9ff'; // Neon Cyan
+      ctx.fillStyle = '#00c8ff'; // Loom-core info
       ctx.font = `${fontSize}px monospace`;
 
       for (let i = 0; i < drops.length; i++) {
