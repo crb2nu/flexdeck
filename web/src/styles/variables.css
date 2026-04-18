@@ -1,93 +1,171 @@
 :root {
-  /* --- Colors: Semantic Palette --- */
-  --color-blue: #00f0ff;
-  --color-red: #ff003c;
-  --color-amber: #fcee0a;
-  --color-violet: #bd00ff;
-  --color-emerald: #0aff68;
+  /* --- Loom-core canonical tokens --- */
+  --bg-primary:   #060c10;
+  --bg-secondary: #0d161b;
+  --bg-tertiary:  #142127;
+  --bg-elevated:  #1b2b33;
+  --bg-surface:   #101c22;
 
+  --fg-primary:   #d4eef4;
+  --fg-secondary: #8cc0cc;
+  --fg-muted:     #5c8a96;
+  --fg-dim:       #355b66;
+
+  --border:        #1a3038;
+  --border-focus:  #2f6170;
+  --border-active: #4693a6;
+
+  --success: #22e076;
+  --warning: #ffb830;
+  --error:   #ff3d71;
+  --info:    #00c8ff;
+  --accent:  #ff6b35;
+
+  /* Semantic dims (loom-core parity) */
+  --accent-dim:  rgba(255, 107, 53, 0.12);
+  --accent-glow: rgba(255, 107, 53, 0.2);
+  --info-dim:    rgba(0, 200, 255, 0.1);
+  --info-glow:   rgba(0, 200, 255, 0.18);
+  --success-dim: rgba(34, 224, 118, 0.1);
+  --error-dim:   rgba(255, 61, 113, 0.1);
+  --warning-dim: rgba(255, 184, 48, 0.1);
+
+  /* --- FlexDeck token names (kept for Tailwind + existing selectors) --- */
+  --color-blue:    var(--info);
+  --color-red:     var(--error);
+  --color-amber:   var(--warning);
+  --color-violet:  #b06cde;
+  --color-emerald: var(--success);
+  --color-orange:  var(--accent);
 
   /* Backgrounds */
-  --bg-deep: #0a0e1a;
-  --bg-dark: #0f1423;
-  --bg-panel: rgba(16, 22, 36, 0.95);
+  --bg-deep:  var(--bg-primary);
+  --bg-dark:  var(--bg-secondary);
+  --bg-panel: rgba(16, 28, 34, 0.95);
 
   /* Surfaces */
-  --surface-primary: rgba(15, 20, 35, 0.95);
-  --surface-elevated: rgba(20, 26, 42, 0.98);
+  --surface-primary:  var(--bg-surface);
+  --surface-elevated: var(--bg-elevated);
 
   /* Borders */
-  --border-default: rgba(255, 255, 255, 0.10);
-  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: var(--border);
+  --border-subtle:  #12242b;
 
   /* Text */
-  --text-main: #ffffff;
-  --text-dim: rgba(255, 255, 255, 0.6);
-  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-main:  var(--fg-primary);
+  --text-dim:   var(--fg-secondary);
+  --text-muted: var(--fg-muted);
 
-  /* Semantic Map */
-  --color-ok: var(--color-blue);
-  --color-warn: var(--color-amber);
-  --color-error: var(--color-red);
-  --color-ready: var(--color-blue);
-  --color-accent: var(--color-violet);
+  /* Semantic map */
+  --color-ok:     var(--info);
+  --color-warn:   var(--warning);
+  --color-error:  var(--error);
+  --color-ready:  var(--info);
+  --color-accent: var(--accent);
 
-  /* --- Surface (replaces glass-panel) --- */
-  --surface-bg: rgba(15, 20, 35, 0.95);
-  --surface-border: 1px solid var(--border-default);
+  /* Surface composition (replaces glass-panel) */
+  --surface-bg:     var(--bg-surface);
+  --surface-border: 1px solid var(--border);
   --surface-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 
   /* Legacy glass aliases */
-  --glass-bg: var(--surface-bg);
-  --glass-blur: none;
-  --glass-border: var(--surface-border);
-  --glass-shadow: var(--surface-shadow);
+  --glass-bg:        var(--surface-bg);
+  --glass-blur:      none;
+  --glass-border:    var(--surface-border);
+  --glass-shadow:    var(--surface-shadow);
   --glass-highlight: rgba(255, 255, 255, 0.03);
 
   /* --- Geometry --- */
-  --radius-s: 4px;
-  --radius-m: 8px;
-  --radius-l: 12px;
+  --radius-xs:   3px;
+  --radius-s:    4px;
+  --radius-sm:   5px;
+  --radius-m:    8px;
+  --radius-md:   8px;
+  --radius-l:    12px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
   --radius-pill: 9999px;
-  --space-xs: 4px;
-  --space-s: 8px;
-  --space-m: 16px;
-  --space-l: 24px;
-  --space-xl: 32px;
+  --radius-full: 9999px;
+
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* FlexDeck alias spacing */
+  --space-xs: var(--space-1);
+  --space-s:  var(--space-2);
+  --space-m:  var(--space-4);
+  --space-l:  var(--space-6);
+  --space-xl: var(--space-8);
 
   /* --- Typography --- */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Roboto Mono', monospace;
 
-  /* --- Transitions --- */
-  --transition-fast: 100ms;
-  --transition-normal: 150ms;
-  --transition-slow: 250ms;
+  --text-2xs: 10px;
+  --text-xs:  11px;
+  --text-sm:  13px;
+  --text-base: 15px;
+  --text-lg:  18px;
+  --text-xl:  22px;
+  --text-2xl: 30px;
+  --text-3xl: 34px;
 
-  /* --- Accent Glows --- */
-  --glow-blue: 0 0 12px rgba(0, 240, 255, 0.15);
-  --glow-red: 0 0 12px rgba(255, 0, 60, 0.15);
-  --glow-amber: 0 0 12px rgba(252, 238, 10, 0.12);
-  --glow-violet: 0 0 12px rgba(189, 0, 255, 0.15);
-  --glow-emerald: 0 0 12px rgba(10, 255, 104, 0.15);
+  --tracking-tight:  -0.02em;
+  --tracking-normal: -0.005em;
+  --tracking-wide:   0.06em;
+  --tracking-wider:  0.1em;
 
-  /* --- Elevation Shadows --- */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  /* --- Transitions (loom-core parity) --- */
+  --transition-instant: 0.05s ease;
+  --transition-fast:    100ms;
+  --transition-normal:  200ms;
+  --transition-slow:    350ms;
+  --transition-spring:  0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast:   100ms;
+  --duration-normal: 200ms;
+  --duration-slow:   350ms;
+
+  /* --- Accent glows --- */
+  --glow-blue:    var(--info-glow);
+  --glow-red:     0 0 12px rgba(255, 61, 113, 0.18);
+  --glow-amber:   0 0 12px rgba(255, 184, 48, 0.15);
+  --glow-violet:  0 0 12px rgba(176, 108, 222, 0.2);
+  --glow-emerald: 0 0 12px rgba(34, 224, 118, 0.18);
+  --glow-orange:  0 0 12px rgba(255, 107, 53, 0.22);
+
+  --glow-accent:  rgba(255, 107, 53, 0.18);
+  --glow-success: rgba(34, 224, 118, 0.12);
+  --glow-error:   rgba(255, 61, 113, 0.12);
+  --glow-info:    rgba(0, 200, 255, 0.12);
+  --glow-warning: rgba(255, 184, 48, 0.12);
+
+  /* --- Elevation shadows --- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 16px 64px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.3);
 
   /* --- Easing --- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-spring:   cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
-  /* --- Aliases for Legacy/Shared Components --- */
-  --accent-primary: var(--color-blue);
-  --accent-secondary: var(--color-violet);
-  --accent-tertiary: var(--color-red);
+  /* --- Aliases for legacy/shared components --- */
+  --accent-primary:   var(--info);
+  --accent-secondary: var(--accent);
+  --accent-tertiary:  var(--error);
 
-  --status-ok: var(--color-blue);
-  --status-warn: var(--color-amber);
-  --status-error: var(--color-red);
+  --status-ok:    var(--info);
+  --status-warn:  var(--warning);
+  --status-error: var(--error);
 }
