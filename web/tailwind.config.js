@@ -40,14 +40,21 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Roboto Mono', 'monospace'],
+        sans: ['Outfit', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'SF Mono', 'Fira Code', 'Roboto Mono', 'monospace'],
       },
       borderRadius: {
+        xs: 'var(--radius-xs)',
         s: 'var(--radius-s)',
+        sm: 'var(--radius-sm)',
         m: 'var(--radius-m)',
+        md: 'var(--radius-md)',
         l: 'var(--radius-l)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        '2xl': 'var(--radius-2xl)',
         pill: 'var(--radius-pill)',
+        full: 'var(--radius-full)',
       },
       spacing: {
         xs: 'var(--space-xs)',

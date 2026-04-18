@@ -58,6 +58,7 @@ import {
 import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
+import { stableListByKey } from '../../lib/stableList';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -260,6 +261,34 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   const supplyChainSummary = () => flexinferSupplyChainSummary();
   const proxyTotals = () => flexinferProxyTotals();
   const routerModels = () => routerInfo()?.modelInfo || [];
+
+  // Stabilize list identity so <For> keeps DOM rows across 15s polling refreshes.
+  // Prevents hover/focus flicker when JSON.parse produces fresh object refs.
+  const stableModelRows = stableListByKey(modelRows, (row) => row.key);
+  const stableProxyModelRows = stableListByKey(
+    proxyModelRows,
+    ([name]) => name,
+  );
+  const stableRegistryRows = stableListByKey(
+    registryRows,
+    (model) => `${model.source}/${model.id ?? model.name}`,
+  );
+  const stableRouterModels = stableListByKey(
+    routerModels,
+    (entry) => entry.model_name,
+  );
+  const stableCatalogs = stableListByKey(
+    catalogs,
+    (catalog) => `${catalog.namespace}/${catalog.name}`,
+  );
+  const stableCaches = stableListByKey(
+    caches,
+    (cache) => `${cache.namespace}/${cache.name}`,
+  );
+  const stableSearchResults = stableListByKey(
+    searchResults,
+    (model) => `${model.source}/${model.source_id}`,
+  );
   const reliabilityHeadline = createMemo(() => {
     const summary = controller.reliabilitySummary();
     if (summary.degraded > 0) return { level: 'degraded' as const, label: `${summary.degraded} degraded` };
@@ -463,7 +492,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                   </tr>
                 </thead>
                 <tbody>
-                  <For each={modelRows()}>
+                  <For each={stableModelRows()}>
                     {(row) => (
                       <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3">
@@ -604,7 +633,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                 </thead>
                 <tbody>
                   <For
-                    each={proxyModelRows()}
+                    each={stableProxyModelRows()}
                     fallback={
                       <tr>
                         <td class="px-4 py-5 text-center text-text-dim" colSpan={5}>
@@ -648,7 +677,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                 </thead>
                 <tbody>
                   <For
-                    each={routerModels()}
+                    each={stableRouterModels()}
                     fallback={
                       <tr>
                         <td class="px-4 py-5 text-center text-text-dim" colSpan={4}>
@@ -741,7 +770,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             </div>
             <div class="divide-y divide-white/5">
               <For
-                each={catalogs()}
+                each={stableCatalogs()}
                 fallback={<div class="px-4 py-6 text-center text-sm text-text-dim">No catalogs found.</div>}
               >
                 {(catalog) => (
@@ -790,7 +819,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                 </thead>
                 <tbody>
                   <For
-                    each={caches()}
+                    each={stableCaches()}
                     fallback={
                       <tr>
                         <td class="px-4 py-5 text-center text-text-dim" colSpan={3}>
@@ -890,7 +919,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             </div>
             <div class="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
               <For
-                each={searchResults()}
+                each={stableSearchResults()}
                 fallback={<div class="rounded-md border border-white/5 bg-black/20 p-4 text-sm text-text-dim md:col-span-2">Run a search to populate intake candidates.</div>}
               >
                 {(model) => (
@@ -935,7 +964,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                 </thead>
                 <tbody>
                   <For
-                    each={registryRows()}
+                    each={stableRegistryRows()}
                     fallback={
                       <tr>
                         <td class="px-4 py-5 text-center text-text-dim" colSpan={4}>
