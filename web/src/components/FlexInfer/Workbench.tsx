@@ -13,7 +13,7 @@ import {
   flexinferSupplyChainSummary,
 } from '../../stores/flexinferSurface';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
-import type { ModelCache } from '../../lib/types';
+import type { FlexInferModelStatus, ModelCache } from '../../lib/types';
 import {
   flexinferCacheError,
   flexinferCacheLoading,
@@ -506,6 +506,19 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                           <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${phaseTone(row.model.status?.phase)}`}>
                             {row.model.status?.phase || 'Unknown'}
                           </span>
+                          <Show when={row.model.status?.phase === 'Loading' && row.model.status?.loadingSubstage}>
+                            <div class={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${loadingSubstageTone(row.model.status, row.model.status?.loadingSubstage)}`}>
+                              {row.model.status?.loadingSubstage}
+                              <Show when={isStalledLoad(row.model.status)}>
+                                <span class="ml-1 text-[9px] uppercase tracking-wide">· stalled</span>
+                              </Show>
+                            </div>
+                          </Show>
+                          <Show when={row.model.status?.phase === 'Loading' && row.model.status?.message}>
+                            <div class="mt-1 max-w-[20rem] truncate font-mono text-[10px] text-text-dim" title={row.model.status?.message}>
+                              {row.model.status?.message}
+                            </div>
+                          </Show>
                           <div class={`mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses(row.reliability.level)}`}>
                             {row.reliability.label}
                           </div>
@@ -1113,6 +1126,38 @@ function phaseTone(phase?: string): string {
       return 'bg-status-error/20 text-status-error';
     case 'Preempted':
       return 'bg-white/10 text-text-muted';
+    default:
+      return 'bg-white/10 text-text-dim';
+  }
+}
+
+// STALLED_LOAD_THRESHOLD_MS mirrors the proxy's defaultStalledLoadThreshold
+// (internal/proxy/stalled_load.go). Keep in sync so UI stall classification
+// matches the proxy's fail-fast behavior.
+const STALLED_LOAD_THRESHOLD_MS = 120_000;
+
+function isStalledLoad(status?: FlexInferModelStatus): boolean {
+  if (!status) return false;
+  if (status.phase !== 'Loading') return false;
+  if (status.loadingSubstage !== 'LoadingWeights') return false;
+  if (!status.loadingProgressAt) return false;
+  const t = Date.parse(status.loadingProgressAt);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t >= STALLED_LOAD_THRESHOLD_MS;
+}
+
+function loadingSubstageTone(status: FlexInferModelStatus | undefined, substage?: string): string {
+  if (isStalledLoad(status)) {
+    return 'bg-status-error/20 text-status-error';
+  }
+  switch (substage) {
+    case 'LoadingWeights':
+    case 'Compiling':
+      return 'bg-white/10 text-white';
+    case 'HealthCheckPending':
+      return 'bg-status-ok/10 text-status-ok';
+    case 'ImagePulling':
+    case 'Initializing':
     default:
       return 'bg-white/10 text-text-dim';
   }

@@ -419,6 +419,28 @@ export interface FlexInferModelSpec {
 
 export interface FlexInferModelStatus {
   phase?: ModelPhase;
+  /**
+   * Refines phase=Loading with granular progress:
+   * ImagePulling / Initializing / LoadingWeights / Compiling / HealthCheckPending.
+   * Empty outside of Loading.
+   */
+  loadingSubstage?:
+    | 'ImagePulling'
+    | 'Initializing'
+    | 'LoadingWeights'
+    | 'Compiling'
+    | 'HealthCheckPending'
+    | '';
+  /**
+   * One-line status summary. During Loading this carries the most informative
+   * progress hint (e.g. "loading weights (31/34 shards, 141.75s/it)").
+   */
+  message?: string;
+  /**
+   * Wall-clock timestamp of the last substage/message change. Used by the
+   * proxy to detect stalled loads; the UI reads it to color-code stalls.
+   */
+  loadingProgressAt?: string;
   conditions?: Array<{
     type: string;
     status: string;

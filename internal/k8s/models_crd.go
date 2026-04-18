@@ -146,15 +146,18 @@ type FlexInferCalibrationSpec struct {
 }
 
 type FlexInferModelStatus struct {
-	Phase          string                  `json:"phase,omitempty"`
-	Conditions     []FlexInferCondition    `json:"conditions,omitempty"`
-	GPU            *FlexInferGPUStatus     `json:"gpu,omitempty"`
-	Endpoint       string                  `json:"endpoint,omitempty"`
-	LastActiveTime string                  `json:"lastActiveTime,omitempty"`
-	Metrics        *FlexInferMetricsStatus `json:"metrics,omitempty"`
-	SharedGroup    *FlexInferSharedGroup   `json:"sharedGroup,omitempty"`
-	Cache          *FlexInferCacheStatus   `json:"cache,omitempty"`
-	KVCache        *FlexInferKVCacheStatus `json:"kvCache,omitempty"`
+	Phase             string                  `json:"phase,omitempty"`
+	LoadingSubstage   string                  `json:"loadingSubstage,omitempty"`
+	Message           string                  `json:"message,omitempty"`
+	LoadingProgressAt string                  `json:"loadingProgressAt,omitempty"`
+	Conditions        []FlexInferCondition    `json:"conditions,omitempty"`
+	GPU               *FlexInferGPUStatus     `json:"gpu,omitempty"`
+	Endpoint          string                  `json:"endpoint,omitempty"`
+	LastActiveTime    string                  `json:"lastActiveTime,omitempty"`
+	Metrics           *FlexInferMetricsStatus `json:"metrics,omitempty"`
+	SharedGroup       *FlexInferSharedGroup   `json:"sharedGroup,omitempty"`
+	Cache             *FlexInferCacheStatus   `json:"cache,omitempty"`
+	KVCache           *FlexInferKVCacheStatus `json:"kvCache,omitempty"`
 }
 
 type FlexInferCondition struct {
