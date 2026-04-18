@@ -187,12 +187,17 @@ func (w *Worker) runCompute(ctx context.Context) {
 	gpuVramTotalByNode := map[string]int64{}
 
 	if w.prom != nil {
+		// node-exporter in the kube-prometheus-stack chart exposes `instance=<pod_ip>:9100`
+		// with no node/nodename label, so `instance` cannot be mapped back to a K8s node
+		// directly. Join through kube_pod_info (deduped per-pod) to pull the real `node`
+		// label, then aggregate on it. Harvester's own job carries `node` natively but is
+		// scraped separately and not displayed on this page.
 		cpuByNode = w.queryNodeMetric(ctx,
-			`100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100)`,
-			"instance")
+			`100 - (avg by (node) (rate(node_cpu_seconds_total{mode="idle"}[2m]) * on (namespace, pod) group_left(node) (avg by (namespace, pod, node) (kube_pod_info))) * 100)`,
+			"node")
 		memByNode = w.queryNodeMetric(ctx,
-			`(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`,
-			"instance")
+			`avg by (node) ((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * on (namespace, pod) group_left(node) (avg by (namespace, pod, node) (kube_pod_info))) * 100`,
+			"node")
 
 		if gpuPct, err := w.prom.QueryInstant(ctx, `amdgpu_vram_used_bytes / amdgpu_vram_total_bytes * 100`); err == nil {
 			for _, s := range gpuPct {
