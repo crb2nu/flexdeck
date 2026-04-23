@@ -466,28 +466,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                     <span class="text-[10px] text-text-dim">{new Date(wf.startedAt).toLocaleString()}</span>
                   </div>
 
-                  <div class="mb-2 flex gap-1">
-                    <For each={wf.steps}>
-                      {(step, i) => (
-                        <div
-                          class={`h-1.5 flex-1 rounded-full ${
-                            step.status === 'completed' ? 'bg-status-ok' :
-                            step.status === 'running' ? 'bg-white/40 animate-pulse' :
-                            step.status === 'failed' ? 'bg-status-error' :
-                            i() === wf.currentStep ? 'bg-white/30' :
-                            'bg-white/10'
-                          }`}
-                          title={`${step.name}: ${step.status}`}
-                        />
-                      )}
-                    </For>
-                  </div>
-
-                  <Show when={wf.steps[wf.currentStep]}>
-                    <div class="mb-3 text-xs text-text-dim">
-                      Step {wf.currentStep + 1}/{wf.steps.length}: {wf.steps[wf.currentStep].name}
-                    </div>
-                  </Show>
+                  <WorkflowPhaseDetail workflow={wf} />
 
                   <div class="flex flex-wrap gap-2">
                     <Show when={wf.steps[wf.currentStep]?.requiresApproval && wf.status === 'awaiting_approval'}>
@@ -653,5 +632,97 @@ const TaskCard: Component<{
     </Show>
   </div>
 );
+
+const WorkflowPhaseDetail: Component<{
+  workflow: HUDWorkflow;
+}> = (props) => {
+  const steps = () => props.workflow.steps || [];
+  const currentStep = () => steps()[props.workflow.currentStep];
+  const completedSteps = () => steps().filter((step) => step.status === 'completed').length;
+
+  return (
+    <div class="mb-3 space-y-2">
+      <div class="flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-text-dim">
+        <span>Phase detail</span>
+        <span class="font-mono normal-case tracking-normal">
+          {completedSteps()}/{steps().length} complete
+        </span>
+      </div>
+
+      <div class="grid gap-1.5" style={{ 'grid-template-columns': `repeat(${Math.max(steps().length, 1)}, minmax(0, 1fr))` }}>
+        <For each={steps()}>
+          {(step, i) => (
+            <div
+              class={`h-2 rounded-full ${workflowStepRailClass(step.status, i() === props.workflow.currentStep)}`}
+              title={`${i() + 1}. ${step.name}: ${step.status}`}
+              aria-label={`${step.name}: ${step.status}`}
+            />
+          )}
+        </For>
+      </div>
+
+      <Show when={currentStep()} fallback={
+        <div class="rounded-md border border-white/8 bg-white/5 px-3 py-2 text-xs text-text-dim">
+          No active workflow step
+        </div>
+      }>
+        {(step) => (
+          <div class="rounded-md border border-white/8 bg-white/5 px-3 py-2">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="heading-label">Current phase</div>
+                <div class="mt-1 truncate text-sm font-medium text-text-main">
+                  {step().name}
+                </div>
+              </div>
+              <div class="flex flex-wrap justify-end gap-1.5">
+                <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${workflowStatusTone(step().status)}`}>
+                  {workflowStatusLabel(step().status)}
+                </span>
+                <Show when={step().requiresApproval}>
+                  <span class="rounded-full bg-status-warn/15 px-2 py-0.5 text-[10px] font-medium text-status-warn">
+                    Approval required
+                  </span>
+                </Show>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+};
+
+function workflowStepRailClass(status: string, isCurrent: boolean): string {
+  if (status === 'completed') return 'bg-status-ok';
+  if (status === 'failed') return 'bg-status-error';
+  if (status === 'running' || status === 'in_progress') return 'bg-white/45 animate-pulse';
+  if (isCurrent) return 'bg-status-warn/60';
+  return 'bg-white/10';
+}
+
+function workflowStatusTone(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-status-ok/20 text-status-ok';
+    case 'failed':
+      return 'bg-status-error/20 text-status-error';
+    case 'running':
+    case 'in_progress':
+      return 'bg-white/10 text-white';
+    case 'awaiting_approval':
+    case 'pending':
+      return 'bg-status-warn/15 text-status-warn';
+    case 'canceled':
+    case 'cancelled':
+      return 'bg-white/10 text-text-muted';
+    default:
+      return 'bg-white/10 text-text-dim';
+  }
+}
+
+function workflowStatusLabel(status: string): string {
+  return status.replace(/_/g, ' ');
+}
 
 export default HUDTab;

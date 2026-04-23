@@ -3,6 +3,7 @@
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HUDWorkflow } from '../../lib/types';
 
 const hudMocks = vi.hoisted(() => {
   const hudMode = {
@@ -59,7 +60,7 @@ const hudMocks = vi.hoisted(() => {
         },
       ],
     })),
-    workflows: vi.fn(async () => ({ workflows: [] })),
+    workflows: vi.fn(async (): Promise<{ workflows: HUDWorkflow[] }> => ({ workflows: [] })),
   };
 });
 
@@ -267,6 +268,40 @@ describe('HUDTab', () => {
     expect(text).toContain('Presence snapshots only');
     expect(text).not.toContain('Claim ledger');
     expect(text).not.toContain('Workflow queue');
+  });
+
+  it('renders workflow phase detail for the active Loom workflow step', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.workflows.mockResolvedValue({
+      workflows: [
+        {
+          id: 'wf-1',
+          definitionId: 'feature-dev',
+          status: 'awaiting_approval',
+          currentStep: 2,
+          startedAt: '2026-03-29T14:00:00Z',
+          steps: [
+            { name: 'Plan slice', status: 'completed', requiresApproval: false },
+            { name: 'Implement patch', status: 'completed', requiresApproval: false },
+            { name: 'Review approval', status: 'pending', requiresApproval: true },
+            { name: 'Ship branch', status: 'pending', requiresApproval: false },
+          ],
+        },
+      ],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Current phase');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Workflow queue');
+    expect(text).toContain('Phase detail');
+    expect(text).toContain('2/4 complete');
+    expect(text).toContain('Review approval');
+    expect(text).toContain('Approval required');
   });
 
   it('surfaces disabled HUD mode as an operator error state', async () => {

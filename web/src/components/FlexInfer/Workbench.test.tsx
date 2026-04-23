@@ -12,6 +12,18 @@ const workbenchMocks = vi.hoisted(() => {
     modelcache: { enabled: true },
   };
 
+  type MockModelStatus = {
+    phase?: string;
+    loadingSubstage?: string;
+    message?: string;
+    loadingProgressAt?: string;
+    cache?: {
+      strategy?: string;
+      ready?: boolean;
+      jobPhase?: string;
+    };
+  };
+
   const controllerState = {
     error: '',
     loading: false,
@@ -31,7 +43,17 @@ const workbenchMocks = vi.hoisted(() => {
           cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' },
         },
       },
-    ],
+    ] as Array<{
+      name: string;
+      namespace: string;
+      spec: {
+        source: string;
+        serverless?: { enabled?: boolean };
+        gpu?: { shared?: number };
+        cache?: { strategy?: string };
+      };
+      status: MockModelStatus;
+    }>,
     registryModels: [
       {
         id: 'alpha',
@@ -55,7 +77,7 @@ const workbenchMocks = vi.hoisted(() => {
     searchResults: [],
     reliabilitySummary: { healthy: 1, degraded: 0, partial: 0, unknown: 0 },
     integrationSummary: { inferenceUnavailable: 0, loraUnavailable: 0 },
-    phaseSummary: { Ready: 1, Failed: 0 },
+    phaseSummary: { Ready: 1, Failed: 0 } as Record<string, number>,
     loraSummary: { loaded: 0, total: 0 },
     inferenceByModel: {},
     loraByModel: {},
@@ -246,6 +268,11 @@ describe('Workbench', () => {
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
     workbenchMocks.controllerState.controllerDataLoading = false;
+    workbenchMocks.controllerState.crdModels[0].status = {
+      phase: 'Ready',
+      cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' },
+    };
+    workbenchMocks.controllerState.phaseSummary = { Ready: 1, Failed: 0 };
 
     workbenchMocks.storeState.proxyError = '';
     workbenchMocks.storeState.proxyLoading = false;
@@ -400,5 +427,28 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Proxy Disabled');
     expect(text).toContain('DISABLED · feature disabled');
+  });
+
+  it('renders loading phase detail with stalled progress context', async () => {
+    workbenchMocks.controllerState.crdModels[0].status = {
+      phase: 'Loading',
+      loadingSubstage: 'LoadingWeights',
+      message: 'loading weights (31/34 shards, 141.75s/it)',
+      loadingProgressAt: new Date(Date.now() - 130_000).toISOString(),
+      cache: { strategy: 'shared', ready: false, jobPhase: 'Pending' },
+    };
+    workbenchMocks.controllerState.phaseSummary = { Loading: 1, Failed: 0 };
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Loading weights');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Model weights are being loaded into the runtime');
+    expect(text).toContain('loading weights (31/34 shards, 141.75s/it)');
+    expect(text).toContain('stalled');
+    expect(text).toContain('No progress for');
   });
 });
