@@ -170,6 +170,13 @@ describe('flexinferOperational', () => {
     startFlexInferOperationalPolling();
 
     expect(pollingRegisterMock).toHaveBeenCalledTimes(5);
+    expect(pollingRegisterMock.mock.calls.map((call) => call[3])).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
 
     stopFlexInferOperationalPolling();
     expect(pollingUnregisterMock).not.toHaveBeenCalled();
@@ -182,6 +189,19 @@ describe('flexinferOperational', () => {
       'flexinfer-router-info',
       'flexinfer-catalogs',
       'flexinfer-caches',
+    ]);
+  });
+
+  it('can suppress immediate poll fires when a surface performs an explicit initial refresh', () => {
+    startFlexInferOperationalPolling(false);
+
+    expect(pollingRegisterMock).toHaveBeenCalledTimes(5);
+    expect(pollingRegisterMock.mock.calls.map((call) => call[3])).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
     ]);
   });
 });

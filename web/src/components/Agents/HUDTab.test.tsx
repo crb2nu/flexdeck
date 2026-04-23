@@ -39,8 +39,14 @@ const hudMocks = vi.hoisted(() => {
       ],
       kpis: {},
     })),
-    createPolling: vi.fn((id: string, task: () => Promise<void> | void) => {
-      if (hudMocks.autoRunPolling && (id === 'agents-hud-pull' || id === 'hud-now-ticker')) {
+    createPolling: vi.fn((
+      id: string,
+      task: () => Promise<void> | void,
+      _interval?: number,
+      _enabled?: boolean,
+      immediate = true,
+    ) => {
+      if (hudMocks.autoRunPolling && immediate && (id === 'agents-hud-pull' || id === 'hud-now-ticker')) {
         queueMicrotask(() => {
           void task();
         });
@@ -247,6 +253,8 @@ describe('HUDTab', () => {
     await vi.waitFor(() => {
       expect(pageText()).not.toContain('Loading...');
     });
+    expect(hudMocks.createPolling).toHaveBeenCalledWith('agents-hud-pull', expect.any(Function), 15000, true, false);
+    expect(hudMocks.fleet).toHaveBeenCalledTimes(1);
   });
 
   it('renders push-only mode without pull-only sections', async () => {

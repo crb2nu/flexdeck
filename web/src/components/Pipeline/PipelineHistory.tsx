@@ -1,5 +1,5 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
-import { ciApi, RepoInfo } from '../../lib/api';
+import { ciApi, type RepoInfo } from '../../lib/api';
 import {
   operatorStateBadgeClass,
   operatorStateLabel,

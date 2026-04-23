@@ -157,7 +157,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   };
 
   onMount(() => {
-    startFlexInferOperationalPolling();
+    startFlexInferOperationalPolling(false);
     void refreshWorkbench();
   });
   onCleanup(() => {

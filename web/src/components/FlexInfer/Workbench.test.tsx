@@ -322,6 +322,9 @@ describe('Workbench', () => {
       expect(pageText()).toContain('Operator briefing');
     });
 
+    expect(workbenchMocks.startPolling).toHaveBeenCalledWith(false);
+    expect(workbenchMocks.fetchCRDModels).toHaveBeenCalledTimes(1);
+    expect(workbenchMocks.refreshOperationalData).toHaveBeenCalledTimes(1);
     expect(findSidebarItem('overview').tagName).toBe('A');
     expect(findSidebarItem('overview').getAttribute('aria-current')).toBe('page');
     expect(findSidebarItem('telemetry').getAttribute('aria-current')).toBeNull();
