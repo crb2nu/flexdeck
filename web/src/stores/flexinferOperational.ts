@@ -150,15 +150,15 @@ export async function refreshFlexInferOperationalData(): Promise<void> {
   ]);
 }
 
-export function startFlexInferOperationalPolling(): void {
+export function startFlexInferOperationalPolling(immediate = true): void {
   pollingConsumers += 1;
   if (pollingConsumers > 1) return;
 
-  pollingScheduler.register(REGISTRY_POLL_ID, refreshFlexInferRegistry, 15_000);
-  pollingScheduler.register(PROXY_POLL_ID, refreshFlexInferProxy, 15_000);
-  pollingScheduler.register(ROUTER_POLL_ID, refreshFlexInferRouter, 30_000);
-  pollingScheduler.register(CATALOG_POLL_ID, refreshFlexInferCatalogs, 60_000);
-  pollingScheduler.register(CACHE_POLL_ID, refreshFlexInferCaches, 30_000);
+  pollingScheduler.register(REGISTRY_POLL_ID, refreshFlexInferRegistry, 15_000, immediate);
+  pollingScheduler.register(PROXY_POLL_ID, refreshFlexInferProxy, 15_000, immediate);
+  pollingScheduler.register(ROUTER_POLL_ID, refreshFlexInferRouter, 30_000, immediate);
+  pollingScheduler.register(CATALOG_POLL_ID, refreshFlexInferCatalogs, 60_000, immediate);
+  pollingScheduler.register(CACHE_POLL_ID, refreshFlexInferCaches, 30_000, immediate);
 }
 
 export function stopFlexInferOperationalPolling(): void {

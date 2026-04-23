@@ -77,7 +77,7 @@ describe('ModelGPUTable', () => {
     await flush();
 
     expect(gpuTableMocks.api).toHaveBeenCalledWith('/k8s/metrics/gpu/models');
-    expect(gpuTableMocks.createPolling).toHaveBeenCalledWith('gpu-models', expect.any(Function), 15000);
+    expect(gpuTableMocks.createPolling).toHaveBeenCalledWith('gpu-models', expect.any(Function), 15000, true, false);
 
     const pageText = document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     expect(pageText).toContain('GPU Usage by Model');
@@ -86,5 +86,37 @@ describe('ModelGPUTable', () => {
     expect(pageText).toContain('2');
     expect(pageText).toContain('70%');
     expect(pageText).toContain('80%');
+  });
+
+  it('keeps the last GPU snapshot visible when a background refresh fails', async () => {
+    gpuTableMocks.api.mockResolvedValueOnce({
+      models: [
+        {
+          modelId: 'alpha-1',
+          modelName: 'alpha',
+          node: 'gpu-a',
+          gpuUtilization: 72,
+          vramUsedPercent: 81,
+          temperature: 65,
+          power: 210,
+        },
+      ],
+    });
+
+    cleanup = mount(() => <ModelGPUTable />);
+    await flush();
+
+    expect(document.body.textContent).toContain('alpha');
+
+    const pollTask = gpuTableMocks.createPolling.mock.calls[0][1] as () => Promise<void>;
+    gpuTableMocks.api.mockRejectedValueOnce(new Error('metrics offline'));
+    await pollTask();
+    await flush();
+
+    const pageText = document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    expect(pageText).toContain('GPU Usage by Model');
+    expect(pageText).toContain('alpha');
+    expect(pageText).toContain('stale snapshot');
+    expect(pageText).toContain('GPU telemetry refresh delayed. Showing the last successful GPU snapshot.');
   });
 });

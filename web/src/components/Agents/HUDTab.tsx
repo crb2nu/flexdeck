@@ -108,10 +108,6 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     asyncState.succeed();
   };
 
-  onMount(() => {
-    void fetchAll();
-  });
-
   const handleApprove = async (id: string) => {
     patchState({ workflowAction: `approve:${id}` });
     try {
@@ -149,7 +145,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     }
   };
 
-  createPolling('agents-hud-pull', fetchAll, 15000);
+  createPolling('agents-hud-pull', fetchAll, 15000, true, false);
 
   createPolling('hud-now-ticker', () => { patchState({ now: Date.now() }); }, 5000);
 

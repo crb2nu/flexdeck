@@ -112,7 +112,7 @@ const Agents: Component = () => {
 
   createPolling('agents-main', async () => {
     await Promise.all([fetchAgents(), fetchGraph(), checkHealth()]);
-  }, 10000, () => !isToolingSection(), false);
+  }, 10000, isToolingSection, false);
 
   createEffect(() => {
     if (isToolingSection()) {

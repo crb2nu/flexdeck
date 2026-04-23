@@ -8,12 +8,9 @@ const historyMocks = vi.hoisted(() => ({
   getProjectHistory: vi.fn<(projectId: number, limit: number) => Promise<Array<Record<string, unknown>>>>(async () => []),
 }));
 
-vi.mock('../../lib/api', async () => {
-  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api');
+vi.mock('../../lib/api', () => {
   return {
-    ...actual,
     ciApi: {
-      ...actual.ciApi,
       getProjectHistory: historyMocks.getProjectHistory,
     },
   };
