@@ -14,6 +14,7 @@ import {
 } from '../../stores/flexinferSurface';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
 import type { FlexInferModelStatus, ModelCache } from '../../lib/types';
+import { formatDuration } from '../../lib/format';
 import {
   flexinferCacheError,
   flexinferCacheLoading,
@@ -43,6 +44,7 @@ import {
 import {
   getReliabilityClasses,
   getReliabilityStatus,
+  type ReliabilityStatus,
 } from '../Models/controllerIntegration';
 import {
   useModelsController,
@@ -502,26 +504,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                             {row.model.spec.source}
                           </div>
                         </td>
-                        <td class="px-4 py-3">
-                          <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${phaseTone(row.model.status?.phase)}`}>
-                            {row.model.status?.phase || 'Unknown'}
-                          </span>
-                          <Show when={row.model.status?.phase === 'Loading' && row.model.status?.loadingSubstage}>
-                            <div class={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${loadingSubstageTone(row.model.status, row.model.status?.loadingSubstage)}`}>
-                              {row.model.status?.loadingSubstage}
-                              <Show when={isStalledLoad(row.model.status)}>
-                                <span class="ml-1 text-[9px] uppercase tracking-wide">· stalled</span>
-                              </Show>
-                            </div>
-                          </Show>
-                          <Show when={row.model.status?.phase === 'Loading' && row.model.status?.message}>
-                            <div class="mt-1 max-w-[20rem] truncate font-mono text-[10px] text-text-dim" title={row.model.status?.message}>
-                              {row.model.status?.message}
-                            </div>
-                          </Show>
-                          <div class={`mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses(row.reliability.level)}`}>
-                            {row.reliability.label}
-                          </div>
+                        <td class="px-4 py-3 align-top">
+                          <ModelPhaseDetail status={row.model.status} reliability={row.reliability} />
                         </td>
                         <td class="px-4 py-3">
                           <div class="flex flex-wrap gap-1.5">
@@ -1067,6 +1051,59 @@ const OverviewFocusCard: Component<{
   </button>
 );
 
+const ModelPhaseDetail: Component<{
+  status?: FlexInferModelStatus;
+  reliability: ReliabilityStatus;
+}> = (props) => {
+  const hasLoadingDetail = () =>
+    props.status?.phase === 'Loading' &&
+    Boolean(props.status.loadingSubstage || props.status.message || props.status.loadingProgressAt);
+
+  return (
+    <div class="min-w-[12rem] max-w-[22rem]">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${phaseTone(props.status?.phase)}`}>
+          {props.status?.phase || 'Unknown'}
+        </span>
+        <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses(props.reliability.level)}`}>
+          {props.reliability.label}
+        </span>
+      </div>
+
+      <Show when={hasLoadingDetail()}>
+        <div class={`mt-2 border-l-2 pl-2.5 ${loadingSubstageAccent(props.status)}`}>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${loadingSubstageTone(props.status, props.status?.loadingSubstage)}`}>
+              {loadingSubstageLabel(props.status?.loadingSubstage)}
+            </span>
+            <Show when={isStalledLoad(props.status)}>
+              <span class="rounded-full bg-status-error/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-status-error">
+                stalled
+              </span>
+            </Show>
+          </div>
+          <div class="mt-1 text-[10px] uppercase tracking-wide text-text-dim">
+            {loadingSubstageDetail(props.status?.loadingSubstage)}
+          </div>
+          <Show when={props.status?.message}>
+            {(message) => (
+              <div class="mt-1 max-w-[20rem] break-words font-mono text-[10px] leading-4 text-text-main/85" title={message()}>
+                {message()}
+              </div>
+            )}
+          </Show>
+          <Show when={loadingProgressAgeLabel(props.status)}>
+            {(ageLabel) => (
+              <div class="mt-1 font-mono text-[10px] text-text-dim">
+                {ageLabel()}
+              </div>
+            )}
+          </Show>
+        </div>
+      </Show>
+    </div>
+  );
+};
 
 const WorkbenchSectionHeader: Component<{
   kicker: string;
@@ -1161,6 +1198,64 @@ function loadingSubstageTone(status: FlexInferModelStatus | undefined, substage?
     default:
       return 'bg-white/10 text-text-dim';
   }
+}
+
+function loadingSubstageAccent(status?: FlexInferModelStatus): string {
+  if (isStalledLoad(status)) return 'border-status-error/50';
+  switch (status?.loadingSubstage) {
+    case 'HealthCheckPending':
+      return 'border-status-ok/40';
+    case 'LoadingWeights':
+    case 'Compiling':
+      return 'border-white/20';
+    case 'ImagePulling':
+    case 'Initializing':
+    default:
+      return 'border-white/10';
+  }
+}
+
+function loadingSubstageLabel(substage?: string): string {
+  switch (substage) {
+    case 'ImagePulling':
+      return 'Pulling image';
+    case 'Initializing':
+      return 'Runtime init';
+    case 'LoadingWeights':
+      return 'Loading weights';
+    case 'Compiling':
+      return 'Compiling graphs';
+    case 'HealthCheckPending':
+      return 'Readiness probe';
+    default:
+      return 'Loading detail';
+  }
+}
+
+function loadingSubstageDetail(substage?: string): string {
+  switch (substage) {
+    case 'ImagePulling':
+      return 'Runtime image is still being fetched';
+    case 'Initializing':
+      return 'Container is up, runtime is starting';
+    case 'LoadingWeights':
+      return 'Model weights are being loaded into the runtime';
+    case 'Compiling':
+      return 'Kernel or graph compilation is in progress';
+    case 'HealthCheckPending':
+      return 'Weights loaded, waiting on readiness';
+    default:
+      return 'Controller has not reported a substage yet';
+  }
+}
+
+function loadingProgressAgeLabel(status?: FlexInferModelStatus): string | undefined {
+  if (!status?.loadingProgressAt) return undefined;
+  const progressAt = Date.parse(status.loadingProgressAt);
+  if (Number.isNaN(progressAt)) return undefined;
+  const elapsedMs = Math.max(0, Date.now() - progressAt);
+  const prefix = isStalledLoad(status) ? 'No progress for' : 'Updated';
+  return `${prefix} ${formatDuration(elapsedMs)}${isStalledLoad(status) ? '' : ' ago'}`;
 }
 
 function cachePhaseTone(phase?: string): string {
