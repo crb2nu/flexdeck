@@ -26,6 +26,7 @@ import {
 import { TrafficManager } from './traffic';
 import { HoloEngine } from './engine';
 import { buildScene, computeSceneIds, diffScene, type SceneContext } from './sceneBuilder';
+import { createHoloDeckRenderLoop, type HoloDeckRenderLoop } from './renderLoop';
 
 export type { HoloDeckFilter } from './derivedState';
 
@@ -116,7 +117,7 @@ const HoloDeck: Component<Props> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let engine: HoloEngine;
   let traffic: TrafficManager;
-  let animationId: number;
+  let renderLoop: HoloDeckRenderLoop;
   const clock = new THREE.Clock();
 
   // Quality settings with auto-detection
@@ -493,70 +494,67 @@ const HoloDeck: Component<Props> = (props) => {
     containerRef.addEventListener('mousemove', onMouseMove);
     containerRef.addEventListener('click', onClick);
 
-    let loopRunning = true;
-    const animate = () => {
-      if (engine.paused) {
-        loopRunning = false;
-        return;
-      }
-      const delta = Math.min(clock.getDelta(), 0.1);
-      const time = clock.getElapsedTime();
-      engine.gridMaterial.uniforms.uTime.value = time;
-      engine.controls.update();
-      traffic.spawn(curves, serviceCurves);
-      traffic.update(delta, curves, serviceCurves);
+    renderLoop = createHoloDeckRenderLoop({
+      isPaused: () => engine.paused,
+      getDelta: () => Math.min(clock.getDelta(), 0.1),
+      getElapsedTime: () => clock.getElapsedTime(),
+      renderFrame: ({ delta, time }) => {
+        engine.gridMaterial.uniforms.uTime.value = time;
+        engine.controls.update();
+        traffic.spawn(curves, serviceCurves);
+        traffic.update(delta, curves, serviceCurves);
 
-      const f = engine.renderer.info.render.frame;
-      if (f % 2 === 0) {
-        const scannerPulse = Math.sin(time * 2);
-        const scannerScale = 1 + scannerPulse * 0.15;
-        const scannerOpacity = 0.4 - scannerPulse * 0.15;
+        const f = engine.renderer.info.render.frame;
+        if (f % 2 === 0) {
+          const scannerPulse = Math.sin(time * 2);
+          const scannerScale = 1 + scannerPulse * 0.15;
+          const scannerOpacity = 0.4 - scannerPulse * 0.15;
+          for (const node of nodeVisuals) {
+            const scanner = node.scannerRef;
+            if (!scanner) continue;
+            scanner.scale.setScalar(scannerScale);
+            (scanner.material as THREE.MeshBasicMaterial).opacity = scannerOpacity;
+          }
+        }
+
+        const shouldRefreshMetrics = f % 60 === 0;
         for (const node of nodeVisuals) {
-          const scanner = node.scannerRef;
-          if (!scanner) continue;
-          scanner.scale.setScalar(scannerScale);
-          (scanner.material as THREE.MeshBasicMaterial).opacity = scannerOpacity;
+          const coreRef = node.coreRef;
+          if (coreRef) {
+            coreRef.rotation.y += delta * 0.8;
+            coreRef.rotation.x += delta * 0.4;
+          }
+
+          if (!shouldRefreshMetrics || !node.nodeName) continue;
+          const metrics = getNodeMetrics(node.nodeName);
+          if (!metrics) continue;
+
+          if (node.cpuRingRef) node.cpuRingRef.material.uniforms.uProgress.value = metrics.cpuUsage / 100;
+          if (node.memRingRef) node.memRingRef.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
         }
-      }
 
-      const shouldRefreshMetrics = f % 60 === 0;
-      for (const node of nodeVisuals) {
-        const coreRef = node.coreRef;
-        if (coreRef) {
-          coreRef.rotation.y += delta * 0.8;
-          coreRef.rotation.x += delta * 0.4;
+        for (const pod of podVisuals) {
+          const { mesh, initialY, waveOffset } = pod;
+          mesh.rotation.x += delta * 0.3;
+          mesh.rotation.y += delta * 0.2;
+          mesh.position.y = initialY + Math.sin(time * 0.8 + waveOffset) * 0.2;
         }
 
-        if (!shouldRefreshMetrics || !node.nodeName) continue;
-        const metrics = getNodeMetrics(node.nodeName);
-        if (!metrics) continue;
+        for (const service of serviceVisuals) {
+          const { mesh, initialY, waveOffset } = service;
+          mesh.rotation.y += delta * 0.15;
+          mesh.position.y = initialY + Math.sin(time * 0.6 + waveOffset) * 0.3;
+        }
 
-        if (node.cpuRingRef) node.cpuRingRef.material.uniforms.uProgress.value = metrics.cpuUsage / 100;
-        if (node.memRingRef) node.memRingRef.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
-      }
+        engine.dustParticles.rotation.y = time * 0.03;
+        if (healthOrb) { healthOrb.rotation.y = time * 0.1; healthOrb.scale.setScalar(1 + Math.sin(time * 0.5) * 0.08); }
+        healthRingMaterials.forEach(m => m.uniforms.uTime.value = time);
+        coreRings.forEach(r => r.rotation.z = time * 0.05);
 
-      for (const pod of podVisuals) {
-        const { mesh, initialY, waveOffset } = pod;
-        mesh.rotation.x += delta * 0.3;
-        mesh.rotation.y += delta * 0.2;
-        mesh.position.y = initialY + Math.sin(time * 0.8 + waveOffset) * 0.2;
-      }
-
-      for (const service of serviceVisuals) {
-        const { mesh, initialY, waveOffset } = service;
-        mesh.rotation.y += delta * 0.15;
-        mesh.position.y = initialY + Math.sin(time * 0.6 + waveOffset) * 0.3;
-      }
-
-      engine.dustParticles.rotation.y = time * 0.03;
-      if (healthOrb) { healthOrb.rotation.y = time * 0.1; healthOrb.scale.setScalar(1 + Math.sin(time * 0.5) * 0.08); }
-      healthRingMaterials.forEach(m => m.uniforms.uTime.value = time);
-      coreRings.forEach(r => r.rotation.z = time * 0.05);
-
-      engine.composer.render();
-      animationId = requestAnimationFrame(animate);
-    };
-    animate();
+        engine.composer.render();
+      },
+    });
+    renderLoop.start();
 
     let mounted = true;
     const onVisibilityChange = () => {
@@ -564,11 +562,8 @@ const HoloDeck: Component<Props> = (props) => {
         engine.pause();
       } else if (mounted) {
         engine.resume();
-        if (!loopRunning) {
-          loopRunning = true;
-          clock.getDelta(); // Discard elapsed time while hidden
-          animate();
-        }
+        clock.getDelta(); // Discard elapsed time while hidden
+        renderLoop.resumeIfStopped();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -583,7 +578,7 @@ const HoloDeck: Component<Props> = (props) => {
       containerRef?.removeEventListener('touchstart', onTouchStart);
       containerRef?.removeEventListener('mousemove', onMouseMove);
       containerRef?.removeEventListener('click', onClick);
-      cancelAnimationFrame(animationId);
+      renderLoop.stop();
       engine.dispose();
       traffic.dispose();
       Object.values(sharedGeoms).forEach(g => g.dispose());
