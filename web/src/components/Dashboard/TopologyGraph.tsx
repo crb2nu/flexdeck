@@ -11,6 +11,7 @@ import {
   type BuildResult,
 } from './topology/layoutEngine';
 import type { TopologyNode as D3Node, TopologyLink as D3Link } from './topology/types';
+import { createTopologyViewportCache, refreshVisibleTopology } from './topology/visibility';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -373,10 +374,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const nodeSpriteCache = new Map<string, HTMLCanvasElement>();
   let nodeStylesCacheValid = false;
 
-  // Frustum bounds cache - recomputed only when transform/dimensions change
-  const cachedFrustum = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
-  const lastFrustumTransform = { x: -Infinity, y: -Infinity, k: -Infinity };
-  const lastFrustumDims = { width: -1, height: -1 };
+  const viewportVisibilityCache = createTopologyViewportCache();
 
   // Spatial grid index for O(1) hover detection (replaces O(N) iteration)
   const GRID_CELL_SIZE = 50; // Pixels per cell
@@ -665,7 +663,6 @@ const TopologyGraph: Component<Props> = (props) => {
       return;
     }
 
-    const halfCell = GRID_CELL_SIZE * 0.5;
     let movedCount = 0;
     for (let i = 0; i < graphNodes.length; i++) {
       const node = graphNodes[i];
@@ -674,7 +671,6 @@ const TopologyGraph: Component<Props> = (props) => {
       const oldKey = nodeCellKeys[i];
       if (newKey === oldKey) continue;
 
-      // Check if movement is significant enough (> half cell size)
       // Use key difference as a proxy — if key changed, position crossed a cell boundary
       movedCount++;
 
@@ -1261,10 +1257,7 @@ const TopologyGraph: Component<Props> = (props) => {
     lastNamespaceAggregateCount = 0;
     namespaceAggregateIndex.clear();
 
-    const minX = cachedFrustum.minX;
-    const maxX = cachedFrustum.maxX;
-    const minY = cachedFrustum.minY;
-    const maxY = cachedFrustum.maxY;
+    const { minX, maxX, minY, maxY } = viewportVisibilityCache.frustum;
 
     for (let i = 0, len = graphNodes.length; i < len; i++) {
       const node = graphNodes[i];
@@ -1321,65 +1314,29 @@ const TopologyGraph: Component<Props> = (props) => {
   const updateVisibleNodes = (width: number, height: number, densityOverviewBlend: number, force = false) => {
     if (!force && !viewportCacheDirty) return;
     const startedAt = performance.now();
+    const result = refreshVisibleTopology({
+      nodes: graphNodes,
+      hostsLinks,
+      selectsLinks,
+      transform,
+      width,
+      height,
+      densityOverviewBlend,
+      viewportCacheDirty,
+      force,
+      cache: viewportVisibilityCache,
+      state: {
+        nodeFlags: visibleNodeFlags,
+        nodeIndices: visibleNodeIndices,
+        hostsLinkIndices: visibleHostsLinkIndices,
+        selectsLinkIndices: visibleSelectsLinkIndices,
+      },
+      shouldRenderNode: shouldRenderNodeForCurrentDensity,
+    });
 
-    if (transform.x !== lastFrustumTransform.x ||
-        transform.y !== lastFrustumTransform.y ||
-        transform.k !== lastFrustumTransform.k ||
-        width !== lastFrustumDims.width ||
-        height !== lastFrustumDims.height ||
-        force) {
-      const margin = 50 / transform.k;
-      cachedFrustum.minX = -transform.x / transform.k - margin;
-      cachedFrustum.maxX = (width - transform.x) / transform.k + margin;
-      cachedFrustum.minY = -transform.y / transform.k - margin;
-      cachedFrustum.maxY = (height - transform.y) / transform.k + margin;
-      lastFrustumTransform.x = transform.x;
-      lastFrustumTransform.y = transform.y;
-      lastFrustumTransform.k = transform.k;
-      lastFrustumDims.width = width;
-      lastFrustumDims.height = height;
-    }
-
-    const minX = cachedFrustum.minX;
-    const maxX = cachedFrustum.maxX;
-    const minY = cachedFrustum.minY;
-    const maxY = cachedFrustum.maxY;
-    let visibleNodeCount = 0;
-
-    for (let i = 0, len = graphNodes.length; i < len; i++) {
-      const node = graphNodes[i];
-      const isVisible = node.x !== undefined &&
-        node.y !== undefined &&
-        shouldRenderNodeForCurrentDensity(node, densityOverviewBlend) &&
-        node.x >= minX &&
-        node.x <= maxX &&
-        node.y >= minY &&
-        node.y <= maxY;
-      visibleNodeFlags[i] = isVisible ? 1 : 0;
-      if (isVisible) visibleNodeIndices[visibleNodeCount++] = i;
-    }
-    lastVisibleNodeCount = visibleNodeCount;
-
-    // Pre-filter visible links: a link is visible if at least one endpoint is visible
-    let visibleHostsCount = 0;
-    for (let i = 0, len = hostsLinks.length; i < len; i++) {
-      const link = hostsLinks[i];
-      if (link.sourceIdx !== undefined && link.targetIdx !== undefined) {
-        if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
-      }
-      visibleHostsLinkIndices[visibleHostsCount++] = i;
-    }
-    lastVisibleHostsLinkCount = visibleHostsCount;
-
-    let visibleSelectsCount = 0;
-    for (let i = 0, len = selectsLinks.length; i < len; i++) {
-      const link = selectsLinks[i];
-      if (link.sourceIdx !== undefined && link.targetIdx !== undefined) {
-        if (visibleNodeFlags[link.sourceIdx] === 0 && visibleNodeFlags[link.targetIdx] === 0) continue;
-      }
-      visibleSelectsLinkIndices[visibleSelectsCount++] = i;
-    }
-    lastVisibleSelectsLinkCount = visibleSelectsCount;
+    lastVisibleNodeCount = result.nodeCount;
+    lastVisibleHostsLinkCount = result.hostsLinkCount;
+    lastVisibleSelectsLinkCount = result.selectsLinkCount;
 
     viewportCacheDirty = false;
     pendingVisibilityRefresh = false;
