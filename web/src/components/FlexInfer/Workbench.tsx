@@ -171,16 +171,95 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     );
   };
 
+  const supplyChainSummary = () => flexinferSupplyChainSummary();
+  const proxyTotals = () => flexinferProxyTotals();
+  const routerModels = () => routerInfo()?.modelInfo || [];
+  const failedCacheCount = () => supplyChainSummary().failedCacheCount;
+  const phaseCount = (phase: string) => controller.phaseSummary()[phase] || 0;
+  const failedControllerCount = () => phaseCount('Failed');
+  const controllerPhaseNote = () => {
+    const phases = [
+      ['Ready', 'ready'],
+      ['Failed', 'failed'],
+      ['Idle', 'idle'],
+      ['Preempted', 'preempted'],
+      ['Pending', 'pending'],
+      ['Loading', 'loading'],
+    ]
+      .map(([phase, label]) => {
+        const count = phaseCount(phase);
+        return count > 0 ? `${count} ${label}` : null;
+      })
+      .filter((part): part is string => Boolean(part));
+
+    return phases.length > 0 ? phases.join(' · ') : 'No CRD phase data';
+  };
+  const telemetryStatValue = () => {
+    if (!proxyEnabled()) return 'off';
+    return proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '-';
+  };
+  const telemetryStatTone = () => {
+    if (!proxyEnabled()) return 'text-text-dim';
+    if (proxyError() || routerError()) return 'text-status-error';
+    if (proxyMetrics()?.partial) return 'text-status-warn';
+    return 'text-status-ok';
+  };
+  const telemetryStatNote = () => {
+    if (!proxyEnabled()) return 'flexinfer proxy disabled';
+    if (proxyError() || routerError()) return proxyError() || routerError() || 'telemetry issue';
+    return `${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`;
+  };
+  const telemetryFocusStat = () => (!proxyEnabled() ? 'disabled' : `${proxyTotals()?.queueDepth ?? 0} queued`);
+  const supplyChainStatValue = () => {
+    if (supplyChainSummary().catalogCount === 0) {
+      return `${supplyChainSummary().readyCacheCount}/${supplyChainSummary().cacheCount}`;
+    }
+    return `${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`;
+  };
+  const supplyChainStatTone = () => {
+    if (failedCacheCount() > 0) return 'text-status-error';
+    if (supplyChainSummary().readyCacheCount > 0) return 'text-status-ok';
+    return 'text-text-dim';
+  };
+  const supplyChainStatNote = () => {
+    const parts = [
+      `${supplyChainSummary().cacheCount} caches`,
+      `${supplyChainSummary().readyCacheCount} ready`,
+    ];
+    if (failedCacheCount() > 0) parts.push(`${failedCacheCount()} failed`);
+    if (supplyChainSummary().catalogCount === 0) parts.push('no catalogs');
+    return parts.join(' · ');
+  };
+  const supplyChainFocusStat = () => (failedCacheCount() > 0 ? `${failedCacheCount()} failed` : `${supplyChainSummary().readyCacheCount} ready`);
+  const supplyChainSectionPartialDetail = () => {
+    if (failedCacheCount() > 0) return `${failedCacheCount()} failed caches`;
+    if (!modelCacheEnabled()) return 'cache disabled';
+    if (supplyChainSummary().catalogCount === 0 && supplyChainSummary().cacheCount > 0) return 'no catalogs';
+    return undefined;
+  };
+  const controllerSectionPartialDetail = () => (failedControllerCount() > 0 ? `${failedControllerCount()} failed CRDs` : undefined);
+  const overviewStateDetail = () => {
+    const parts: string[] = [];
+    if (failedCacheCount() > 0) parts.push(`${failedCacheCount()} failed caches`);
+    if (failedControllerCount() > 0) parts.push(`${failedControllerCount()} failed CRDs`);
+    if (!proxyEnabled()) parts.push('proxy disabled');
+    if (!modelCacheEnabled()) parts.push('cache disabled');
+    if (proxyMetrics()?.partial) parts.push('partial telemetry');
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  };
+
   const controllerSectionState = createMemo<OperatorState>(() =>
     resolveOperatorState({
       loading: controller.loading() || controller.controllerDataLoading(),
       error: controller.error(),
       lastUpdateMs: controllerUpdatedAt(),
       staleAfterMs: 15_000,
+      partial: failedControllerCount() > 0,
     }),
   );
   const controllerSectionDetail = () => {
     if (controller.error()) return 'controller issue';
+    if (controllerSectionPartialDetail()) return controllerSectionPartialDetail();
     if (controller.loading() || controller.controllerDataLoading()) {
       return controllerUpdatedAt() ? 'background refresh' : 'initial sync';
     }
@@ -213,15 +292,29 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       error: catalogError() || cacheError(),
       lastUpdateMs: supplyChainUpdatedAt(),
       staleAfterMs: 60_000,
-      partial: !modelCacheEnabled(),
+      partial: !modelCacheEnabled() || failedCacheCount() > 0,
     }),
   );
   const supplyChainSectionDetail = () => {
+    if (supplyChainSectionPartialDetail()) return supplyChainSectionPartialDetail();
     if (!modelCacheEnabled()) return 'cache disabled';
     if (catalogError() || cacheError()) return catalogError() && cacheError() ? 'upstream errors' : catalogError() ? 'catalog issue' : 'cache issue';
     if (catalogLoading() || cacheLoading()) return supplyChainUpdatedAt() ? 'background refresh' : 'initial sync';
     if (supplyChainSectionState() === 'stale') return 'poll lag';
     return undefined;
+  };
+  const overviewState = createMemo<OperatorState>(() =>
+    resolveOperatorState({
+      loading: controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading() || catalogLoading() || cacheLoading(),
+      error: controller.error() || proxyError() || routerError() || catalogError() || cacheError(),
+      lastUpdateMs: Math.max(controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt()),
+      staleAfterMs: 15_000,
+      partial: Boolean(overviewStateDetail()),
+    }),
+  );
+  const headerStateSummary = () => {
+    const telemetry = proxyEnabled() ? `${proxyTotals()?.queueDepth ?? 0} queued` : 'telemetry off';
+    return `${telemetry} · ${controller.crdModels().length} CRDs`;
   };
 
   const modelRows = createMemo(() => {
@@ -260,9 +353,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
 
   const registryRows = createMemo(() => controller.registryModels().slice().sort((a, b) => a.name.localeCompare(b.name)));
   const searchResults = () => controller.searchResults();
-  const supplyChainSummary = () => flexinferSupplyChainSummary();
-  const proxyTotals = () => flexinferProxyTotals();
-  const routerModels = () => routerInfo()?.modelInfo || [];
 
   // Stabilize list identity so <For> keeps DOM rows across 15s polling refreshes.
   // Prevents hover/focus flicker when JSON.parse produces fresh object refs.
@@ -325,8 +415,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       href: buildWorkbenchSectionHref(location.pathname, location.query, 'telemetry'),
       replace: true,
       eyebrow: 'Proxy + router',
-      value: `${proxyTotals()?.queueDepth ?? 0}`,
-      detail: `${proxyTotals()?.requestsTotal ?? 0} requests`,
+      value: proxyEnabled() ? `${proxyTotals()?.queueDepth ?? 0}` : 'off',
+      detail: proxyEnabled() ? `${proxyTotals()?.requestsTotal ?? 0} requests` : 'flexinfer proxy disabled',
       group: 'Operations',
     },
     {
@@ -336,7 +426,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       replace: true,
       eyebrow: 'Catalogs + caches',
       value: `${supplyChainSummary().cacheCount}`,
-      detail: `${supplyChainSummary().readyCacheCount} ready caches`,
+      detail: supplyChainStatNote(),
       group: 'Operations',
     },
     {
@@ -359,7 +449,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             Proxy {proxyHealthLabel()}
           </span>
           <span class={`rounded-md px-2 py-0.5 text-[10px] font-medium ${getReliabilityClasses(reliabilityHeadline().level)}`}>
-            {reliabilityHeadline().label}
+            {headerStateSummary()}
           </span>
           <span class="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-medium text-text-muted">
             {managementMode()}
@@ -396,14 +486,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
               title="Operator briefing"
               subtitle=""
               updatedAt={Math.max(controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt())}
-              state={resolveOperatorState({
-                loading: controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading() || catalogLoading() || cacheLoading(),
-                error: controller.error() || proxyError() || routerError() || catalogError() || cacheError(),
-                lastUpdateMs: Math.max(controllerUpdatedAt(), telemetryUpdatedAt(), supplyChainUpdatedAt()),
-                staleAfterMs: 15_000,
-                partial: !modelCacheEnabled() || Boolean(proxyMetrics()?.partial),
-              })}
-              stateDetail={controller.error() || proxyError() || routerError() || catalogError() || cacheError() ? 'multi-surface review' : undefined}
+              state={overviewState()}
+              stateDetail={controller.error() || proxyError() || routerError() || catalogError() || cacheError() ? 'multi-surface review' : overviewStateDetail()}
               loading={controller.loading() || controller.controllerDataLoading() || proxyLoading() || routerLoading()}
             />
 
@@ -411,23 +495,23 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           <WorkbenchStatCard
             label="Controller"
             value={`${controller.crdModels().length}`}
-            tone="text-text-muted"
-            note={`${controller.phaseSummary().Ready || 0} ready · ${controller.phaseSummary().Failed || 0} failed`}
+            tone={failedControllerCount() > 0 ? 'text-status-error' : 'text-text-muted'}
+            note={controllerPhaseNote()}
           />
           <WorkbenchStatCard
             label="Telemetry"
-            value={proxyTotals()?.requestsTotal != null ? proxyTotals()!.requestsTotal.toLocaleString() : '—'}
-            tone="text-status-ok"
-            note={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`}
+            value={telemetryStatValue()}
+            tone={telemetryStatTone()}
+            note={telemetryStatNote()}
           />
           <WorkbenchStatCard
             label="Supply chain"
-            value={`${supplyChainSummary().catalogCount}/${supplyChainSummary().catalogModelCount}`}
-            tone="text-text-dim"
-            note={`${supplyChainSummary().cacheCount} caches · ${supplyChainSummary().readyCacheCount} ready`}
+            value={supplyChainStatValue()}
+            tone={supplyChainStatTone()}
+            note={supplyChainStatNote()}
           />
           <WorkbenchStatCard
-            label="Freshness"
+            label="Data freshness"
             value={freshnessLabel([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
             tone="text-text-main"
             note={freshnessNote([proxyUpdatedAt(), routerUpdatedAt(), catalogUpdatedAt(), cacheUpdatedAt()])}
@@ -443,14 +527,14 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           />
           <OverviewFocusCard
             title="Telemetry"
-            stat={`${proxyTotals()?.queueDepth ?? 0} queued`}
-            tone="text-status-ok"
+            stat={telemetryFocusStat()}
+            tone={telemetryStatTone()}
             onClick={() => changeSection('telemetry')}
           />
           <OverviewFocusCard
             title="Supply chain"
-            stat={`${supplyChainSummary().readyCacheCount} ready`}
-            tone="text-text-dim"
+            stat={supplyChainFocusStat()}
+            tone={supplyChainStatTone()}
             onClick={() => changeSection('supply-chain')}
           />
           <OverviewFocusCard
@@ -1019,6 +1103,8 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
 const statCardBorder: Record<string, string> = {
   'text-text-muted': 'rgba(255,255,255,0.1)',
   'text-status-ok': 'rgba(0,240,255,0.3)',
+  'text-status-warn': 'rgba(255,196,87,0.35)',
+  'text-status-error': 'rgba(255,76,114,0.35)',
   'text-text-dim': 'rgba(189,0,255,0.3)',
   'text-text-main': 'rgba(10,255,104,0.3)',
 };
@@ -1056,8 +1142,7 @@ const ModelPhaseDetail: Component<{
   reliability: ReliabilityStatus;
 }> = (props) => {
   const hasLoadingDetail = () =>
-    props.status?.phase === 'Loading' &&
-    Boolean(props.status.loadingSubstage || props.status.message || props.status.loadingProgressAt);
+    props.status?.phase === 'Loading';
 
   return (
     <div class="min-w-[12rem] max-w-[22rem]">
