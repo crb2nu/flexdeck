@@ -71,11 +71,11 @@ const EventsFeed: Component = () => {
             )}
           </Show>
         </div>
-        <span class="text-[10px] text-text-dim">{displayEvents().length} recent</span>
+        <span class="text-[10px] tabular-nums text-text-dim">{displayEvents().length} recent</span>
       </div>
 
-      <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`}>
-        <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+      <div class="relative flex-1 overflow-y-auto custom-scrollbar">
+        <div class={`pointer-events-none sticky top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent transition-opacity duration-200 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
           when={!stablePanel.showBlockingLoading()}
           fallback={

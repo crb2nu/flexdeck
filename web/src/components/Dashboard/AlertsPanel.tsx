@@ -121,8 +121,8 @@ const AlertsPanel: Component = () => {
 
       {/* Body */}
       <Show when={!collapsed()}>
-        <div class={`relative flex-1 overflow-y-auto transition-opacity duration-300 ${stablePanel.isRefreshing() ? 'opacity-90' : 'opacity-100'}`} style={{ 'max-height': '220px' }}>
-          <div class={`pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20 transition-opacity duration-150 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
+        <div class="relative flex-1 overflow-y-auto custom-scrollbar" style={{ 'max-height': '220px' }}>
+          <div class={`pointer-events-none sticky top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent transition-opacity duration-200 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
           <Show
             when={!stablePanel.showBlockingLoading()}
             fallback={
@@ -132,7 +132,18 @@ const AlertsPanel: Component = () => {
             }
           >
             <Show when={stablePanel.showBlockingError()}>
-              <div class="px-3 py-2 text-xs text-red-400">{error()}</div>
+              <div class="px-3 py-3 flex items-start gap-2 text-status-error">
+                <span class="text-base leading-none mt-0.5">⚠</span>
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-semibold uppercase tracking-wide">Alerts unavailable</div>
+                  <div
+                    class="mt-0.5 text-[11px] text-status-error/80 line-clamp-2"
+                    title={error()}
+                  >
+                    {summarizeAlertError(error())}
+                  </div>
+                </div>
+              </div>
             </Show>
 
             <Show when={error() && stablePanel.hasStableValue()}>
@@ -205,5 +216,27 @@ const AlertsPanel: Component = () => {
     </div>
   );
 };
+
+/**
+ * Compress upstream Prometheus / DNS errors into a short, readable summary.
+ * Examples handled:
+ *   "Get \"http://kube-prom...\": dial tcp: lookup kube-prom...: no such host"
+ *     → "DNS lookup failed for kube-prom..."
+ *   "context deadline exceeded" → "upstream timed out"
+ * Falls back to the original message when no shape matches.
+ */
+function summarizeAlertError(raw: string): string {
+  if (!raw) return 'Unknown error';
+  const lc = raw.toLowerCase();
+  if (lc.includes('no such host')) {
+    const hostMatch = raw.match(/lookup ([^:\s]+)/);
+    return hostMatch ? `DNS lookup failed for ${hostMatch[1]}` : 'DNS lookup failed';
+  }
+  if (lc.includes('connection refused')) return 'Upstream connection refused';
+  if (lc.includes('context deadline exceeded') || lc.includes('timeout')) return 'Upstream timed out';
+  if (lc.includes('eof')) return 'Upstream closed connection';
+  if (raw.length > 120) return raw.slice(0, 117) + '…';
+  return raw;
+}
 
 export default AlertsPanel;
