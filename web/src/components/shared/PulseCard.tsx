@@ -123,15 +123,23 @@ const PulseCard: Component<PulseCardProps> = (props) => {
         </Show>
 
         <Show when={!!props.error && !stableState()}>
-          <div class="flex items-center gap-2 text-[11px] sm:text-sm text-status-error">
-            <span>⚠</span>
-            <span class="truncate">{props.error}</span>
+          <div class="flex min-w-0 items-start gap-2 text-status-error">
+            <span class="flex-shrink-0 text-base leading-none mt-0.5">⚠</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs sm:text-sm font-semibold uppercase tracking-wide">Unavailable</div>
+              <div
+                class="mt-0.5 truncate text-[11px] text-status-error/80"
+                title={formatPulseCardError(props.error || '')}
+              >
+                {formatPulseCardError(props.error || '')}
+              </div>
+            </div>
           </div>
         </Show>
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class="font-mono text-xl sm:text-2xl font-bold tracking-tight text-text-main">
+            <div class="font-mono tabular-nums text-xl sm:text-2xl font-bold tracking-tight text-text-main">
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
@@ -141,7 +149,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
             </Show>
           </div>
           <Show when={effectiveState().sub}>
-            <div class="text-[11px] sm:text-[13px] text-text-muted mt-0 sm:mt-0.5 truncate">
+            <div class="text-[11px] sm:text-[13px] tabular-nums text-text-muted mt-0 sm:mt-0.5 truncate">
               {effectiveState().sub}
             </div>
           </Show>
@@ -168,5 +176,28 @@ const PulseCard: Component<PulseCardProps> = (props) => {
     </div>
   );
 };
+
+// Defense-in-depth: even if a raw `{"error":"..."}` body or `[object Object]`
+// sneaks through the API client, present it as a tidy human message instead of
+// dumping the serialized JSON into the card.
+function formatPulseCardError(raw: string): string {
+  if (!raw) return "Unavailable";
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const candidate =
+        (typeof parsed?.error === "string" && parsed.error) ||
+        (typeof parsed?.error?.message === "string" && parsed.error.message) ||
+        (typeof parsed?.message === "string" && parsed.message) ||
+        "";
+      if (candidate) return candidate;
+    } catch {
+      // fall through
+    }
+  }
+  if (trimmed === "[object Object]") return "Unavailable";
+  return trimmed;
+}
 
 export default PulseCard;

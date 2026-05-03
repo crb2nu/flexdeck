@@ -2,9 +2,32 @@ import { createSignal } from "solid-js";
 import { authenticatedFetch } from "../../stores/auth";
 import { getApiBasePath } from "./base";
 
-interface ApiError {
-  error: string;
+interface ApiErrorDetail {
+  code?: string;
   message?: string;
+}
+
+interface ApiError {
+  // Some upstreams return `error` as a plain string ("metrics store unavailable"),
+  // others as a structured object ({ code, message }). Accept both shapes
+  // and normalize via `flattenApiErrorMessage`.
+  error?: string | ApiErrorDetail;
+  message?: string;
+}
+
+function flattenApiErrorMessage(data: ApiError): string | null {
+  if (typeof data.error === "string" && data.error.trim() !== "") {
+    return data.error;
+  }
+  if (data.error && typeof data.error === "object") {
+    const detail = data.error as ApiErrorDetail;
+    if (detail.message && detail.message.trim() !== "") return detail.message;
+    if (detail.code && detail.code.trim() !== "") return detail.code;
+  }
+  if (typeof data.message === "string" && data.message.trim() !== "") {
+    return data.message;
+  }
+  return null;
 }
 
 // Multi-cluster: active cluster ID persisted in localStorage
@@ -66,12 +89,26 @@ export async function api<T>(
     const contentType = response.headers.get("content-type") || "";
     try {
       if (contentType.includes("application/json")) {
-        const data: ApiError = await response.json();
-        message = data.error || data.message || message;
+        const data = (await response.json()) as ApiError;
+        message = flattenApiErrorMessage(data) ?? message;
       } else {
         const text = await response.text();
-        if (text.trim() !== "") {
-          message = text;
+        const trimmed = text.trim();
+        if (trimmed !== "") {
+          // Many Go services return JSON-shaped error bodies with
+          // `text/plain` content-type. Attempt a best-effort JSON parse
+          // before falling back to the raw text so users don't see
+          // `{"error":"..."}` rendered verbatim in the UI.
+          if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+              const data = JSON.parse(trimmed) as ApiError;
+              message = flattenApiErrorMessage(data) ?? trimmed;
+            } catch {
+              message = trimmed;
+            }
+          } else {
+            message = trimmed;
+          }
         }
       }
     } catch {
