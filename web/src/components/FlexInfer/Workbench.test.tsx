@@ -23,6 +23,13 @@ const workbenchMocks = vi.hoisted(() => {
       jobPhase?: string;
     };
   };
+  type MockCache = {
+    name: string;
+    namespace: string;
+    creationTimestamp: string;
+    spec: { source: string };
+    status: { phase?: 'Pending' | 'Initializing' | 'Provisioning' | 'Abliterating' | 'Finetuning' | 'Quantizing' | 'Publishing' | 'Ready' | 'Failed' };
+  };
 
   const controllerState = {
     error: '',
@@ -120,7 +127,7 @@ const workbenchMocks = vi.hoisted(() => {
     catalogLoading: false,
     catalogError: '',
     catalogUpdatedAt: Date.now(),
-    caches: [],
+    caches: [] as MockCache[],
     cacheLoading: false,
     cacheError: '',
     cacheUpdatedAt: Date.now(),
@@ -268,10 +275,22 @@ describe('Workbench', () => {
     workbenchMocks.controllerState.error = '';
     workbenchMocks.controllerState.loading = false;
     workbenchMocks.controllerState.controllerDataLoading = false;
-    workbenchMocks.controllerState.crdModels[0].status = {
-      phase: 'Ready',
-      cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' },
-    };
+    workbenchMocks.controllerState.crdModels = [
+      {
+        name: 'alpha',
+        namespace: 'flexinfer-system',
+        spec: {
+          source: 'hf://alpha',
+          serverless: { enabled: true },
+          gpu: { shared: 1 },
+          cache: { strategy: 'shared' },
+        },
+        status: {
+          phase: 'Ready',
+          cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' },
+        },
+      },
+    ];
     workbenchMocks.controllerState.phaseSummary = { Ready: 1, Failed: 0 };
 
     workbenchMocks.storeState.proxyError = '';
@@ -284,9 +303,11 @@ describe('Workbench', () => {
     workbenchMocks.storeState.catalogError = '';
     workbenchMocks.storeState.catalogLoading = false;
     workbenchMocks.storeState.catalogUpdatedAt = Date.now();
+    workbenchMocks.storeState.catalogs = [];
     workbenchMocks.storeState.cacheError = '';
     workbenchMocks.storeState.cacheLoading = false;
     workbenchMocks.storeState.cacheUpdatedAt = Date.now();
+    workbenchMocks.storeState.caches = [];
 
     workbenchMocks.discoverModels.mockClear();
     workbenchMocks.fetchCRDModels.mockClear();
@@ -399,7 +420,7 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('FlexInfer Workbench');
     expect(text).toContain('Operator briefing');
-    expect(text).toContain('READY');
+    expect(text).toContain('PARTIAL · cache disabled');
     expect(text).toContain('STALE · poll fallback');
     expect(text).toContain('PARTIAL · cache disabled');
   });
@@ -430,6 +451,77 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Proxy Disabled');
     expect(text).toContain('DISABLED · feature disabled');
+    expect(text).toContain('telemetry off · 1 CRDs');
+    expect(text).toContain('flexinfer proxy disabled');
+    expect(text).toContain('Telemetrydisabled');
+  });
+
+  it('summarizes partial operations from failed caches and controller queues', async () => {
+    workbenchMocks.healthFeatures.flexinfer_proxy.enabled = false;
+    workbenchMocks.controllerState.crdModels = [
+      ...workbenchMocks.controllerState.crdModels,
+      {
+        name: 'idle-model',
+        namespace: 'flexinfer-system',
+        spec: { source: 'hf://idle', serverless: { enabled: true }, gpu: { shared: 1 }, cache: { strategy: 'shared' } },
+        status: { phase: 'Idle', cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' } },
+      },
+      {
+        name: 'preempted-model',
+        namespace: 'flexinfer-system',
+        spec: { source: 'hf://preempted', serverless: { enabled: true }, gpu: { shared: 1 }, cache: { strategy: 'shared' } },
+        status: { phase: 'Preempted', cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' } },
+      },
+      {
+        name: 'pending-model',
+        namespace: 'flexinfer-system',
+        spec: { source: 'hf://pending', serverless: { enabled: true }, gpu: { shared: 1 }, cache: { strategy: 'shared' } },
+        status: { phase: 'Pending', cache: { strategy: 'shared', ready: false, jobPhase: 'Pending' } },
+      },
+    ];
+    workbenchMocks.controllerState.phaseSummary = { Ready: 1, Idle: 1, Preempted: 1, Pending: 1, Failed: 0 };
+    workbenchMocks.storeState.caches = [
+      {
+        name: 'cache-ready',
+        namespace: 'flexinfer-system',
+        creationTimestamp: '2026-05-03T00:00:00Z',
+        spec: { source: 'hf://ready' },
+        status: { phase: 'Ready' },
+      },
+      {
+        name: 'cache-failed',
+        namespace: 'flexinfer-system',
+        creationTimestamp: '2026-05-03T00:00:00Z',
+        spec: { source: 'hf://failed' },
+        status: { phase: 'Failed' },
+      },
+    ];
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('PARTIAL · 1 failed caches · proxy disabled');
+    });
+
+    const text = pageText();
+    expect(text).toContain('telemetry off · 4 CRDs');
+    expect(text).toContain('1 ready · 1 idle · 1 preempted · 1 pending');
+    expect(text).toContain('flexinfer proxy disabled');
+    expect(text).toContain('Supply chain1/22 caches · 1 ready · 1 failed · no catalogs');
+    expect(text).toContain('Supply chain1 failed');
+
+    findSidebarItem('telemetry').click();
+    await vi.waitFor(() => {
+      expect(sectionClass('telemetry')).not.toContain('hidden');
+    });
+    expect(pageText()).toContain('DISABLED · feature disabled');
+
+    findSidebarItem('supply-chain').click();
+    await vi.waitFor(() => {
+      expect(sectionClass('supply-chain')).not.toContain('hidden');
+    });
+    expect(pageText()).toContain('PARTIAL · 1 failed caches');
+    expect(pageText()).toContain('cache-failed');
   });
 
   it('renders loading phase detail with stalled progress context', async () => {
@@ -453,5 +545,23 @@ describe('Workbench', () => {
     expect(text).toContain('loading weights (31/34 shards, 141.75s/it)');
     expect(text).toContain('stalled');
     expect(text).toContain('No progress for');
+  });
+
+  it('keeps loading phase detail visible while substage fields are warming up', async () => {
+    workbenchMocks.controllerState.crdModels[0].status = {
+      phase: 'Loading',
+      cache: { strategy: 'shared', ready: false, jobPhase: 'Pending' },
+    };
+    workbenchMocks.controllerState.phaseSummary = { Loading: 1, Failed: 0 };
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Loading detail');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Controller has not reported a substage yet');
+    expect(text).not.toContain('stalled');
   });
 });
