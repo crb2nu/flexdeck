@@ -19,7 +19,17 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 const Infra: Component = () => {
   const [activeTab, setActiveTab] = createSignal<Tab>('compute');
-  const { snapshot, loading, error, lastUpdated, trigger } = useInfraController();
+  const {
+    snapshot,
+    error,
+    lastUpdated,
+    refreshing,
+    statusLabel,
+    statusClass,
+    showBlockingLoading,
+    showBlockingError,
+    trigger,
+  } = useInfraController();
 
   const snap = createMemo(() => snapshot());
 
@@ -29,9 +39,14 @@ const Infra: Component = () => {
       <PageHeader
         title="Infrastructure"
         subtitle="Cluster-wide compute, storage, networking, and GitOps state"
-        lastUpdated={String(lastUpdated())}
+        lastUpdated={lastUpdated() || null}
         onRefresh={trigger}
-      />
+        refreshDisabled={refreshing()}
+      >
+        <span class={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase ${statusClass()}`}>
+          {statusLabel()}
+        </span>
+      </PageHeader>
 
       {/* Tabs */}
       <TabBar
@@ -42,13 +57,19 @@ const Infra: Component = () => {
       />
 
       {/* Loading state */}
-      <Show when={loading() && !snap()}>
+      <Show when={showBlockingLoading()}>
         <LoadingState message="Loading infrastructure snapshot..." />
       </Show>
 
       {/* Error state (no snapshot yet) */}
-      <Show when={!!error() && !snap()}>
+      <Show when={showBlockingError()}>
         <ErrorState message={error()!} variant="full" onRetry={trigger} />
+      </Show>
+
+      <Show when={!!error() && !!snap()}>
+        <div class="surface border-status-warn/30 bg-status-warn/5 px-4 py-3 text-sm text-status-warn">
+          Infrastructure refresh delayed. Showing the last successful snapshot.
+        </div>
       </Show>
 
       {/* Content */}

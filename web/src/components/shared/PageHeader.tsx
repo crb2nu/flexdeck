@@ -4,7 +4,7 @@ export interface PageHeaderProps {
   title: string;
   accent?: string;
   subtitle?: string;
-  lastUpdated?: string | Date | null;
+  lastUpdated?: string | number | Date | null;
   onRefresh?: () => void;
   refreshDisabled?: boolean;
   children?: JSX.Element;
@@ -16,7 +16,7 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
     if (!v) return null;
     if (v instanceof Date) return v.toLocaleTimeString();
     // Assume numeric ms timestamp
-    const n = typeof v === 'string' ? Number(v) : null;
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : null;
     if (n && !isNaN(n)) {
       const diff = Date.now() - n;
       if (diff < 5000) return 'just now';
