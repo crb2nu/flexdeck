@@ -16,6 +16,15 @@ interface ModelComparisonResource {
   gpuModels: ModelComparisonGpuEntry[];
 }
 
+type ComparisonMetricKey = 'throughput' | 'latencyMs' | 'gpuUtilization' | 'vramPercent';
+
+interface ComparisonMetric {
+  key: ComparisonMetricKey;
+  label: string;
+  unit: string;
+  higher: boolean;
+}
+
 async function loadModelComparisonResource(): Promise<ModelComparisonResource> {
   try {
     const [crd, gpu] = await Promise.all([
@@ -68,15 +77,22 @@ const ModelComparison: Component = () => {
     });
   });
 
-  const metrics = [
+  const metrics: ComparisonMetric[] = [
     { key: 'throughput', label: 'Throughput (tok/s)', unit: 'tok/s', higher: true },
     { key: 'latencyMs', label: 'Avg Latency', unit: 'ms', higher: false },
     { key: 'gpuUtilization', label: 'GPU Utilization', unit: '%', higher: false },
     { key: 'vramPercent', label: 'VRAM Usage', unit: '%', higher: false },
-  ] as const;
+  ];
 
-  const bestValue = (key: string, higher: boolean) => {
-    const vals = comparisonData().map(d => (d as any)[key]).filter((v: any) => v !== null);
+  const metricValue = (model: ModelComparisonData, key: ComparisonMetricKey): number | null => model[key];
+
+  const metricValues = (key: ComparisonMetricKey): number[] =>
+    comparisonData()
+      .map((model) => metricValue(model, key))
+      .filter((value): value is number => value !== null);
+
+  const bestValue = (key: ComparisonMetricKey, higher: boolean) => {
+    const vals = metricValues(key);
     if (vals.length === 0) return null;
     return higher ? Math.max(...vals) : Math.min(...vals);
   };
@@ -141,7 +157,7 @@ const ModelComparison: Component = () => {
                         <td class="px-4 py-2 text-text-dim">{metric.label}</td>
                         <For each={comparisonData()}>
                           {(model) => {
-                            const val = (model as any)[metric.key];
+                            const val = metricValue(model, metric.key);
                             const isBest = val !== null && val === best;
                             return (
                               <td class={`text-right px-4 py-2 font-mono ${
@@ -175,7 +191,7 @@ const ModelComparison: Component = () => {
           <div class="surface p-4 space-y-4">
             <For each={metrics}>
               {(metric) => {
-                const vals = comparisonData().map(d => (d as any)[metric.key]).filter((v: any) => v !== null);
+                const vals = metricValues(metric.key);
                 const maxVal = vals.length > 0 ? Math.max(...vals) : 1;
                 return (
                   <div>
@@ -183,7 +199,7 @@ const ModelComparison: Component = () => {
                     <div class="space-y-1">
                       <For each={comparisonData()}>
                         {(model, idx) => {
-                          const val = (model as any)[metric.key];
+                          const val = metricValue(model, metric.key);
                           const pct = val !== null && maxVal > 0 ? (val / maxVal) * 100 : 0;
                           return (
                             <div class="flex items-center gap-2">

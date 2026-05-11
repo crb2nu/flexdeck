@@ -110,6 +110,21 @@ type StageViewModel = {
   isComplete: boolean;
 };
 
+type PipelinePerfSnapshot = {
+  fps: number;
+  avgFrameMs: number;
+  maxFrameMs: number;
+  framesRendered: number;
+  activeParticles: number;
+  animationStarts: number;
+  animationStops: number;
+  particleSpawns: number;
+  demoAdvances: number;
+  demoSettled: boolean;
+  isAnimating: boolean;
+  isDemoMode: boolean;
+};
+
 const CIPipelineViz: Component<{
   pipeline?: Pipeline;
   projectId?: number;
@@ -156,7 +171,7 @@ const CIPipelineViz: Component<{
     for (let i = 0; i < MAX_PARTICLES; i++) {
       if (particlePool[i].active) activeParticleCount++;
     }
-    const snapshot = {
+    const snapshot: PipelinePerfSnapshot = {
       fps,
       avgFrameMs,
       maxFrameMs: pipelinePerfCounters.maxFrameMs,
@@ -171,7 +186,7 @@ const CIPipelineViz: Component<{
       isDemoMode: isDemoMode(),
     };
     if (typeof window !== 'undefined') {
-      (window as any).__FLEXDECK_PIPELINE_PERF__ = snapshot;
+      (window as Window & { __FLEXDECK_PIPELINE_PERF__?: PipelinePerfSnapshot }).__FLEXDECK_PIPELINE_PERF__ = snapshot;
     }
   };
 

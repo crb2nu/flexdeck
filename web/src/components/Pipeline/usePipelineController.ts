@@ -27,6 +27,20 @@ export type ActionNotice = {
 
 type PipelineSnapshot = VizPipeline & { status: VizPipeline['status'] | 'none' };
 
+type PipelinePollTelemetrySnapshot = {
+  pollCount: number;
+  pollErrors: number;
+  totalFetchMs: number;
+  maxFetchMs: number;
+  lastFetchMs: number;
+  tabHiddenSkips: number;
+  avgFetchMs: number;
+  tabVisible: boolean;
+  autoRefresh: boolean;
+  isPipelineActive: boolean;
+  pollIntervalMs: number;
+};
+
 function isPipelineSnapshot(value: unknown): value is PipelineSnapshot {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -86,7 +100,7 @@ export function usePipelineController() {
   };
   const exportPollTelemetry = () => {
     if (typeof window !== 'undefined') {
-      (window as any).__FLEXDECK_PIPELINE_POLL__ = {
+      const snapshot: PipelinePollTelemetrySnapshot = {
         ...pollTelemetry,
         avgFetchMs: pollTelemetry.pollCount > 0 ? pollTelemetry.totalFetchMs / pollTelemetry.pollCount : 0,
         tabVisible: !document.hidden,
@@ -94,6 +108,7 @@ export function usePipelineController() {
         isPipelineActive: isPipelineActive(),
         pollIntervalMs: effectiveInterval(),
       };
+      (window as Window & { __FLEXDECK_PIPELINE_POLL__?: PipelinePollTelemetrySnapshot }).__FLEXDECK_PIPELINE_POLL__ = snapshot;
     }
   };
 
