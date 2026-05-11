@@ -50,6 +50,10 @@ function toArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function arrayProp<T>(value: unknown, key: string): T[] {
+  return isRecord(value) ? toArray<T>(value[key]) : [];
+}
+
 function aggregateObservationModels(observations: Array<Record<string, unknown>>): LangfuseModelStats[] {
   const byModel = new Map<string, LangfuseModelStats>();
 
@@ -138,23 +142,23 @@ const LangfuseWidget: Component = () => {
 
       if (modelsRes.status === 'fulfilled') {
         const payload = modelsRes.value;
-        const models = toArray<LangfuseModelStats>((payload as any)?.models);
+        const models = arrayProp<LangfuseModelStats>(payload, 'models');
         if (models.length > 0) {
           setModelStats(models);
         } else {
           // Compatibility fallback: derive model stats from raw observations payload.
-          const observations = toArray<Record<string, unknown>>((payload as any)?.data);
+          const observations = arrayProp<Record<string, unknown>>(payload, 'data');
           setModelStats(aggregateObservationModels(observations));
         }
       }
       if (tracesRes.status === 'fulfilled') {
         const payload = tracesRes.value;
-        const tracesData = toArray<LangfuseTrace>((payload as any)?.data);
+        const tracesData = arrayProp<LangfuseTrace>(payload, 'data');
         setTraces(tracesData);
       }
       if (metricsRes.status === 'fulfilled') {
         const payload = metricsRes.value;
-        const metricData = toArray<DailyMetric>((payload as any)?.data);
+        const metricData = arrayProp<DailyMetric>(payload, 'data');
         setDailyMetrics(metricData);
       }
 

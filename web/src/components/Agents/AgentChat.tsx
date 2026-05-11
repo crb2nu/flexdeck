@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, For, Show, ErrorBoundary } from 'solid-js';
+import type { JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Agent } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
@@ -27,6 +28,10 @@ interface AgentChatProps {
   agent: Agent;
   onClose: () => void;
 }
+
+const autoGrowTextareaStyle: JSX.CSSProperties & { 'field-sizing'?: string } = {
+  'field-sizing': 'content',
+};
 
 const AgentChat: Component<AgentChatProps> = (props) => {
   const [messages, setMessages] = createStore<Message[]>([
@@ -447,7 +452,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
                     placeholder="Transmit command..."
                     rows={1}
                     class="max-h-32 min-h-[2.5rem] w-full resize-none bg-transparent px-3 py-2 text-text-main placeholder-text-dim/50 focus:outline-none font-mono"
-                    style={{ "field-sizing": "content" } as any}
+                    style={autoGrowTextareaStyle}
                 />
                 <button
                     onClick={handleSend}

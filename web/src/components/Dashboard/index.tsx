@@ -1,10 +1,11 @@
 import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
 import { PulseCard, TabBar, LoadingState } from '../shared';
-import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus, isNodeReady } from '../../stores/k8s';
+import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import { isK8sNodeReady } from '../../lib/k8sStatus';
 import TopologyGraph from './TopologyGraph';
 import HoloDeck from './HoloDeck';
 import PodLogPanel from './PodLogPanel';
@@ -93,7 +94,7 @@ const Dashboard: Component = () => {
       }
       if (
         pod.status?.phase === 'Running' ||
-        (pod.status as any)?.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True'
+        pod.status?.conditions?.find((condition) => condition.type === 'Ready')?.status === 'True'
       ) {
         ready += 1;
       }
@@ -123,7 +124,7 @@ const Dashboard: Component = () => {
     let ready = 0;
     const currentNodes = nodes();
     for (const node of currentNodes) {
-      if (isNodeReady(node as any)) {
+      if (isK8sNodeReady(node)) {
         ready += 1;
       }
     }
@@ -501,7 +502,7 @@ const Dashboard: Component = () => {
               title={item().type === 'node' ? (item().data as K8sNode).metadata.name : (item().data as K8sPod).metadata.name}
               subtitle={item().type === 'node' ? 'Cluster Node' : `Pod in ${(item().data as K8sPod).metadata.namespace}`}
               status={item().type === 'node' 
-                ? (isNodeReady(item().data as any) ? 'ok' : 'error')
+                ? (isK8sNodeReady(item().data as K8sNode) ? 'ok' : 'error')
                 : ((item().data as K8sPod).status.phase === 'Running' ? 'running' : (item().data as K8sPod).status.phase === 'Pending' ? 'warn' : 'error')
               }
               onClose={() => setSelectedItem(null)}
