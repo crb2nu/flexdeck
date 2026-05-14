@@ -50,6 +50,16 @@ describe('featureFlags', () => {
     expect(isNavItemActive('/loom-hud', loomHud!)).toBe(true);
   });
 
+  it('exposes website metrics as a primary nav item with a traffic alias', () => {
+    const items = buildNavItems({});
+    const website = items.find((item) => item.path === '/website-metrics');
+
+    expect(website?.label).toBe('Website');
+    expect(website?.aliases).toEqual(['/traffic']);
+    expect(isNavItemActive('/traffic', website!)).toBe(true);
+    expect(isNavItemActive('/website-metrics', website!)).toBe(true);
+  });
+
   it('filters admin tabs based on enabled flags and picks first enabled default', () => {
     const features: FeatureMap = {
       rbac: { enabled: false },

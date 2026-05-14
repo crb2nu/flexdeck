@@ -11,6 +11,7 @@ import { useNavigate } from "@solidjs/router";
  *   g then a → Loom HUD
  *   g then f → Flux
  *   g then p → Pipeline
+ *   g then w → Website metrics
  *   g then x → Metrics
  *
  * Direct shortcuts:
@@ -30,6 +31,7 @@ export function useKeyboardShortcuts() {
     a: "/loom-hud",
     f: "/flux",
     p: "/pipeline",
+    w: "/website-metrics",
     x: "/metrics",
   };
 

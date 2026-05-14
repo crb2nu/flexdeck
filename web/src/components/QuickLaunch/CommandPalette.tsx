@@ -77,6 +77,13 @@ const CommandPalette: Component = () => {
       action: () => navigate('/metrics'),
     },
     {
+      id: 'nav-website-metrics',
+      name: 'Go to Website Metrics',
+      description: 'View public website traffic, page views, and tracking health',
+      keywords: ['website', 'traffic', 'analytics', 'ingress', 'page views', 'public'],
+      action: () => navigate('/website-metrics'),
+    },
+    {
       id: 'action-discover-flexinfer',
       name: 'Discover FlexInfer Models',
       description: 'Sync FlexInfer models from the controller',

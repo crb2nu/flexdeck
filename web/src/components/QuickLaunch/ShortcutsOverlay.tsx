@@ -11,6 +11,7 @@ const SHORTCUT_GROUPS = [
       { keys: ['g', 'a'], action: 'Loom HUD' },
       { keys: ['g', 'f'], action: 'Flux' },
       { keys: ['g', 'p'], action: 'Pipeline' },
+      { keys: ['g', 'w'], action: 'Website Metrics' },
       { keys: ['g', 'x'], action: 'Metrics' },
     ],
   },

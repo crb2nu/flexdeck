@@ -16,6 +16,7 @@ const Dashboard = lazy(() => import('./components/Dashboard'));
 const Services = lazy(() => import('./components/Services'));
 const Logs = lazy(() => import('./components/Logs'));
 const Metrics = lazy(() => import('./components/Metrics'));
+const WebsiteMetrics = lazy(() => import('./components/WebsiteMetrics'));
 const FlexInfer = lazy(() => import('./components/Models'));
 const LoomHUD = lazy(() => import('./components/Agents'));
 const Pipeline = lazy(() => import('./components/Pipeline'));
@@ -35,6 +36,8 @@ render(
       <Route path="/" component={Dashboard} />
       <Route path="/services" component={Services} />
       <Route path="/logs" component={Logs} />
+      <Route path="/website-metrics" component={WebsiteMetrics} />
+      <Route path="/traffic" component={WebsiteMetrics} />
       <Route path="/metrics" component={Metrics} />
       <Route path="/flexinfer" component={FlexInfer} />
       <Route path="/models" component={FlexInfer} />
