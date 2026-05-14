@@ -113,6 +113,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 		r.Get("/api/ui/config", h.UIConfig)
 		r.Get("/api/dashboard/summary", h.DashboardSummary)
+		r.Get("/api/traffic/report", h.TrafficReport)
 
 		registerCIRoutes(r, h, logFunc)
 		registerInfrastructureRoutes(r, h, logFunc, cfg)

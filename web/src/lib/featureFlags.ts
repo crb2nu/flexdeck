@@ -42,6 +42,7 @@ const baseNavItems: NavItem[] = [
   { label: 'Flux', path: '/flux' },
   { label: 'Pipeline', path: '/pipeline' },
   { label: 'Logs', path: '/logs' },
+  { label: 'Website', path: '/website-metrics', aliases: ['/traffic'] },
   { label: 'Metrics', path: '/metrics' },
   { label: 'FlexInfer', path: '/flexinfer', aliases: ['/models'] },
   { label: 'Loom HUD', path: '/loom-hud', aliases: ['/agents'] },

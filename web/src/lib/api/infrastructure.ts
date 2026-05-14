@@ -8,10 +8,10 @@ import type {
   LiteLLMRouterResponse,
 } from "../types";
 
-import type { InfraSnapshot } from '../../components/Infra/types';
+import type { InfraSnapshot } from "../../components/Infra/types";
 
 export const infraApi = {
-  snapshot: () => api<InfraSnapshot>('/infra/snapshot'),
+  snapshot: () => api<InfraSnapshot>("/infra/snapshot"),
 };
 
 // --- Dashboard summary (server-side materialized resource metrics) ---
@@ -54,7 +54,58 @@ export interface DashboardSummaryResponse {
 }
 
 export const dashboardApi = {
-  summary: () => api<DashboardSummaryResponse>('/dashboard/summary'),
+  summary: () => api<DashboardSummaryResponse>("/dashboard/summary"),
+};
+
+export interface TrafficHost {
+  host: string;
+  requests: number;
+  requests_per_second: number;
+  four_xx: number;
+  four_xx_prev: number;
+  four_xx_change: number;
+  five_xx: number;
+  five_xx_prev: number;
+  five_xx_change: number;
+  error_rate: number;
+  p95_latency_ms: number;
+}
+
+export interface TrafficPath {
+  host: string;
+  path: string;
+  requests: number;
+}
+
+export interface TrafficPage {
+  page: string;
+  views: number;
+}
+
+export interface TrafficSignal {
+  name: string;
+  ok: boolean;
+  value: number;
+  detail: string;
+}
+
+export interface TrafficReportResponse {
+  generated_at: string;
+  window: string;
+  status: "ok" | "partial";
+  hosts: TrafficHost[];
+  top_paths: TrafficPath[];
+  top_pages: TrafficPage[];
+  tracking_signals: TrafficSignal[];
+  recommendations: string[];
+  warnings?: string[];
+}
+
+export const trafficApi = {
+  report: (window = "24h") =>
+    api<TrafficReportResponse>(
+      `/traffic/report?window=${encodeURIComponent(window)}`,
+    ),
 };
 
 export const litellm = {
@@ -214,11 +265,8 @@ export const ciApi = {
   listRepos: () => api<RepoInfo[]>("/ci/repos"),
   getPipeline: (id: number) => api<any>(`/ci/pipeline/${id}`),
   batchPipelines: (ids: number[]) =>
-    api<BatchPipelinesResponse>(
-      `/ci/pipelines/batch?ids=${ids.join(",")}`,
-    ),
-  repoConfig: (id: number) =>
-    api<RepoConfigResponse>(`/ci/repos/${id}/config`),
+    api<BatchPipelinesResponse>(`/ci/pipelines/batch?ids=${ids.join(",")}`),
+  repoConfig: (id: number) => api<RepoConfigResponse>(`/ci/repos/${id}/config`),
   getJobTrace: (projectId: number, jobId: string) =>
     api<{ jobId: string; trace: string }>(
       `/ci/projects/${projectId}/jobs/${jobId}/trace`,
@@ -244,9 +292,7 @@ export const ciApi = {
   getTrends: () => api<any[]>("/ci/trends"),
   getProjectTrends: (id: number) => api<any>(`/ci/projects/${id}/trends`),
   getProjectHistory: (id: number, limit?: number) =>
-    api<any[]>(
-      `/ci/projects/${id}/history${limit ? `?limit=${limit}` : ""}`,
-    ),
+    api<any[]>(`/ci/projects/${id}/history${limit ? `?limit=${limit}` : ""}`),
   // Pipeline-level actions
   listPipelines: (projectId: number) =>
     api<any[]>(`/ci/projects/${projectId}/pipelines`),
@@ -299,19 +345,16 @@ export const fluxApi = {
 export const flexinferProxyApi = {
   health: () => api<any>("/flexinfer/proxy/health"),
   models: () => api<any>("/flexinfer/proxy/models"),
-  metrics: () =>
-    api<FlexInferProxyMetricsResponse>("/flexinfer/proxy/metrics"),
+  metrics: () => api<FlexInferProxyMetricsResponse>("/flexinfer/proxy/metrics"),
 };
 
 export const hudApi = {
   fleet: () => api<import("../types").HUDFleetResponse>("/hud/fleet"),
-  presence: () =>
-    api<import("../types").HUDAgentPresence[]>("/hud/presence"),
+  presence: () => api<import("../types").HUDAgentPresence[]>("/hud/presence"),
   claims: () => api<import("../types").HUDClaim[]>("/hud/claims"),
   tasks: () => api<import("../types").HUDTask[]>("/hud/tasks"),
   workflows: () => api<import("../types").HUDWorkflow[]>("/hud/workflows"),
-  timeline: () =>
-    api<import("../types").HUDTimelineEvent[]>("/hud/timeline"),
+  timeline: () => api<import("../types").HUDTimelineEvent[]>("/hud/timeline"),
   approveWorkflow: (id: string) =>
     api<any>(`/hud/workflows/${id}/approve`, { method: "POST" }),
   rejectWorkflow: (id: string) =>
@@ -456,8 +499,7 @@ export const clustersApi = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    api<void>(`/clusters/${id}`, { method: "DELETE" }),
+  delete: (id: string) => api<void>(`/clusters/${id}`, { method: "DELETE" }),
   test: (id: string) =>
     api<{ ok: boolean; error?: string }>(`/clusters/${id}/test`, {
       method: "POST",
