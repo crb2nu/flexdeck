@@ -68,7 +68,8 @@ type promMetricQuery struct {
 
 func (h *Handler) fetchInferenceMetrics(ctx context.Context, namespace, model string) (any, error) {
 	queries := []promMetricQuery{
-		{field: "tps", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m]))`, model), scale: 1},
+		{field: "tps", query: fmt.Sprintf(`sum(rate(litellm_total_tokens_metric{model="%s"}[5m])) or sum(rate(litellm_total_tokens_metric{requested_model="%s"}[5m]))`, model, model), optional: true, scale: 1},
+		{field: "requestsPerSec", query: fmt.Sprintf(`sum(rate(flexinfer_proxy_requests_total{model="%s"}[5m]))`, model), scale: 1},
 		{field: "p95LatencyMs", query: fmt.Sprintf(`histogram_quantile(0.95, sum by (le) (rate(flexinfer_proxy_request_duration_seconds_bucket{model="%s"}[5m])))`, model), scale: 1000},
 		{field: "queueDepth", query: fmt.Sprintf(`sum(flexinfer_proxy_queue_depth{model="%s"})`, model), scale: 1},
 		{field: "activeConnections", query: fmt.Sprintf(`sum(flexinfer_proxy_active_connections{model="%s"})`, model), scale: 1},
@@ -116,6 +117,7 @@ func (h *Handler) fetchInferenceMetrics(ctx context.Context, namespace, model st
 		"model":                  model,
 		"observed":               len(present) > 0,
 		"tps":                    promFieldValue(results, present, "tps"),
+		"requestsPerSec":         promFieldValue(results, present, "requestsPerSec"),
 		"p95LatencyMs":           promFieldValue(results, present, "p95LatencyMs"),
 		"queueDepth":             promFieldValue(results, present, "queueDepth"),
 		"activeConnections":      promFieldValue(results, present, "activeConnections"),

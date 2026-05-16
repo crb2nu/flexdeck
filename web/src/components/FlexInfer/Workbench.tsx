@@ -13,8 +13,15 @@ import {
   flexinferSupplyChainSummary,
 } from '../../stores/flexinferSurface';
 import { getFlexInferManagementMode } from '../../lib/featureFlags';
-import type { FlexInferModelStatus, ModelCache } from '../../lib/types';
+import type {
+  FlexInferModel,
+  FlexInferModelStatus,
+  FlexInferProxyModelMetrics,
+  InferenceMetrics,
+  ModelCache,
+} from '../../lib/types';
 import { formatDuration } from '../../lib/format';
+import type { LiteLLMModelThroughput } from '../../lib/api/infrastructure';
 import {
   flexinferCacheError,
   flexinferCacheLoading,
@@ -44,6 +51,7 @@ import {
 import {
   getReliabilityClasses,
   getReliabilityStatus,
+  hasObservedInferenceMetrics,
   type ReliabilityStatus,
 } from '../Models/controllerIntegration';
 import {
@@ -53,7 +61,9 @@ import {
 import {
   activeConnectionsForModel,
   errorRateForModel as proxyErrorRateForModel,
+  findProxyMetricModel,
   hasProxyMetricsForModel,
+  proxyMetricsForModel,
   queueDepthForModel,
   requestsForModel,
 } from '../Models/inferenceMetrics';
@@ -318,13 +328,23 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   };
 
   const modelRows = createMemo(() => {
+    const currentProxyMetrics = proxyMetrics();
     const items = controller.crdModels().map((model) => {
       const key = `${model.namespace}/${model.name}`;
-      const reliability = getReliabilityStatus(controller.inferenceByModel()[key]);
+      const inferenceMetrics = controller.inferenceByModel()[key];
+      const proxyMetricName = findProxyMetricModel(currentProxyMetrics, proxyMetricCandidates(model));
+      const reliability = modelOperationalStatus(
+        model,
+        inferenceMetrics,
+        proxyMetricsForModel(currentProxyMetrics, proxyMetricName),
+      );
       return {
         model,
         key,
         reliability,
+        inferenceMetrics,
+        proxyMetricName,
+        throughput: controller.throughputByModel()[key],
         adapters: controller.loraByModel()[key] || [],
         integrationState: controller.integrationByModel()[key],
       };
@@ -598,26 +618,28 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                             <ModelFlag tone={row.adapters.length > 0 ? 'bg-status-ok/20 text-status-ok' : 'bg-white/10 text-text-dim'} label={row.adapters.length > 0 ? `${row.adapters.length} LoRA` : 'No LoRA'} />
                           </div>
                           <div class="mt-2 text-[10px] text-text-dim">
-                            {row.integrationState?.inferenceAvailable ? 'Inference' : 'No inference'} · {row.integrationState?.throughputAvailable ? 'throughput live' : 'throughput absent'}
+                            {modelSignalSummary(row.model, row.inferenceMetrics, row.throughput, row.integrationState?.inferenceAvailable, row.proxyMetricName)}
                           </div>
                         </td>
                         <td class="px-4 py-3">
                           <Show
-                            when={hasProxyMetricsForModel(proxyMetrics(), row.model.name)}
+                            when={row.proxyMetricName && hasProxyMetricsForModel(proxyMetrics(), row.proxyMetricName)}
                             fallback={<div class="font-mono text-[10px] text-text-dim">No proxy series yet</div>}
                           >
                             <div class="space-y-1 font-mono text-[10px] text-text-dim">
-                              <div>Req {requestsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                              <div>Queue {queueDepthForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                              <div>Conn {activeConnectionsForModel(proxyMetrics(), row.model.name).toFixed(0)}</div>
-                              <div>Error {(proxyErrorRateForModel(proxyMetrics(), row.model.name) * 100).toFixed(2)}%</div>
+                              <div>Req {requestsForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
+                              <div>RPS {formatMetricNumber(row.inferenceMetrics?.requestsPerSec)}</div>
+                              <div>Tok/s {formatMetricNumber(modelThroughputValue(row.model, row.inferenceMetrics, row.throughput))}</div>
+                              <div>Queue {queueDepthForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
+                              <div>Conn {activeConnectionsForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
+                              <div>Error {(proxyErrorRateForModel(proxyMetrics(), row.proxyMetricName || row.model.name) * 100).toFixed(2)}%</div>
                             </div>
                           </Show>
                         </td>
                         <td class="px-4 py-3">
                           <div class="space-y-1 font-mono text-[10px] text-text-dim">
                             <div>{row.model.status?.cache?.strategy || row.model.spec.cache?.strategy || 'none'}</div>
-                            <div>{row.model.status?.cache?.jobPhase || row.model.status?.cache?.ready ? 'ready' : 'pending'}</div>
+                            <div>{cacheReadinessLabel(row.model.status)}</div>
                           </div>
                         </td>
                         <td class="px-4 py-3">
@@ -1136,6 +1158,127 @@ const OverviewFocusCard: Component<{
     <span class="text-lg text-text-dim">&rsaquo;</span>
   </button>
 );
+
+function proxyMetricCandidates(model: FlexInferModel): string[] {
+  return uniqueStrings([
+    model.name,
+    model.spec.litellm?.servedModelName,
+    ...(model.spec.litellm?.aliases || []),
+    model.spec.litellm?.copilotAlias,
+  ]);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function modelOperationalStatus(
+  model: FlexInferModel,
+  metrics: InferenceMetrics | null | undefined,
+  proxyMetrics: FlexInferProxyModelMetrics | undefined,
+): ReliabilityStatus {
+  const phase = model.status?.phase;
+  const conditionStatus = conditionOperationalStatus(model.status);
+  if (conditionStatus) return conditionStatus;
+
+  if (metrics && hasObservedInferenceMetrics(metrics)) {
+    return getReliabilityStatus(metrics);
+  }
+
+  if (phase === 'Failed') return { level: 'degraded', label: 'Degraded' };
+  if (phase === 'Ready') return { level: 'healthy', label: 'Healthy' };
+  if (phase === 'Loading' || phase === 'Pending') return { level: 'partial', label: 'Starting' };
+  if (phase === 'Idle' || phase === 'Preempted') {
+    if ((proxyMetrics?.queueDepth ?? 0) > 0 || (proxyMetrics?.activeConnections ?? 0) > 0) {
+      return { level: 'partial', label: 'Queued' };
+    }
+    return { level: 'unknown', label: 'Standby' };
+  }
+
+  return { level: 'unknown', label: 'Unknown' };
+}
+
+function conditionOperationalStatus(status?: FlexInferModelStatus): ReliabilityStatus | undefined {
+  const phase = status?.phase;
+  for (const condition of status?.conditions || []) {
+    const type = condition.type.toLowerCase();
+    const value = condition.status.toLowerCase();
+    if (value === 'true' && (type.includes('degraded') || type.includes('failed') || type.includes('stalled'))) {
+      return { level: 'degraded', label: condition.reason || 'Degraded' };
+    }
+    if (
+      phase === 'Ready' &&
+      value === 'false' &&
+      ['ready', 'available', 'healthy', 'serving'].some((token) => type.includes(token))
+    ) {
+      return { level: 'degraded', label: condition.reason || 'Degraded' };
+    }
+  }
+  return undefined;
+}
+
+function modelSignalSummary(
+  model: FlexInferModel,
+  metrics: InferenceMetrics | null | undefined,
+  throughput: LiteLLMModelThroughput | undefined,
+  inferenceAvailable: boolean | undefined,
+  proxyMetricName: string | undefined,
+): string {
+  const throughputValue = modelThroughputValue(model, metrics, throughput);
+  const inferenceLabel = inferenceAvailable || proxyMetricName ? 'Inference observed' : 'No inference series';
+  if (throughputValue != null) {
+    return `${inferenceLabel} · ${formatMetricNumber(throughputValue)} tok/s`;
+  }
+  return `${inferenceLabel} · tok/s unavailable`;
+}
+
+function modelThroughputValue(
+  model: FlexInferModel,
+  metrics: InferenceMetrics | null | undefined,
+  throughput: LiteLLMModelThroughput | undefined,
+): number | undefined {
+  return firstFiniteNumber([
+    parseFiniteNumber(model.status?.metrics?.tokensPerSecond),
+    metrics?.tps,
+    throughput?.tok_per_sec_1m,
+    throughput?.output_tok_per_sec,
+  ]);
+}
+
+function firstFiniteNumber(values: Array<number | null | undefined>): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function parseFiniteNumber(value: string | null | undefined): number | undefined {
+  if (value == null) return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function formatMetricNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '-';
+  if (Math.abs(value) >= 100) return value.toFixed(0);
+  if (Math.abs(value) >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+function cacheReadinessLabel(status?: FlexInferModelStatus): string {
+  const cache = status?.cache;
+  if (cache?.ready || cache?.jobPhase === 'Ready') return 'ready';
+  if (cache?.jobPhase) return cache.jobPhase.toLowerCase();
+  return 'pending';
+}
 
 const ModelPhaseDetail: Component<{
   status?: FlexInferModelStatus;

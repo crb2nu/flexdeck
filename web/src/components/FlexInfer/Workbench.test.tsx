@@ -17,6 +17,11 @@ const workbenchMocks = vi.hoisted(() => {
     loadingSubstage?: string;
     message?: string;
     loadingProgressAt?: string;
+    conditions?: Array<{ type: string; status: string; reason?: string }>;
+    metrics?: {
+      tokensPerSecond?: string;
+      avgLatencyMs?: string;
+    };
     cache?: {
       strategy?: string;
       ready?: boolean;
@@ -44,6 +49,7 @@ const workbenchMocks = vi.hoisted(() => {
           serverless: { enabled: true },
           gpu: { shared: 1 },
           cache: { strategy: 'shared' },
+          litellm: {},
         },
         status: {
           phase: 'Ready',
@@ -58,6 +64,11 @@ const workbenchMocks = vi.hoisted(() => {
         serverless?: { enabled?: boolean };
         gpu?: { shared?: number };
         cache?: { strategy?: string };
+        litellm?: {
+          servedModelName?: string;
+          aliases?: string[];
+          copilotAlias?: string;
+        };
       };
       status: MockModelStatus;
     }>,
@@ -284,6 +295,7 @@ describe('Workbench', () => {
           serverless: { enabled: true },
           gpu: { shared: 1 },
           cache: { strategy: 'shared' },
+          litellm: {},
         },
         status: {
           phase: 'Ready',
@@ -292,10 +304,37 @@ describe('Workbench', () => {
       },
     ];
     workbenchMocks.controllerState.phaseSummary = { Ready: 1, Failed: 0 };
+    workbenchMocks.controllerState.reliabilitySummary = { healthy: 1, degraded: 0, partial: 0, unknown: 0 };
+    workbenchMocks.controllerState.integrationSummary = { inferenceUnavailable: 0, loraUnavailable: 0 };
+    workbenchMocks.controllerState.inferenceByModel = {};
+    workbenchMocks.controllerState.loraByModel = {};
+    workbenchMocks.controllerState.throughputByModel = {};
+    workbenchMocks.controllerState.integrationByModel = {};
 
     workbenchMocks.storeState.proxyError = '';
     workbenchMocks.storeState.proxyLoading = false;
-    workbenchMocks.storeState.proxyMetrics.partial = false;
+    workbenchMocks.storeState.proxyMetrics = {
+      requests: {},
+      latency: {},
+      queue_depth: {},
+      active_conn: {},
+      scale_ups: {},
+      byModel: {},
+      totals: {
+        modelCount: 0,
+        requestsTotal: 0,
+        errorsTotal: 0,
+        queueDepth: 0,
+        activeConnections: 0,
+        scaleUps: 0,
+        queueRejectedTotal: 0,
+        queuedRequestsTotal: 0,
+        errorRate: 0,
+        parseErrors: 0,
+      },
+      requestsByStatus: {},
+      partial: false,
+    };
     workbenchMocks.storeState.proxyUpdatedAt = Date.now();
     workbenchMocks.storeState.routerError = '';
     workbenchMocks.storeState.routerLoading = false;
@@ -563,5 +602,99 @@ describe('Workbench', () => {
     const text = pageText();
     expect(text).toContain('Controller has not reported a substage yet');
     expect(text).not.toContain('stalled');
+  });
+
+  it('matches proxy telemetry through LiteLLM aliases and reports token throughput separately from request rate', async () => {
+    workbenchMocks.controllerState.crdModels[0] = {
+      ...workbenchMocks.controllerState.crdModels[0],
+      name: 'gemma-crd',
+      spec: {
+        ...workbenchMocks.controllerState.crdModels[0].spec,
+        source: 'hf://gemma',
+        litellm: {
+          servedModelName: 'gemma-served',
+          aliases: ['gemma-chat'],
+        },
+      },
+      status: {
+        phase: 'Ready',
+        metrics: { tokensPerSecond: '8.08' },
+        cache: { strategy: 'shared', ready: false, jobPhase: 'Pending' },
+      },
+    };
+    workbenchMocks.controllerState.phaseSummary = { Ready: 1, Failed: 0 };
+    workbenchMocks.controllerState.inferenceByModel = {
+      'flexinfer-system/gemma-crd': {
+        model: 'gemma-served',
+        observed: true,
+        tps: null,
+        requestsPerSec: 0.42,
+        p95LatencyMs: 120,
+        queueDepth: 2,
+        activeConnections: 1,
+        errorRate: 0,
+        queueWaitP95Ms: 100,
+        rejectedRequestsPerSec: 0,
+        scaleUps5m: 0,
+        activationRetries5m: 0,
+        coldStartP95Ms: null,
+        idleSeconds: null,
+      },
+    };
+    workbenchMocks.controllerState.integrationByModel = {
+      'flexinfer-system/gemma-crd': {
+        inferenceAvailable: true,
+        loraAvailable: true,
+        throughputAvailable: false,
+      },
+    };
+    workbenchMocks.storeState.proxyMetrics.byModel = {
+      'gemma-served': {
+        requestsTotal: 42,
+        errorsTotal: 0,
+        queueDepth: 2,
+        activeConnections: 1,
+        scaleUps: 0,
+        queueRejectedTotal: 0,
+        queuedRequestsTotal: 2,
+      },
+    };
+    workbenchMocks.storeState.proxyMetrics.requests = { 'gemma-served': 42 };
+    workbenchMocks.storeState.proxyMetrics.queue_depth = { 'gemma-served': 2 };
+    workbenchMocks.storeState.proxyMetrics.active_conn = { 'gemma-served': 1 };
+    workbenchMocks.storeState.proxyMetrics.requestsByStatus = { 'gemma-served': { '200': 42 } };
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('gemma-crd');
+    });
+
+    const text = pageText();
+    expect(text).toContain('Inference observed · 8.08 tok/s');
+    expect(text).toContain('Req 42');
+    expect(text).toContain('RPS 0.42');
+    expect(text).toContain('Tok/s 8.08');
+    expect(text).toContain('Queue 2');
+    expect(text).toContain('Conn 1');
+    expect(text).toContain('pending');
+    expect(text).not.toContain('throughput absent');
+  });
+
+  it('treats idle CRDs without live proxy pressure as standby instead of degraded', async () => {
+    workbenchMocks.controllerState.crdModels[0].status = {
+      phase: 'Idle',
+      cache: { strategy: 'shared', ready: true, jobPhase: 'Ready' },
+    };
+    workbenchMocks.controllerState.phaseSummary = { Idle: 1, Failed: 0 };
+    workbenchMocks.controllerState.inferenceByModel = {};
+
+    cleanup = mount(() => <Workbench />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Standby');
+    });
+
+    expect(pageText()).not.toContain('Idle Degraded');
   });
 });
