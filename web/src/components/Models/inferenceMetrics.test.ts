@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   activeConnectionsForModel,
   errorRateForModel,
+  findProxyMetricModel,
   hasProxyMetricsForModel,
   listInferenceModels,
+  proxyMetricsForModel,
   queueDepthForModel,
   requestsForModel,
 } from './inferenceMetrics';
@@ -84,6 +86,12 @@ describe('inferenceMetrics', () => {
     expect(hasProxyMetricsForModel(base, 'alpha')).toBe(true);
     expect(hasProxyMetricsForModel(base, 'legacyOnly')).toBe(true);
     expect(hasProxyMetricsForModel(base, 'missing')).toBe(false);
+  });
+
+  it('resolves the first available proxy metric name from CRD aliases', () => {
+    expect(findProxyMetricModel(base, ['missing', 'beta', 'alpha'])).toBe('beta');
+    expect(findProxyMetricModel(base, ['missing'])).toBeUndefined();
+    expect(proxyMetricsForModel(base, 'beta')?.requestsTotal).toBe(7);
   });
 
   it('derives error rate from status map first, then normalized totals', () => {

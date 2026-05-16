@@ -789,6 +789,7 @@ export interface InferenceMetrics {
   model: string;
   observed?: boolean;
   tps: number | null;
+  requestsPerSec?: number | null;
   p95LatencyMs: number | null;
   queueDepth: number | null;
   activeConnections: number | null;

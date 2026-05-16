@@ -1,4 +1,4 @@
-import type { FlexInferProxyMetricsResponse } from '../../lib/types';
+import type { FlexInferProxyMetricsResponse, FlexInferProxyModelMetrics } from '../../lib/types';
 
 export function listInferenceModels(
   metrics: FlexInferProxyMetricsResponse | null | undefined
@@ -27,6 +27,25 @@ export function hasProxyMetricsForModel(
     metrics.active_conn?.[model] != null ||
     metrics.requestsByStatus?.[model] != null
   );
+}
+
+export function findProxyMetricModel(
+  metrics: FlexInferProxyMetricsResponse | null | undefined,
+  candidates: Array<string | null | undefined>
+): string | undefined {
+  for (const candidate of candidates) {
+    if (!candidate || candidate === '_total') continue;
+    if (hasProxyMetricsForModel(metrics, candidate)) return candidate;
+  }
+  return undefined;
+}
+
+export function proxyMetricsForModel(
+  metrics: FlexInferProxyMetricsResponse | null | undefined,
+  model: string | null | undefined,
+): FlexInferProxyModelMetrics | undefined {
+  if (!metrics || !model || model === '_total') return undefined;
+  return metrics.byModel?.[model];
 }
 
 export function requestsForModel(

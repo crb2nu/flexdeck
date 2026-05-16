@@ -33,6 +33,7 @@ export function hasObservedInferenceMetrics(
 
   return [
     metrics.tps,
+    metrics.requestsPerSec,
     metrics.p95LatencyMs,
     metrics.queueDepth,
     metrics.activeConnections,

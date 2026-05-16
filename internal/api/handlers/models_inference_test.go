@@ -44,6 +44,7 @@ func TestModelsInferenceMetricsMarksNoSeriesAsUnobserved(t *testing.T) {
 
 	nullFields := []string{
 		"tps",
+		"requestsPerSec",
 		"p95LatencyMs",
 		"queueDepth",
 		"activeConnections",
@@ -114,10 +115,12 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 		q, _ := url.QueryUnescape(r.URL.Query().Get("query"))
 		value := "0"
 		switch {
+		case strings.Contains(q, "litellm_total_tokens_metric"):
+			value = "12.5"
 		case strings.Contains(q, "flexinfer_proxy_requests_total") && strings.Contains(q, "status=~"):
 			value = "0.02"
 		case strings.Contains(q, "flexinfer_proxy_requests_total"):
-			value = "12.5"
+			value = "3.5"
 		case strings.Contains(q, "request_duration_seconds_bucket"):
 			value = "0.15"
 		case strings.Contains(q, "queue_depth"):
@@ -165,6 +168,7 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 	compatKeys := []string{
 		"model",
 		"tps",
+		"requestsPerSec",
 		"p95LatencyMs",
 		"queueDepth",
 		"activeConnections",
@@ -204,6 +208,9 @@ func TestModelsInferenceMetricsContractIncludesAdditiveReliabilityFields(t *test
 	}
 	if payload["tps"].(float64) != 12.5 {
 		t.Fatalf("expected tps=12.5, got %v", payload["tps"])
+	}
+	if payload["requestsPerSec"].(float64) != 3.5 {
+		t.Fatalf("expected requestsPerSec=3.5, got %v", payload["requestsPerSec"])
 	}
 	if payload["p95LatencyMs"].(float64) != 150 {
 		t.Fatalf("expected p95LatencyMs=150, got %v", payload["p95LatencyMs"])

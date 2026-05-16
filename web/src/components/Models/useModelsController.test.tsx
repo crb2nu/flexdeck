@@ -108,6 +108,7 @@ function buildMetrics(overrides: Partial<InferenceMetrics> = {}): InferenceMetri
     model: 'alpha',
     observed: true,
     tps: 10,
+    requestsPerSec: 0.5,
     p95LatencyMs: 100,
     queueDepth: 0,
     activeConnections: 1,
