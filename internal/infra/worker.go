@@ -12,10 +12,12 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kunstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 
 	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/config"
@@ -32,10 +34,12 @@ const (
 // pre-warms the Redis infra snapshot on a regular schedule when cache backing
 // is available. It can still build snapshots in-memory without Redis.
 type Worker struct {
-	k8s   *k8s.Client
+	k8s   kubernetesReader
 	cache *cache.Cache
 	prom  *promClient
 	cfg   *config.Config
+
+	newDynamicClient dynamicClientFactory
 
 	mu       sync.RWMutex
 	compute  ComputeSnapshot
@@ -45,12 +49,28 @@ type Worker struct {
 	capacity CapacitySnapshot
 }
 
+type kubernetesReader interface {
+	GetNodes(context.Context) (*corev1.NodeList, error)
+	GetPods(context.Context, string) (*corev1.PodList, error)
+	GetPVCs(context.Context, string) (*corev1.PersistentVolumeClaimList, error)
+	GetIngresses(context.Context, string) (*networkingv1.IngressList, error)
+	GetNetworkPolicies(context.Context, string) (*networkingv1.NetworkPolicyList, error)
+	Config() *rest.Config
+}
+
+type dynamicClientFactory func(*rest.Config) (dynamic.Interface, error)
+
+func defaultDynamicClient(cfg *rest.Config) (dynamic.Interface, error) {
+	return dynamic.NewForConfig(cfg)
+}
+
 // NewWorker creates an InfraCacheWorker.
 func NewWorker(k8sClient *k8s.Client, c *cache.Cache, cfg *config.Config) *Worker {
 	w := &Worker{
-		k8s:   k8sClient,
-		cache: c,
-		cfg:   cfg,
+		k8s:              k8sClient,
+		cache:            c,
+		cfg:              cfg,
+		newDynamicClient: defaultDynamicClient,
 	}
 	if !cfg.Prom.Disabled && cfg.Prom.URL != "" {
 		w.prom = newPromClient(cfg.Prom.URL)
@@ -589,7 +609,11 @@ func (w *Worker) runGitOps(ctx context.Context) {
 	timer := prometheus.NewTimer(InfraSnapshotDuration.WithLabelValues("gitops"))
 	defer timer.ObserveDuration()
 
-	dynClient, err := dynamic.NewForConfig(w.k8s.Config())
+	newDynamicClient := w.newDynamicClient
+	if newDynamicClient == nil {
+		newDynamicClient = defaultDynamicClient
+	}
+	dynClient, err := newDynamicClient(w.k8s.Config())
 	if err != nil {
 		slog.Warn("infra worker: dynamic client", "error", err)
 		InfraSnapshotErrors.WithLabelValues("gitops").Inc()
