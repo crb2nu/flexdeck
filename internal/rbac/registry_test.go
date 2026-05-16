@@ -1,7 +1,6 @@
 package rbac
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -9,8 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	tempDir, _ := os.MkdirTemp("", "rbac-test-*")
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	usersPath := filepath.Join(tempDir, "users.json")
 	cfg := config.RBACConfig{

@@ -135,7 +135,6 @@ const w = window as Window & {
 function createBenchmark() {
   let samples: BenchSample[] = [];
   let intervalId: ReturnType<typeof setInterval> | null = null;
-  let startTime = 0;
   let report: BenchReport | null = null;
 
   const collect = () => {
@@ -277,7 +276,6 @@ function createBenchmark() {
     start(durationMs = 10000) {
       if (intervalId) this.stop();
       samples = [];
-      startTime = performance.now();
       collect();
       intervalId = setInterval(collect, 250);
       console.log(`Benchmark started. Collecting for ${(durationMs / 1000).toFixed(0)}s...`);

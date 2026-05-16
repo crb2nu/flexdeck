@@ -2,7 +2,6 @@ import { Component, createSignal, For, Show } from 'solid-js';
 import type { Agent, AgentSession } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
-import { resolveFreshness } from '../../lib/freshness';
 
 interface AgentSessionPanelProps {
   agent: Agent;
@@ -51,8 +50,6 @@ function presenceStatusDot(status?: string): string {
 const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
   const [sessions, setSessions] = createSignal<AgentSession[]>([]);
   const [loadingSessions, setLoadingSessions] = createSignal(true);
-  const [lastUpdated, setLastUpdated] = createSignal(0);
-  const freshness = () => resolveFreshness(lastUpdated(), 15_000);
 
   const meta = () => props.agent.metadata || {};
   const presenceStatus = () => (meta().presence_status as string) || 'unknown';
@@ -67,7 +64,6 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
     try {
       const data = await agentsApi.sessions(props.agent.id);
       setSessions(data.sessions || []);
-      setLastUpdated(Date.now());
     } catch {
       setSessions([]);
     } finally {

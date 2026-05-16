@@ -1,4 +1,4 @@
-import { Component, For, Show, JSX, createSignal, createMemo } from 'solid-js';
+import { For, Show, JSX, createSignal, createMemo } from 'solid-js';
 import EmptyState from './EmptyState';
 
 export interface ColumnDef<T> {

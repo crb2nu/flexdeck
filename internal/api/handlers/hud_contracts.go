@@ -42,23 +42,6 @@ func isHUDWrapperEnvelope(object map[string]any) bool {
 	return true
 }
 
-func hudItemsFromEnvelope(raw json.RawMessage, key string) ([]map[string]any, error) {
-	envelope, err := parseHUDEnvelope(raw)
-	if err != nil {
-		return nil, err
-	}
-	var source any
-	switch {
-	case key != "" && envelope[key] != nil:
-		source = envelope[key]
-	case envelope["items"] != nil:
-		source = envelope["items"]
-	default:
-		source = envelope
-	}
-	return hudItemsFromValue(source), nil
-}
-
 func hudItemsFromValue(value any) []map[string]any {
 	list, ok := value.([]any)
 	if !ok {
@@ -131,7 +114,7 @@ func hudInt(value any) int {
 		if typed == "" {
 			return 0
 		}
-		var v json.Number = json.Number(strings.TrimSpace(typed))
+		v := json.Number(strings.TrimSpace(typed))
 		parsed, err := v.Int64()
 		if err != nil {
 			return 0

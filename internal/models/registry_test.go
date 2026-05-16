@@ -1,7 +1,6 @@
 package models
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -9,8 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	tempDir, _ := os.MkdirTemp("", "models-test-*")
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	regPath := filepath.Join(tempDir, "registry.json")
 	cfg := config.ModelsConfig{RegistryPath: regPath}

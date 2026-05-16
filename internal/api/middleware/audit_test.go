@@ -24,7 +24,9 @@ func TestAuditLogger_Log(t *testing.T) {
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	})
 
 	t.Run("Logs mutation with body", func(t *testing.T) {
