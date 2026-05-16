@@ -15,6 +15,8 @@ interface ApiError {
   message?: string;
 }
 
+const MAX_ERROR_TEXT_LENGTH = 240;
+
 function flattenApiErrorMessage(data: ApiError): string | null {
   if (typeof data.error === "string" && data.error.trim() !== "") {
     return data.error;
@@ -95,20 +97,8 @@ export async function api<T>(
         const text = await response.text();
         const trimmed = text.trim();
         if (trimmed !== "") {
-          // Many Go services return JSON-shaped error bodies with
-          // `text/plain` content-type. Attempt a best-effort JSON parse
-          // before falling back to the raw text so users don't see
-          // `{"error":"..."}` rendered verbatim in the UI.
-          if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-            try {
-              const data = JSON.parse(trimmed) as ApiError;
-              message = flattenApiErrorMessage(data) ?? trimmed;
-            } catch {
-              message = trimmed;
-            }
-          } else {
-            message = trimmed;
-          }
+          message =
+            summarizeNonJsonError(response, contentType, trimmed) ?? message;
         }
       }
     } catch {
@@ -130,6 +120,107 @@ export async function api<T>(
   if (text.trim() === "") {
     return undefined as T;
   }
+  if (isHtmlResponse(contentType, text)) {
+    throw new ApiRequestError(
+      response.status,
+      summarizeUnexpectedHtmlResponse(response, text),
+    );
+  }
 
   return text as T;
+}
+
+function summarizeNonJsonError(
+  response: Response,
+  contentType: string,
+  text: string,
+): string | null {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  if (isHtmlResponse(contentType, trimmed)) {
+    const statusText = response.statusText ? ` ${response.statusText}` : "";
+    const prefix = `Request failed: ${response.status}${statusText}`;
+    const title = extractHtmlTitle(trimmed);
+    return title ? `${prefix} (${title})` : prefix;
+  }
+
+  // Many Go services return JSON-shaped error bodies with `text/plain`
+  // content-type. Keep parsing those before falling back to raw text.
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const data = JSON.parse(trimmed) as ApiError;
+      return flattenApiErrorMessage(data) ?? truncateErrorText(trimmed);
+    } catch {
+      return truncateErrorText(trimmed);
+    }
+  }
+
+  return truncateErrorText(trimmed.split(/\r?\n/, 1)[0]);
+}
+
+function summarizeUnexpectedHtmlResponse(
+  response: Response,
+  text: string,
+): string {
+  const statusText = response.statusText ? ` ${response.statusText}` : "";
+  const title = extractHtmlTitle(text);
+  const prefix = `Request returned HTML instead of data: ${response.status}${statusText}`;
+  return title ? `${prefix} (${title})` : prefix;
+}
+
+function truncateErrorText(value: string): string {
+  if (value.length <= MAX_ERROR_TEXT_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, MAX_ERROR_TEXT_LENGTH - 3)}...`;
+}
+
+function isHtmlResponse(contentType: string, text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    contentType.includes("text/html") ||
+    /^<!doctype\s+html/i.test(trimmed) ||
+    /^<html[\s>]/i.test(trimmed)
+  );
+}
+
+function extractHtmlTitle(html: string): string {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) {
+    return "";
+  }
+  return decodeHtmlEntities(stripHtml(match[1]).trim());
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]*>/g, "");
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(
+    /&(#\d+|#x[\da-f]+|amp|lt|gt|quot|apos);/gi,
+    (entity, raw) => {
+      const namedEntities: Record<string, string> = {
+        amp: "&",
+        lt: "<",
+        gt: ">",
+        quot: '"',
+        apos: "'",
+      };
+      const key = String(raw).toLowerCase();
+      if (key in namedEntities) {
+        return namedEntities[key];
+      }
+      if (key.startsWith("#x")) {
+        return String.fromCodePoint(Number.parseInt(key.slice(2), 16));
+      }
+      if (key.startsWith("#")) {
+        return String.fromCodePoint(Number.parseInt(key.slice(1), 10));
+      }
+      return entity;
+    },
+  );
 }

@@ -88,11 +88,61 @@ func TestTrafficReportBuildsPrometheusSummary(t *testing.T) {
 	}
 }
 
+func TestTrafficReportSanitizesNaNLatencyBeforeJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case strings.Contains(query, "request_duration_seconds_bucket"):
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"host":"flexinfer.ai"},"value":[1710000000,"NaN"]}]}}`))
+		case strings.Contains(query, "nginx_ingress_controller_requests") && strings.Contains(query, "increase") && strings.Contains(query, "sum by (host)"):
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"host":"flexinfer.ai"},"value":[1710000000,"1"]}]}}`))
+		default:
+			_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
+		}
+	}))
+	defer ts.Close()
+
+	h := &Handler{cfg: &config.Config{}}
+	h.cfg.Prom.URL = ts.URL
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traffic/report?window=24h", nil)
+	report := h.buildTrafficReport(req, "24h")
+
+	if len(report.Hosts) != 1 {
+		t.Fatalf("expected one host, got %+v", report.Hosts)
+	}
+	if report.Hosts[0].P95LatencyMs != 0 {
+		t.Fatalf("expected NaN p95 latency to sanitize to 0, got %f", report.Hosts[0].P95LatencyMs)
+	}
+	if _, err := json.Marshal(report); err != nil {
+		t.Fatalf("expected report to remain JSON-cacheable, got %v", err)
+	}
+}
+
 func TestSanitizeTrafficWindow(t *testing.T) {
 	if got := sanitizeTrafficWindow("7d"); got != "7d" {
 		t.Fatalf("expected 7d, got %s", got)
 	}
 	if got := sanitizeTrafficWindow("24h] or vector(1)"); got != defaultTrafficWindow {
 		t.Fatalf("expected default window, got %s", got)
+	}
+}
+
+func TestParsePromValueSanitizesNonFiniteSamples(t *testing.T) {
+	tests := map[string]json.RawMessage{
+		"nan":       json.RawMessage(`"NaN"`),
+		"positive":  json.RawMessage(`"+Inf"`),
+		"negative":  json.RawMessage(`"-Inf"`),
+		"bad-value": json.RawMessage(`"not-a-number"`),
+	}
+
+	for name, raw := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := parsePromValue(raw); got != 0 {
+				t.Fatalf("expected non-finite sample to sanitize to 0, got %f", got)
+			}
+		})
 	}
 }

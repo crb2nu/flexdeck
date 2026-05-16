@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"sort"
@@ -355,12 +356,19 @@ func sampleSum(samples []trafficPromSample) float64 {
 func parsePromValue(raw json.RawMessage) float64 {
 	var f float64
 	if err := json.Unmarshal(raw, &f); err == nil {
-		return f
+		return sanitizePromFloat(f)
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return 0
 	}
 	f, _ = strconv.ParseFloat(s, 64)
-	return f
+	return sanitizePromFloat(f)
+}
+
+func sanitizePromFloat(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0
+	}
+	return value
 }
