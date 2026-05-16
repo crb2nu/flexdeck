@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,8 +11,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	tempDir, _ := os.MkdirTemp("", "agents-test-*")
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	regPath := filepath.Join(tempDir, "agents.json")
 	cfg := config.AgentsConfig{RegistryPath: regPath}

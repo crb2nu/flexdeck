@@ -1,4 +1,4 @@
-import { Component, For, Show, JSX } from 'solid-js';
+import { For, Show, JSX } from 'solid-js';
 
 export interface TabDef<T extends string = string> {
   id: T;
@@ -34,7 +34,6 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
           <For each={props.tabs}>
             {(tab) => {
               const isActive = () => props.active === tab.id;
-              const c = tab.color ?? 'white';
               return (
                 <button
                   onClick={() => props.onChange(tab.id)}

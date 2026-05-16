@@ -73,9 +73,14 @@ func TestRespondData(t *testing.T) {
 	}
 
 	// Unmarshal Data back to []string
-	b, _ := json.Marshal(resp.Data)
+	b, err := json.Marshal(resp.Data)
+	if err != nil {
+		t.Fatalf("failed to marshal response data: %v", err)
+	}
 	var finalData []string
-	json.Unmarshal(b, &finalData)
+	if err := json.Unmarshal(b, &finalData); err != nil {
+		t.Fatalf("failed to unmarshal final data: %v", err)
+	}
 
 	if len(finalData) != 2 || finalData[0] != "a" || finalData[1] != "b" {
 		t.Errorf("unexpected data: %v", finalData)
@@ -135,8 +140,12 @@ func TestSSEWriter(t *testing.T) {
 	}
 
 	sw.SendReady()
-	sw.SendData(map[string]string{"msg": "hello"})
-	sw.SendEvent("custom", "val")
+	if err := sw.SendData(map[string]string{"msg": "hello"}); err != nil {
+		t.Fatalf("SendData failed: %v", err)
+	}
+	if err := sw.SendEvent("custom", "val"); err != nil {
+		t.Fatalf("SendEvent failed: %v", err)
+	}
 	sw.SendRaw("raw-data")
 	sw.SendError("oops")
 	sw.Flush()
@@ -177,7 +186,9 @@ func TestProxyRequest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"mock":"ok"}`))
+		if _, err := w.Write([]byte(`{"mock":"ok"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 

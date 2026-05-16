@@ -349,18 +349,20 @@ func TestStore_MaterializeDashboardSummary(t *testing.T) {
 	mux.HandleFunc("/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("query")
 		var result string
-		switch {
-		case query == dashboardQueries["clusterCpu"]:
+		switch query {
+		case dashboardQueries["clusterCpu"]:
 			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"55.5"]}]}}`
-		case query == dashboardQueries["clusterMemUsed"]:
+		case dashboardQueries["clusterMemUsed"]:
 			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"8000000000"]}]}}`
-		case query == dashboardQueries["clusterMemTotal"]:
+		case dashboardQueries["clusterMemTotal"]:
 			result = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"16000000000"]}]}}`
 		default:
 			result = `{"status":"success","data":{"resultType":"vector","result":[]}}`
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, result)
+		if _, err := fmt.Fprint(w, result); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()

@@ -34,15 +34,6 @@ function stateColor(state: string): string {
   }
 }
 
-function stateBgColor(state: string): string {
-  switch (state) {
-    case 'Active': return 'bg-status-ok/20 text-status-ok';
-    case 'Queued': return 'bg-status-warn/20 text-status-warn';
-    case 'Preempted': return 'bg-white/10 text-text-muted';
-    default: return 'bg-white/10 text-text-dim';
-  }
-}
-
 function dotBgColor(state: string): string {
   switch (state) {
     case 'Active': return 'bg-status-ok';

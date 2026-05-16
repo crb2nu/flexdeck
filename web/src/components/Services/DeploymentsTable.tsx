@@ -1,4 +1,4 @@
-import { Component, Show } from 'solid-js';
+import { Component } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
 import type { K8sDeployment } from '../../lib/types';
 import StatusDot from '../shared/StatusDot';

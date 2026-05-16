@@ -307,11 +307,6 @@ func (h *Handler) prepareHUDWorkflowStepPayload(ctx context.Context, workflowID 
 	return json.Marshal(payload)
 }
 
-// postHUD makes a POST request to the Loom HUD REST API.
-func (h *Handler) postHUD(ctx context.Context, path string, body []byte) ([]byte, error) {
-	return h.postHUDPaths(ctx, body, path)
-}
-
 func (h *Handler) postHUDPaths(ctx context.Context, body []byte, paths ...string) ([]byte, error) {
 	var lastErr error
 	for _, path := range paths {

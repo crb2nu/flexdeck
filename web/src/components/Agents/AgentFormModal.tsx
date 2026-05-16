@@ -1,4 +1,4 @@
-import { Component, Show } from 'solid-js';
+import { Component } from 'solid-js';
 import type { SetStoreFunction } from 'solid-js/store';
 import type { Agent } from '../../lib/types';
 

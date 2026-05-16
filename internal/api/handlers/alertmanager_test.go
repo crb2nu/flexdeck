@@ -15,9 +15,13 @@ func TestAlertmanagerHandlers(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "/alerts") {
-			fmt.Fprint(w, `[{"labels":{"alertname":"HighCPU"}}]`)
+			if _, err := fmt.Fprint(w, `[{"labels":{"alertname":"HighCPU"}}]`); err != nil {
+				t.Errorf("write alerts response: %v", err)
+			}
 		} else if strings.Contains(r.URL.Path, "/silences") {
-			fmt.Fprint(w, `[]`)
+			if _, err := fmt.Fprint(w, `[]`); err != nil {
+				t.Errorf("write silences response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}

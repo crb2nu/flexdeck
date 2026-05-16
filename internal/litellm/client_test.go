@@ -28,7 +28,9 @@ func TestClient_Health(t *testing.T) {
 func TestClient_ListModels(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"data": [{"id": "gpt-4"}, {"id": "claude-3"}]}`)
+		if _, err := fmt.Fprint(w, `{"data": [{"id": "gpt-4"}, {"id": "claude-3"}]}`); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
@@ -45,12 +47,14 @@ func TestClient_ListModels(t *testing.T) {
 
 func TestClient_ScrapeMetrics(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `
+		if _, err := fmt.Fprint(w, `
 # HELP litellm_total_tokens_metric Total number of tokens processed
 # TYPE litellm_total_tokens_metric counter
 litellm_total_tokens_metric{model="gpt-4"} 1500.0
 litellm_total_tokens_metric{requested_model="claude-3"} 2500.0
-`)
+`); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 

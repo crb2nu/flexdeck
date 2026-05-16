@@ -28,13 +28,6 @@ const SystemCore: Component = () => {
     return 'text-red-500';
   });
 
-  const pulseSpeed = createMemo(() => {
-    if (healthStore.loading) return 'animate-pulse';
-    if (healthStore.error) return 'animate-pulse';
-    if (healthRatio() >= 0.8) return 'animate-pulse';
-    return 'animate-pulse';
-  });
-
   const statusLabel = createMemo(() => {
     if (healthStore.loading) return 'INITIALIZING...';
     if (healthStore.error) return 'OFFLINE';

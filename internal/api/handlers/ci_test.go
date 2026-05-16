@@ -17,9 +17,13 @@ func TestCIHandlers(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "/projects") {
-			fmt.Fprint(w, `[{"id": 1, "path_with_namespace": "org/repo", "web_url": "http://gitlab.com/org/repo"}]`)
+			if _, err := fmt.Fprint(w, `[{"id": 1, "path_with_namespace": "org/repo", "web_url": "http://gitlab.com/org/repo"}]`); err != nil {
+				t.Errorf("write projects response: %v", err)
+			}
 		} else if strings.Contains(r.URL.Path, "/pipelines") {
-			fmt.Fprint(w, `[{"id": 100, "status": "success", "ref": "main", "created_at": "2026-01-01T00:00:00Z"}]`)
+			if _, err := fmt.Fprint(w, `[{"id": 100, "status": "success", "ref": "main", "created_at": "2026-01-01T00:00:00Z"}]`); err != nil {
+				t.Errorf("write pipelines response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
@@ -76,16 +80,22 @@ func TestFetchRepoPipeline_UsesStageOrderFromGitLabCI(t *testing.T) {
 
 		switch {
 		case strings.Contains(r.URL.Path, "/pipelines/555/jobs"):
-			fmt.Fprint(w, `[
+			if _, err := fmt.Fprint(w, `[
 				{"id": 3001, "name": "deploy_staging", "stage": "deploy", "status": "created"},
 				{"id": 3002, "name": "unit_tests", "stage": "test", "status": "created"},
 				{"id": 3003, "name": "lint_code", "stage": "lint", "status": "running"}
-			]`)
+			]`); err != nil {
+				t.Errorf("write jobs response: %v", err)
+			}
 		case strings.Contains(r.URL.Path, "/pipelines"):
-			fmt.Fprint(w, `[{"id": 555, "status": "running", "ref": "main", "created_at": "2026-01-01T00:00:00Z"}]`)
+			if _, err := fmt.Fprint(w, `[{"id": 555, "status": "running", "ref": "main", "created_at": "2026-01-01T00:00:00Z"}]`); err != nil {
+				t.Errorf("write pipelines response: %v", err)
+			}
 		case strings.Contains(r.URL.Path, "/repository/files/.gitlab-ci.yml/raw"):
 			w.Header().Set("Content-Type", "text/plain")
-			fmt.Fprint(w, "stages:\n  - lint\n  - test\n  - deploy\n")
+			if _, err := fmt.Fprint(w, "stages:\n  - lint\n  - test\n  - deploy\n"); err != nil {
+				t.Errorf("write gitlab-ci response: %v", err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

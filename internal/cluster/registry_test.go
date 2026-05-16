@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -9,11 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "cluster-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	regPath := filepath.Join(tempDir, "clusters.json")
 	cfg := config.MultiClusterConfig{RegistryPath: regPath}
@@ -98,8 +93,7 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestRegistry_AutoRegister(t *testing.T) {
-	tempDir, _ := os.MkdirTemp("", "cluster-auto-*")
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	regPath := filepath.Join(tempDir, "clusters.json")
 	cfg := config.MultiClusterConfig{RegistryPath: regPath}
