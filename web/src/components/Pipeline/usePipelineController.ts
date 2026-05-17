@@ -27,19 +27,36 @@ export type ActionNotice = {
 
 type PipelineSnapshot = VizPipeline & { status: VizPipeline['status'] | 'none' };
 
-type PipelinePollTelemetrySnapshot = {
+type PipelinePollTelemetry = {
   pollCount: number;
   pollErrors: number;
   totalFetchMs: number;
   maxFetchMs: number;
   lastFetchMs: number;
   tabHiddenSkips: number;
+};
+
+type PipelinePollTelemetrySnapshot = PipelinePollTelemetry & {
   avgFetchMs: number;
   tabVisible: boolean;
   autoRefresh: boolean;
   isPipelineActive: boolean;
   pollIntervalMs: number;
 };
+
+type PipelineActionOptions = {
+  request: (repoId: number) => Promise<unknown>;
+  refreshDelayMs: number;
+  successMessage: string;
+  failureMessage: string;
+  logMessage: string;
+};
+
+declare global {
+  interface Window {
+    __FLEXDECK_PIPELINE_POLL__?: PipelinePollTelemetrySnapshot;
+  }
+}
 
 function isPipelineSnapshot(value: unknown): value is PipelineSnapshot {
   if (typeof value !== 'object' || value === null) {
@@ -48,6 +65,16 @@ function isPipelineSnapshot(value: unknown): value is PipelineSnapshot {
 
   const status = (value as { status?: unknown }).status;
   return typeof status === 'string' && status !== 'none';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const strings = value.filter((item): item is string => typeof item === 'string');
+  return strings.length > 0 ? strings : fallback;
 }
 
 export function getPipelineRefreshInterval(
@@ -90,7 +117,7 @@ export function usePipelineController() {
   const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
 
   // Poll telemetry
-  const pollTelemetry = {
+  const pollTelemetry: PipelinePollTelemetry = {
     pollCount: 0,
     pollErrors: 0,
     totalFetchMs: 0,
@@ -98,6 +125,15 @@ export function usePipelineController() {
     lastFetchMs: 0,
     tabHiddenSkips: 0,
   };
+  const recordPollFetch = (fetchStart: number, options: { updateMax: boolean }) => {
+    const fetchMs = performance.now() - fetchStart;
+    pollTelemetry.lastFetchMs = fetchMs;
+    pollTelemetry.totalFetchMs += fetchMs;
+    if (options.updateMax) {
+      pollTelemetry.maxFetchMs = Math.max(pollTelemetry.maxFetchMs, fetchMs);
+    }
+  };
+
   const exportPollTelemetry = () => {
     if (typeof window !== 'undefined') {
       const snapshot: PipelinePollTelemetrySnapshot = {
@@ -108,7 +144,7 @@ export function usePipelineController() {
         isPipelineActive: isPipelineActive(),
         pollIntervalMs: effectiveInterval(),
       };
-      (window as Window & { __FLEXDECK_PIPELINE_POLL__?: PipelinePollTelemetrySnapshot }).__FLEXDECK_PIPELINE_POLL__ = snapshot;
+      window.__FLEXDECK_PIPELINE_POLL__ = snapshot;
     }
   };
 
@@ -126,10 +162,7 @@ export function usePipelineController() {
     pollTelemetry.pollCount++;
     try {
       const liveData = await ciApi.getPipeline(repoId);
-      const fetchMs = performance.now() - fetchStart;
-      pollTelemetry.lastFetchMs = fetchMs;
-      pollTelemetry.totalFetchMs += fetchMs;
-      pollTelemetry.maxFetchMs = Math.max(pollTelemetry.maxFetchMs, fetchMs);
+      recordPollFetch(fetchStart, { updateMax: true });
       if (isPipelineSnapshot(liveData)) {
         const normalizedPipeline = normalizePipeline(liveData);
         setPipelineData(normalizedPipeline);
@@ -146,9 +179,7 @@ export function usePipelineController() {
       setLastUpdate(new Date());
     } catch (error) {
       pollTelemetry.pollErrors++;
-      const fetchMs = performance.now() - fetchStart;
-      pollTelemetry.lastFetchMs = fetchMs;
-      pollTelemetry.totalFetchMs += fetchMs;
+      recordPollFetch(fetchStart, { updateMax: false });
       if (!pipelineFetchError()) {
         pushActionNotice('error', 'Live pipeline status unavailable. Showing best available data.');
       }
@@ -304,7 +335,7 @@ export function usePipelineController() {
   });
 
   const parseGitLabCi = (content: string, repoName: string): VizPipeline => {
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = parse(content);
     } catch (error) {
@@ -318,7 +349,7 @@ export function usePipelineController() {
       };
     }
 
-    if (!parsed) {
+    if (!isRecord(parsed)) {
       return {
         id: `pipeline-${repoName}-empty`,
         ref: 'main',
@@ -328,8 +359,7 @@ export function usePipelineController() {
       };
     }
 
-    let stages: string[] = parsed.stages || ['build', 'test', 'deploy'];
-    if (!Array.isArray(stages)) stages = ['build', 'test', 'deploy'];
+    const stages = readStringArray(parsed.stages, ['build', 'test', 'deploy']);
 
     const pipelineStages: PipelineStage[] = stages.map((name) => ({
       name,
@@ -350,12 +380,12 @@ export function usePipelineController() {
       'default',
     ]);
 
-    Object.entries(parsed).forEach(([key, value]: [string, any]) => {
-      if (reservedKeys.has(key) || key.startsWith('.') || typeof value !== 'object' || !value) return;
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (reservedKeys.has(key) || key.startsWith('.') || !isRecord(value)) return;
 
-      const jobStage = value.stage || 'test';
+      const jobStage = typeof value.stage === 'string' ? value.stage : 'test';
       let stage = pipelineStages.find((item) => item.name === jobStage);
-      if (!stage && parsed.stages && !parsed.stages.includes(jobStage)) {
+      if (!stage && !stages.includes(jobStage)) {
         stage = pipelineStages.find((item) => item.name === 'test');
         if (!stage && pipelineStages.length > 0) stage = pipelineStages[0];
       }
@@ -429,6 +459,27 @@ export function usePipelineController() {
     }
   };
 
+  const schedulePipelineRefresh = (repoId: number, delay: number) => {
+    scheduleRefresh(() => void fetchPipelineStatus(repoId), delay);
+  };
+
+  const runPipelineAction = async (options: PipelineActionOptions) => {
+    const repo = selectedRepo();
+    if (!repo?.id) return;
+
+    setPipelineActionLoading(true);
+    try {
+      await options.request(repo.id);
+      schedulePipelineRefresh(repo.id, options.refreshDelayMs);
+      pushActionNotice('success', options.successMessage);
+    } catch (error) {
+      console.error(options.logMessage, error);
+      pushActionNotice('error', options.failureMessage);
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  };
+
   const handleRetryPipeline = async () => {
     const repo = selectedRepo();
     const pipeline = pipelineData();
@@ -437,17 +488,13 @@ export function usePipelineController() {
       pushActionNotice('info', 'Retry is unavailable for static pipeline previews.');
       return;
     }
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.retryPipeline(repo.id, pipeline.id);
-      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 1000);
-      pushActionNotice('success', 'Pipeline retry requested.');
-    } catch (error) {
-      console.error('Failed to retry pipeline', error);
-      pushActionNotice('error', 'Pipeline retry failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
+    await runPipelineAction({
+      request: (repoId) => ciApi.retryPipeline(repoId, pipeline.id),
+      refreshDelayMs: 1000,
+      successMessage: 'Pipeline retry requested.',
+      failureMessage: 'Pipeline retry failed.',
+      logMessage: 'Failed to retry pipeline',
+    });
   };
 
   const handleCancelPipeline = async () => {
@@ -458,33 +505,26 @@ export function usePipelineController() {
       pushActionNotice('info', 'Cancel is unavailable for static pipeline previews.');
       return;
     }
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.cancelPipeline(repo.id, pipeline.id);
-      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 1000);
-      pushActionNotice('success', 'Pipeline cancel requested.');
-    } catch (error) {
-      console.error('Failed to cancel pipeline', error);
-      pushActionNotice('error', 'Pipeline cancel failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
+    await runPipelineAction({
+      request: (repoId) => ciApi.cancelPipeline(repoId, pipeline.id),
+      refreshDelayMs: 1000,
+      successMessage: 'Pipeline cancel requested.',
+      failureMessage: 'Pipeline cancel failed.',
+      logMessage: 'Failed to cancel pipeline',
+    });
   };
 
   const handleTriggerPipeline = async () => {
     const repo = selectedRepo();
     if (!repo?.id || !triggerRef()) return;
-    setPipelineActionLoading(true);
-    try {
-      await ciApi.triggerPipeline(repo.id, triggerRef());
-      scheduleRefresh(() => void fetchPipelineStatus(repo.id), 2000);
-      pushActionNotice('success', `Pipeline trigger requested for ${triggerRef()}.`);
-    } catch (error) {
-      console.error('Failed to trigger pipeline', error);
-      pushActionNotice('error', 'Pipeline trigger failed.');
-    } finally {
-      setPipelineActionLoading(false);
-    }
+    const ref = triggerRef();
+    await runPipelineAction({
+      request: (repoId) => ciApi.triggerPipeline(repoId, ref),
+      refreshDelayMs: 2000,
+      successMessage: `Pipeline trigger requested for ${ref}.`,
+      failureMessage: 'Pipeline trigger failed.',
+      logMessage: 'Failed to trigger pipeline',
+    });
   };
 
   const pipelineDataState = createMemo<PipelineDataState>(() =>
