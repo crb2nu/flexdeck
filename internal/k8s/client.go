@@ -22,7 +22,7 @@ import (
 )
 
 type Client struct {
-	clientset  *kubernetes.Clientset
+	clientset  kubernetes.Interface
 	restConfig *rest.Config
 	config     config.K8sConfig
 	mu         sync.Mutex
@@ -196,7 +196,7 @@ func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) 
 	return nil
 }
 
-func (c *Client) Clientset() *kubernetes.Clientset {
+func (c *Client) Clientset() kubernetes.Interface {
 	return c.clientset
 }
 
