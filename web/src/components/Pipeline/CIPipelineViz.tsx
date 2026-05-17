@@ -12,7 +12,7 @@ export interface PipelineJob {
   duration?: number;
   startedAt?: string;
   finishedAt?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 export interface PipelineStage {
@@ -110,6 +110,8 @@ type StageViewModel = {
   isComplete: boolean;
 };
 
+type PipelineActionNotice = { type: 'info' | 'success' | 'error'; message: string };
+
 type PipelinePerfSnapshot = {
   fps: number;
   avgFrameMs: number;
@@ -125,12 +127,18 @@ type PipelinePerfSnapshot = {
   isDemoMode: boolean;
 };
 
+declare global {
+  interface Window {
+    __FLEXDECK_PIPELINE_PERF__?: PipelinePerfSnapshot;
+  }
+}
+
 const CIPipelineViz: Component<{
   pipeline?: Pipeline;
   projectId?: number;
   onJobClick?: (job: PipelineJob) => void;
   onRefresh?: () => void;
-  onActionStatus?: (notice: { type: 'info' | 'success' | 'error'; message: string }) => void;
+  onActionStatus?: (notice: PipelineActionNotice) => void;
 }> = (props) => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   let containerRef: HTMLDivElement | undefined;
@@ -185,9 +193,7 @@ const CIPipelineViz: Component<{
       isAnimating,
       isDemoMode: isDemoMode(),
     };
-    if (typeof window !== 'undefined') {
-      (window as Window & { __FLEXDECK_PIPELINE_PERF__?: PipelinePerfSnapshot }).__FLEXDECK_PIPELINE_PERF__ = snapshot;
-    }
+    if (typeof window !== 'undefined') window.__FLEXDECK_PIPELINE_PERF__ = snapshot;
   };
 
   const [pipeline, setPipeline] = createSignal<Pipeline>(props.pipeline || createDemoPipeline());
@@ -269,7 +275,7 @@ const CIPipelineViz: Component<{
   const isLiveGitLabJobId = (jobId: string): boolean =>
     /^\d+$/.test(getNumericJobId(jobId));
 
-  const notifyActionStatus = (type: 'info' | 'success' | 'error', message: string) => {
+  const notifyActionStatus = (type: PipelineActionNotice['type'], message: string) => {
     props.onActionStatus?.({ type, message });
   };
 
@@ -286,99 +292,83 @@ const CIPipelineViz: Component<{
     return jobId;
   };
 
-  // Job action handlers with real API calls
-  const handleRetryJob = async (job: PipelineJob, e: MouseEvent) => {
+  const updateJobStatus = (
+    jobId: string,
+    status: PipelineJob['status'],
+    duration?: number,
+  ) => {
+    setPipeline((prev) => ({
+      ...prev,
+      stages: prev.stages.map((stage) => ({
+        ...stage,
+        jobs: stage.jobs.map((job) =>
+          job.id === jobId
+            ? { ...job, status, ...(duration === undefined ? {} : { duration }) }
+            : job,
+        ),
+      })),
+    }));
+  };
+
+  const runJobAction = async (
+    job: PipelineJob,
+    e: MouseEvent,
+    action: {
+      label: string;
+      nextStatus: PipelineJob['status'];
+      nextDuration?: number;
+      successMessage: string;
+      failureMessage: string;
+      request: (projectId: number, jobId: string) => Promise<unknown>;
+    },
+  ) => {
     e.stopPropagation();
     const jobId = getLiveJobId(job);
     if (!jobId || !props.projectId) return;
     setActionLoading(job.id);
 
     try {
-      await ciApi.retryJob(props.projectId, jobId);
-      // Optimistic update
-      setPipeline(prev => ({
-        ...prev,
-        stages: prev.stages.map(s => ({
-          ...s,
-          jobs: s.jobs.map(j =>
-            j.id === job.id
-              ? { ...j, status: 'running' as const, duration: 0 }
-              : j
-          )
-        }))
-      }));
-      // Trigger refresh to get updated pipeline state
+      await action.request(props.projectId, jobId);
+      updateJobStatus(job.id, action.nextStatus, action.nextDuration);
       props.onRefresh?.();
-      notifyActionStatus('success', `Retry requested for ${job.name}.`);
+      notifyActionStatus('success', action.successMessage);
     } catch (err) {
-      console.error('Failed to retry job:', err);
-      notifyActionStatus('error', `Retry failed for ${job.name}.`);
+      console.error(`Failed to ${action.label} job:`, err);
+      notifyActionStatus('error', action.failureMessage);
     } finally {
       setActionLoading(null);
     }
   };
+
+  // Job action handlers with real API calls
+  const handleRetryJob = (job: PipelineJob, e: MouseEvent) =>
+    runJobAction(job, e, {
+      label: 'retry',
+      nextStatus: 'running',
+      nextDuration: 0,
+      successMessage: `Retry requested for ${job.name}.`,
+      failureMessage: `Retry failed for ${job.name}.`,
+      request: ciApi.retryJob,
+    });
 
   const handleCancelJob = async (job: PipelineJob, e: MouseEvent) => {
-    e.stopPropagation();
-    const jobId = getLiveJobId(job);
-    if (!jobId || !props.projectId) return;
-    setActionLoading(job.id);
-
-    try {
-      await ciApi.cancelJob(props.projectId, jobId);
-      // Optimistic update
-      setPipeline(prev => ({
-        ...prev,
-        stages: prev.stages.map(s => ({
-          ...s,
-          jobs: s.jobs.map(j =>
-            j.id === job.id
-              ? { ...j, status: 'failed' as const }
-              : j
-          )
-        }))
-      }));
-      // Trigger refresh to get updated pipeline state
-      props.onRefresh?.();
-      notifyActionStatus('success', `Cancel requested for ${job.name}.`);
-    } catch (err) {
-      console.error('Failed to cancel job:', err);
-      notifyActionStatus('error', `Cancel failed for ${job.name}.`);
-    } finally {
-      setActionLoading(null);
-    }
+    await runJobAction(job, e, {
+      label: 'cancel',
+      nextStatus: 'failed',
+      successMessage: `Cancel requested for ${job.name}.`,
+      failureMessage: `Cancel failed for ${job.name}.`,
+      request: ciApi.cancelJob,
+    });
   };
 
-  const handlePlayJob = async (job: PipelineJob, e: MouseEvent) => {
-    e.stopPropagation();
-    const jobId = getLiveJobId(job);
-    if (!jobId || !props.projectId) return;
-    setActionLoading(job.id);
-
-    try {
-      await ciApi.playJob(props.projectId, jobId);
-      // Optimistic update
-      setPipeline(prev => ({
-        ...prev,
-        stages: prev.stages.map(s => ({
-          ...s,
-          jobs: s.jobs.map(j =>
-            j.id === job.id
-              ? { ...j, status: 'running' as const }
-              : j
-          )
-        }))
-      }));
-      // Trigger refresh to get updated pipeline state
-      props.onRefresh?.();
-      notifyActionStatus('success', `Manual trigger requested for ${job.name}.`);
-    } catch (err) {
-      console.error('Failed to play job:', err);
-      notifyActionStatus('error', `Manual trigger failed for ${job.name}.`);
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  const handlePlayJob = (job: PipelineJob, e: MouseEvent) =>
+    runJobAction(job, e, {
+      label: 'play',
+      nextStatus: 'running',
+      successMessage: `Manual trigger requested for ${job.name}.`,
+      failureMessage: `Manual trigger failed for ${job.name}.`,
+      request: ciApi.playJob,
+    });
 
   const pipelineDisplayId = createMemo(() => {
     const id = pipeline().id;
