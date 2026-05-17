@@ -54,6 +54,53 @@ func TestRouter_Phase4RoutesStayUnavailableWhenDisabled(t *testing.T) {
 	assertStatus(t, router, http.MethodGet, "/api/clusters/", http.StatusNotFound)
 }
 
+func TestRouter_Phase4RoutesStayUnavailableWhenDependenciesMissing(t *testing.T) {
+	t.Parallel()
+
+	router := newPhase4RouterWithMissingDeps(t)
+
+	assertHealthFeatures(t, router, map[string]bool{
+		"rbac":          false,
+		"audit":         false,
+		"multi_cluster": false,
+	})
+
+	assertStatus(t, router, http.MethodGet, "/api/rbac/me", http.StatusNotFound)
+	assertStatus(t, router, http.MethodGet, "/api/rbac/roles", http.StatusNotFound)
+	assertStatus(t, router, http.MethodGet, "/api/audit/stats", http.StatusNotFound)
+	assertStatus(t, router, http.MethodGet, "/api/clusters/", http.StatusNotFound)
+}
+
+func newPhase4RouterWithMissingDeps(t *testing.T) http.Handler {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	cfg := &config.Config{
+		AllowedOrigins: []string{"*"},
+		StaticDir:      tempDir,
+		TokenCookie:    "flexdeck_token",
+		TokenCookieTTL: 24 * time.Hour,
+		K8s: config.K8sConfig{
+			Disabled: true,
+		},
+		RBAC: config.RBACConfig{
+			Disabled:   false,
+			UsersPath:  filepath.Join(tempDir, "users.json"),
+			AdminToken: phase4AdminToken,
+		},
+		Audit: config.AuditConfig{
+			Disabled: false,
+			TTLDays:  7,
+		},
+		MultiCluster: config.MultiClusterConfig{
+			Disabled:     false,
+			RegistryPath: filepath.Join(tempDir, "clusters.json"),
+		},
+	}
+
+	return NewRouterWithDeps(cfg, nil, nil, nil, nil)
+}
+
 func newPhase4Router(t *testing.T, disabled bool) http.Handler {
 	t.Helper()
 

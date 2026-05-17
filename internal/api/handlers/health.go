@@ -91,13 +91,13 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 				Enabled: !h.cfg.LoomHUD.Disabled && h.hudPushStore != nil,
 			},
 			"rbac": {
-				Enabled: !h.cfg.RBAC.Disabled,
+				Enabled: h.rbacAvailable(),
 			},
 			"audit": {
-				Enabled: !h.cfg.Audit.Disabled,
+				Enabled: h.auditAvailable(),
 			},
 			"multi_cluster": {
-				Enabled: !h.cfg.MultiCluster.Disabled,
+				Enabled: h.multiClusterAvailable(),
 			},
 			"modelcache": {
 				Enabled: !h.cfg.K8s.Disabled,
@@ -143,4 +143,16 @@ func (h *Handler) loomHUDDirectEntryEnabled() bool {
 		return false
 	}
 	return !h.cfg.LoomHUD.Disabled && h.loomHUDDirectURL() != ""
+}
+
+func (h *Handler) rbacAvailable() bool {
+	return h != nil && h.cfg != nil && !h.cfg.RBAC.Disabled && h.rbacRegistry != nil
+}
+
+func (h *Handler) auditAvailable() bool {
+	return h != nil && h.cfg != nil && !h.cfg.Audit.Disabled && h.auditStore != nil
+}
+
+func (h *Handler) multiClusterAvailable() bool {
+	return h != nil && h.cfg != nil && !h.cfg.MultiCluster.Disabled && h.clusterRegistry != nil
 }
