@@ -201,6 +201,16 @@
 - Risk: adapter cleanup steals focus from more valuable live-surface confidence work.
   - Mitigation: keep adapter deletion behind the pipeline/dashboard confidence slices.
 
+## RALPH Addendum: FlexInfer Route-Stable Navigation (2026-05-17)
+
+- Roadmap milestone: Phase 3 Deep FlexInfer integration, workbench operator-surface stability.
+- Spec section(s): FlexInfer section navigation and shared sidebar primitive.
+- Prior decisions preserved: keep `/flexinfer` as the primary route while retaining `/models` as a compatibility route; keep the workbench as a tabbed shell with one visible operator lane.
+- Scope in: router search-param section state, link-capable `OperationsSidebarNav`, focused workbench and primitive regression tests.
+- Scope out: broad router migration, visual redesign, `/models` removal, unrelated legacy model surface cleanup.
+- Acceptance criteria: section changes preserve the `/flexinfer` route, active section loads from `?section=`, old scroll coupling does not run on lane switches, and the sidebar primitive still supports button-mode consumers.
+- Validation: focused Vitest coverage passed, the full frontend test suite passed, `npm -C web run typecheck` passed, `npm -C web run lint` passed with 8 pre-existing warnings outside this slice, and a browser smoke confirmed direct-load/click behavior on the FlexInfer section route.
+
 ## Sources
 - `git diff --stat`
 - `git log --oneline --decorate -8`
