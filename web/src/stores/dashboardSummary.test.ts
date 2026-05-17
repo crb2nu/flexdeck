@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DashboardSummaryResponse } from '../lib/api/infrastructure';
 
@@ -71,6 +71,8 @@ function deferred<T>() {
 }
 
 describe('dashboardSummary + metricsStore', () => {
+  let cleanupMetricsStore: (() => void) | undefined;
+
   beforeEach(() => {
     vi.resetModules();
     mocks.summary.mockReset();
@@ -79,12 +81,18 @@ describe('dashboardSummary + metricsStore', () => {
     mocks.pollTasks.clear();
   });
 
+  afterEach(() => {
+    cleanupMetricsStore?.();
+    cleanupMetricsStore = undefined;
+  });
+
   it('hydrates metrics from the server timestamp instead of stamping a local refresh time', async () => {
     const updatedAt = '2026-04-07T18:15:00.000Z';
     mocks.summary.mockResolvedValue(buildSummary(updatedAt, 37.5));
 
     const dashboardSummaryStore = await import('./dashboardSummary');
     const metricsStoreModule = await import('./metrics');
+    cleanupMetricsStore = metricsStoreModule.disposeMetricsStoreForTest;
 
     await dashboardSummaryStore.refreshDashboardSummary();
 
@@ -110,6 +118,7 @@ describe('dashboardSummary + metricsStore', () => {
 
     const dashboardSummaryStore = await import('./dashboardSummary');
     const metricsStoreModule = await import('./metrics');
+    cleanupMetricsStore = metricsStoreModule.disposeMetricsStoreForTest;
 
     await dashboardSummaryStore.refreshDashboardSummary();
 
