@@ -1,10 +1,15 @@
 package k8s
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
 func TestParseModelMapsFields(t *testing.T) {
@@ -222,4 +227,209 @@ func TestParseModelListSkipsInvalidEntries(t *testing.T) {
 	if models[0].Name != "valid-model" {
 		t.Fatalf("unexpected model parsed: %+v", models[0])
 	}
+}
+
+func TestListFlexInferModelsSkipsMalformedCRDs(t *testing.T) {
+	client := newDynamicFlexInferClient(
+		modelObject("valid-model", "ai", map[string]any{
+			"backend": "vllm",
+			"source":  "hf://org/model",
+		}, map[string]any{
+			"phase": "Ready",
+		}),
+		&unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "ai.flexinfer/v1alpha2",
+				"kind":       "Model",
+				"metadata": map[string]any{
+					"name":      "invalid-model",
+					"namespace": "ai",
+				},
+				"spec": "not-an-object",
+			},
+		},
+	)
+
+	models, err := client.ListFlexInferModels(context.Background(), "ai")
+	if err != nil {
+		t.Fatalf("ListFlexInferModels() returned error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected one valid model, got %d", len(models))
+	}
+	if models[0].Name != "valid-model" || models[0].Status.Phase != "Ready" {
+		t.Fatalf("unexpected model parsed: %+v", models[0])
+	}
+}
+
+func TestFlexInferModelPatchOperations(t *testing.T) {
+	client := newDynamicFlexInferClient(modelObject("llama-3", "ai", map[string]any{
+		"backend": "vllm",
+		"source":  "hf://meta-llama/Llama-3",
+	}, nil))
+
+	if err := client.ScaleFlexInferModel(context.Background(), "ai", "llama-3", 3); err != nil {
+		t.Fatalf("ScaleFlexInferModel() returned error: %v", err)
+	}
+	obj := getDynamicObject(t, client, modelGVR, "ai", "llama-3")
+	minReplicas, found, err := unstructured.NestedInt64(obj.Object, "spec", "serverless", "minReplicas")
+	if err != nil || !found || minReplicas != 3 {
+		t.Fatalf("expected minReplicas patch to be applied, found=%v value=%d err=%v object=%v", found, minReplicas, err, obj.Object)
+	}
+
+	if err := client.PatchFlexInferModelSpec(context.Background(), "ai", "llama-3", map[string]any{
+		"backend": "llamacpp",
+		"gpu": map[string]any{
+			"vendor": "amd",
+		},
+	}); err != nil {
+		t.Fatalf("PatchFlexInferModelSpec() returned error: %v", err)
+	}
+	obj = getDynamicObject(t, client, modelGVR, "ai", "llama-3")
+	backend, found, err := unstructured.NestedString(obj.Object, "spec", "backend")
+	if err != nil || !found || backend != "llamacpp" {
+		t.Fatalf("expected backend patch to be applied, found=%v value=%q err=%v", found, backend, err)
+	}
+	vendor, found, err := unstructured.NestedString(obj.Object, "spec", "gpu", "vendor")
+	if err != nil || !found || vendor != "amd" {
+		t.Fatalf("expected gpu vendor patch to be applied, found=%v value=%q err=%v", found, vendor, err)
+	}
+
+	if err := client.RestartFlexInferModel(context.Background(), "ai", "llama-3"); err != nil {
+		t.Fatalf("RestartFlexInferModel() returned error: %v", err)
+	}
+	obj = getDynamicObject(t, client, modelGVR, "ai", "llama-3")
+	restartedAt, found, err := unstructured.NestedString(obj.Object, "metadata", "annotations", "flexinfer.ai/restartedAt")
+	if err != nil || !found || restartedAt == "" {
+		t.Fatalf("expected restart annotation to be applied, found=%v value=%q err=%v", found, restartedAt, err)
+	}
+}
+
+func TestListLoRAAdaptersAndCatalogsUseDefaultsAndSkipMalformedEntries(t *testing.T) {
+	client := newDynamicFlexInferClient(
+		&unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "ai.flexinfer/v1alpha2",
+				"kind":       "LoRAAdapter",
+				"metadata": map[string]any{
+					"name":      "sql-adapter",
+					"namespace": "ai",
+				},
+				"spec": map[string]any{
+					"modelRef":      "llama-3",
+					"adapterSource": "hf://org/sql-adapter",
+				},
+				"status": map[string]any{},
+			},
+		},
+		&unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "ai.flexinfer/v1alpha2",
+				"kind":       "LoRAAdapter",
+				"metadata": map[string]any{
+					"name":      "bad-adapter",
+					"namespace": "ai",
+				},
+				"spec": "not-an-object",
+			},
+		},
+		&unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "ai.flexinfer/v1alpha2",
+				"kind":       "ModelCatalog",
+				"metadata": map[string]any{
+					"name":      "hf-catalog",
+					"namespace": "ai",
+				},
+				"spec": map[string]any{
+					"source": "HuggingFace",
+					"models": []any{
+						map[string]any{
+							"name": "llama-3",
+							"size": "8B",
+							"tags": []any{"chat", "llm"},
+						},
+					},
+				},
+				"status": map[string]any{
+					"lastSyncTime": "2026-05-17T10:00:00Z",
+				},
+			},
+		},
+		&unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "ai.flexinfer/v1alpha2",
+				"kind":       "ModelCatalog",
+				"metadata": map[string]any{
+					"name":      "bad-catalog",
+					"namespace": "ai",
+				},
+				"spec": "not-an-object",
+			},
+		},
+	)
+
+	adapters, err := client.ListLoRAAdapters(context.Background(), "ai")
+	if err != nil {
+		t.Fatalf("ListLoRAAdapters() returned error: %v", err)
+	}
+	if len(adapters) != 1 {
+		t.Fatalf("expected one valid adapter, got %d", len(adapters))
+	}
+	if adapters[0].State != "Pending" {
+		t.Fatalf("expected adapter without status to default Pending, got %q", adapters[0].State)
+	}
+	if adapters[0].ModelRef != "llama-3" || adapters[0].AdapterSource != "hf://org/sql-adapter" {
+		t.Fatalf("adapter fields did not round-trip: %+v", adapters[0])
+	}
+
+	catalogs, err := client.ListModelCatalogs(context.Background(), "ai")
+	if err != nil {
+		t.Fatalf("ListModelCatalogs() returned error: %v", err)
+	}
+	if len(catalogs) != 1 {
+		t.Fatalf("expected one valid catalog, got %d", len(catalogs))
+	}
+	if catalogs[0].Source != "HuggingFace" || catalogs[0].LastSyncTime == "" {
+		t.Fatalf("catalog fields did not round-trip: %+v", catalogs[0])
+	}
+	if len(catalogs[0].Models) != 1 || catalogs[0].Models[0].Name != "llama-3" || len(catalogs[0].Models[0].Tags) != 2 {
+		t.Fatalf("catalog model refs did not round-trip: %+v", catalogs[0].Models)
+	}
+}
+
+func newDynamicFlexInferClient(objects ...runtime.Object) *Client {
+	scheme := runtime.NewScheme()
+	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
+		modelGVR:        "ModelList",
+		loraAdapterGVR:  "LoRAAdapterList",
+		modelCatalogGVR: "ModelCatalogList",
+	}, objects...)
+	return &Client{dynClient: dynClient}
+}
+
+func modelObject(name, namespace string, spec map[string]any, status map[string]any) *unstructured.Unstructured {
+	obj := map[string]any{
+		"apiVersion": "ai.flexinfer/v1alpha2",
+		"kind":       "Model",
+		"metadata": map[string]any{
+			"name":      name,
+			"namespace": namespace,
+		},
+		"spec": spec,
+	}
+	if status != nil {
+		obj["status"] = status
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
+
+func getDynamicObject(t *testing.T, client *Client, gvr schema.GroupVersionResource, namespace, name string) *unstructured.Unstructured {
+	t.Helper()
+
+	obj, err := client.dynClient.Resource(gvr).Namespace(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get dynamic object %s/%s: %v", namespace, name, err)
+	}
+	return obj
 }
