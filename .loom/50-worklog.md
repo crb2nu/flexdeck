@@ -215,3 +215,23 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S4] `web/src/components/Dashboard/index.tsx`
   - [S5] `web/src/components/Dashboard/useDashboardSummaryState.test.tsx`
   - [S6] `rg --files web/src | rg '\.test\.(ts|tsx)$' | sort | rg 'Pipeline|Dashboard|Agents|Models'`
+
+### 2026-05-17 (RALPH Slice: FlexInfer Route-Stable Section Navigation)
+
+- What changed:
+  - Rebased the old `feat/flexinfer-nav-contract` branch onto current `origin/main` and found the route-stable navigation implementation was already present on main.
+  - Preserved the current main implementation for `OperationsSidebarNav`, `FlexInfer/Workbench`, and their tests rather than replaying older duplicate code.
+  - Kept the RALPH closeout note here so future sessions know this branch’s original code delta was superseded by main.
+- Why:
+  - The active RALPH pass should not overwrite newer operator-surface work just to keep an old branch alive. Current main already has router search-param section state, route-aware sidebar links, and regression coverage.
+- Validation:
+  - Before the rebase, focused tests, full frontend tests, typecheck, lint, and a browser smoke passed on the old branch tip.
+  - After conflict review, the final rebased branch should be revalidated because the code paths were resolved to current `origin/main`.
+- What’s next:
+  - Keep this MR as a docs-only RALPH closeout if useful, or close it if no branch-local delta remains after rebase.
+  - Continue with a fresh next slice from current `.loom` planning instead of reviving the superseded navigation patch.
+- Sources:
+  - [S1] `web/src/components/FlexInfer/Workbench.tsx`
+  - [S2] `web/src/components/shared/OperationsSidebarNav.tsx`
+  - [S3] `web/src/components/FlexInfer/Workbench.test.tsx`
+  - [S4] `web/src/components/shared/OperationsSidebarNav.test.tsx`
