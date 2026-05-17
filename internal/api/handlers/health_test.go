@@ -114,7 +114,7 @@ func TestHealthLoomHUDEnabledWhenPullURLSet(t *testing.T) {
 	}
 }
 
-func TestHealthFeatureFlagsReflectConfig(t *testing.T) {
+func TestHealthFeatureFlagsReflectRuntimeAvailability(t *testing.T) {
 	t.Parallel()
 
 	h := &Handler{
@@ -161,14 +161,14 @@ func TestHealthFeatureFlagsReflectConfig(t *testing.T) {
 	if resp.Features["loom_hud_push"].Enabled {
 		t.Fatal("expected loom_hud_push.enabled=false when LOOM_HUD_DISABLED=true")
 	}
-	if !resp.Features["rbac"].Enabled {
-		t.Fatal("expected rbac.enabled=true when RBAC_DISABLED=false")
+	if resp.Features["rbac"].Enabled {
+		t.Fatal("expected rbac.enabled=false when registry is unavailable")
 	}
 	if resp.Features["audit"].Enabled {
 		t.Fatal("expected audit.enabled=false when AUDIT_DISABLED=true")
 	}
-	if !resp.Features["multi_cluster"].Enabled {
-		t.Fatal("expected multi_cluster.enabled=true when MULTICLUSTER_DISABLED=false")
+	if resp.Features["multi_cluster"].Enabled {
+		t.Fatal("expected multi_cluster.enabled=false when registry is unavailable")
 	}
 }
 
