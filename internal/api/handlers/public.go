@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -534,6 +536,20 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if h.metricsStore != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		ciResp, err := h.publicCIStatusFromStore(ctx, 5)
+		cancel()
+		if err == nil && len(ciResp.Pipelines) > 0 {
+			h.cachePublicCIStatus(ciResp)
+			respondJSON(w, http.StatusOK, ciResp)
+			return
+		}
+		if err != nil {
+			slog.Warn("failed to build public CI status from metrics store", "error", err)
+		}
+	}
+
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
@@ -548,11 +564,13 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	liveCtx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	defer cancel()
+	client := &http.Client{Timeout: 4 * time.Second}
 
 	// Fetch projects (order by recent activity, exclude forks)
 	apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=5&order_by=last_activity_at", gitlabURL)
-	req, err := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(liveCtx, "GET", apiURL, nil)
 	if err != nil {
 		slog.Error("failed to create GitLab request", "error", err)
 		if publicAllowDemoFallback() {
@@ -614,7 +632,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	for _, proj := range projects {
 		// Get latest pipeline
 		pipelineURL := fmt.Sprintf("%s/api/v4/projects/%d/pipelines?per_page=1", gitlabURL, proj.ID)
-		pReq, _ := http.NewRequest("GET", pipelineURL, nil)
+		pReq, _ := http.NewRequestWithContext(liveCtx, "GET", pipelineURL, nil)
 		pReq.Header.Set("PRIVATE-TOKEN", token)
 
 		pResp, err := client.Do(pReq)
@@ -641,7 +659,7 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 
 		// Get jobs for this pipeline
 		jobsURL := fmt.Sprintf("%s/api/v4/projects/%d/pipelines/%d/jobs", gitlabURL, proj.ID, pipeline.ID)
-		jReq, _ := http.NewRequest("GET", jobsURL, nil)
+		jReq, _ := http.NewRequestWithContext(liveCtx, "GET", jobsURL, nil)
 		jReq.Header.Set("PRIVATE-TOKEN", token)
 
 		jResp, err := client.Do(jReq)
@@ -725,13 +743,95 @@ func (h *Handler) PublicCIStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cache the response (60s TTL)
-	if h.cache != nil {
-		if data, err := json.Marshal(ciResp); err == nil {
-			h.cache.Set(r.Context(), "ci:status:public", data, 60*time.Second)
-		}
-	}
+	h.cachePublicCIStatus(ciResp)
 
 	respondJSON(w, http.StatusOK, ciResp)
+}
+
+func (h *Handler) publicCIStatusFromStore(ctx context.Context, limit int) (PublicCIResponse, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	projectIDs, err := h.metricsStore.GetAllPipelineProjectIDs(ctx)
+	if err != nil {
+		return PublicCIResponse{}, err
+	}
+
+	pipelines := make([]PublicCIPipeline, 0, len(projectIDs))
+	for _, projectID := range projectIDs {
+		if ctx.Err() != nil {
+			return PublicCIResponse{}, ctx.Err()
+		}
+
+		runs, err := h.metricsStore.GetPipelineHistory(ctx, projectID, 1)
+		if err != nil || len(runs) == 0 {
+			continue
+		}
+
+		run := runs[0]
+		stages := make([]PublicCIStage, 0, len(run.Stages))
+		for idx, stage := range run.Stages {
+			jobID := fmt.Sprintf("%d:%d:%s", run.PipelineID, idx, stage.Name)
+			stages = append(stages, PublicCIStage{
+				Name:   stage.Name,
+				Status: stage.Status,
+				Jobs: []PublicCIJob{
+					{
+						ID:       jobID,
+						Name:     stage.Name,
+						Stage:    stage.Name,
+						Status:   stage.Status,
+						Duration: stage.Duration,
+					},
+				},
+			})
+		}
+
+		projectName := h.metricsStore.GetProjectName(ctx, projectID)
+		if projectName == "" {
+			projectName = fmt.Sprintf("Project #%d", projectID)
+		}
+
+		pipelines = append(pipelines, PublicCIPipeline{
+			ID:         fmt.Sprintf("%d", run.PipelineID),
+			Project:    sanitizeProjectName(projectName),
+			Ref:        run.Ref,
+			Status:     run.Status,
+			Visibility: "internal",
+			Stages:     stages,
+			CreatedAt:  run.CreatedAt.Format(time.RFC3339),
+			Duration:   run.Duration,
+		})
+	}
+
+	sort.Slice(pipelines, func(i, j int) bool {
+		return pipelines[i].CreatedAt > pipelines[j].CreatedAt
+	})
+	if len(pipelines) > limit {
+		pipelines = pipelines[:limit]
+	}
+
+	return PublicCIResponse{
+		Pipelines: pipelines,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:    "live",
+	}, nil
+}
+
+func (h *Handler) cachePublicCIStatus(ciResp PublicCIResponse) {
+	if h.cache == nil {
+		return
+	}
+
+	data, err := json.Marshal(ciResp)
+	if err != nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	h.cache.Set(ctx, "ci:status:public", data, 60*time.Second)
 }
 
 // getPublicCIDemo returns demo pipeline data
