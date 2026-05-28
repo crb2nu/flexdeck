@@ -11,12 +11,43 @@ import (
 )
 
 type rbacManifest struct {
-	Kind string `yaml:"kind"`
+	Kind     string `yaml:"kind"`
+	Metadata struct {
+		Name string `yaml:"name"`
+	} `yaml:"metadata"`
 	Rules []struct {
 		APIGroups []string `yaml:"apiGroups"`
 		Resources []string `yaml:"resources"`
 		Verbs     []string `yaml:"verbs"`
 	} `yaml:"rules"`
+}
+
+type deploymentManifest struct {
+	Kind string `yaml:"kind"`
+	Spec struct {
+		Selector struct {
+			MatchLabels map[string]string `yaml:"matchLabels"`
+		} `yaml:"selector"`
+		Template struct {
+			Spec struct {
+				ServiceAccountName string `yaml:"serviceAccountName"`
+				Containers         []struct {
+					Name string `yaml:"name"`
+					Env  []struct {
+						Name  string `yaml:"name"`
+						Value string `yaml:"value"`
+					} `yaml:"env"`
+				} `yaml:"containers"`
+			} `yaml:"spec"`
+		} `yaml:"template"`
+	} `yaml:"spec"`
+}
+
+type serviceManifest struct {
+	Kind string `yaml:"kind"`
+	Spec struct {
+		Selector map[string]string `yaml:"selector"`
+	} `yaml:"spec"`
 }
 
 func TestFlexdeckClusterRoleIncludesModelCacheReadAccess(t *testing.T) {
@@ -49,6 +80,94 @@ func TestFlexdeckClusterRoleIncludesModelCacheReadAccess(t *testing.T) {
 	}
 
 	t.Fatal("expected flexdeck ClusterRole to grant get/list/watch on ai.flexinfer modelcaches")
+}
+
+func TestPublicReaderClusterRoleIsReadOnlyAndNonSensitive(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "public-serviceaccount.yaml"))
+	if err != nil {
+		t.Fatalf("read public serviceaccount manifest: %v", err)
+	}
+
+	var publicRole *rbacManifest
+	decoder := yaml.NewDecoder(strings.NewReader(string(content)))
+	for {
+		var doc rbacManifest
+		err := decoder.Decode(&doc)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("decode public serviceaccount manifest: %v", err)
+		}
+		if doc.Kind == "ClusterRole" && doc.Metadata.Name == "flexdeck-public-reader" {
+			publicRole = &doc
+			break
+		}
+	}
+	if publicRole == nil {
+		t.Fatal("expected flexdeck-public-reader ClusterRole")
+	}
+
+	for _, rule := range publicRole.Rules {
+		for _, verb := range rule.Verbs {
+			if !contains([]string{"get", "list"}, verb) {
+				t.Fatalf("public reader grants non-read-only verb %q in rule %+v", verb, rule)
+			}
+		}
+		if contains(rule.Resources, "secrets") || contains(rule.Resources, "pods/log") || contains(rule.Resources, "configmaps") {
+			t.Fatalf("public reader grants sensitive resource in rule %+v", rule)
+		}
+	}
+}
+
+func TestPublicDeploymentUsesLimitedServiceAccount(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "public-deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read public deployment manifest: %v", err)
+	}
+
+	var deployment deploymentManifest
+	if err := yaml.Unmarshal(content, &deployment); err != nil {
+		t.Fatalf("decode public deployment manifest: %v", err)
+	}
+	if deployment.Kind != "Deployment" {
+		t.Fatalf("expected Deployment, got %q", deployment.Kind)
+	}
+	if deployment.Spec.Template.Spec.ServiceAccountName != "flexdeck-public" {
+		t.Fatalf("expected public deployment to use flexdeck-public service account, got %q", deployment.Spec.Template.Spec.ServiceAccountName)
+	}
+	if got := deployment.Spec.Selector.MatchLabels["app.kubernetes.io/component"]; got != "public-api" {
+		t.Fatalf("expected public-api selector, got %q", got)
+	}
+
+	env := map[string]string{}
+	if len(deployment.Spec.Template.Spec.Containers) == 0 {
+		t.Fatal("expected at least one container")
+	}
+	for _, item := range deployment.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item.Value
+	}
+	if env["K8S_READONLY"] != "true" {
+		t.Fatalf("expected K8S_READONLY=true, got %q", env["K8S_READONLY"])
+	}
+	if _, ok := env["GITLAB_TOKEN"]; ok {
+		t.Fatal("public deployment must not mount GITLAB_TOKEN")
+	}
+}
+
+func TestPrimaryServiceDoesNotSelectPublicPods(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "service.yaml"))
+	if err != nil {
+		t.Fatalf("read service manifest: %v", err)
+	}
+
+	var service serviceManifest
+	if err := yaml.Unmarshal(content, &service); err != nil {
+		t.Fatalf("decode service manifest: %v", err)
+	}
+	if got := service.Spec.Selector["app.kubernetes.io/component"]; got != "server" {
+		t.Fatalf("expected primary service to select only server pods, got component=%q", got)
+	}
 }
 
 func contains(values []string, want string) bool {
