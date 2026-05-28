@@ -1,7 +1,7 @@
 # ==============================================================================
 # FRONTEND BUILD STAGE
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM registry.harbor.lan/dockerhub-cache/library/node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
 
 WORKDIR /app/web
 
@@ -17,7 +17,7 @@ RUN npm run build
 # ==============================================================================
 # BACKEND BUILD STAGE
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM registry.harbor.lan/dockerhub-cache/library/golang:1.23-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ==============================================================================
 # RUNTIME STAGE (minimal)
 # ==============================================================================
-FROM registry.harbor.lan/dockerhub-cache/library/alpine:3.21 AS runtime
+FROM alpine:3.21 AS runtime
 
 # Install runtime dependencies in single layer
 RUN apk add --no-cache ca-certificates tzdata && \

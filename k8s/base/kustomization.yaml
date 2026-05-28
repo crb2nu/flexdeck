@@ -6,10 +6,13 @@ namespace: flexdeck
 resources:
   - namespace.yaml
   - serviceaccount.yaml
+  - public-serviceaccount.yaml
   - secret.sops.yaml
   - redis.yaml
   - deployment.yaml
+  - public-deployment.yaml
   - service.yaml
+  - public-service.yaml
   - ingress.yaml
 
 labels:

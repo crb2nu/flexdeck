@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flexdeck-public
+  namespace: flexdeck
+  labels:
+    app.kubernetes.io/name: flexdeck
+    app.kubernetes.io/component: public-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flexdeck
+      app.kubernetes.io/component: public-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: flexdeck
+        app.kubernetes.io/component: public-api
+    spec:
+      serviceAccountName: flexdeck-public
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node.flexstack.io/class: services
+      containers:
+        - name: flexdeck
+          image: registry.harbor.lan/library/flexdeck:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: K8S_DISABLED
+              value: "false"
+            - name: K8S_READONLY
+              value: "true"
+            - name: PUBLIC_API_ALLOW_DEMO
+              value: "true"
+            - name: PROM_URL
+              value: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+            - name: REDIS_URL
+              value: "redis://redis.flexdeck.svc.cluster.local:6379/0"
+            - name: LITELLM_DISABLED
+              value: "true"
+            - name: LOKI_DISABLED
+              value: "true"
+            - name: GRAFANA_DISABLED
+              value: "true"
+            - name: ALERTMANAGER_DISABLED
+              value: "true"
+            - name: LANGFUSE_DISABLED
+              value: "true"
+            - name: LOOM_HUD_DISABLED
+              value: "true"
+            - name: AGENTS_DISABLED
+              value: "true"
+            - name: RBAC_DISABLED
+              value: "true"
+            - name: AUDIT_DISABLED
+              value: "true"
+            - name: MULTICLUSTER_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          emptyDir: {}
+      securityContext:
+        fsGroup: 1000
