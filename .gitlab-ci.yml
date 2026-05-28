@@ -17,6 +17,9 @@ variables:
   IMAGE_NAME: flexdeck
   GO_VERSION: "1.23"
   NODE_VERSION: "20"
+  GO_CI_IMAGE: mcr.microsoft.com/devcontainers/go:1-${GO_VERSION}-bookworm
+  NODE_CI_IMAGE: mcr.microsoft.com/devcontainers/javascript-node:${NODE_VERSION}
+  ALPINE_CI_IMAGE: alpine:3.21
   # BuildKit configuration
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
   # Work around GitLab advertising an in-cluster clone URL to runners outside the cluster.
@@ -83,7 +86,7 @@ variables:
 
 lint:backend:
   stage: lint
-  image: registry.harbor.lan/dockerhub-cache/library/golang:${GO_VERSION}-alpine
+  image: ${GO_CI_IMAGE}
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -101,7 +104,7 @@ lint:backend:
 
 lint:frontend:
   stage: lint
-  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
+  image: ${NODE_CI_IMAGE}
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
@@ -123,7 +126,7 @@ lint:frontend:
 # Test backend
 test:backend:
   stage: test
-  image: registry.harbor.lan/dockerhub-cache/library/golang:${GO_VERSION}-alpine
+  image: ${GO_CI_IMAGE}
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -148,7 +151,7 @@ test:backend:
 # Test frontend (typecheck only - fast)
 test:frontend:
   stage: test
-  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
+  image: ${NODE_CI_IMAGE}
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
@@ -169,7 +172,7 @@ test:frontend:
 
 perf:topology:
   stage: test
-  image: registry.harbor.lan/dockerhub-cache/library/node:${NODE_VERSION}-alpine
+  image: ${NODE_CI_IMAGE}
   <<: *node-cache
   variables:
     npm_config_registry: "http://verdaccio.ci.svc.cluster.local:4873"
@@ -271,7 +274,7 @@ build:
 
 deploy:
   stage: deploy
-  image: registry.harbor.lan/dockerhub-cache/library/alpine:3.21
+  image: ${ALPINE_CI_IMAGE}
   before_script:
     - |
       # Bootstrap CA certificates
