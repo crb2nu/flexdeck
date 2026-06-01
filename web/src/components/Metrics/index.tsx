@@ -20,20 +20,17 @@ import EnhancedChart from "./EnhancedChart";
 
 const GrafanaDashboards = lazy(() => import("./GrafanaDashboards"));
 const Alerts = lazy(() => import("../Alerts"));
-const TrafficReport = lazy(() => import("./TrafficReport"));
 
-const METRICS_TABS: TabDef<"traffic" | "prometheus" | "grafana" | "alerts">[] =
-  [
-    { id: "traffic", label: "Traffic", color: "white" },
-    { id: "prometheus", label: "Prometheus", color: "white" },
-    { id: "grafana", label: "Grafana", color: "white" },
-    { id: "alerts", label: "Alerts", color: "white" },
-  ];
+type MetricsTabId = "prometheus" | "grafana" | "alerts";
+
+const METRICS_TABS: TabDef<MetricsTabId>[] = [
+  { id: "prometheus", label: "Prometheus", color: "white" },
+  { id: "grafana", label: "Grafana", color: "white" },
+  { id: "alerts", label: "Alerts", color: "white" },
+];
 
 const Metrics: Component = () => {
-  const [metricsTab, setMetricsTab] = createSignal<
-    "traffic" | "prometheus" | "grafana" | "alerts"
-  >("traffic");
+  const [metricsTab, setMetricsTab] = createSignal<MetricsTabId>("prometheus");
   const {
     panels,
     loading,
@@ -64,7 +61,7 @@ const Metrics: Component = () => {
             onChange={setMetricsTab}
           />
           <Show when={metricsTab() === "prometheus" && lastUpdated()}>
-            <span class="text-xs text-text-dim">
+            <span class="font-mono text-[10px] text-text-dim">
               Updated {lastUpdated()?.toLocaleTimeString()}
             </span>
           </Show>
@@ -106,30 +103,6 @@ const Metrics: Component = () => {
               {(panel) => <MetricCard panel={panel} loading={loading()} />}
             </For>
           </div>
-        </Show>
-
-        {/* Traffic report tab content */}
-        <Show when={metricsTab() === "traffic"}>
-          <ErrorBoundary
-            fallback={(err) => (
-              <ErrorState
-                message={`Failed to load traffic report: ${err.message}`}
-                variant="banner"
-              />
-            )}
-          >
-            <Suspense
-              fallback={
-                <LoadingState
-                  variant="inline"
-                  size="sm"
-                  message="Loading traffic report..."
-                />
-              }
-            >
-              <TrafficReport />
-            </Suspense>
-          </ErrorBoundary>
         </Show>
 
         {/* Grafana tab content */}

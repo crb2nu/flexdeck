@@ -1,7 +1,7 @@
 import { Component } from "solid-js";
 import PageHeader from "../shared/PageHeader";
 import PageScrollBody from "../shared/PageScrollBody";
-import TrafficReport from "../Metrics/TrafficReport";
+import TrafficReport from "./TrafficReport";
 
 const WebsiteMetrics: Component = () => {
   return (
