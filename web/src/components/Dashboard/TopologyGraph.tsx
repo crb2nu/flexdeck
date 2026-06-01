@@ -12,6 +12,7 @@ import {
 } from './topology/layoutEngine';
 import type { TopologyNode as D3Node, TopologyLink as D3Link } from './topology/types';
 import { createTopologyViewportCache, refreshVisibleTopology } from './topology/visibility';
+import { computeFrameStats, safeAverage } from './topology/perfStats';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -490,38 +491,16 @@ const TopologyGraph: Component<Props> = (props) => {
     frameSampleCount = Math.min(frameSampleCount + 1, PERF_FRAME_WINDOW);
   };
 
-  const collectFrameStats = () => {
-    const samples = Array.from(frameSamples.slice(0, frameSampleCount));
-    let avgFrameMs = 0;
-    if (samples.length > 0) {
-      let total = 0;
-      for (const sample of samples) total += sample;
-      avgFrameMs = total / samples.length;
-      samples.sort((a, b) => a - b);
-    }
-    const p95Index = samples.length > 0 ? Math.min(samples.length - 1, Math.floor(samples.length * 0.95)) : 0;
-    const p95FrameMs = samples.length > 0 ? samples[p95Index] : 0;
-    const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
-    return { avgFrameMs, fps, p95FrameMs };
-  };
+  const collectFrameStats = () =>
+    computeFrameStats(Array.from(frameSamples.slice(0, frameSampleCount)));
 
   const buildPerfSnapshot = (): PerfSnapshot => {
     const { avgFrameMs, fps, p95FrameMs } = collectFrameStats();
-    const avgSimulationSettleMs = perfCounters.simulationSettles > 0
-      ? perfCounters.simulationTotalSettleMs / perfCounters.simulationSettles
-      : 0;
-    const avgVisibilityRefreshMs = perfCounters.visibilityRefreshes > 0
-      ? perfCounters.visibilityRefreshTotalMs / perfCounters.visibilityRefreshes
-      : 0;
-    const avgBaseLayerDrawMs = perfCounters.baseLayerDraws > 0
-      ? perfCounters.baseLayerDrawTotalMs / perfCounters.baseLayerDraws
-      : 0;
-    const avgOverlayLayerDrawMs = perfCounters.overlayLayerDraws > 0
-      ? perfCounters.overlayLayerDrawTotalMs / perfCounters.overlayLayerDraws
-      : 0;
-    const avgStyleCacheRebuildMs = perfCounters.styleCacheRebuilds > 0
-      ? perfCounters.styleCacheRebuildTotalMs / perfCounters.styleCacheRebuilds
-      : 0;
+    const avgSimulationSettleMs = safeAverage(perfCounters.simulationTotalSettleMs, perfCounters.simulationSettles);
+    const avgVisibilityRefreshMs = safeAverage(perfCounters.visibilityRefreshTotalMs, perfCounters.visibilityRefreshes);
+    const avgBaseLayerDrawMs = safeAverage(perfCounters.baseLayerDrawTotalMs, perfCounters.baseLayerDraws);
+    const avgOverlayLayerDrawMs = safeAverage(perfCounters.overlayLayerDrawTotalMs, perfCounters.overlayLayerDraws);
+    const avgStyleCacheRebuildMs = safeAverage(perfCounters.styleCacheRebuildTotalMs, perfCounters.styleCacheRebuilds);
 
     return {
       fps,
