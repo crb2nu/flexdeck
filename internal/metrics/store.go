@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"strings"
 	"sync"
@@ -452,8 +453,8 @@ var dashboardQueries = map[string]string{
 	"clusterMemTotal": `sum(node_memory_MemTotal_bytes)`,
 	// Node (9)
 	"nodeCpu":      `100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`,
-	"nodeMemPct":   `(1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100`,
-	"nodeMemTotal": `node_memory_MemTotalBytes`,
+	"nodeMemPct":   `(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`,
+	"nodeMemTotal": `node_memory_MemTotal_bytes`,
 	"gpuUtil":      `avg by (instance) (amdgpu_gpu_busy_percent)`,
 	"vramUsed":     `sum by (instance) (amdgpu_vram_used_bytes)`,
 	"vramTotal":    `sum by (instance) (amdgpu_vram_total_bytes)`,
@@ -714,6 +715,9 @@ func singleVal(samples []promSample) float64 {
 func normalizeNodeName(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	v = strings.Split(v, ":")[0]
+	if net.ParseIP(v) != nil {
+		return v
+	}
 	v = strings.Split(v, ".")[0]
 	return v
 }

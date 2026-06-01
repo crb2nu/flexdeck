@@ -400,6 +400,21 @@ func TestStore_MaterializeDashboardSummary(t *testing.T) {
 
 func float64Ptr(v float64) *float64 { return &v }
 
+func TestNormalizeNodeNamePreservesIPInstances(t *testing.T) {
+	tests := map[string]string{
+		"10.42.2.115:9100":           "10.42.2.115",
+		"192.168.50.190:9100":        "192.168.50.190",
+		"k3s-w-7.flexinfer.lan:9100": "k3s-w-7",
+		" K3S-W-7:9100 ":             "k3s-w-7",
+	}
+
+	for input, want := range tests {
+		if got := normalizeNodeName(input); got != want {
+			t.Fatalf("normalizeNodeName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestStore_GetThroughput_RehydratesSummaryOnMiss(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
