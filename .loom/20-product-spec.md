@@ -1,77 +1,80 @@
-# Product Spec — Post-Coherence Execution Reset (2026-04-03)
+# Product Spec — FlexInfer Navigation Stability And Shared Sidebar Primitive Upgrade (2026-04-12)
 
 ## Summary
-This planning branch is no longer defining the original operational-coherence wave. That wave has already landed on `main`. The purpose of this spec is to reset the branch into a truthful next-step artifact: preserve the still-useful context from the reopened stash, clearly archive completed work, and define how we choose and execute the next live slice without dragging stale assumptions or build artifacts forward.
+Fix the FlexInfer page so section changes do not fight the app router, do not flicker, and do not break deep links. Use that work to harden the shared sidebar primitive so it can support both local button-style panels and router-aware link navigation without forcing every screen into the same interaction model.
 
 ## Goals
-1. Convert the reopened March planning bundle into a current April execution baseline.
-2. Preserve useful context such as canonical repo-ID/runtime guidance and upstream contract-awareness.
-3. Select the next implementation slice from live evidence rather than from already-merged backlog items.
-4. Keep future execution work cleanly separated from unrelated binary artifacts or accidental restored diffs.
+1. Eliminate FlexInfer route flicker caused by section navigation.
+2. Make FlexInfer sidebar items behave as real navigation, not just state toggles.
+3. Keep `/flexinfer` as the canonical entry point while preserving `/models` compatibility.
+4. Upgrade the shared sidebar primitive so other screens can opt into proper link semantics when needed.
+5. Cover the fix with tests that reflect the same routing mode production uses.
 
 ## Non-Goals
-- Re-planning the already-merged operator-state and pipeline state-alignment work as if it were still pending.
-- Treating the March API-sync addendum as mandatory new work without fresh drift evidence.
-- Mixing build artifacts into planning commits.
-- Broad roadmap rewriting that obscures the distinction between merged history and branch-local planning.
+- Replacing `HashRouter` across the whole app.
+- Redesigning the full FlexInfer visual language.
+- Removing every legacy `/models` reference in one pass.
+- Refactoring unrelated shared primitives unless they are needed to support the sidebar fix.
 
-## Epic 1: Planning Baseline Reset (Priority 1)
+## User Stories
+- As an operator, when I click a section in the FlexInfer sidebar, the active lane changes without route flicker or jumping to the wrong page.
+- As an operator, when I reload or share the FlexInfer page, the URL remains valid and lands on the intended screen.
+- As a developer, I can use the same sidebar primitive for both state-only sections and router-backed links without cloning styles into bespoke components.
 
-### Requirements
-- Rewrite the reopened `.loom` docs so completed March/April work is described as completed, not pending.
-- Preserve the canonical `services/flexdeck` repo-ID guidance and the stale `services-flexdeck` warning.
-- Mark the inventory snapshot as carry-forward context unless a fresh runtime census is explicitly re-run.
+## Functional Requirements
 
-### Acceptance Criteria
-- A new session can read `.loom/` and immediately tell which work is already merged versus what remains speculative.
-- The planning docs no longer invite re-implementation of finished FlexInfer/HUD/Pipeline operator-state work.
+### FR1. Canonical FlexInfer Route
+- `/flexinfer` remains the primary route exposed by app nav, command palette, and keyboard shortcuts.
+- `/models` continues to resolve to the same screen during the migration window.
+- The implementation should define whether `/models` stays as an alias or is normalized to `/flexinfer` via replace-style navigation.
 
-## Epic 2: Live Gap Re-Qualification (Priority 1)
+### FR2. Router-Safe Section State
+- FlexInfer section selection must stop writing raw values into `window.location.hash`.
+- If section state remains URL-addressable, it must use a router-aware mechanism that composes with `HashRouter` instead of overwriting it.
+- Section changes must not discard the underlying route.
 
-### Requirements
-- Audit the remaining high-churn orchestration surfaces for direct confidence gaps.
-- Use current evidence, not March assumptions, to determine the next slice.
-- Treat reopened binary/artifact diffs as separate cleanup decisions, not implicit scope.
+### FR3. Stable Workbench Interaction Model
+- FlexInfer should use one coherent model:
+  - tabbed shell with one active section visible at a time, or
+  - scroll-linked document with anchorable sections
+- The recommended default is the tabbed-shell model because the current UI already hides inactive sections.
+- Any scrolling behavior that only exists to support the old hash model should be removed.
 
-### Candidate Focus Areas
-- `web/src/components/Pipeline/usePipelineController.ts`
-- `web/src/components/Dashboard/index.tsx`
-- `web/src/components/Dashboard/TopologyGraph.tsx`
-- `web/src/components/Agents/HUDActivityFeed.tsx`
+### FR4. Shared Sidebar Primitive Upgrade
+- `OperationsSidebarNav` should support both:
+  - button mode for local state changes
+  - link mode for route-aware navigation
+- The primitive should keep one visual treatment across both modes so screens do not fork styling just to get correct semantics.
 
-### Acceptance Criteria
-- The next implementation target is named explicitly with file-level ownership.
-- The rationale is anchored in current repo evidence.
+### FR5. Regression Coverage
+- Tests must cover the FlexInfer navigation flow under a router configuration that matches production hash routing.
+- Tests must verify that section changes preserve the FlexInfer route while updating whatever state marker replaces the old hash behavior.
+- The primitive should gain direct behavior coverage for at least one button-mode consumer and one link-mode consumer, or equivalent focused unit coverage.
 
-## Epic 3: First Follow-On Slice Selection (Priority 2)
+## Acceptance Criteria
+- Clicking FlexInfer sidebar items no longer causes route loss or visible route flicker.
+- A section change preserves the FlexInfer route and updates the active workbench state consistently.
+- Overview focus cards and sidebar items use the same section-change path.
+- `OperationsSidebarNav` can render router-aware links without breaking existing button-mode consumers.
+- Tests fail if a future change reintroduces bare-fragment replacement under `HashRouter`.
 
-### Preferred First Slice
-Controller and orchestration confidence:
-- add direct tests for pipeline controller polling/action lifecycle and fallback behavior
-- add dashboard-shell assertions for summary/topology orchestration where multiple subsystems converge
+## UX Notes
+- The current sidebar visuals are serviceable; the important change is semantic correctness and motion stability.
+- Link-mode items should retain the current visual affordances for active state, value badges, and grouped headings.
+- FlexInfer should avoid scroll-jump behavior unless the page is intentionally redesigned as a multi-section document.
 
-### Alternative Slice
-Legacy adapter end-state:
-- decide whether `InferenceTab`, `ProxyTab`, and `PipelinesTab` remain permanent compatibility shells or are ready for deletion in a dedicated cleanup pass
-
-### Acceptance Criteria
-- The branch ends with one clearly recommended first implementation slice, including validation steps.
-- Future execution can start from a clean branch without redoing this planning triage.
-
-## Cross-Cutting Rules
-- Prefer truthful planning over optimistic backlog carry-forward.
-- Preserve historical context, but label it as historical context.
-- Keep planning branches scoped to planning documents unless the user explicitly asks for mixed execution work.
-- Avoid bundling `server` or other generated artifacts into planning-oriented commits.
-
-## Validation
-- Review the planning diff with `git diff --stat` and spot-check the updated `.loom` documents.
-- If this branch is later converted into an execution branch, restage only the intended planning files.
+## Risks
+- If link semantics are added directly into the primitive without a clean API, Agents and other current button-mode consumers may pick up accidental behavior changes.
+- If `/models` is removed too aggressively, older bookmarks or muscle memory may break.
+- If tests continue to run outside the real routing mode, the regression can return unnoticed.
 
 ## Sources
-- `git diff --stat`
-- `git log --oneline --decorate -8`
-- `.loom/00-index.md`
-- `.loom/10-research.md`
-- `.loom/30-implementation-plan.md`
-- `.loom/50-worklog.md`
+- `web/src/index.tsx:3-47`
+- `web/src/lib/featureFlags.ts:38-68`
+- `web/src/hooks/useKeyboardShortcuts.ts:25-34`
+- `web/src/components/QuickLaunch/CommandPalette.tsx:44-50`
+- `web/src/components/FlexInfer/Workbench.tsx:156-215`
+- `web/src/components/FlexInfer/Workbench.tsx:391-472`
+- `web/src/components/FlexInfer/Workbench.tsx:1186-1200`
+- `web/src/components/shared/OperationsSidebarNav.tsx:3-86`
+- `web/src/components/FlexInfer/Workbench.test.tsx:236-346`
