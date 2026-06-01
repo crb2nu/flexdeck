@@ -36,6 +36,7 @@ const ModelGPUTable: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
+  const [updatedAt, setUpdatedAt] = createSignal(0);
   const stableModels = stableListByKey(
     models,
     (model) => `${model.modelName}@${model.node}`,
@@ -55,6 +56,7 @@ const ModelGPUTable: Component = () => {
       const aggregated = aggregateModelGPUEntries(entries);
       setModels(aggregated);
       setError('');
+      setUpdatedAt(Date.now());
 
       setHistoryMap(prev => {
         const next = { ...prev };
@@ -92,16 +94,19 @@ const ModelGPUTable: Component = () => {
           <div class="text-[10px] font-medium uppercase tracking-wider text-text-muted">
             GPU Usage by Model
           </div>
-          <div class="flex items-center gap-2 text-[10px]">
+          <div class="flex items-center gap-2 font-mono text-[10px] text-text-dim">
             <Show when={refreshing()}>
-              <span class="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-text-dim">
-                refreshing
+              <span class="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5">
+                Refreshing
               </span>
             </Show>
             <Show when={error() && hasSnapshot()}>
               <span class="rounded-md border border-status-warn/20 bg-status-warn/10 px-1.5 py-0.5 text-status-warn">
                 stale snapshot
               </span>
+            </Show>
+            <Show when={updatedAt()}>
+              {(value) => <span>Updated {new Date(value()).toLocaleTimeString()}</span>}
             </Show>
           </div>
         </div>
@@ -119,7 +124,7 @@ const ModelGPUTable: Component = () => {
         </Show>
 
         <Show when={hasSnapshot()}>
-          <div class="overflow-x-auto">
+          <div class={`overflow-x-auto transition-opacity duration-200 ${refreshing() ? 'opacity-90' : 'opacity-100'}`}>
             <table class="w-full text-xs">
               <thead>
                 <tr class="text-text-dim border-b border-white/5">

@@ -1,5 +1,13 @@
-import { batch, createEffect, createSignal, onCleanup, on, type Accessor } from 'solid-js';
-import { createPolling } from '../../hooks/createPolling';
+import {
+  batch,
+  createEffect,
+  createSignal,
+  onCleanup,
+  on,
+  type Accessor,
+} from "solid-js";
+import { createPolling } from "../../hooks/createPolling";
+import { getApiBasePath } from "../../lib/api/base";
 
 export interface MetricValue {
   time: number;
@@ -15,55 +23,56 @@ export interface MetricPanel {
 }
 
 export const PROMETHEUS_TIME_RANGES = [
-  { label: '15m', value: '15m' },
-  { label: '1h', value: '1h' },
-  { label: '3h', value: '3h' },
-  { label: '6h', value: '6h' },
-  { label: '12h', value: '12h' },
-  { label: '24h', value: '24h' },
+  { label: "15m", value: "15m" },
+  { label: "1h", value: "1h" },
+  { label: "3h", value: "3h" },
+  { label: "6h", value: "6h" },
+  { label: "12h", value: "12h" },
+  { label: "24h", value: "24h" },
 ] as const;
 
 const BASE_PANELS: MetricPanel[] = [
   {
-    title: 'Cluster CPU Usage',
+    title: "Cluster CPU Usage",
     query: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
-    unit: '%',
-    color: 'cyan',
+    unit: "%",
+    color: "cyan",
     values: [],
   },
   {
-    title: 'Cluster Memory Usage',
-    query: '(1 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))) * 100',
-    unit: '%',
-    color: 'purple',
+    title: "Cluster Memory Usage",
+    query:
+      "(1 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))) * 100",
+    unit: "%",
+    color: "purple",
     values: [],
   },
   {
-    title: 'Pod Count',
-    query: 'count(kube_pod_info)',
-    unit: '',
-    color: 'green',
+    title: "Pod Count",
+    query: "count(kube_pod_info)",
+    unit: "",
+    color: "green",
     values: [],
   },
   {
-    title: 'Container Restarts (1h)',
-    query: 'sum(increase(kube_pod_container_status_restarts_total[1h]))',
-    unit: '',
-    color: 'orange',
+    title: "Container Restarts (1h)",
+    query: "sum(increase(kube_pod_container_status_restarts_total[1h]))",
+    unit: "",
+    color: "orange",
     values: [],
   },
   {
-    title: 'Network Received',
-    query: 'sum(rate(node_network_receive_bytes_total[5m])) / 1024 / 1024',
-    unit: 'MB/s',
-    color: 'blue',
+    title: "Network Received",
+    query: "sum(rate(node_network_receive_bytes_total[5m])) / 1024 / 1024",
+    unit: "MB/s",
+    color: "blue",
     values: [],
   },
   {
-    title: 'Network Transmitted',
-    query: 'sum(rate(node_network_transmit_bytes_total[5m])) / 1024 / 1024',
-    unit: 'MB/s',
-    color: 'pink',
+    title: "Network Transmitted",
+    query: "sum(rate(node_network_transmit_bytes_total[5m])) / 1024 / 1024",
+    unit: "MB/s",
+    color: "pink",
     values: [],
   },
 ];
@@ -94,11 +103,15 @@ function parseMetricValues(payload: any): MetricValue[] {
   return values;
 }
 
-export function usePrometheusMetricsController(isPrometheusActive: Accessor<boolean>) {
-  const [panels, setPanels] = createSignal<MetricPanel[]>(BASE_PANELS.map((panel) => ({ ...panel })));
+export function usePrometheusMetricsController(
+  isPrometheusActive: Accessor<boolean>,
+) {
+  const [panels, setPanels] = createSignal<MetricPanel[]>(
+    BASE_PANELS.map((panel) => ({ ...panel })),
+  );
   const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [timeRange, setTimeRange] = createSignal('1h');
+  const [error, setError] = createSignal("");
+  const [timeRange, setTimeRange] = createSignal("1h");
   const [lastUpdated, setLastUpdated] = createSignal<Date | null>(null);
 
   let currentAbortController: AbortController | null = null;
@@ -112,7 +125,7 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
 
     batch(() => {
       setLoading(true);
-      setError('');
+      setError("");
     });
 
     const now = Math.floor(Date.now() / 1000);
@@ -129,9 +142,12 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
             step: step.toString(),
           });
 
-          const response = await fetch(`/api/prom/query_range?${params}`, {
-            signal: abortController.signal,
-          });
+          const response = await fetch(
+            `${getApiBasePath()}/prom/query_range?${params}`,
+            {
+              signal: abortController.signal,
+            },
+          );
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
@@ -152,7 +168,7 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
     } catch (err) {
       if (abortController.signal.aborted) return;
       if (generation !== fetchGeneration) return;
-      setError(err instanceof Error ? err.message : 'Failed to fetch metrics');
+      setError(err instanceof Error ? err.message : "Failed to fetch metrics");
     } finally {
       if (generation === fetchGeneration) {
         setLoading(false);
@@ -163,7 +179,7 @@ export function usePrometheusMetricsController(isPrometheusActive: Accessor<bool
     }
   };
 
-  createPolling('prometheus-metrics', fetchMetrics, 30000, isPrometheusActive);
+  createPolling("prometheus-metrics", fetchMetrics, 30000, isPrometheusActive);
 
   createEffect(() => {
     if (isPrometheusActive()) {

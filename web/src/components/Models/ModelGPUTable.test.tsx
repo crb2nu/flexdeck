@@ -89,6 +89,11 @@ describe('ModelGPUTable', () => {
   });
 
   it('keeps the last GPU snapshot visible when a background refresh fails', async () => {
+    let pollTask: (() => Promise<void> | void) | undefined;
+    gpuTableMocks.createPolling.mockImplementation((_id, task) => {
+      pollTask = task;
+      return { trigger: vi.fn() };
+    });
     gpuTableMocks.api.mockResolvedValueOnce({
       models: [
         {
@@ -106,11 +111,11 @@ describe('ModelGPUTable', () => {
     cleanup = mount(() => <ModelGPUTable />);
     await flush();
 
-    expect(document.body.textContent).toContain('alpha');
+    const firstRow = document.querySelector('tbody tr');
+    expect(firstRow).toBeTruthy();
 
-    const pollTask = gpuTableMocks.createPolling.mock.calls[0][1] as () => Promise<void>;
     gpuTableMocks.api.mockRejectedValueOnce(new Error('metrics offline'));
-    await pollTask();
+    await pollTask?.();
     await flush();
 
     const pageText = document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
@@ -118,5 +123,43 @@ describe('ModelGPUTable', () => {
     expect(pageText).toContain('alpha');
     expect(pageText).toContain('stale snapshot');
     expect(pageText).toContain('GPU telemetry refresh delayed. Showing the last successful GPU snapshot.');
+    expect(document.querySelector('tbody tr')).toBe(firstRow);
+  });
+
+  it('preserves row identity across identical polling payloads', async () => {
+    let pollTask: (() => Promise<void> | void) | undefined;
+    const payload = {
+      models: [
+        {
+          modelId: 'alpha-1',
+          modelName: 'alpha',
+          node: 'gpu-a',
+          gpuUtilization: 72,
+          vramUsedPercent: 81,
+          temperature: 65,
+          power: 210,
+        },
+      ],
+    };
+    gpuTableMocks.createPolling.mockImplementation((_id, task) => {
+      pollTask = task;
+      return { trigger: vi.fn() };
+    });
+    gpuTableMocks.api
+      .mockResolvedValueOnce(payload)
+      .mockResolvedValueOnce({
+        models: payload.models.map((model) => ({ ...model })),
+      });
+
+    cleanup = mount(() => <ModelGPUTable />);
+    await flush();
+
+    const firstRow = document.querySelector('tbody tr');
+    expect(firstRow).toBeTruthy();
+
+    await pollTask?.();
+    await flush();
+
+    expect(document.querySelector('tbody tr')).toBe(firstRow);
   });
 });
