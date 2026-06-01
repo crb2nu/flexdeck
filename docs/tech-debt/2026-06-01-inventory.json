@@ -1,0 +1,118 @@
+{
+  "items": [
+    {
+      "id": "TD-018",
+      "title": "Cover agents API handlers (CRUD + edge cases)",
+      "component": "backend-agents",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 3,
+      "effort": 2,
+      "evidence": [
+        "go tool cover on internal/api/handlers shows all 19 handler funcs in agents.go at 0.0% coverage (AgentsList/Get/Create/Update/Delete/Health and the proxy/builder/HUD variants).",
+        "agents.go is 690 lines and is the single largest zero-coverage cluster in the package (19 of 111 zero-coverage funcs).",
+        "The CRUD handlers run purely against the in-memory agents.Registry (NewRegistry(config.AgentsConfig{RegistryPath}) + h.cfg), so success/disabled/bad-body/missing-field/not-found/conflict paths are deterministic with no live external dependency."
+      ],
+      "acceptance_criteria": [
+        "Add table-driven httptest coverage for AgentsList (empty + populated registry), AgentsGet (found + not-found), AgentsCreate (disabled 503, bad body 400, missing fields 400, conflict 409, success 201), AgentsUpdate (disabled, bad body, not-found, success), AgentsDelete (disabled, not-found, success), AgentsGraph (empty, depends_on edge, dropped unknown-target edge), AgentsHealth (empty registry), and the disabled-path of the proxy handlers (CheckHealth/Test/Invoke/ExternalFrameworks).",
+        "Turn the agents.go zero-coverage cluster into covered handlers: the 11 network-free funcs gain coverage (AgentsCreate/Update/Delete at 100%), lifting internal/api/handlers from 29.8% to 31.5%. The remaining 0% funcs (Stream/Usage/BuilderChat/BuilderInfo/DifyChat/LangGraphRun/HUDAgentSessions/LangGraphListAssistants) require live-upstream fakes and are deferred to the TD-023 observability/proxy fake-upstream slice.",
+        "No production code behavior change; go test ./internal/api/handlers -cover and go test ./... stay green."
+      ]
+    },
+    {
+      "id": "TD-019",
+      "title": "Decompose TopologyGraph render surface (carry-forward of TD-010)",
+      "component": "frontend-visualization",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 4,
+      "effort": 4,
+      "evidence": [
+        "web/src/components/Dashboard/TopologyGraph.tsx is still 2487 lines after the two merged TD-010 slices (holodeck loop, dashboard visibility).",
+        "It remains the largest frontend file and a recurring edit target (touched again in the post-2026-04-24 metrics/website work).",
+        "Render state, viewport/visibility, layout, and interaction concerns are still co-located in one module."
+      ],
+      "acceptance_criteria": [
+        "Extract at least one cohesive concern (layout, visibility, or interaction) into a focused module with adjacent tests.",
+        "Preserve current interaction behavior and keep npm run perf:topology large scenario at or below the 193.9ms baseline.",
+        "No feature work in the same branch; extraction-only diff."
+      ]
+    },
+    {
+      "id": "TD-020",
+      "title": "Cover integration handler zero-coverage clusters (flux/k8s/ci/public)",
+      "component": "backend-integration",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 3,
+      "effort": 3,
+      "evidence": [
+        "internal/api/handlers is at 29.8% with 111 zero-coverage funcs; the next-largest clusters after agents are flux.go (13), ci.go (4), k8s.go (3), and models.go (4).",
+        "ci.go (1383 lines), public.go (1344), and k8s.go (1209) are the largest handler files and own GitLab/portfolio/Kubernetes contracts that are expensive to validate manually.",
+        "These paths frequently combine upstream payload parsing with error/empty-state branching that lacks direct tests."
+      ],
+      "acceptance_criteria": [
+        "Add table-driven success / malformed-upstream / error / empty-state tests for representative flux, ci, k8s, and public handlers.",
+        "Lift internal/api/handlers coverage by at least 10 percentage points or document intentionally excluded surfaces.",
+        "Prefer fixture/fake-backed tests with no production behavior change."
+      ]
+    },
+    {
+      "id": "TD-021",
+      "title": "Split oversized frontend contract/types and Workbench modules",
+      "component": "frontend-contracts",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 4,
+      "effort": 3,
+      "evidence": [
+        "web/src/lib/types.ts is 1039 lines, concentrating contract types for many unrelated subsystems into one module.",
+        "web/src/components/FlexInfer/Workbench.tsx is 1579 lines and CIPipelineViz.tsx is 1241 lines, the two largest non-topology components.",
+        "Large shared modules raise merge-conflict and review friction across otherwise independent feature work."
+      ],
+      "acceptance_criteria": [
+        "Split types.ts into per-domain type modules with a compatibility re-export barrel so imports stay stable.",
+        "npm run typecheck, lint (--max-warnings=0), and full test suite stay green.",
+        "No runtime behavior change; pure module reorganization."
+      ]
+    },
+    {
+      "id": "TD-022",
+      "title": "Test enterprise feature route gating (disabled / missing-deps / enabled)",
+      "component": "enterprise-features",
+      "impact": 3,
+      "risk_reduction": 4,
+      "drag_reduction": 2,
+      "effort": 3,
+      "evidence": [
+        "rbac.go (7), clusters.go (7), and audit.go (2) handler funcs are all at 0.0% coverage.",
+        "ROADMAP lists RBAC, audit, and multicluster as Partial behind RBAC_*/AUDIT_*/MULTICLUSTER_* flags; the router conditionally registers these routes.",
+        "Risk here is rollout ambiguity, not missing code: there are no tests asserting disabled-state and enabled-state behavior."
+      ],
+      "acceptance_criteria": [
+        "Add tests asserting disabled-feature handlers return the explicit unavailable response, and enabled handlers behave against in-memory stores.",
+        "Do NOT change default-disabled behavior or enable any feature by default.",
+        "Document enablement/rollback expectations alongside the tests."
+      ]
+    },
+    {
+      "id": "TD-023",
+      "title": "Cover observability/proxy handler error and empty paths",
+      "component": "backend-observability",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 3,
+      "effort": 3,
+      "evidence": [
+        "Zero-coverage funcs remain across loki.go (6), litellm.go (6), vllm.go (5), modelcache.go (5), prometheus.go (4), langfuse.go (4), and grafana.go (2).",
+        "These proxy upstream observability/inference services and mostly need error, timeout, and empty-response branch coverage rather than happy-path integration.",
+        "Existing langfuse_test.go / grafana_test.go / prometheus_test.go establish the fake-upstream httptest pattern to extend."
+      ],
+      "acceptance_criteria": [
+        "Add fake-upstream error/empty/timeout tests for representative loki, litellm, vllm, and modelcache handlers.",
+        "Reuse the established httptest.Server fake-upstream pattern; no production behavior change.",
+        "go test ./internal/api/handlers -cover and go test ./... stay green."
+      ]
+    }
+  ]
+}
