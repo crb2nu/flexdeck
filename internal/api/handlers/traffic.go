@@ -288,20 +288,24 @@ func buildTrafficPages(samples []trafficPromSample) []TrafficPage {
 	return pages
 }
 
+// seriesSignal reports whether a Prometheus series was discovered, with a
+// detail line that reflects the actual verdict. Previously the detail always
+// claimed the series was "discovered", which read as a false positive next to
+// a failing ("check") badge when the metric was absent from Prometheus.
+func seriesSignal(name, metric string, samples []trafficPromSample) TrafficSignal {
+	sum := sampleSum(samples)
+	ok := sum > 0
+	detail := metric + " series discovered"
+	if !ok {
+		detail = metric + " series not found — verify the target is scraped"
+	}
+	return TrafficSignal{Name: name, OK: ok, Value: sum, Detail: detail}
+}
+
 func buildTrafficSignals(pageViewSeries, appRequests, upSamples []trafficPromSample) []TrafficSignal {
 	signals := []TrafficSignal{
-		{
-			Name:   "page view metric",
-			OK:     sampleSum(pageViewSeries) > 0,
-			Value:  sampleSum(pageViewSeries),
-			Detail: "flexinfer_page_views_total series discovered",
-		},
-		{
-			Name:   "app request metric",
-			OK:     sampleSum(appRequests) > 0,
-			Value:  sampleSum(appRequests),
-			Detail: "flexinfer_http_requests_total series discovered",
-		},
+		seriesSignal("page view metric", "flexinfer_page_views_total", pageViewSeries),
+		seriesSignal("app request metric", "flexinfer_http_requests_total", appRequests),
 	}
 
 	for _, sample := range upSamples {

@@ -146,3 +146,60 @@ func TestParsePromValueSanitizesNonFiniteSamples(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildTrafficSignalsReflectsSeriesPresence(t *testing.T) {
+	present := []trafficPromSample{{Value: 13}}
+	absent := []trafficPromSample{}
+
+	signals := buildTrafficSignals(absent, present, nil)
+	if len(signals) != 2 {
+		t.Fatalf("expected 2 series signals, got %d", len(signals))
+	}
+
+	pageView := signals[0]
+	if pageView.Name != "page view metric" {
+		t.Fatalf("expected page view metric first, got %q", pageView.Name)
+	}
+	if pageView.OK {
+		t.Error("expected page view signal to be not-ok when no series present")
+	}
+	// The detail must not falsely claim discovery when the series is absent.
+	if strings.Contains(pageView.Detail, "discovered") {
+		t.Errorf("absent series should not report 'discovered', got %q", pageView.Detail)
+	}
+	if !strings.Contains(pageView.Detail, "not found") {
+		t.Errorf("absent series detail should say 'not found', got %q", pageView.Detail)
+	}
+
+	appReq := signals[1]
+	if !appReq.OK {
+		t.Error("expected app request signal to be ok when series present")
+	}
+	if !strings.Contains(appReq.Detail, "discovered") {
+		t.Errorf("present series should report 'discovered', got %q", appReq.Detail)
+	}
+	if appReq.Value != 13 {
+		t.Errorf("expected value 13 from present series, got %v", appReq.Value)
+	}
+}
+
+func TestBuildTrafficSignalsAppendsUpSamples(t *testing.T) {
+	up := []trafficPromSample{
+		{Value: 1, Metric: map[string]string{"service": "flexinfer-site", "namespace": "flexinfer-site", "pod": "flexinfer-site-abc"}},
+		{Value: 0, Metric: map[string]string{"job": "fallback-job", "namespace": "ns", "pod": "p"}},
+	}
+
+	signals := buildTrafficSignals(nil, nil, up)
+	if len(signals) != 4 {
+		t.Fatalf("expected 2 series + 2 up signals, got %d", len(signals))
+	}
+	if signals[2].Name != "flexinfer-site" || !signals[2].OK {
+		t.Errorf("expected healthy flexinfer-site up signal, got %+v", signals[2])
+	}
+	if signals[3].Name != "fallback-job" {
+		t.Errorf("expected fallback to job label for name, got %q", signals[3].Name)
+	}
+	if signals[3].OK {
+		t.Error("expected up sample with value 0 to be not-ok")
+	}
+}
