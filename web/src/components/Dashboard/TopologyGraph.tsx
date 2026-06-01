@@ -13,6 +13,12 @@ import {
 import type { TopologyNode as D3Node, TopologyLink as D3Link } from './topology/types';
 import { createTopologyViewportCache, refreshVisibleTopology } from './topology/visibility';
 import { computeFrameStats, safeAverage } from './topology/perfStats';
+import {
+  clamp01,
+  computeDensityOverviewBlend,
+  shouldRenderNodeForDensity,
+  densityOverviewSummary,
+} from './topology/densityOverview';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -38,10 +44,6 @@ interface Props {
 const MAX_PARTICLES = 40;
 const LARGE_GRAPH_NODE_THRESHOLD = 600;
 const LARGE_GRAPH_LINK_THRESHOLD = 1200;
-const DENSITY_OVERVIEW_NODE_THRESHOLD = 600;
-const DENSITY_OVERVIEW_POD_THRESHOLD = 300;
-const DENSITY_OVERVIEW_ZOOM_THRESHOLD = 1.25;
-const DENSITY_OVERVIEW_TRANSITION_BAND = 0.22;
 const PARTICLE_IDLE_MS = 1500;
 const INTERACTION_IDLE_MS = 800;
 const SPATIAL_GRID_ACTIVE_REBUILD_MS = 48;
@@ -63,7 +65,6 @@ const PERF_QUERY_PARAM = 'topologyPerf';
 const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
 const PERF_HUD_UPDATE_MS = 500;
 const PERF_FRAME_WINDOW = 180;
-const DENSITY_OVERVIEW_NEAR_FULL_BLEND = 0.98;
 const SIMULATION_REFRESH_MS_RAW = 1000 / 45;
 const SIMULATION_REFRESH_MS_DENSE = 1000 / 26;
 const SIMULATION_REFRESH_MS_OVERVIEW = 1000 / 18;
@@ -1165,26 +1166,15 @@ const TopologyGraph: Component<Props> = (props) => {
     }
   };
 
-  const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
-
-  const smoothstep = (edge0: number, edge1: number, value: number): number => {
-    if (edge0 === edge1) return value < edge0 ? 0 : 1;
-    const t = clamp01((value - edge0) / (edge1 - edge0));
-    return t * t * (3 - 2 * t);
-  };
-
-  const getDensityOverviewBlend = (zoomLevel: number): number => {
-    const largeGraph =
-      graphNodes.length >= DENSITY_OVERVIEW_NODE_THRESHOLD ||
-      sourcePodCount >= DENSITY_OVERVIEW_POD_THRESHOLD;
-    if (!largeGraph) return 0;
-    const transitionStart = DENSITY_OVERVIEW_ZOOM_THRESHOLD - DENSITY_OVERVIEW_TRANSITION_BAND;
-    const transitionEnd = DENSITY_OVERVIEW_ZOOM_THRESHOLD + DENSITY_OVERVIEW_TRANSITION_BAND;
-    return 1 - smoothstep(transitionStart, transitionEnd, zoomLevel);
-  };
+  const getDensityOverviewBlend = (zoomLevel: number): number =>
+    computeDensityOverviewBlend({
+      zoomLevel,
+      nodeCount: graphNodes.length,
+      podCount: sourcePodCount,
+    });
 
   const shouldRenderNodeForCurrentDensity = (node: D3Node, densityOverviewBlend: number): boolean =>
-    densityOverviewBlend < DENSITY_OVERVIEW_NEAR_FULL_BLEND || node.type === 'node';
+    shouldRenderNodeForDensity(node.type, densityOverviewBlend);
 
   const getSimulationVisualRefreshMs = (
     isDense: boolean,
@@ -1224,9 +1214,7 @@ const TopologyGraph: Component<Props> = (props) => {
   };
 
   const syncDensityOverviewState = (blend: number) => {
-    const active = blend > 0.18;
-    const hiddenPods = active ? Math.round(sourcePodCount * blend) : 0;
-    const hiddenServices = active ? Math.round(sourceServiceCount * blend) : 0;
+    const { active, hiddenPods, hiddenServices } = densityOverviewSummary(blend, sourcePodCount, sourceServiceCount);
     if (densityOverviewActive() !== active) setDensityOverviewActive(active);
     if (densityOverviewHiddenPods() !== hiddenPods) setDensityOverviewHiddenPods(hiddenPods);
     if (densityOverviewHiddenServices() !== hiddenServices) setDensityOverviewHiddenServices(hiddenServices);
