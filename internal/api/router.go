@@ -116,6 +116,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/traffic/report", h.TrafficReport)
 
 		registerCIRoutes(r, h, logFunc)
+		registerWorkspaceRoutes(r, h)
 		registerInfrastructureRoutes(r, h, logFunc, cfg)
 		registerDomainRoutes(r, h, logFunc, cfg)
 
@@ -195,6 +196,10 @@ func registerCIRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) fu
 	r.With(logFunc("ci.pipeline.retry")).Post("/api/ci/projects/{id}/pipelines/{pid}/retry", h.RetryPipeline)
 	r.With(logFunc("ci.pipeline.cancel")).Post("/api/ci/projects/{id}/pipelines/{pid}/cancel", h.CancelPipeline)
 	r.With(logFunc("ci.pipeline.trigger")).Post("/api/ci/projects/{id}/pipelines", h.TriggerPipeline)
+}
+
+func registerWorkspaceRoutes(r chi.Router, h *handlers.Handler) {
+	r.Get("/api/workspace/repos", h.WorkspaceRepos)
 }
 
 func registerInfrastructureRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler, cfg *config.Config) {

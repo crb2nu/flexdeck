@@ -187,3 +187,17 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `rg -n "hostPath|compilationCache|flashLoader|maxBlockSize|swapSpace|reconfigureCooldown|reconfiguredAt|originalMaxNumSeqs|reconfiguredMaxNumSeqs|evictedAt|cache\.quantization|capabilities|quantize" internal/k8s/models_crd.go web/src/lib/types.ts`
   - [S2] `rg -n "swap_signals|queued_requests_total|endpoint_changes_total|endpoint_count|routing_decisions_total|routing_target_hits_total|routing_key_cardinality|rate_limited_total|activation_retries_total|activation_failures_total" internal/api/handlers/flexinfer_proxy.go`
   - [S3] `rg -n "expires_at|expiresAt|updated_at|updatedAt|FileClaim" internal/api/handlers/hud_contracts.go web/src/lib/types.ts`
+
+### 2026-06-06: Start local-stack support with read-only workspace inventory
+
+- Decision: Begin the services/libs local-stack program with a read-only repository inventory API instead of UI, process control, or cross-repo configuration changes.
+- Rationale: The new brainstorm's load-bearing assumption is that FlexDeck can derive useful metadata from `WORKSPACE_DIR/services` and `WORKSPACE_DIR/libs` safely. A backend scanner proves that assumption with the least blast radius and creates a stable foundation for the future Stack Explorer.
+- Alternatives considered:
+  - Build the Stack Explorer UI first (higher UX payoff, but risks anchoring on unproven scanner data).
+  - Add local dev process controls first (faster daily loop, but unsafe without explicit repo config and audit semantics).
+  - Start with library contract drift (valuable, but less directly tied to FlexDeck's current K8s/Flux/CI/HUD strengths).
+- Consequences: The first slice is backend-heavy and read-only. Future slices can add UI and service-to-cluster binding once the scanner output is proven useful.
+- Sources:
+  - [S1] `.loom/brainstorm-local-stack-services-libs-2026-06-06.md`
+  - [S2] `.loom/31-iteration-plan-local-stack-inventory-kill-test-2026-06-06.md`
+  - [S3] `internal/workspace/inventory.go`

@@ -4,7 +4,7 @@
 
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
 
-> Last Updated: February 27, 2026
+> Last Updated: June 6, 2026
 
 ## Current Status
 
@@ -118,6 +118,13 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - ◐ **RBAC UI (Partial)**: Backend routes and admin UI tab are implemented behind `RBAC_*` flags; rollout/default enablement is pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5))
 - ◐ **Audit Logs (Partial)**: Audit API and UI tab exist behind `AUDIT_*` flags; deployment-level enablement and operational policy remain pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6))
 - ◐ **Multi-Cluster Support (Partial)**: Cluster registry APIs and selector/admin surfaces exist behind `MULTICLUSTER_*` flags; production readiness and rollout validation are pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/7))
+
+### Phase 5: Local Stack Support (June 2026)
+
+- [x] **Workspace Repository Inventory API**: Read-only `/api/workspace/repos` scanner for top-level `WORKSPACE_DIR/services` and `WORKSPACE_DIR/libs` repos, including language/package hints, docs markers, worktree counts, sanitized git remotes, branch, and dirty state.
+- [ ] **Stack Explorer UI**: Service/lib cards over the repository inventory with search, grouping, and readiness summaries.
+- [ ] **Service-To-Cluster Binding**: Correlate local repos with live K8s, Flux, GitLab CI, and Loom HUD state where metadata confidence is high.
+- [ ] **Library Adoption And Contract Coverage**: Map local shared-lib usage across services and surface observability/resilience/UI-token contract drift.
 
 ### Phase 3.5: Reliability And Contract Hardening (March 2026)
 
