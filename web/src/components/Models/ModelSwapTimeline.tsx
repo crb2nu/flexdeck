@@ -136,7 +136,7 @@ const ModelSwapTimeline: Component<{ namespace: string; name: string }> = (props
                         {formatDurationSec(event.durationSec)}
                       </span>
                     </Show>
-                    <span class="text-text-dim/40 ml-auto flex-shrink-0">
+                    <span class="text-text-dim/60 ml-auto flex-shrink-0">
                       {timeAgo(event.ts)}
                     </span>
                   </div>

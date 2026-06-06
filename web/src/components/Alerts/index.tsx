@@ -181,7 +181,7 @@ const Alerts: Component = () => {
                           <Show when={alert.annotations?.description}>
                             <div class="text-text-dim/70 mt-1">{alert.annotations.description}</div>
                           </Show>
-                          <div class="text-text-dim/40 mt-1">
+                          <div class="text-text-dim/60 mt-1">
                             Started {formatRelativeTime(alert.startsAt)}
                             {alert.status?.state === 'suppressed' && ' (silenced)'}
                           </div>
