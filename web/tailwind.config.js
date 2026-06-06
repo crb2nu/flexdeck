@@ -18,10 +18,13 @@ export default {
           dark: 'var(--bg-dark)',
           panel: 'var(--bg-panel)',
         },
-        // Surfaces
+        // Surfaces (elevation tiers)
         surface: {
           primary: 'var(--surface-primary)',
           elevated: 'var(--surface-elevated)',
+          raised: 'var(--surface-raised)',
+          glass: 'var(--surface-glass)',
+          modal: 'var(--surface-modal)',
         },
         // Text
         text: {
@@ -37,6 +40,34 @@ export default {
         },
         accent: {
           DEFAULT: 'var(--color-accent)',
+        },
+        // Data-viz categorical palette (8 series)
+        viz: {
+          1: 'var(--viz-1-cyan)',
+          2: 'var(--viz-2-orange)',
+          3: 'var(--viz-3-teal)',
+          4: 'var(--viz-4-amber)',
+          5: 'var(--viz-5-violet)',
+          6: 'var(--viz-6-lime)',
+          7: 'var(--viz-7-pink)',
+          8: 'var(--viz-8-azure)',
+        },
+        // Diverging utilization scale
+        util: {
+          safe: 'var(--util-safe)',
+          near: 'var(--util-near)',
+          hot: 'var(--util-hot)',
+        },
+        // Functional status (semantic)
+        sem: {
+          ok: 'var(--sem-ok)',
+          warn: 'var(--sem-warn)',
+          crit: 'var(--sem-crit)',
+        },
+        // Chart gridlines
+        grid: {
+          line: 'var(--grid-line)',
+          'line-hover': 'var(--grid-line-hover)',
         },
       },
       fontFamily: {
@@ -75,6 +106,26 @@ export default {
         'glow-amber': 'var(--glow-amber)',
         'glow-violet': 'var(--glow-violet)',
         'glow-emerald': 'var(--glow-emerald)',
+        // Glow discipline: live + critical + a11y focus
+        'glow-active': 'var(--glow-active)',
+        'glow-critical': 'var(--glow-critical)',
+        focus: 'var(--focus-ring)',
+        // Semantic elevation ladder
+        'elevation-card': 'var(--elevation-card)',
+        'elevation-dropdown': 'var(--elevation-dropdown)',
+        'elevation-modal': 'var(--elevation-modal)',
+      },
+      fontSize: {
+        display: 'var(--text-display)',
+        hero: 'var(--text-hero)',
+      },
+      zIndex: {
+        base: 'var(--z-base)',
+        sticky: 'var(--z-sticky)',
+        dropdown: 'var(--z-dropdown)',
+        modal: 'var(--z-modal)',
+        tooltip: 'var(--z-tooltip)',
+        overlay: 'var(--z-overlay)',
       },
       transitionDuration: {
         fast: 'var(--transition-fast)',

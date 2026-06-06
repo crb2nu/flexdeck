@@ -168,4 +168,78 @@
   --status-ok:    var(--info);
   --status-warn:  var(--warning);
   --status-error: var(--error);
+
+  /* =================================================================== */
+  /* MAGNUM OPUS — bolder restyle token layer (additive).                */
+  /* Goal: one source of truth for data-viz color, elevation, glow, and  */
+  /* density so the whole app re-skins from here. Glow is spent on only  */
+  /* two semantic events: live (cyan) and critical (red).                */
+  /* =================================================================== */
+
+  /* --- Data-viz categorical palette (8 series) ---
+     Calibrated for the #060c10 near-black ground. These REPLACE the
+     ad-hoc palettes duplicated in EnhancedChart / PulseCard / Pipeline. */
+  --viz-1-cyan:   #00c8ff;
+  --viz-2-orange: #ff8a3d;
+  --viz-3-teal:   #2dd4bf;
+  --viz-4-amber:  #ffc24d;
+  --viz-5-violet: #b98cff;
+  --viz-6-lime:   #9be564;
+  --viz-7-pink:   #ff6fae;
+  --viz-8-azure:  #5b9cff;
+
+  /* Sequential cyan ramp (single-series heat / intensity) */
+  --viz-seq-0: #0e3a47;
+  --viz-seq-1: #11586b;
+  --viz-seq-2: #0f8fb0;
+  --viz-seq-3: #2bb8e0;
+  --viz-seq-4: #7fe0ff;
+
+  /* Diverging utilization scale (0–50 safe / 50–75 approaching / 75+ hot) */
+  --util-safe: #00c8ff;
+  --util-near: #ff8a3d;
+  --util-hot:  #ff3d71;
+
+  /* Functional status (semantic, never recolored, never decorative) */
+  --sem-ok:   var(--success);
+  --sem-warn: var(--warning);
+  --sem-crit: var(--error);
+
+  /* Chart gridlines (raised from near-invisible) */
+  --grid-line:       rgba(255, 255, 255, 0.09);
+  --grid-line-hover: rgba(255, 255, 255, 0.16);
+
+  /* --- Elevation tiers (tint = layer, shadow = lift, blur = modal-only) ---
+     Tier 0 base = existing --surface-bg. */
+  --surface-glass:  rgba(0, 200, 255, 0.04);   /* tier 1: faint cyan data surface */
+  --surface-raised: rgba(16, 28, 34, 0.92);    /* tier 2: interactive / selected / hero */
+  --surface-modal:  rgba(6, 12, 16, 0.85);     /* tier 3: above-everything (blur applied in component) */
+
+  --elevation-card:     var(--shadow-sm);
+  --elevation-dropdown: var(--shadow-md);
+  --elevation-modal:    var(--shadow-lg);
+
+  /* --- Glow discipline: 2 meaningful tokens (live + critical) + focus --- */
+  --glow-active:   0 0 16px rgba(0, 200, 255, 0.25);   /* live / streaming / selected */
+  --glow-critical: 0 0 24px rgba(255, 61, 113, 0.35);  /* failed / error / >75% util */
+  --focus-ring:    0 0 0 1px rgba(0, 200, 255, 0.5);   /* a11y, not a signal */
+
+  /* --- Typography: dramatic hero steps for the one licensed moment --- */
+  --text-display: 1.75rem;  /* per-surface summary headline */
+  --text-hero:    3rem;     /* dashboard KPI hero headline */
+
+  /* --- Density (denser defaults, applied surgically per surface) --- */
+  --space-compact-1: 6px;
+  --space-compact-2: 10px;
+  --space-compact-3: 14px;
+  --density-px: var(--space-compact-3);
+  --density-py: var(--space-compact-1);
+
+  /* --- z-index ladder (replaces ad-hoc z-40/z-50/z-[60]/z-[70] soup) --- */
+  --z-base:     0;
+  --z-sticky:   30;
+  --z-dropdown: 40;
+  --z-modal:    50;
+  --z-tooltip:  60;
+  --z-overlay:  70;
 }
