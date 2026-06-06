@@ -35,6 +35,13 @@ const CommandPalette: Component = () => {
       action: () => navigate('/services'),
     },
     {
+      id: 'nav-stack',
+      name: 'Go to Stack',
+      description: 'Browse local services and libraries',
+      keywords: ['workspace', 'repos', 'services', 'libs', 'local stack'],
+      action: () => navigate('/stack'),
+    },
+    {
       id: 'nav-logs',
       name: 'Go to Logs',
       description: 'View system logs',

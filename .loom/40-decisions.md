@@ -201,3 +201,17 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `.loom/brainstorm-local-stack-services-libs-2026-06-06.md`
   - [S2] `.loom/31-iteration-plan-local-stack-inventory-kill-test-2026-06-06.md`
   - [S3] `internal/workspace/inventory.go`
+
+### 2026-06-06: Ship Stack Explorer as a read-only route over workspace inventory
+
+- Decision: Add `/stack` as a first-class FlexDeck route that consumes `GET /api/workspace/repos` and renders searchable, grouped service/lib cards with local readiness summaries.
+- Rationale: The backend inventory kill-test proved useful metadata can be derived safely. The next highest-value slice is making that metadata visible in the operator UI before adding process controls, live cluster binding, or dependency/adoption analysis.
+- Alternatives considered:
+  - Add service-to-cluster binding first (higher operational value, but it depends on a stable local repo browser surface).
+  - Add local process controls first (faster daily loop, but unsafe without explicit repo config and audit semantics).
+  - Keep the endpoint API-only for another cycle (lower risk, but leaves Phase 5 invisible to operators).
+- Consequences: The Stack view remains metadata-only and read-only. Follow-up work can bind cards to K8s/Flux/GitLab/Loom HUD state once confidence heuristics are defined.
+- Sources:
+  - [S1] `ROADMAP.md`
+  - [S2] `.loom/42-slice-handoff-local-stack-inventory-kill-test-2026-06-06.md`
+  - [S3] `web/src/components/Stack/index.tsx`

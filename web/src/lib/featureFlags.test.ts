@@ -60,6 +60,14 @@ describe('featureFlags', () => {
     expect(isNavItemActive('/website-metrics', website!)).toBe(true);
   });
 
+  it('exposes Stack as the local workspace inventory nav item', () => {
+    const items = buildNavItems({});
+    const stack = items.find((item) => item.path === '/stack');
+
+    expect(stack?.label).toBe('Stack');
+    expect(isNavItemActive('/stack', stack!)).toBe(true);
+  });
+
   it('filters admin tabs based on enabled flags and picks first enabled default', () => {
     const features: FeatureMap = {
       rbac: { enabled: false },
