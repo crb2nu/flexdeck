@@ -71,7 +71,7 @@ import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
 import { stableListByKey } from '../../lib/stableList';
-import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput } from './severity';
+import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput, type SeverityTier } from './severity';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -621,95 +621,93 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         />
 
         <Show when={modelRows().length > 0} fallback={<WorkbenchEmpty message="No FlexInfer CRDs found yet." />}>
-          <div class="surface overflow-hidden">
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs">
-                <thead>
-                  <tr class="border-b border-white/5 text-left text-text-dim">
-                    <th class="px-4 py-3 font-medium">Model</th>
-                    <th class="px-4 py-3 font-medium">Phase</th>
-                    <th class="px-4 py-3 font-medium">Signals</th>
-                    <th class="px-4 py-3 font-medium">Telemetry</th>
-                    <th class="px-4 py-3 font-medium">Cache</th>
-                    <th class="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={stableModelRows()}>
-                    {(row) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3">
-                          <div class="font-medium text-text-main">{row.model.name}</div>
-                          <div class="font-mono text-[10px] text-text-dim">{row.model.namespace}</div>
-                          <div class="mt-1 max-w-[20rem] truncate font-mono text-[10px] text-text-dim">
-                            {row.model.spec.source}
-                          </div>
-                        </td>
-                        <td class="px-4 py-3 align-top">
-                          <ModelPhaseDetail status={row.model.status} reliability={row.reliability} />
-                        </td>
-                        <td class="px-4 py-3">
-                          <div class="flex flex-wrap gap-1.5">
-                            <ModelFlag tone={row.model.spec.serverless?.enabled === false ? 'bg-white/10 text-text-dim' : 'bg-status-ok/20 text-status-ok'} label={row.model.spec.serverless ? 'Serverless' : 'Static'} />
-                            <ModelFlag tone={row.model.spec.gpu?.shared ? 'bg-white/10 text-text-muted' : 'bg-white/10 text-text-dim'} label={row.model.spec.gpu?.shared ? `Shared ${row.model.spec.gpu.shared}` : 'Dedicated'} />
-                            <ModelFlag tone={row.adapters.length > 0 ? 'bg-status-ok/20 text-status-ok' : 'bg-white/10 text-text-dim'} label={row.adapters.length > 0 ? `${row.adapters.length} LoRA` : 'No LoRA'} />
-                          </div>
-                          <div class="mt-2 text-[10px] text-text-dim">
-                            {modelSignalSummary(row.model, row.inferenceMetrics, row.throughput, row.integrationState?.inferenceAvailable, row.proxyMetricName)}
-                          </div>
-                        </td>
-                        <td class="px-4 py-3">
-                          <Show
-                            when={row.proxyMetricName && hasProxyMetricsForModel(proxyMetrics(), row.proxyMetricName)}
-                            fallback={<div class="font-mono text-[10px] text-text-dim">No proxy series yet</div>}
-                          >
-                            <div class="space-y-1 font-mono text-[10px] text-text-dim">
-                              <div>Req {requestsForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
-                              <div>RPS {formatMetricNumber(row.inferenceMetrics?.requestsPerSec)}</div>
-                              <div>Tok/s {formatMetricNumber(modelThroughputValue(row.model, row.inferenceMetrics, row.throughput))}</div>
-                              <div>Queue {queueDepthForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
-                              <div>Conn {activeConnectionsForModel(proxyMetrics(), row.proxyMetricName || row.model.name).toFixed(0)}</div>
-                              <div>Error {(proxyErrorRateForModel(proxyMetrics(), row.proxyMetricName || row.model.name) * 100).toFixed(2)}%</div>
-                            </div>
+          <div class="surface divide-y divide-white/5 overflow-hidden">
+            <For each={stableModelRows()}>
+              {(row) => {
+                const metricName = () => row.proxyMetricName || row.model.name;
+                const hasProxy = () =>
+                  !!row.proxyMetricName && hasProxyMetricsForModel(proxyMetrics(), row.proxyMetricName);
+                const queue = () => queueDepthForModel(proxyMetrics(), metricName());
+                const errPct = () => proxyErrorRateForModel(proxyMetrics(), metricName()) * 100;
+                const actionKey = (action: string) => `${row.model.namespace}/${row.model.name}/${action}`;
+                return (
+                  <div class="relative px-4 py-2.5 transition-colors hover:bg-white/[0.04]">
+                    <div class={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full ${triageAccent(row.severityTier)}`} />
+                    <div class="flex items-start justify-between gap-3 pl-2">
+                      <div class="min-w-0 flex-1 space-y-1.5">
+                        {/* Identity + live triage chips */}
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          <span class="font-medium text-text-main">{row.model.name}</span>
+                          <Show when={queue() > 0}>
+                            <span class={`num rounded-full px-2 py-0.5 text-[10px] font-semibold ${queueChipClass(queue())}`}>
+                              Q {queue().toFixed(0)}
+                            </span>
                           </Show>
-                        </td>
-                        <td class="px-4 py-3">
-                          <div class="space-y-1 font-mono text-[10px] text-text-dim">
-                            <div>{row.model.status?.cache?.strategy || row.model.spec.cache?.strategy || 'none'}</div>
-                            <div>{cacheReadinessLabel(row.model.status)}</div>
-                          </div>
-                        </td>
-                        <td class="px-4 py-3">
-                          <div class="flex flex-wrap gap-1.5">
-                            <button
-                              onClick={() => void controller.handleCRDAction('activate', row.model)}
-                              disabled={controller.crdActionLoading() === `${row.model.namespace}/${row.model.name}/activate`}
-                              class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
-                            >
-                              Activate
-                            </button>
-                            <button
-                              onClick={() => void controller.handleCRDAction('restart', row.model)}
-                              disabled={controller.crdActionLoading() === `${row.model.namespace}/${row.model.name}/restart`}
-                              class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-text-muted disabled:opacity-50"
-                            >
-                              Restart
-                            </button>
-                            <button
-                              onClick={() => void controller.handleCRDAction('scale0', row.model)}
-                              disabled={controller.crdActionLoading() === `${row.model.namespace}/${row.model.name}/scale0`}
-                              class="rounded-md bg-status-warn/20 px-2.5 py-1 text-[10px] font-medium text-status-warn disabled:opacity-50"
-                            >
-                              Scale 0
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </div>
+                          <Show when={errPct() >= 0.01}>
+                            <span class="num rounded-full bg-sem-crit/15 px-2 py-0.5 text-[10px] font-semibold text-sem-crit">
+                              {errPct().toFixed(1)}% err
+                            </span>
+                          </Show>
+                        </div>
+                        <div class="truncate font-mono text-[10px] text-text-dim">
+                          {row.model.namespace} · {row.model.spec.source}
+                        </div>
+                        {/* Phase + reliability (+ loading detail) */}
+                        <ModelPhaseDetail status={row.model.status} reliability={row.reliability} />
+                        {/* Compact telemetry strip — one line instead of six */}
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] text-text-dim">
+                          <Show
+                            when={hasProxy()}
+                            fallback={<span class="text-text-dim/70">No proxy series yet</span>}
+                          >
+                            <span class="num">Req {requestsForModel(proxyMetrics(), metricName()).toFixed(0)}</span>
+                            <span class="num">RPS {formatMetricNumber(row.inferenceMetrics?.requestsPerSec)}</span>
+                            <span class="num">Tok/s {formatMetricNumber(modelThroughputValue(row.model, row.inferenceMetrics, row.throughput))}</span>
+                            <span class="num">Queue {queue().toFixed(0)}</span>
+                            <span class="num">Conn {activeConnectionsForModel(proxyMetrics(), metricName()).toFixed(0)}</span>
+                            <span class="num">Error {errPct().toFixed(2)}%</span>
+                          </Show>
+                          <span class="text-text-dim/40">·</span>
+                          <span>{modelSignalSummary(row.model, row.inferenceMetrics, row.throughput, row.integrationState?.inferenceAvailable, row.proxyMetricName)}</span>
+                          <span class="text-text-dim/40">·</span>
+                          <span>cache {row.model.status?.cache?.strategy || row.model.spec.cache?.strategy || 'none'} {cacheReadinessLabel(row.model.status)}</span>
+                        </div>
+                        {/* Static signals */}
+                        <div class="flex flex-wrap gap-1.5">
+                          <ModelFlag tone={row.model.spec.serverless?.enabled === false ? 'bg-white/10 text-text-dim' : 'bg-status-ok/20 text-status-ok'} label={row.model.spec.serverless ? 'Serverless' : 'Static'} />
+                          <ModelFlag tone={row.model.spec.gpu?.shared ? 'bg-white/10 text-text-muted' : 'bg-white/10 text-text-dim'} label={row.model.spec.gpu?.shared ? `Shared ${row.model.spec.gpu.shared}` : 'Dedicated'} />
+                          <ModelFlag tone={row.adapters.length > 0 ? 'bg-status-ok/20 text-status-ok' : 'bg-white/10 text-text-dim'} label={row.adapters.length > 0 ? `${row.adapters.length} LoRA` : 'No LoRA'} />
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div class="flex flex-shrink-0 flex-col gap-1.5">
+                        <button
+                          onClick={() => void controller.handleCRDAction('activate', row.model)}
+                          disabled={controller.crdActionLoading() === actionKey('activate')}
+                          class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white transition-colors hover:bg-white/15 disabled:opacity-50"
+                        >
+                          Activate
+                        </button>
+                        <button
+                          onClick={() => void controller.handleCRDAction('restart', row.model)}
+                          disabled={controller.crdActionLoading() === actionKey('restart')}
+                          class="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-medium text-text-muted transition-colors hover:bg-white/15 disabled:opacity-50"
+                        >
+                          Restart
+                        </button>
+                        <button
+                          onClick={() => void controller.handleCRDAction('scale0', row.model)}
+                          disabled={controller.crdActionLoading() === actionKey('scale0')}
+                          class="rounded-md bg-status-warn/20 px-2.5 py-1 text-[10px] font-medium text-status-warn transition-colors hover:bg-status-warn/30 disabled:opacity-50"
+                        >
+                          Scale 0
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }}
+            </For>
           </div>
         </Show>
           </section>
@@ -1408,6 +1406,24 @@ const WorkbenchEmpty: Component<{ message: string }> = (props) => (
 const ModelFlag: Component<{ tone: string; label: string }> = (props) => (
   <span class={`rounded-full px-2.5 py-1 text-[10px] font-medium ${props.tone}`}>{props.label}</span>
 );
+
+// Left-edge severity accent for a triage card — color by tier.
+function triageAccent(tier: SeverityTier): string {
+  switch (tier) {
+    case 'critical': return 'bg-sem-crit';
+    case 'degraded': return 'bg-sem-warn';
+    case 'loading': return 'bg-viz-1/70';
+    case 'standby': return 'bg-white/15';
+    default: return 'bg-sem-ok/50'; // healthy
+  }
+}
+
+// Color-coded queue chip: pre-attentive "busy-good vs saturated-bad".
+function queueChipClass(queue: number): string {
+  if (queue >= 100) return 'bg-sem-crit/15 text-sem-crit';   // overloaded
+  if (queue >= 10) return 'bg-util-near/15 text-util-near';  // building
+  return 'bg-util-safe/15 text-util-safe';                   // light traffic
+}
 
 const MiniMetric: Component<{ label: string; value: string }> = (props) => (
   <div class="surface px-3 py-2">
