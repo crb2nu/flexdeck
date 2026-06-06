@@ -41,28 +41,29 @@ export default {
         accent: {
           DEFAULT: 'var(--color-accent)',
         },
-        // Data-viz categorical palette (8 series)
+        // Data-viz categorical palette (8 series) — channel format so
+        // `/opacity` modifiers render (bg-viz-1/20, etc.).
         viz: {
-          1: 'var(--viz-1-cyan)',
-          2: 'var(--viz-2-orange)',
-          3: 'var(--viz-3-teal)',
-          4: 'var(--viz-4-amber)',
-          5: 'var(--viz-5-violet)',
-          6: 'var(--viz-6-lime)',
-          7: 'var(--viz-7-pink)',
-          8: 'var(--viz-8-azure)',
+          1: 'rgb(var(--viz-1) / <alpha-value>)',
+          2: 'rgb(var(--viz-2) / <alpha-value>)',
+          3: 'rgb(var(--viz-3) / <alpha-value>)',
+          4: 'rgb(var(--viz-4) / <alpha-value>)',
+          5: 'rgb(var(--viz-5) / <alpha-value>)',
+          6: 'rgb(var(--viz-6) / <alpha-value>)',
+          7: 'rgb(var(--viz-7) / <alpha-value>)',
+          8: 'rgb(var(--viz-8) / <alpha-value>)',
         },
         // Diverging utilization scale
         util: {
-          safe: 'var(--util-safe)',
-          near: 'var(--util-near)',
-          hot: 'var(--util-hot)',
+          safe: 'rgb(var(--util-safe) / <alpha-value>)',
+          near: 'rgb(var(--util-near) / <alpha-value>)',
+          hot: 'rgb(var(--util-hot) / <alpha-value>)',
         },
         // Functional status (semantic)
         sem: {
-          ok: 'var(--sem-ok)',
-          warn: 'var(--sem-warn)',
-          crit: 'var(--sem-crit)',
+          ok: 'rgb(var(--sem-ok) / <alpha-value>)',
+          warn: 'rgb(var(--sem-warn) / <alpha-value>)',
+          crit: 'rgb(var(--sem-crit) / <alpha-value>)',
         },
         // Chart gridlines
         grid: {

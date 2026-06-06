@@ -177,52 +177,60 @@
   /* =================================================================== */
 
   /* --- Data-viz categorical palette (8 series) ---
-     Calibrated for the #060c10 near-black ground. These REPLACE the
-     ad-hoc palettes duplicated in EnhancedChart / PulseCard / Pipeline. */
-  --viz-1-cyan:   #00c8ff;
-  --viz-2-orange: #ff8a3d;
-  --viz-3-teal:   #2dd4bf;
-  --viz-4-amber:  #ffc24d;
-  --viz-5-violet: #b98cff;
-  --viz-6-lime:   #9be564;
-  --viz-7-pink:   #ff6fae;
-  --viz-8-azure:  #5b9cff;
+     Defined as "R G B" TRIPLETS so Tailwind can use the channel format
+     `rgb(var(--viz-N) / <alpha-value>)` and `/opacity` modifiers actually
+     render (bare var() tokens silently drop alpha in Tailwind v3 — see the
+     tailwind-var-tokens-drop-opacity note). For a ready color in SVG / canvas
+     / plain CSS use `rgb(var(--viz-N))`. Calibrated for the #060c10 ground.
+     These REPLACE the ad-hoc palettes duplicated in EnhancedChart /
+     PulseCard / Pipeline. */
+  --viz-1: 0 200 255;     /* cyan   (mirrors --info)   */
+  --viz-2: 255 138 61;    /* orange (chart-safe sibling of --accent) */
+  --viz-3: 45 212 191;    /* teal   */
+  --viz-4: 255 194 77;    /* amber  */
+  --viz-5: 185 140 255;   /* violet */
+  --viz-6: 155 229 100;   /* lime   */
+  --viz-7: 255 111 174;   /* pink   */
+  --viz-8: 91 156 255;    /* azure  */
 
   /* Sequential cyan ramp (single-series heat / intensity) */
-  --viz-seq-0: #0e3a47;
-  --viz-seq-1: #11586b;
-  --viz-seq-2: #0f8fb0;
-  --viz-seq-3: #2bb8e0;
-  --viz-seq-4: #7fe0ff;
+  --viz-seq-0: 14 58 71;
+  --viz-seq-1: 17 88 107;
+  --viz-seq-2: 15 143 176;
+  --viz-seq-3: 43 184 224;
+  --viz-seq-4: 127 224 255;
 
   /* Diverging utilization scale (0–50 safe / 50–75 approaching / 75+ hot) */
-  --util-safe: #00c8ff;
-  --util-near: #ff8a3d;
-  --util-hot:  #ff3d71;
+  --util-safe: 0 200 255;   /* mirrors --info  */
+  --util-near: 255 138 61;
+  --util-hot:  255 61 113;  /* mirrors --error */
 
-  /* Functional status (semantic, never recolored, never decorative) */
-  --sem-ok:   var(--success);
-  --sem-warn: var(--warning);
-  --sem-crit: var(--error);
+  /* Functional status as triplets (semantic; never recolored/decorative).
+     Mirror the canonical --success/--warning/--error; consolidate to one
+     source if/when the base tokens migrate to triplets. */
+  --sem-ok:   34 224 118;
+  --sem-warn: 255 184 48;
+  --sem-crit: 255 61 113;
 
   /* Chart gridlines (raised from near-invisible) */
   --grid-line:       rgba(255, 255, 255, 0.09);
   --grid-line-hover: rgba(255, 255, 255, 0.16);
 
-  /* --- Elevation tiers (tint = layer, shadow = lift, blur = modal-only) ---
+  /* --- Elevation tiers (tint = layer, shadow = lift, blur = modal-only).
+     Tints derived from canonical tokens via color-mix (no hardcoded rgba).
      Tier 0 base = existing --surface-bg. */
-  --surface-glass:  rgba(0, 200, 255, 0.04);   /* tier 1: faint cyan data surface */
-  --surface-raised: rgba(16, 28, 34, 0.92);    /* tier 2: interactive / selected / hero */
-  --surface-modal:  rgba(6, 12, 16, 0.85);     /* tier 3: above-everything (blur applied in component) */
+  --surface-glass:  color-mix(in srgb, var(--info) 4%, transparent);     /* tier 1: faint cyan data surface */
+  --surface-raised: color-mix(in srgb, var(--bg-surface) 92%, transparent); /* tier 2: interactive / selected / hero */
+  --surface-modal:  color-mix(in srgb, var(--bg-primary) 85%, transparent); /* tier 3: above-everything (blur in component) */
 
   --elevation-card:     var(--shadow-sm);
   --elevation-dropdown: var(--shadow-md);
   --elevation-modal:    var(--shadow-lg);
 
   /* --- Glow discipline: 2 meaningful tokens (live + critical) + focus --- */
-  --glow-active:   0 0 16px rgba(0, 200, 255, 0.25);   /* live / streaming / selected */
-  --glow-critical: 0 0 24px rgba(255, 61, 113, 0.35);  /* failed / error / >75% util */
-  --focus-ring:    0 0 0 1px rgba(0, 200, 255, 0.5);   /* a11y, not a signal */
+  --glow-active:   0 0 16px color-mix(in srgb, var(--info) 25%, transparent);   /* live / streaming / selected */
+  --glow-critical: 0 0 24px color-mix(in srgb, var(--error) 35%, transparent);  /* failed / error / >75% util */
+  --focus-ring:    0 0 0 1px color-mix(in srgb, var(--info) 50%, transparent);  /* a11y, not a signal */
 
   /* --- Typography: dramatic hero steps for the one licensed moment --- */
   --text-display: 1.75rem;  /* per-surface summary headline */

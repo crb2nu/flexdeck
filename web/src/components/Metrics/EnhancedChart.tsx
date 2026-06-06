@@ -1,13 +1,15 @@
 import { Component, For, Show, createMemo } from 'solid-js';
 import type { MetricValue } from './usePrometheusMetricsController';
 
+// Sourced from the canonical data-viz palette (variables.css --viz-*/--sem-*)
+// rather than re-declaring hex here — one source of truth for series color.
 const CHART_STROKE_COLORS: Record<string, string> = {
-  cyan: '#00c8ff',
-  purple: '#b06cde',
-  green: '#22e076',
-  orange: '#ff6b35',
-  blue: '#4693a6',
-  pink: '#ff6b9d',
+  cyan: 'rgb(var(--viz-1))',
+  purple: 'rgb(var(--viz-5))',
+  green: 'rgb(var(--sem-ok))',
+  orange: 'rgb(var(--viz-2))',
+  blue: 'rgb(var(--viz-8))',
+  pink: 'rgb(var(--viz-7))',
 };
 
 // Enhanced sparkline chart with grid and hover
