@@ -4,7 +4,7 @@
 
 - Milestone: Phase 5 Local Stack Support.
 - Slice: Local workspace inventory kill-test API.
-- Status: complete locally; push/MR/merge not attempted from this detached worktree.
+- Status: complete and merged via `services/flexdeck!140`.
 
 ## What Landed
 
@@ -31,6 +31,7 @@
 - `go test ./internal/workspace ./internal/api/handlers ./internal/api` passed.
 - `go test ./...` passed.
 - `git diff --check` passed.
+- GitLab MR `!140` auto-merged after pipeline `13157` passed.
 - Live endpoint kill-test passed against `WORKSPACE_DIR=/Users/cblevins/workspace` with all live integrations disabled:
   - repositories: 57
   - services: 32
@@ -44,7 +45,6 @@
 
 - Remaining acceptance criteria:
   - None for the local backend slice.
-  - RALPH landing procedure is incomplete because this worktree is detached and no push/MR was attempted.
 - Known issues:
   - Scanner only uses top-level repo metadata. It does not parse dependency graphs or correlate K8s/Flux/GitLab/HUD state yet.
   - Git enrichment depends on `git` availability and per-repo command timeouts.
@@ -61,7 +61,7 @@
 ## Context Links
 
 - Agent-context session: `2f4da9c082f7f39f`
-- Task IDs: added during harvest.
+- Task IDs: `3710257e1e85cf71` (Stack Explorer UI), `8fd979b746334734` (service-to-cluster binding heuristics).
 - Relevant docs/specs:
   - `.loom/brainstorm-local-stack-services-libs-2026-06-06.md`
   - `.loom/31-iteration-plan-local-stack-inventory-kill-test-2026-06-06.md`
