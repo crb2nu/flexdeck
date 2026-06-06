@@ -11,6 +11,17 @@
   --fg-muted:     #5c8a96;
   --fg-dim:       #355b66;
 
+  /* Canonical channel triplets (space-separated RGB) for Tailwind <alpha-value> */
+  --bg-primary-rgb:   6 12 16;
+  --bg-secondary-rgb: 13 22 27;
+  --bg-tertiary-rgb:  20 33 39;
+  --bg-elevated-rgb:  27 43 51;
+  --bg-surface-rgb:   16 28 34;
+  --fg-primary-rgb:   212 238 244;
+  --fg-secondary-rgb: 140 192 204;
+  --fg-muted-rgb:     92 138 150;
+  --fg-dim-rgb:       53 91 102;
+
   --border:        #1a3038;
   --border-focus:  #2f6170;
   --border-active: #4693a6;
@@ -20,6 +31,15 @@
   --error:   #ff3d71;
   --info:    #00c8ff;
   --accent:  #ff6b35;
+
+  /* Channel triplets (space-separated RGB) — let Tailwind inject alpha via
+     `rgb(var(--x-rgb) / <alpha-value>)` so `/N` opacity modifiers render. */
+  --success-rgb: 34 224 118;
+  --warning-rgb: 255 184 48;
+  --error-rgb:   255 61 113;
+  --info-rgb:    0 200 255;
+  --accent-rgb:  255 107 53;
+  --violet-rgb:  176 108 222;
 
   /* Semantic dims (loom-core parity) */
   --accent-dim:  rgba(255, 107, 53, 0.12);
@@ -38,14 +58,31 @@
   --color-emerald: var(--success);
   --color-orange:  var(--accent);
 
+  /* Channel-format aliases (parity with the hex tokens above) */
+  --color-blue-rgb:    var(--info-rgb);
+  --color-red-rgb:     var(--error-rgb);
+  --color-amber-rgb:   var(--warning-rgb);
+  --color-violet-rgb:  var(--violet-rgb);
+  --color-emerald-rgb: var(--success-rgb);
+  --color-orange-rgb:  var(--accent-rgb);
+
   /* Backgrounds */
   --bg-deep:  var(--bg-primary);
   --bg-dark:  var(--bg-secondary);
   --bg-panel: rgba(16, 28, 34, 0.95);
 
+  /* Channel-format aliases. --bg-panel keeps its baked 0.95 alpha (left as
+     rgba(), no triplet) — its translucency is intentional, not an opacity slot. */
+  --bg-deep-rgb: var(--bg-primary-rgb);
+  --bg-dark-rgb: var(--bg-secondary-rgb);
+
   /* Surfaces */
   --surface-primary:  var(--bg-surface);
   --surface-elevated: var(--bg-elevated);
+
+  /* Channel-format aliases (parity with the surfaces above) */
+  --surface-primary-rgb:  var(--bg-surface-rgb);
+  --surface-elevated-rgb: var(--bg-elevated-rgb);
 
   /* Borders */
   --border-default: var(--border);
@@ -56,12 +93,24 @@
   --text-dim:   var(--fg-secondary);
   --text-muted: var(--fg-muted);
 
+  /* Channel-format aliases (parity with the text tokens above) */
+  --text-main-rgb:  var(--fg-primary-rgb);
+  --text-dim-rgb:   var(--fg-secondary-rgb);
+  --text-muted-rgb: var(--fg-muted-rgb);
+
   /* Semantic map */
   --color-ok:     var(--info);
   --color-warn:   var(--warning);
   --color-error:  var(--error);
   --color-ready:  var(--info);
   --color-accent: var(--accent);
+
+  /* Channel-format aliases (parity with the status map above) */
+  --color-ok-rgb:     var(--info-rgb);
+  --color-warn-rgb:   var(--warning-rgb);
+  --color-error-rgb:  var(--error-rgb);
+  --color-ready-rgb:  var(--info-rgb);
+  --color-accent-rgb: var(--accent-rgb);
 
   /* Surface composition (replaces glass-panel) */
   --surface-bg:     var(--bg-surface);

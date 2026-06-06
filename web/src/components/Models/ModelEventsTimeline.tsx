@@ -55,7 +55,7 @@ const ModelEventsTimeline: Component<{ namespace: string; name: string }> = (pro
                     <Show when={event.count > 1}>
                       <span class="text-text-dim/50">x{event.count}</span>
                     </Show>
-                    <span class="text-text-dim/40 ml-auto flex-shrink-0">
+                    <span class="text-text-dim/60 ml-auto flex-shrink-0">
                       {formatRelativeTime(event.lastTimestamp)}
                     </span>
                   </div>

@@ -208,7 +208,7 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
           <Show when={multiGPU()}>
             <button
               onClick={() => setShowDevices(!showDevices())}
-              class="text-[10px] text-text-muted/60 hover:text-text-muted transition-colors"
+              class="text-[10px] text-text-muted hover:text-text-dim transition-colors"
             >
               {showDevices() ? 'Hide' : 'Show'} devices
             </button>

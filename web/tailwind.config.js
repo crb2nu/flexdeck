@@ -4,42 +4,45 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Semantic palette
+        // Semantic palette — channel format so `/N` opacity modifiers render
         semantic: {
-          blue: 'var(--color-blue)',
-          red: 'var(--color-red)',
-          amber: 'var(--color-amber)',
-          violet: 'var(--color-violet)',
-          emerald: 'var(--color-emerald)',
+          blue: 'rgb(var(--color-blue-rgb) / <alpha-value>)',
+          red: 'rgb(var(--color-red-rgb) / <alpha-value>)',
+          amber: 'rgb(var(--color-amber-rgb) / <alpha-value>)',
+          violet: 'rgb(var(--color-violet-rgb) / <alpha-value>)',
+          emerald: 'rgb(var(--color-emerald-rgb) / <alpha-value>)',
         },
-        // Backgrounds
+        // Backgrounds — channel format so `/N` opacity modifiers render
         bg: {
-          deep: 'var(--bg-deep)',
-          dark: 'var(--bg-dark)',
+          deep: 'rgb(var(--bg-deep-rgb) / <alpha-value>)',
+          dark: 'rgb(var(--bg-dark-rgb) / <alpha-value>)',
+          // panel keeps its baked 0.95 alpha — opacity modifiers don't apply
           panel: 'var(--bg-panel)',
         },
-        // Surfaces (elevation tiers)
+        // Surfaces (elevation tiers). primary/elevated use channel format so
+        // `/N` opacity modifiers render; raised/glass/modal are color-mix
+        // translucent tiers (baked alpha) and stay bare.
         surface: {
-          primary: 'var(--surface-primary)',
-          elevated: 'var(--surface-elevated)',
+          primary: 'rgb(var(--surface-primary-rgb) / <alpha-value>)',
+          elevated: 'rgb(var(--surface-elevated-rgb) / <alpha-value>)',
           raised: 'var(--surface-raised)',
           glass: 'var(--surface-glass)',
           modal: 'var(--surface-modal)',
         },
-        // Text
+        // Text — channel format so `/N` opacity modifiers render
         text: {
-          main: 'var(--text-main)',
-          dim: 'var(--text-dim)',
-          muted: 'var(--text-muted)',
+          main: 'rgb(var(--text-main-rgb) / <alpha-value>)',
+          dim: 'rgb(var(--text-dim-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted-rgb) / <alpha-value>)',
         },
-        // Semantic status
+        // Semantic status — channel format so `/N` opacity modifiers render
         status: {
-          ok: 'var(--color-ok)',
-          warn: 'var(--color-warn)',
-          error: 'var(--color-error)',
+          ok: 'rgb(var(--color-ok-rgb) / <alpha-value>)',
+          warn: 'rgb(var(--color-warn-rgb) / <alpha-value>)',
+          error: 'rgb(var(--color-error-rgb) / <alpha-value>)',
         },
         accent: {
-          DEFAULT: 'var(--color-accent)',
+          DEFAULT: 'rgb(var(--color-accent-rgb) / <alpha-value>)',
         },
         // Data-viz categorical palette (8 series) — channel format so
         // `/opacity` modifiers render (bg-viz-1/20, etc.).
