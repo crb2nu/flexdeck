@@ -156,6 +156,17 @@ body {
   }
 }
 
+/* --- Tabular numerics --- */
+/* Apply `.num` to any polling-updated number (KPI headlines, metric cells,
+   table numerics, axis labels, timestamps) so digits hold position on tick
+   instead of jittering as proportional glyphs change width. Plain CSS (not a
+   Tailwind layer) so it is always available regardless of content scanning. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
 /* --- Animations (functional only, ≤150ms) --- */
 
 /* Flow animation — used by TopologyGraph edges */
