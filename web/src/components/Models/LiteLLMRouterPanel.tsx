@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
 import { litellm } from '../../lib/api';
 import type { LiteLLMRouterResponse, LiteLLMModelEntry } from '../../lib/types';
@@ -25,7 +26,7 @@ const LiteLLMRouterPanel: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="surface p-3 text-sm text-status-error">{error()}</div>
+        <div class="surface p-3 text-sm text-status-error">{sanitizeError(error())}</div>
       </Show>
 
       <Show when={loading() && !data()}>

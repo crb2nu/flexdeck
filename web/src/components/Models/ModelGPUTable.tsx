@@ -1,4 +1,5 @@
 import { Component, createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
 import { api } from '../../lib/api';
 import { stableListByKey } from '../../lib/stableList';
@@ -119,7 +120,7 @@ const ModelGPUTable: Component = () => {
 
         <Show when={!loading() && error() && !hasSnapshot()}>
           <div class="rounded-md border border-status-warn/20 bg-status-warn/10 px-3 py-2 text-xs text-status-warn">
-            {error()}
+            {sanitizeError(error())}
           </div>
         </Show>
 
@@ -196,7 +197,7 @@ const ModelGPUTable: Component = () => {
           </Show>
           <Show when={error()}>
             <div class="mt-2 text-[11px] text-status-warn">
-              {error()}. Showing the last successful GPU snapshot.
+              {sanitizeError(error())}. Showing the last successful GPU snapshot.
             </div>
           </Show>
         </Show>

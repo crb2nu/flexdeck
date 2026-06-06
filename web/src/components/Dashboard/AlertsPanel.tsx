@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
 import { prom } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
@@ -138,7 +139,7 @@ const AlertsPanel: Component = () => {
                   <div class="text-xs font-semibold uppercase tracking-wide">Alerts unavailable</div>
                   <div
                     class="mt-0.5 text-[11px] text-status-error/80 line-clamp-2"
-                    title={error()}
+                    title={sanitizeError(error())}
                   >
                     {summarizeAlertError(error())}
                   </div>

@@ -1,4 +1,5 @@
 import { Component, createSignal, createMemo, For, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import type { GroupSwapHistoryResponse, GPUSwapEvent } from '../../lib/types';
@@ -183,7 +184,7 @@ const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
 
       {/* Error state */}
       <Show when={!loading() && error()}>
-        <div class="px-4 py-4 text-center text-xs text-status-error">{error()}</div>
+        <div class="px-4 py-4 text-center text-xs text-status-error">{sanitizeError(error())}</div>
       </Show>
 
       {/* Empty state */}

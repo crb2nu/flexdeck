@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { ciApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import {
@@ -116,7 +117,7 @@ const PipelineTrends: Component = () => {
       <Show when={error()}>
         <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
           <span>!</span>
-          {error()}
+          {sanitizeError(error())}
         </div>
       </Show>
 

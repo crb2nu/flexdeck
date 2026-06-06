@@ -1,4 +1,5 @@
 import { Component, createMemo, createSignal, For, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
 import { k8s } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
@@ -85,7 +86,7 @@ const EventsFeed: Component = () => {
           }
         >
           <Show when={stablePanel.showBlockingError()}>
-            <div class="px-3 py-2 text-xs text-red-400">{error()}</div>
+            <div class="px-3 py-2 text-xs text-red-400">{sanitizeError(error())}</div>
           </Show>
 
           <Show when={error() && stablePanel.hasStableValue()}>
