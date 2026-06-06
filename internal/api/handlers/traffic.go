@@ -82,7 +82,7 @@ func (h *Handler) TrafficReport(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "traffic:report:" + window
 
 	if h.cache == nil {
-		report := h.buildTrafficReport(r, window)
+		report := h.buildTrafficReport(r.Context(), window)
 		respondJSON(w, http.StatusOK, report)
 		return
 	}
@@ -96,8 +96,12 @@ func (h *Handler) TrafficReport(w http.ResponseWriter, r *http.Request) {
 			JitterFraction:           0.2,
 			BackgroundRefreshTimeout: 10 * time.Second,
 		},
-		func(_ context.Context) (any, error) {
-			return h.buildTrafficReport(r, window), nil
+		// Use the cache-provided context, not r.Context(): background
+		// stale-while-revalidate refresh runs after the HTTP response is
+		// sent, so r.Context() is already canceled and every Prometheus
+		// query would fail with "context canceled".
+		func(ctx context.Context) (any, error) {
+			return h.buildTrafficReport(ctx, window), nil
 		},
 	)
 	if err != nil {
@@ -110,7 +114,7 @@ func (h *Handler) TrafficReport(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-func (h *Handler) buildTrafficReport(r *http.Request, window string) TrafficReport {
+func (h *Handler) buildTrafficReport(ctx context.Context, window string) TrafficReport {
 	report := TrafficReport{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Window:      window,
@@ -118,7 +122,7 @@ func (h *Handler) buildTrafficReport(r *http.Request, window string) TrafficRepo
 	}
 
 	query := func(name, promql string) []trafficPromSample {
-		samples, err := h.queryTrafficPrometheus(r, promql)
+		samples, err := h.queryTrafficPrometheus(ctx, promql)
 		if err != nil {
 			report.Warnings = append(report.Warnings, fmt.Sprintf("%s: %v", name, err))
 			report.Status = "partial"
@@ -159,13 +163,13 @@ func sanitizeTrafficWindow(raw string) string {
 	return raw
 }
 
-func (h *Handler) queryTrafficPrometheus(r *http.Request, promql string) ([]trafficPromSample, error) {
+func (h *Handler) queryTrafficPrometheus(ctx context.Context, promql string) ([]trafficPromSample, error) {
 	promURL := apiutil.NewURLBuilder(h.cfg.Prom.URL).
 		RawPath("/api/v1/query").
 		Param("query", promql).
 		String()
 
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, promURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, promURL, nil)
 	if err != nil {
 		return nil, err
 	}

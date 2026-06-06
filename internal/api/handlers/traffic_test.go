@@ -108,7 +108,7 @@ func TestTrafficReportSanitizesNaNLatencyBeforeJSON(t *testing.T) {
 	h.cfg.Prom.URL = ts.URL
 
 	req := httptest.NewRequest(http.MethodGet, "/api/traffic/report?window=24h", nil)
-	report := h.buildTrafficReport(req, "24h")
+	report := h.buildTrafficReport(req.Context(), "24h")
 
 	if len(report.Hosts) != 1 {
 		t.Fatalf("expected one host, got %+v", report.Hosts)
