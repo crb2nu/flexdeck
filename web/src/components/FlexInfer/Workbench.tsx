@@ -371,6 +371,65 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     });
   });
 
+  // ----- Fleet Pulse Rail (Region A) data -----
+  // GPU pools grouped from spec.gpu.shared, colored by the worst severity tier
+  // in the pool — surfaces contention without a separate page.
+  const gpuPools = createMemo(() => {
+    const pools = new Map<string, { name: string; count: number; worstRank: number; worstTier: SeverityTier }>();
+    for (const row of modelRows()) {
+      const name = row.model.spec?.gpu?.shared || 'dedicated';
+      const rank = SEVERITY_TIER_RANK[row.severityTier];
+      const existing = pools.get(name);
+      if (!existing) {
+        pools.set(name, { name, count: 1, worstRank: rank, worstTier: row.severityTier });
+      } else {
+        existing.count += 1;
+        if (rank < existing.worstRank) {
+          existing.worstRank = rank;
+          existing.worstTier = row.severityTier;
+        }
+      }
+    }
+    return [...pools.values()].sort(
+      (a, b) => a.worstRank - b.worstRank || b.count - a.count || a.name.localeCompare(b.name),
+    );
+  });
+
+  // Phase distribution segments for the fleet micro-bar.
+  const phaseSegments = createMemo(() => {
+    const order: Array<{ phase: string; class: string }> = [
+      { phase: 'Failed', class: 'bg-sem-crit' },
+      { phase: 'Preempted', class: 'bg-sem-warn' },
+      { phase: 'Pending', class: 'bg-sem-warn/70' },
+      { phase: 'Loading', class: 'bg-viz-1/70' },
+      { phase: 'Idle', class: 'bg-white/20' },
+      { phase: 'Ready', class: 'bg-sem-ok' },
+    ];
+    const total = modelRows().length || 1;
+    return order
+      .map((s) => ({ ...s, count: phaseCount(s.phase), pct: (phaseCount(s.phase) / total) * 100 }))
+      .filter((s) => s.count > 0);
+  });
+
+  // Worst-of fleet verdict for the rail headline.
+  const fleetVerdict = createMemo<{ tier: 'critical' | 'degraded' | 'healthy'; label: string; summary: string }>(() => {
+    const failed = phaseCount('Failed');
+    const preempted = phaseCount('Preempted');
+    const degraded = controller.reliabilitySummary().degraded;
+    const queue = proxyTotals()?.queueDepth ?? 0;
+    const failedCaches = failedCacheCount();
+    const parts: string[] = [];
+    if (failed) parts.push(`${failed} failed`);
+    if (degraded) parts.push(`${degraded} degraded`);
+    if (preempted) parts.push(`${preempted} preempted`);
+    if (failedCaches) parts.push(`${failedCaches} cache${failedCaches > 1 ? 's' : ''} failed`);
+    if (queue >= 100) parts.push(`${queue} queued`);
+    const summary = parts.length ? parts.join(' · ') : 'all systems nominal';
+    if (failed > 0 || failedCaches > 0) return { tier: 'critical', label: 'Critical', summary };
+    if (degraded > 0 || preempted > 0 || queue >= 100) return { tier: 'degraded', label: 'Degraded', summary };
+    return { tier: 'healthy', label: 'Healthy', summary };
+  });
+
   const proxyModelRows = createMemo(() => {
     const metrics = proxyMetrics();
     if (!metrics?.byModel) return [];
@@ -619,6 +678,64 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             </div>
           }
         />
+
+        {/* Region A — Fleet Pulse Rail: glanceable fleet verdict, phase
+            distribution, load, cache, and GPU-pool contention. */}
+        <Show when={modelRows().length > 0}>
+          <div class="surface flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
+            <div class="flex items-center gap-2">
+              <span class={`rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${verdictBadgeClass(fleetVerdict().tier)}`}>
+                {fleetVerdict().label}
+              </span>
+              <span class="text-[11px] text-text-dim">{fleetVerdict().summary}</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span class="heading-label">Fleet</span>
+              <div class="flex h-1.5 w-32 overflow-hidden rounded-full bg-white/5">
+                <For each={phaseSegments()}>
+                  {(seg) => <div class={seg.class} style={{ width: `${seg.pct}%` }} title={`${seg.count} ${seg.phase}`} />}
+                </For>
+              </div>
+              <span class="num text-[11px] text-text-dim">{modelRows().length} CRDs</span>
+            </div>
+
+            <div class="flex items-center gap-2 text-[11px] text-text-dim">
+              <span class="heading-label">Load</span>
+              <span class={`num ${(proxyTotals()?.queueDepth ?? 0) >= 100 ? 'text-sem-crit' : (proxyTotals()?.queueDepth ?? 0) >= 10 ? 'text-util-near' : 'text-text-muted'}`}>
+                {proxyTotals()?.queueDepth ?? 0} queued
+              </span>
+              <span class={`num ${(proxyTotals()?.errorRate ?? 0) >= 0.02 ? 'text-sem-crit' : 'text-text-muted'}`}>
+                {((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% err
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2 text-[11px] text-text-dim">
+              <span class="heading-label">Caches</span>
+              <span class="num text-text-muted">{supplyChainSummary().readyCacheCount}/{supplyChainSummary().cacheCount}</span>
+              <Show when={failedCacheCount() > 0}>
+                <span class="num text-sem-crit">{failedCacheCount()} failed</span>
+              </Show>
+            </div>
+
+            <Show when={gpuPools().length > 0}>
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                <span class="heading-label shrink-0">GPU pools</span>
+                <div class="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                  <For each={gpuPools()}>
+                    {(pool) => (
+                      <span class="inline-flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-0.5 text-[10px] text-text-muted">
+                        <span class={`inline-block h-1.5 w-1.5 rounded-full ${triageAccent(pool.worstTier)}`} />
+                        <span class="truncate max-w-[10rem]">{pool.name}</span>
+                        <span class="num text-text-dim">{pool.count}</span>
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+          </div>
+        </Show>
 
         <Show when={modelRows().length > 0} fallback={<WorkbenchEmpty message="No FlexInfer CRDs found yet." />}>
           <div class="surface divide-y divide-white/5 overflow-hidden">
@@ -1423,6 +1540,14 @@ function queueChipClass(queue: number): string {
   if (queue >= 100) return 'bg-sem-crit/15 text-sem-crit';   // overloaded
   if (queue >= 10) return 'bg-util-near/15 text-util-near';  // building
   return 'bg-util-safe/15 text-util-safe';                   // light traffic
+}
+
+function verdictBadgeClass(tier: 'critical' | 'degraded' | 'healthy'): string {
+  switch (tier) {
+    case 'critical': return 'bg-sem-crit/15 text-sem-crit';
+    case 'degraded': return 'bg-sem-warn/15 text-sem-warn';
+    default: return 'bg-status-ok/15 text-status-ok';
+  }
 }
 
 const MiniMetric: Component<{ label: string; value: string }> = (props) => (
