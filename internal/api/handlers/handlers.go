@@ -17,6 +17,8 @@ import (
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
 	"github.com/flexinfer/flexdeck/internal/rbac"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 )
 
 // newGitLabClient creates a shared HTTP client for GitLab API requests
@@ -38,12 +40,13 @@ func newGitLabClient() *http.Client {
 }
 
 type Handler struct {
-	cfg          *config.Config
-	k8s          *k8s.Client
-	litellm      *litellm.Client
-	metricsStore *metrics.Store
-	cache        *cache.Cache
-	gitlabClient *http.Client
+	cfg                    *config.Config
+	k8s                    *k8s.Client
+	litellm                *litellm.Client
+	metricsStore           *metrics.Store
+	cache                  *cache.Cache
+	gitlabClient           *http.Client
+	dynamicClientForConfig func(*rest.Config) (dynamic.Interface, error)
 
 	// Infrastructure cache worker
 	infraWorker *infra.Worker
@@ -70,6 +73,13 @@ type Handler struct {
 	// Multi-Cluster
 	clusterManager  *cluster.Manager
 	clusterRegistry *cluster.Registry
+}
+
+func (h *Handler) newDynamicClient(config *rest.Config) (dynamic.Interface, error) {
+	if h.dynamicClientForConfig != nil {
+		return h.dynamicClientForConfig(config)
+	}
+	return dynamic.NewForConfig(config)
 }
 
 // HandlerDeps contains optional dependencies for the handler

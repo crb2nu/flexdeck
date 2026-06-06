@@ -104,7 +104,7 @@ func (h *Handler) FluxListKustomizations(w http.ResponseWriter, r *http.Request)
 
 	gvr, _ := resolveFluxGVR("kustomization")
 
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -137,7 +137,7 @@ func (h *Handler) FluxListHelmReleases(w http.ResponseWriter, r *http.Request) {
 
 	gvr, _ := resolveFluxGVR("helmrelease")
 
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -188,7 +188,7 @@ func (h *Handler) FluxReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -392,7 +392,7 @@ func (h *Handler) FluxSuspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -442,7 +442,7 @@ func (h *Handler) FluxListSources(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -511,7 +511,7 @@ func (h *Handler) FluxHelmReleaseValues(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) fetchHelmReleaseValues(ctx context.Context, kc *k8s.Client, namespace, name string) (map[string]any, error) {
 	gvr, _ := resolveFluxGVR("helmrelease")
-	dynamicClient, err := dynamic.NewForConfig(kc.Config())
+	dynamicClient, err := h.newDynamicClient(kc.Config())
 	if err != nil {
 		return nil, err
 	}
