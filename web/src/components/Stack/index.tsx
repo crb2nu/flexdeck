@@ -207,6 +207,12 @@ const Stack: Component = () => {
 
   const showBlockingLoading = createMemo(() => loading() && !inventory());
   const showBlockingError = createMemo(() => !!error() && !inventory() && !loading());
+  // The Stack Explorer needs a workspace on disk (WORKSPACE_DIR). When the
+  // server has none mounted (e.g. the prod pod), treat it as a feature that
+  // isn't available here rather than a transient error to retry.
+  const workspaceUnavailable = createMemo(() =>
+    /workspace root (unavailable|is not configured|is not a directory)|no such file or directory/i.test(error() || ''),
+  );
 
   return (
     <div class="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -220,8 +226,8 @@ const Stack: Component = () => {
             onRefresh={() => void loadInventory(true)}
             refreshDisabled={refreshing() || loading()}
           >
-            <Badge tone={error() ? 'warn' : 'info'}>
-              {error() ? 'Stale data' : 'Read-only'}
+            <Badge tone={workspaceUnavailable() ? 'default' : error() ? 'warn' : 'info'}>
+              {workspaceUnavailable() ? 'Unavailable here' : error() ? 'Stale data' : 'Read-only'}
             </Badge>
           </PageHeader>
 
@@ -230,7 +236,17 @@ const Stack: Component = () => {
           </Show>
 
           <Show when={showBlockingError()}>
-            <ErrorState message={error()} variant="full" onRetry={() => void loadInventory()} />
+            <Show
+              when={workspaceUnavailable()}
+              fallback={<ErrorState message={error()} variant="full" onRetry={() => void loadInventory()} />}
+            >
+              <EmptyState
+                icon="🗂"
+                title="Workspace inventory isn't available here"
+                subtitle="This deployment has no workspace mounted, so there are no local services or libraries to scan. Point WORKSPACE_DIR at a mounted workspace to enable the Stack Explorer."
+                action={{ label: 'Try again', onClick: () => void loadInventory() }}
+              />
+            </Show>
           </Show>
 
           <Show when={!showBlockingLoading() && !showBlockingError()}>
