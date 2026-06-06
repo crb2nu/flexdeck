@@ -1,4 +1,5 @@
 import { Component, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 
 export interface ErrorStateProps {
   message: string;
@@ -8,6 +9,9 @@ export interface ErrorStateProps {
 
 const ErrorState: Component<ErrorStateProps> = (props) => {
   const variant = () => props.variant ?? 'banner';
+  // Every error surfaced through ErrorState is sanitized so raw backend
+  // strings (Go fs paths, panics, dial errors) never reach the user.
+  const message = () => sanitizeError(props.message);
 
   if (variant() === 'inline') {
     return (
@@ -15,7 +19,7 @@ const ErrorState: Component<ErrorStateProps> = (props) => {
         <svg class="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
         </svg>
-        <span>{props.message}</span>
+        <span>{message()}</span>
         <Show when={props.onRetry}>
           <button onClick={props.onRetry} class="text-xs underline hover:text-status-error/80 transition-colors">
             Retry
@@ -34,7 +38,7 @@ const ErrorState: Component<ErrorStateProps> = (props) => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <p class="text-sm text-status-error font-medium">{props.message}</p>
+          <p class="text-sm text-status-error font-medium">{message()}</p>
           <Show when={props.onRetry}>
             <button
               onClick={props.onRetry}
@@ -54,7 +58,7 @@ const ErrorState: Component<ErrorStateProps> = (props) => {
       <svg class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
       </svg>
-      <span class="flex-1">{props.message}</span>
+      <span class="flex-1">{message()}</span>
       <Show when={props.onRetry}>
         <button
           onClick={props.onRetry}

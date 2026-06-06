@@ -10,12 +10,15 @@ export interface BadgeProps {
   children: JSX.Element;
 }
 
+// Tints derived from canonical tokens via color-mix so they actually render
+// (bare var() tokens drop Tailwind /opacity). No decorative hover glow — per
+// the glow-discipline rule, badges are static status, not live/critical signals.
 const toneClasses: Record<BadgeTone, string> = {
   default: 'bg-white/5 border-white/10 text-text-dim',
-  ok: 'bg-status-ok/10 border-status-ok/20 text-status-ok hover:shadow-[0_0_8px_rgba(0,240,255,0.12)]',
-  warn: 'bg-status-warn/10 border-status-warn/20 text-status-warn hover:shadow-[0_0_8px_rgba(252,238,10,0.1)]',
-  error: 'bg-status-error/10 border-status-error/20 text-status-error hover:shadow-[0_0_8px_rgba(255,0,60,0.12)]',
-  info: 'bg-violet-500/10 border-violet-500/20 text-violet-400 hover:shadow-[0_0_8px_rgba(189,0,255,0.12)]',
+  ok: 'border-[color-mix(in_srgb,var(--status-ok)_28%,transparent)] bg-[color-mix(in_srgb,var(--status-ok)_12%,transparent)] text-status-ok',
+  warn: 'border-[color-mix(in_srgb,var(--status-warn)_28%,transparent)] bg-[color-mix(in_srgb,var(--status-warn)_12%,transparent)] text-status-warn',
+  error: 'border-[color-mix(in_srgb,var(--status-error)_28%,transparent)] bg-[color-mix(in_srgb,var(--status-error)_12%,transparent)] text-status-error',
+  info: 'border-[color-mix(in_srgb,var(--color-violet)_28%,transparent)] bg-[color-mix(in_srgb,var(--color-violet)_12%,transparent)] text-semantic-violet',
 };
 
 const sizeClasses: Record<BadgeSize, string> = {
