@@ -98,7 +98,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
   return (
     <div
       class={`surface-hover group relative flex flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 border-l-2 ${
-        props.emphasis ? 'min-h-[96px] sm:min-h-[116px]' : 'min-h-[80px] sm:min-h-[96px]'
+        props.emphasis ? 'min-h-[112px] sm:min-h-[132px]' : 'min-h-[80px] sm:min-h-[96px]'
       }`}
       style={{
         'border-left-color': `color-mix(in srgb, ${accentVar()} 30%, transparent)`,
@@ -151,7 +151,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
 
         <Show when={stableState() || (!props.loading && !props.error)}>
           <div class="flex items-baseline gap-1 sm:gap-2">
-            <div class={`num font-bold tracking-tight text-text-main ${props.emphasis ? 'text-2xl sm:text-display' : 'text-xl sm:text-2xl'}`}>
+            <div class={`num font-bold tracking-tight text-text-main ${props.emphasis ? 'text-3xl sm:text-4xl' : 'text-xl sm:text-2xl'}`}>
               {effectiveState().value}
             </div>
             <Show when={effectiveState().trend && trendIcon()}>
