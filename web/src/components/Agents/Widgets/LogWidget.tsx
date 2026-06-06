@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show } from 'solid-js';
+import { sanitizeError } from '../../../lib/sanitizeError';
 import { loki } from '../../../lib/api';
 import { createPolling } from '../../../hooks/createPolling';
 
@@ -116,7 +117,7 @@ const LogWidget: Component<LogWidgetProps> = (props) => {
           }
         >
           <Show when={error()}>
-            <div class="px-3 py-2 text-xs text-red-400">{error()}</div>
+            <div class="px-3 py-2 text-xs text-red-400">{sanitizeError(error())}</div>
           </Show>
 
           <Show

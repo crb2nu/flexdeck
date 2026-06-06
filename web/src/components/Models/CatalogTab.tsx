@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import type { ModelCatalogEntry } from '../../lib/types';
@@ -190,7 +191,7 @@ const CatalogTab: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="surface p-3 text-sm text-status-error">{error()}</div>
+        <div class="surface p-3 text-sm text-status-error">{sanitizeError(error())}</div>
       </Show>
       <Show when={actionError()}>
         <div class="surface p-3 text-sm text-status-error">{actionError()}</div>

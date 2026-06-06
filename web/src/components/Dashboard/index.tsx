@@ -170,6 +170,7 @@ const Dashboard: Component = () => {
       <div class="space-y-3 min-w-0">
         <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-4">
           <PulseCard
+            emphasis
             title="Pods"
             value={`${podSummary().ready}/${podSummary().total}`}
             sub={`${podSummary().namespaces} namespaces`}
@@ -180,6 +181,7 @@ const Dashboard: Component = () => {
           />
 
           <PulseCard
+            emphasis
             title="Nodes"
             value={`${nodeSummary().ready}/${nodeSummary().total}`}
             sub="cluster nodes"
@@ -190,6 +192,7 @@ const Dashboard: Component = () => {
           />
 
           <PulseCard
+            emphasis
             title="CPU"
             value={formatPercent(cpuPercent())}
             sub="cluster utilization"
@@ -202,6 +205,7 @@ const Dashboard: Component = () => {
           />
 
           <PulseCard
+            emphasis
             title="Memory"
             value={formatBytes(memUsed())}
             sub="used across cluster"

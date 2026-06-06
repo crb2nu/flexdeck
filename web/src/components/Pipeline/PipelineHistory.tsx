@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import {
   operatorStateBadgeClass,
@@ -166,7 +167,7 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
       <Show when={error()}>
         <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
           <span>!</span>
-          {error()}
+          {sanitizeError(error())}
         </div>
       </Show>
 

@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
+import { sanitizeError } from '../../lib/sanitizeError';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import type { GPUSwapEvent } from '../../lib/types';
@@ -106,7 +107,7 @@ const ModelSwapTimeline: Component<{ namespace: string; name: string }> = (props
 
       {/* Error state */}
       <Show when={!loading() && error()}>
-        <div class="py-2 text-xs text-status-error">{error()}</div>
+        <div class="py-2 text-xs text-status-error">{sanitizeError(error())}</div>
       </Show>
 
       {/* Empty state */}

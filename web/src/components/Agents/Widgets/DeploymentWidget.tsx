@@ -1,4 +1,5 @@
 import { Component, createMemo, createResource, For, Show } from 'solid-js';
+import { sanitizeError } from '../../../lib/sanitizeError';
 import { modelsApi } from '../../../lib/api';
 import type { RegisteredModel } from '../../../lib/types';
 
@@ -119,7 +120,7 @@ const DeploymentWidget: Component<DeploymentWidgetProps> = (props) => {
 
       {/* Error */}
       <Show when={error()}>
-        <div class="px-4 py-3 text-xs text-status-error font-mono">{error()}</div>
+        <div class="px-4 py-3 text-xs text-status-error font-mono">{sanitizeError(error())}</div>
       </Show>
 
       {/* Deployments list */}
