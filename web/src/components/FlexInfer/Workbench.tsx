@@ -71,7 +71,7 @@ import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
 import { stableListByKey } from '../../lib/stableList';
-import { severityScore, type SeverityInput } from './severity';
+import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput } from './severity';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -341,6 +341,10 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         requests: requestsForModel(currentProxyMetrics, metricName),
         preempted: Boolean(sharedGroup?.preemptedBy) || sharedGroup?.state === 'Preempted',
       };
+      // Triage ordering: worst-first by severity (RA-1). Replaces the old
+      // phase-only rank so a Ready-but-saturated or idle-with-traffic model
+      // surfaces above a quietly-healthy one. See ./severity.ts.
+      const severity = classifySeverity(severityInput);
       return {
         model,
         key,
@@ -350,15 +354,19 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         throughput: controller.throughputByModel()[key],
         adapters: controller.loraByModel()[key] || [],
         integrationState: controller.integrationByModel()[key],
-        // Triage ordering: worst-first by severity (RA-1). Replaces the old
-        // phase-only rank so a Ready-but-saturated or idle-with-traffic model
-        // surfaces above a quietly-healthy one. See ./severity.ts.
-        severity: severityScore(severityInput),
+        severity: severity.score,
+        severityTier: severity.tier,
       };
     });
 
     return items.sort((a, b) => {
-      if (a.severity !== b.severity) return b.severity - a.severity;
+      // Sort by COARSE tier, not the fine score: within a tier, live metric
+      // jitter (queue/error) must NOT reorder rows every 15s poll — that churns
+      // the DOM and reads as flicker. A stable name tiebreak keeps row order
+      // fixed until a model genuinely changes tier.
+      const at = SEVERITY_TIER_RANK[a.severityTier];
+      const bt = SEVERITY_TIER_RANK[b.severityTier];
+      if (at !== bt) return at - bt;
       return `${a.model.namespace}/${a.model.name}`.localeCompare(`${b.model.namespace}/${b.model.name}`);
     });
   });
@@ -380,8 +388,32 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   const searchResults = () => controller.searchResults();
 
   // Stabilize list identity so <For> keeps DOM rows across 15s polling refreshes.
-  // Prevents hover/focus flicker when JSON.parse produces fresh object refs.
-  const stableModelRows = stableListByKey(modelRows, (row) => row.key);
+  // Reuse the row ref unless a STRUCTURAL field changes — volatile per-poll
+  // metrics (queue/RPS/error/throughput/severity score) are excluded so they
+  // don't recreate the row every tick (that churn was the visible flicker).
+  // The telemetry cells read proxyMetrics() reactively, so live counters still
+  // update without a DOM teardown.
+  const stableModelRows = stableListByKey(
+    modelRows,
+    (row) => row.key,
+    (row) =>
+      [
+        row.key,
+        row.model.status?.phase ?? '',
+        row.model.status?.loadingSubstage ?? '',
+        row.model.status?.message ?? '',
+        row.model.status?.loadingProgressAt ?? '',
+        row.reliability.level,
+        row.severityTier,
+        row.adapters.length,
+        row.model.spec?.source ?? '',
+        row.model.status?.cache?.ready ?? '',
+        row.model.status?.cache?.jobPhase ?? '',
+        row.model.status?.cache?.strategy ?? '',
+        row.model.status?.sharedGroup?.state ?? '',
+        row.proxyMetricName ?? '',
+      ].join('|'),
+  );
   const stableProxyModelRows = stableListByKey(
     proxyModelRows,
     ([name]) => name,

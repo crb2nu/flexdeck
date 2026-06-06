@@ -90,6 +90,18 @@ export function severityTier(score: number): SeverityTier {
   return 'healthy';
 }
 
+// Coarse rank (0 = most urgent) for STABLE list ordering. Sort lists by this
+// tier + a stable tiebreak (e.g. name) — never by the fine score — so live
+// metric jitter (queue/error wobbling within a tier) does not reorder rows
+// every poll. Rows move only when a model actually changes tier.
+export const SEVERITY_TIER_RANK: Record<SeverityTier, number> = {
+  critical: 0,
+  degraded: 1,
+  loading: 2,
+  standby: 3,
+  healthy: 4,
+};
+
 export function classifySeverity(i: SeverityInput): { score: number; tier: SeverityTier } {
   const score = severityScore(i);
   return { score, tier: severityTier(score) };
