@@ -124,9 +124,17 @@ spec:
                   name: flexdeck-secrets
                   key: hud-push-token
                   optional: true
+            # Stack Explorer inventory root — points at the read-only
+            # workspace NFS mount below (config default $HOME/workspace does
+            # not exist in the pod).
+            - name: WORKSPACE_DIR
+              value: "/workspace"
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -157,6 +165,10 @@ spec:
       volumes:
         - name: data
           emptyDir: {}
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: flexdeck-workspace-nfs
+            readOnly: true
       securityContext:
         fsGroup: 1000
         seccompProfile:

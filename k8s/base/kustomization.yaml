@@ -9,6 +9,7 @@ resources:
   - public-serviceaccount.yaml
   - secret.sops.yaml
   - redis.yaml
+  - workspace-pvc.yaml
   - deployment.yaml
   - public-deployment.yaml
   - service.yaml

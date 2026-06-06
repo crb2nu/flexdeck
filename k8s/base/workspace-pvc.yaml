@@ -1,0 +1,43 @@
+# NFS-backed RWX PV + PVC giving the flexdeck pod READ-ONLY access to the
+# workspace tree, backing the Stack Explorer inventory scan
+# (internal/workspace/inventory.go -> Scan over services/ and libs/).
+#
+# Same NFS export as devbox-workspace-nfs (devbox ns) and
+# loom-hub-workspace-nfs (loom-hub ns). PVCs are namespace-scoped, so we
+# declare a fresh PV/PVC pair in the flexdeck namespace pointing at the same
+# export. Reclaim policy is Retain — never delete the shared export.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: flexdeck-workspace-nfs
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.2
+    - hard
+    - nconnect=4
+  nfs:
+    server: 192.168.50.211
+    path: /srv/nas/pilot3/nas-media-bulk/devbox-ws
+  claimRef:
+    namespace: flexdeck
+    name: flexdeck-workspace-nfs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flexdeck-workspace-nfs
+  namespace: flexdeck
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: flexdeck-workspace-nfs
