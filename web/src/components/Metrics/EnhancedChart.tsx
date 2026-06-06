@@ -21,7 +21,7 @@ const EnhancedChart: Component<{
 }> = (props) => {
   const width = 300;
   const height = 100;
-  const padding = { top: 8, right: 8, bottom: 4, left: 35 };
+  const padding = { top: 8, right: 8, bottom: 18, left: 35 };
 
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
@@ -65,6 +65,22 @@ const EnhancedChart: Component<{
       ticks.push({ value, y });
     }
 
+    // X-axis time labels (start / middle / end) — restores temporal context
+    // that previously only appeared on hover.
+    const xTickConfigs =
+      values.length <= 1
+        ? []
+        : ([
+            { idx: 0, anchor: 'start' as const },
+            { idx: Math.floor((values.length - 1) / 2), anchor: 'middle' as const },
+            { idx: values.length - 1, anchor: 'end' as const },
+          ]);
+    const xTicks = xTickConfigs.map(({ idx, anchor }) => ({
+      x: padding.left + xStep * idx,
+      time: values[idx].time,
+      anchor,
+    }));
+
     return {
       min: paddedMin,
       max: paddedMax,
@@ -73,6 +89,7 @@ const EnhancedChart: Component<{
       linePath,
       areaPath,
       ticks,
+      xTicks,
       lastPoint: points[points.length - 1],
     };
   });
@@ -112,7 +129,7 @@ const EnhancedChart: Component<{
         </filter>
       </defs>
 
-      {/* Grid lines */}
+      {/* Grid lines + y-axis labels */}
       <For each={chartModel()?.ticks || []}>
         {(tick) => (
           <>
@@ -121,7 +138,7 @@ const EnhancedChart: Component<{
               y1={tick.y}
               x2={padding.left + chartWidth}
               y2={tick.y}
-              stroke="rgba(255,255,255,0.05)"
+              stroke="var(--grid-line)"
               stroke-width="1"
             />
             <text
@@ -129,8 +146,9 @@ const EnhancedChart: Component<{
               y={tick.y}
               text-anchor="end"
               dominant-baseline="middle"
-              font-size="8"
-              fill="rgba(255,255,255,0.3)"
+              font-size="9"
+              fill="rgba(255,255,255,0.55)"
+              style={{ 'font-variant-numeric': 'tabular-nums' }}
             >
               {props.unit === 'MB/s' && Math.abs(tick.value) < 0.1 && Math.abs(tick.value) > 0
                 ? `${(tick.value * 1024).toFixed(0)}`
@@ -139,6 +157,22 @@ const EnhancedChart: Component<{
                   : tick.value.toFixed(0)}
             </text>
           </>
+        )}
+      </For>
+
+      {/* X-axis time labels */}
+      <For each={chartModel()?.xTicks || []}>
+        {(tick) => (
+          <text
+            x={tick.x}
+            y={height - 5}
+            text-anchor={tick.anchor}
+            font-size="9"
+            fill="rgba(255,255,255,0.5)"
+            style={{ 'font-variant-numeric': 'tabular-nums' }}
+          >
+            {new Date(tick.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </text>
         )}
       </For>
 
@@ -161,42 +195,23 @@ const EnhancedChart: Component<{
         class="transition-all duration-300"
       />
 
-      {/* Endpoint dot with pulse */}
+      {/* Endpoint dot — static halo + dot. (Dropped the infinite SMIL pulse:
+          SMIL ignores prefers-reduced-motion and the throb read as decorative
+          noise; liveness is carried by the "Updated HH:MM:SS" label instead.) */}
       <Show when={chartModel()?.lastPoint} keyed>
-        {(lastPoint) => {
-          return (
-            <>
-              <circle
-                cx={lastPoint.x}
-                cy={lastPoint.y}
-                r={6}
-                fill={strokeColor()}
-                opacity={0.3}
-              >
-                <animate
-                  attributeName="r"
-                  values="4;8;4"
-                  dur="2s"
-                  repeatCount="indefinite"
-                />
-                <animate
-                  attributeName="opacity"
-                  values="0.3;0.1;0.3"
-                  dur="2s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-              <circle
-                cx={lastPoint.x}
-                cy={lastPoint.y}
-                r={3}
-                fill={strokeColor()}
-                stroke="rgba(0,0,0,0.3)"
-                stroke-width={1}
-              />
-            </>
-          );
-        }}
+        {(lastPoint) => (
+          <>
+            <circle cx={lastPoint.x} cy={lastPoint.y} r={5} fill={strokeColor()} opacity={0.18} />
+            <circle
+              cx={lastPoint.x}
+              cy={lastPoint.y}
+              r={3}
+              fill={strokeColor()}
+              stroke="rgba(0,0,0,0.35)"
+              stroke-width={1}
+            />
+          </>
+        )}
       </Show>
     </svg>
   );
