@@ -82,14 +82,22 @@ const PulseCard: Component<PulseCardProps> = (props) => {
     return null;
   });
 
+  // Accent sourced from canonical brand tokens (variables.css) — no off-brand
+  // literals. color-mix gives the exact tint the old hardcoded rgba intended.
+  const accentVar = createMemo(() => {
+    switch (props.color) {
+      case 'purple': return 'var(--color-violet)';
+      case 'green': return 'var(--success)';
+      case 'orange': return 'var(--accent)';
+      default: return 'var(--info)';
+    }
+  });
+
   return (
     <div
       class="surface-hover group relative flex min-h-[80px] sm:min-h-[96px] flex-col gap-1 sm:gap-1.5 p-2.5 sm:p-3 border-l-2"
       style={{
-        'border-left-color': props.color === 'purple' ? 'rgba(189, 0, 255, 0.3)'
-          : props.color === 'green' ? 'rgba(10, 255, 104, 0.3)'
-          : props.color === 'orange' ? 'rgba(249, 115, 22, 0.3)'
-          : 'rgba(0, 240, 255, 0.3)',
+        'border-left-color': `color-mix(in srgb, ${accentVar()} 30%, transparent)`,
       }}
     >
       {/* Header */}
@@ -159,7 +167,7 @@ const PulseCard: Component<PulseCardProps> = (props) => {
                 data={effectiveState().sparkData!}
                 width={typeof window !== 'undefined' && window.innerWidth < 640 ? 80 : 120}
                 height={typeof window !== 'undefined' && window.innerWidth < 640 ? 16 : 20}
-                color={props.color === 'purple' ? '#b06cde' : props.color === 'green' ? '#22e076' : props.color === 'orange' ? '#ff6b35' : '#00c8ff'}
+                color={accentVar()}
                 trend={effectiveState().trend}
               />
             </div>
