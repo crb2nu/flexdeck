@@ -59,6 +59,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - ✅ **Storage Browser**: PVC/PV/StorageClass listing with status indicators.
 - ✅ **ConfigMap/Secret Viewer**: Expandable rows with per-key reveal for secrets.
 - ✅ **Helm Values/History**: Inline values display and revision history for HelmReleases.
+- ✅ **Stack Explorer**: Read-only local services/libs explorer over the workspace repository inventory, with search, grouping, and readiness summaries.
 
 ## Upcoming Work
 
@@ -122,7 +123,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 ### Phase 5: Local Stack Support (June 2026)
 
 - [x] **Workspace Repository Inventory API**: Read-only `/api/workspace/repos` scanner for top-level `WORKSPACE_DIR/services` and `WORKSPACE_DIR/libs` repos, including language/package hints, docs markers, worktree counts, sanitized git remotes, branch, and dirty state.
-- [ ] **Stack Explorer UI**: Service/lib cards over the repository inventory with search, grouping, and readiness summaries.
+- [x] **Stack Explorer UI**: Service/lib cards over the repository inventory with search, grouping, and readiness summaries.
 - [ ] **Service-To-Cluster Binding**: Correlate local repos with live K8s, Flux, GitLab CI, and Loom HUD state where metadata confidence is high.
 - [ ] **Library Adoption And Contract Coverage**: Map local shared-lib usage across services and surface observability/resilience/UI-token contract drift.
 

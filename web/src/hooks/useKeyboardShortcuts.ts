@@ -6,6 +6,7 @@ import { useNavigate } from "@solidjs/router";
  * Uses 'g' prefix (vim-style) for navigation:
  *   g then d → Dashboard
  *   g then s → Services
+ *   g then t → Stack
  *   g then l → Logs
  *   g then m → FlexInfer
  *   g then a → Loom HUD
@@ -26,6 +27,7 @@ export function useKeyboardShortcuts() {
   const NAV_MAP: Record<string, string> = {
     d: "/",
     s: "/services",
+    t: "/stack",
     l: "/logs",
     m: "/flexinfer",
     a: "/loom-hud",

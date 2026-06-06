@@ -14,6 +14,7 @@ if (import.meta.env.DEV) {
 // Lazy load route components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const Services = lazy(() => import('./components/Services'));
+const Stack = lazy(() => import('./components/Stack'));
 const Logs = lazy(() => import('./components/Logs'));
 const Metrics = lazy(() => import('./components/Metrics'));
 const WebsiteMetrics = lazy(() => import('./components/WebsiteMetrics'));
@@ -35,6 +36,7 @@ render(
     <HashRouter root={AppLayout}>
       <Route path="/" component={Dashboard} />
       <Route path="/services" component={Services} />
+      <Route path="/stack" component={Stack} />
       <Route path="/logs" component={Logs} />
       <Route path="/website-metrics" component={WebsiteMetrics} />
       <Route path="/traffic" component={WebsiteMetrics} />

@@ -6,6 +6,7 @@ const SHORTCUT_GROUPS = [
     shortcuts: [
       { keys: ['g', 'd'], action: 'Dashboard' },
       { keys: ['g', 's'], action: 'Services' },
+      { keys: ['g', 't'], action: 'Stack' },
       { keys: ['g', 'l'], action: 'Logs' },
       { keys: ['g', 'm'], action: 'FlexInfer' },
       { keys: ['g', 'a'], action: 'Loom HUD' },
