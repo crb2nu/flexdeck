@@ -214,13 +214,15 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (
   });
 
   const getColorClass = (color: string) => {
+    // Title hue matches the series color (data-viz palette) for a cohesive,
+    // instrument-grade read instead of the previous mixed white/muted/* set.
     const colors: Record<string, string> = {
-      cyan: "text-white",
-      purple: "text-text-muted",
-      green: "text-status-ok",
-      orange: "text-status-warn",
-      blue: "text-blue-400",
-      pink: "text-pink-400",
+      cyan: "text-viz-1",
+      purple: "text-viz-5",
+      green: "text-sem-ok",
+      orange: "text-viz-2",
+      blue: "text-viz-8",
+      pink: "text-viz-7",
     };
     return colors[color] || "text-text-main";
   };
@@ -252,15 +254,15 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (
   };
 
   return (
-    <div class="surface-hover group flex flex-col p-4 transition-colors hover:border-white/10">
+    <div class="surface-hover group flex flex-col gap-2 p-3 transition-colors hover:border-white/10">
       {/* Header */}
-      <div class="mb-3 flex items-center justify-between">
+      <div class="flex items-baseline justify-between gap-2">
         <span class={`text-sm font-medium ${getColorClass(props.panel.color)}`}>
           {props.panel.title}
         </span>
-        <div class="flex items-center gap-2">
+        <div class="flex items-baseline gap-1.5">
           <span class={`text-sm ${getTrendColor()}`}>{getTrendIcon()}</span>
-          <span class="text-2xl font-bold text-text-main tabular-nums">
+          <span class="num text-2xl font-bold text-text-main">
             {props.panel.values.length > 0
               ? formatValue(stats().current, props.panel.unit, "headline")
               : "-"}
@@ -268,8 +270,30 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (
         </div>
       </div>
 
+      {/* Inline stats — reclaims the old footer's vertical space for the chart */}
+      <div class="flex gap-3 text-[10px] text-text-dim">
+        <span>
+          Min{" "}
+          <span class="num text-text-muted">
+            {formatValue(stats().min, props.panel.unit, "stat")}
+          </span>
+        </span>
+        <span>
+          Avg{" "}
+          <span class="num text-text-muted">
+            {formatValue(stats().avg, props.panel.unit, "stat")}
+          </span>
+        </span>
+        <span>
+          Max{" "}
+          <span class="num text-text-muted">
+            {formatValue(stats().max, props.panel.unit, "stat")}
+          </span>
+        </span>
+      </div>
+
       {/* Chart */}
-      <div class="relative h-32 flex-1">
+      <div class="relative h-44 flex-1 sm:h-52">
         <Show
           when={props.panel.values.length > 1}
           fallback={
@@ -306,30 +330,6 @@ const MetricCard: Component<{ panel: MetricPanel; loading: boolean }> = (
             </div>
           )}
         </Show>
-      </div>
-
-      {/* Stats footer */}
-      <div class="mt-3 flex justify-between border-t border-white/5 pt-3 text-[10px] text-text-dim">
-        <div class="flex gap-3">
-          <span>
-            Min:{" "}
-            <span class="text-text-muted font-mono">
-              {formatValue(stats().min, props.panel.unit, "stat")}
-            </span>
-          </span>
-          <span>
-            Avg:{" "}
-            <span class="text-text-muted font-mono">
-              {formatValue(stats().avg, props.panel.unit, "stat")}
-            </span>
-          </span>
-          <span>
-            Max:{" "}
-            <span class="text-text-muted font-mono">
-              {formatValue(stats().max, props.panel.unit, "stat")}
-            </span>
-          </span>
-        </div>
       </div>
     </div>
   );
