@@ -1,5 +1,5 @@
 import { useHref, useNavigate } from '@solidjs/router';
-import { Component, For, Show, createMemo } from 'solid-js';
+import { Component, Index, Show, createMemo } from 'solid-js';
 
 export interface OperationsSidebarItem {
   id: string;
@@ -44,19 +44,24 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
         <div class="heading-label">{props.title}</div>
       </div>
 
+      {/* Index (position-keyed), not For (reference-keyed): the nav is a
+          fixed-position list, so polling refreshes that hand us a fresh items
+          array with updated counts update the labels/values IN PLACE instead
+          of tearing down and recreating every item each tick — which was
+          destroying the element under the cursor and flickering on hover. */}
       <div class="space-y-3">
-        <For each={groupedItems()}>
+        <Index each={groupedItems()}>
           {(group) => (
             <div>
               <Show when={groupedItems().length > 1}>
                 <div class="px-2.5 heading-label text-text-dim/70 mb-1">
-                  {group.name}
+                  {group().name}
                 </div>
               </Show>
               <div class="flex flex-col gap-0.5">
-                <For each={group.items}>
+                <Index each={group().items}>
                   {(item) => {
-                    const active = () => props.active === item.id;
+                    const active = () => props.active === item().id;
                     const itemClass = () =>
                       `relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors duration-100 ${
                         active()
@@ -66,35 +71,35 @@ const OperationsSidebarNav: Component<OperationsSidebarNavProps> = (props) => {
 
                     return (
                       <Show
-                        when={item.href}
+                        when={item().href}
                         fallback={
                           <button
                             type="button"
                             aria-pressed={active()}
                             aria-current={active() ? 'true' : undefined}
-                            data-operations-nav-id={item.id}
-                            onClick={() => props.onChange?.(item.id)}
+                            data-operations-nav-id={item().id}
+                            onClick={() => props.onChange?.(item().id)}
                             class={itemClass()}
                           >
                             <SidebarItemAccent active={active()} />
-                            <SidebarItemContent item={item} />
+                            <SidebarItemContent item={item()} />
                           </button>
                         }
                       >
                         <SidebarLinkItem
-                          item={item}
+                          item={item()}
                           active={active()}
                           class={itemClass()}
-                          onSelect={() => props.onChange?.(item.id)}
+                          onSelect={() => props.onChange?.(item().id)}
                         />
                       </Show>
                     );
                   }}
-                </For>
+                </Index>
               </div>
             </div>
           )}
-        </For>
+        </Index>
       </div>
     </aside>
   );
