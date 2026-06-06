@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/flexinfer/flexdeck/internal/config"
 )
@@ -207,4 +210,68 @@ func TestGrafanaDashboards_HTMLResponseRejected(t *testing.T) {
 	if strings.Contains(strings.ToLower(errMsg), "<html") {
 		t.Fatalf("expected sanitized error message, got %q", errMsg)
 	}
+}
+
+func TestGrafanaDashboardDetailAndDatasourcesProxyUpstream(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer grafana-token" {
+			t.Errorf("expected bearer token, got %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/dashboards/uid/gpu":
+			_, _ = w.Write([]byte(`{"dashboard":{"uid":"gpu","title":"GPU"}}`))
+		case "/api/datasources":
+			_, _ = w.Write([]byte(`[{"uid":"prom","type":"prometheus"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			Grafana: config.GrafanaConfig{
+				URL:   ts.URL,
+				Token: "grafana-token",
+			},
+		},
+	}
+
+	t.Run("dashboard detail", func(t *testing.T) {
+		req := requestWithGrafanaParams(http.MethodGet, "/api/grafana/dashboards/gpu", map[string]string{"uid": "gpu"})
+		rr := httptest.NewRecorder()
+		h.GrafanaDashboardDetail(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), `"uid":"gpu"`) {
+			t.Fatalf("expected dashboard detail payload, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("datasources", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/grafana/datasources", nil)
+		rr := httptest.NewRecorder()
+		h.GrafanaDatasources(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), `"uid":"prom"`) {
+			t.Fatalf("expected datasource payload, got %s", rr.Body.String())
+		}
+	})
+}
+
+func requestWithGrafanaParams(method, target string, params map[string]string) *http.Request {
+	req := httptest.NewRequest(method, target, nil)
+	routeCtx := chi.NewRouteContext()
+	for key, value := range params {
+		routeCtx.URLParams.Add(key, value)
+	}
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
 }
