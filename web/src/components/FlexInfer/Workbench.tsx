@@ -71,6 +71,7 @@ import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
 import { stableListByKey } from '../../lib/stableList';
+import { severityScore, type SeverityInput } from './severity';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
@@ -86,15 +87,6 @@ const workbenchSectionIds: WorkbenchSectionId[] = [
 interface WorkbenchProps {
   surface?: Surface;
 }
-
-const controlPlaneOrder: Record<string, number> = {
-  Failed: 0,
-  Preempted: 1,
-  Pending: 2,
-  Loading: 3,
-  Idle: 4,
-  Ready: 5,
-};
 
 const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   const managementMode = () => getFlexInferManagementMode(healthStore.features || {});
@@ -338,6 +330,17 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         inferenceMetrics,
         proxyMetricsForModel(currentProxyMetrics, proxyMetricName),
       );
+      const metricName = proxyMetricName || model.name;
+      const sharedGroup = model.status?.sharedGroup;
+      const severityInput: SeverityInput = {
+        phase: model.status?.phase,
+        reliability: reliability.level,
+        stalled: isStalledLoad(model.status),
+        queueDepth: queueDepthForModel(currentProxyMetrics, metricName),
+        errorRate: proxyErrorRateForModel(currentProxyMetrics, metricName),
+        requests: requestsForModel(currentProxyMetrics, metricName),
+        preempted: Boolean(sharedGroup?.preemptedBy) || sharedGroup?.state === 'Preempted',
+      };
       return {
         model,
         key,
@@ -347,13 +350,15 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         throughput: controller.throughputByModel()[key],
         adapters: controller.loraByModel()[key] || [],
         integrationState: controller.integrationByModel()[key],
+        // Triage ordering: worst-first by severity (RA-1). Replaces the old
+        // phase-only rank so a Ready-but-saturated or idle-with-traffic model
+        // surfaces above a quietly-healthy one. See ./severity.ts.
+        severity: severityScore(severityInput),
       };
     });
 
     return items.sort((a, b) => {
-      const aRank = controlPlaneOrder[a.model.status?.phase || 'Unknown'] ?? 99;
-      const bRank = controlPlaneOrder[b.model.status?.phase || 'Unknown'] ?? 99;
-      if (aRank !== bRank) return aRank - bRank;
+      if (a.severity !== b.severity) return b.severity - a.severity;
       return `${a.model.namespace}/${a.model.name}`.localeCompare(`${b.model.namespace}/${b.model.name}`);
     });
   });
