@@ -279,6 +279,103 @@ func TestHUDMobileSurfaceFallbacks(t *testing.T) {
 	})
 }
 
+func TestHUDHandoffsProxyNormalizesAndForwardsActions(t *testing.T) {
+	var acceptBody string
+	var rejectHits int
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/handoffs":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"handoffs":[{"id":"ho-1","from_agent":"claude","to_agent":"codex","target_agent_id":"codex","status":"pending","summary":"Finish the auth refactor","created_at":"2026-06-07T12:00:00Z"}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/handoffs/ho-1/accept":
+			w.Header().Set("Content-Type", "application/json")
+			body := new(bytes.Buffer)
+			_, _ = body.ReadFrom(r.Body)
+			acceptBody = body.String()
+			_, _ = w.Write([]byte(`{"status":"accepted","handoff_id":"ho-1"}`))
+		// Primary HUD has no reject route — exercise the mobile fallback.
+		case r.Method == http.MethodPost && r.URL.Path == "/api/handoffs/ho-1/reject":
+			http.NotFound(w, r)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/mobile/v1/handoffs/ho-1/reject":
+			rejectHits++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"handoff_id":"ho-1","status":"rejected"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	h := &Handler{
+		cfg: &config.Config{
+			LoomHUD: config.LoomHUDConfig{URL: upstream.URL},
+		},
+	}
+
+	router := chi.NewRouter()
+	router.Get("/api/hud/handoffs", h.HUDHandoffs)
+	router.Post("/api/hud/handoffs/{id}/accept", h.HUDHandoffAccept)
+	router.Post("/api/hud/handoffs/{id}/reject", h.HUDHandoffReject)
+
+	t.Run("list normalizes to camelCase", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/hud/handoffs", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload []map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode handoffs payload: %v", err)
+		}
+		if len(payload) != 1 {
+			t.Fatalf("expected 1 handoff, got %d", len(payload))
+		}
+		if payload[0]["id"] != "ho-1" || payload[0]["fromAgent"] != "claude" || payload[0]["targetAgentId"] != "codex" {
+			t.Fatalf("unexpected handoff payload: %s", rec.Body.String())
+		}
+		if payload[0]["summary"] != "Finish the auth refactor" {
+			t.Fatalf("expected summary to normalize, got %s", rec.Body.String())
+		}
+	})
+
+	t.Run("accept forwards body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/hud/handoffs/ho-1/accept", strings.NewReader(`{"target_agent_id":"codex"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(acceptBody, `"target_agent_id":"codex"`) {
+			t.Fatalf("expected accept body to forward, got %q", acceptBody)
+		}
+		if !strings.Contains(rec.Body.String(), `"status":"accepted"`) {
+			t.Fatalf("unexpected accept response: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("reject falls back to mobile path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/hud/handoffs/ho-1/reject", strings.NewReader(`{"reason":"out of scope"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if rejectHits != 1 {
+			t.Fatalf("expected mobile reject fallback to be hit once, got %d", rejectHits)
+		}
+		if !strings.Contains(rec.Body.String(), `"status":"rejected"`) {
+			t.Fatalf("unexpected reject response: %s", rec.Body.String())
+		}
+	})
+}
+
 func TestNormalizeHUDSSEDataLine(t *testing.T) {
 	line := `data: {"timestamp":"2026-03-27T12:00:00Z","event_type":"agent.session.start","agent_id":"codex","data":{"message":"Session started"}}`
 	normalized := normalizeHUDSSEDataLine(line)

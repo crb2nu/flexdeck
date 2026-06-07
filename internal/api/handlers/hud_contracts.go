@@ -343,6 +343,40 @@ func normalizeHUDTasksResponse(raw json.RawMessage) ([]map[string]any, error) {
 	return normalizeHUDTasksFromValue(envelope["items"]), nil
 }
 
+// normalizeHUDHandoffsFromValue reshapes raw handoff entries to the camelCase
+// contract the frontend expects. It tolerates both the HandoffInfo shape
+// (id/from_agent/summary) and the inbox-entry shape (handoff_id/source_agent/
+// instructions) the mobile surface can return.
+func normalizeHUDHandoffsFromValue(value any) []map[string]any {
+	items := hudItemsFromValue(value)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"id":            firstNonEmpty(hudString(item["id"]), hudString(item["handoff_id"])),
+			"fromAgent":     firstNonEmpty(hudString(item["from_agent"]), hudString(item["source_agent"])),
+			"toAgent":       hudString(item["to_agent"]),
+			"targetAgentId": hudString(item["target_agent_id"]),
+			"status":        hudString(item["status"]),
+			"summary":       firstNonEmpty(hudString(item["summary"]), hudString(item["instructions"])),
+			"context":       hudString(item["context"]),
+			"createdAt":     hudString(item["created_at"]),
+			"acceptedAt":    hudString(item["accepted_at"]),
+		})
+	}
+	return out
+}
+
+func normalizeHUDHandoffsResponse(raw json.RawMessage) ([]map[string]any, error) {
+	envelope, err := parseHUDEnvelope(raw)
+	if err != nil {
+		return nil, err
+	}
+	if envelope["handoffs"] != nil {
+		return normalizeHUDHandoffsFromValue(envelope["handoffs"]), nil
+	}
+	return normalizeHUDHandoffsFromValue(envelope["items"]), nil
+}
+
 func normalizeHUDTimelineResponse(raw json.RawMessage) ([]map[string]any, error) {
 	envelope, err := parseHUDEnvelope(raw)
 	if err != nil {

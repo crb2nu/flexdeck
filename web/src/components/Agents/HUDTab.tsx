@@ -3,7 +3,7 @@ import { agentsApi, hudApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
 import { createAsyncStatusController } from '../../lib/asyncState';
-import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent } from '../../lib/types';
+import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
 import {
@@ -24,7 +24,7 @@ import {
 } from './hudUtils';
 import HUDConsoleScaffold, { type HUDConsoleMetric } from '../LoomHUD/HUDConsoleScaffold';
 
-type HUDTabFocus = 'full' | 'overview' | 'presence' | 'workflows' | 'claims' | 'timeline';
+type HUDTabFocus = 'full' | 'overview' | 'presence' | 'workflows' | 'handoffs' | 'claims' | 'timeline';
 
 interface HUDTabProps {
   focus?: HUDTabFocus;
@@ -36,8 +36,10 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [tasks, setTasks] = createSignal<HUDTask[]>([]);
   const [workflows, setWorkflows] = createSignal<HUDWorkflow[]>([]);
   const [timeline, setTimeline] = createSignal<HUDTimelineEvent[]>([]);
+  const [handoffs, setHandoffs] = createSignal<HUDHandoff[]>([]);
   const asyncState = createAsyncStatusController({
     workflowAction: null as string | null,
+    handoffAction: null as string | null,
     eventsConnection: 'disabled' as FeedConnectionState,
     lastSuccessfulPull: 0,
     now: Date.now(),
@@ -50,10 +52,11 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const pushEnabled = () => hudMode().pushEnabled;
 
   const fetchAllPull = async () => {
-    const [fleetResult, workflowsResult, timelineResult] = await Promise.allSettled([
+    const [fleetResult, workflowsResult, timelineResult, handoffsResult] = await Promise.allSettled([
       hudApi.fleet(),
       hudApi.workflows(),
       hudApi.timeline(),
+      hudApi.handoffs(),
     ]);
 
     batch(() => {
@@ -64,8 +67,11 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       }
       if (workflowsResult.status === 'fulfilled') setWorkflows(extractItems<HUDWorkflow>(workflowsResult.value, 'workflows'));
       if (timelineResult.status === 'fulfilled') setTimeline(extractItems<HUDTimelineEvent>(timelineResult.value, 'events'));
+      if (handoffsResult.status === 'fulfilled') setHandoffs(extractItems<HUDHandoff>(handoffsResult.value, 'handoffs'));
     });
 
+    // Handoffs are supplementary — a handoff failure must not blank the HUD, so
+    // only treat the core fleet/workflow/timeline trio as fatal when all fail.
     const failed = [fleetResult, workflowsResult, timelineResult]
       .filter((result) => result.status === 'rejected');
 
@@ -88,6 +94,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     setTasks([]);
     setWorkflows([]);
     setTimeline([]);
+    setHandoffs([]);
     patchState({ error: '' });
   };
 
@@ -145,6 +152,45 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     }
   };
 
+  const handleAcceptHandoff = async (handoff: HUDHandoff) => {
+    patchState({ handoffAction: `accept:${handoff.id}` });
+    try {
+      const target = handoff.targetAgentId || handoff.toAgent;
+      await hudApi.acceptHandoff(handoff.id, target ? { target_agent_id: target, import_entries: true } : { import_entries: true });
+      await fetchAll();
+    } catch (err) {
+      patchState({ error: toErrorMessage(err, 'Failed to accept handoff') });
+    } finally {
+      patchState({ handoffAction: null });
+    }
+  };
+
+  const handleRejectHandoff = async (handoff: HUDHandoff) => {
+    patchState({ handoffAction: `reject:${handoff.id}` });
+    try {
+      await hudApi.rejectHandoff(handoff.id, 'Declined from FlexDeck HUD');
+      await fetchAll();
+    } catch (err) {
+      patchState({ error: toErrorMessage(err, 'Failed to reject handoff') });
+    } finally {
+      patchState({ handoffAction: null });
+    }
+  };
+
+  // Relative age label driven by the shared 5s `now` ticker so it stays fresh
+  // without its own timer.
+  const relativeAge = (iso: string | undefined): string => {
+    if (!iso) return 'no signal';
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) return 'no signal';
+    const age = Math.max(0, state.now - parsed);
+    if (age < 10_000) return 'live';
+    if (age < 60_000) return `${Math.floor(age / 1000)}s ago`;
+    if (age < 3_600_000) return `${Math.floor(age / 60_000)}m ago`;
+    if (age < 86_400_000) return `${Math.floor(age / 3_600_000)}h ago`;
+    return `${Math.floor(age / 86_400_000)}d ago`;
+  };
+
   createPolling('agents-hud-pull', fetchAll, 15000, true, false);
 
   createPolling('hud-now-ticker', () => { patchState({ now: Date.now() }); }, 5000);
@@ -182,6 +228,11 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const inProgressTasks = () => tasks().filter((task) => task.status === 'in_progress');
   const completedTasks = () => tasks().filter((task) => task.status === 'completed').slice(0, 10);
   const awaitingApprovalWorkflows = () => workflows().filter((workflow) => workflow.status === 'awaiting_approval' || workflow.steps[workflow.currentStep]?.requiresApproval).length;
+  const isHandoffActionable = (status: string) => {
+    const normalized = (status || '').toLowerCase();
+    return normalized === '' || normalized === 'pending' || normalized === 'viewed' || normalized === 'created' || normalized === 'offered';
+  };
+  const pendingHandoffs = () => handoffs().filter((handoff) => isHandoffActionable(handoff.status));
 
   const claimsByAgent = () => {
     return groupClaimsByAgent(claims());
@@ -231,6 +282,12 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       tone: awaitingApprovalWorkflows() > 0 ? 'warn' : 'ok',
     },
     {
+      label: 'Handoffs',
+      value: `${pendingHandoffs().length}`,
+      detail: `${handoffs().length} total`,
+      tone: pendingHandoffs().length > 0 ? 'warn' : 'cyan',
+    },
+    {
       label: 'Timeline',
       value: `${timeline().length}`,
       detail: feedStateLabel(),
@@ -241,6 +298,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const showOverview = () => focus() === 'overview';
   const showPresence = () => focus() === 'full' || focus() === 'presence';
   const showWorkflows = () => focus() === 'full' || focus() === 'workflows';
+  const showHandoffs = () => focus() === 'full' || focus() === 'handoffs';
   const showClaims = () => focus() === 'full' || focus() === 'claims';
   const showTimeline = () => focus() === 'full' || focus() === 'timeline';
   const useSplitLayout = () => focus() === 'full';
@@ -248,7 +306,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const latestTimelineEvent = () => timeline()[0];
 
   const overviewPanel = () => (
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <OverviewSignalCard
         label="Presence"
         value={`${activePresence()}/${presence().length || 0}`}
@@ -266,6 +324,12 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         value={`${awaitingApprovalWorkflows()}`}
         detail={nextWorkflow() ? nextWorkflow()!.definitionId : 'None waiting'}
         tone={awaitingApprovalWorkflows() > 0 ? 'text-status-warn' : 'text-status-ok'}
+      />
+      <OverviewSignalCard
+        label="Handoffs"
+        value={`${pendingHandoffs().length}`}
+        detail={pendingHandoffs().length > 0 ? `${pendingHandoffs()[0].fromAgent} → ${pendingHandoffs()[0].toAgent || pendingHandoffs()[0].targetAgentId || '—'}` : 'Inbox clear'}
+        tone={pendingHandoffs().length > 0 ? 'text-status-warn' : 'text-status-ok'}
       />
       <OverviewSignalCard
         label="Feed health"
@@ -305,7 +369,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                       <span class="capitalize">{agent.status}</span>
                     </div>
                   </div>
-                  <span class="text-[10px] text-text-dim">heartbeat live</span>
+                  <span class="whitespace-nowrap text-[10px] text-text-dim" title={agent.lastHeartbeat || undefined}>
+                    {relativeAge(agent.lastHeartbeat)}
+                  </span>
                 </div>
 
                 <Show when={agent.activeFiles.length > 0}>
@@ -501,6 +567,89 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     </Show>
   );
 
+  const handoffsPanel = () => (
+    <Show when={pullEnabled()} fallback={
+      <div class="surface p-4 text-sm text-text-dim">
+        Push mode — handoffs unavailable
+      </div>
+    }>
+      <div class="surface p-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="heading-section">Handoff inbox</h3>
+          <span class="text-xs font-mono text-text-dim tabular-nums">
+            {pendingHandoffs().length} pending
+          </span>
+        </div>
+
+        <Show when={handoffs().length > 0} fallback={
+          <div class="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-text-dim">
+            No handoffs in flight
+          </div>
+        }>
+          <div class="flex flex-col gap-3">
+            <For each={handoffs()}>
+              {(handoff) => {
+                const acceptKey = () => `accept:${handoff.id}`;
+                const rejectKey = () => `reject:${handoff.id}`;
+                const busy = () => state.handoffAction === acceptKey() || state.handoffAction === rejectKey();
+                return (
+                  <div class="rounded-xl border border-white/8 bg-white/5 p-3">
+                    <div class="mb-2 flex items-start justify-between gap-2">
+                      <div class="flex min-w-0 items-center gap-1.5 font-mono text-sm text-text-main">
+                        <span class="truncate">{handoff.fromAgent || 'unknown'}</span>
+                        <span class="text-text-dim" aria-hidden="true">{'→'}</span>
+                        <span class="truncate">{handoff.toAgent || handoff.targetAgentId || 'unassigned'}</span>
+                      </div>
+                      <span class={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${handoffStatusTone(handoff.status)}`}>
+                        {handoffStatusLabel(handoff.status)}
+                      </span>
+                    </div>
+
+                    <Show when={handoff.summary}>
+                      <p class="mb-2 line-clamp-3 text-xs text-text-muted">{handoff.summary}</p>
+                    </Show>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <span class="text-[10px] text-text-dim">
+                        <Show when={handoff.createdAt} fallback="just now">
+                          received {relativeAge(handoff.createdAt)}
+                        </Show>
+                      </span>
+                      <Show when={isHandoffActionable(handoff.status)} fallback={
+                        <span class="text-[10px] uppercase tracking-[0.14em] text-text-dim">
+                          {handoff.acceptedAt ? `accepted ${relativeAge(handoff.acceptedAt)}` : 'closed'}
+                        </span>
+                      }>
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptHandoff(handoff)}
+                            disabled={busy()}
+                            class="rounded-md bg-status-ok/20 px-3 py-1.5 text-xs font-medium text-status-ok transition-colors hover:bg-status-ok/30 disabled:opacity-50"
+                          >
+                            {state.handoffAction === acceptKey() ? 'Accepting...' : 'Accept'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectHandoff(handoff)}
+                            disabled={busy()}
+                            class="rounded-md bg-status-error/20 px-3 py-1.5 text-xs font-medium text-status-error transition-colors hover:bg-status-error/30 disabled:opacity-50"
+                          >
+                            {state.handoffAction === rejectKey() ? 'Rejecting...' : 'Reject'}
+                          </button>
+                        </div>
+                      </Show>
+                    </div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+      </div>
+    </Show>
+  );
+
   const timelinePanel = () => (
     <HUDActivityFeed
       initialEvents={timeline()}
@@ -562,6 +711,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                 <Show when={showWorkflows()}>
                   {workflowsPanel()}
                 </Show>
+                <Show when={showHandoffs()}>
+                  {handoffsPanel()}
+                </Show>
                 <Show when={showTimeline()}>
                   {timelinePanel()}
                 </Show>
@@ -576,6 +728,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
               </Show>
               <Show when={showWorkflows()}>
                 {workflowsPanel()}
+              </Show>
+              <Show when={showHandoffs()}>
+                {handoffsPanel()}
               </Show>
               <Show when={showClaims()}>
                 {claimsPanel()}
@@ -719,6 +874,31 @@ function workflowStatusTone(status: string): string {
 
 function workflowStatusLabel(status: string): string {
   return status.replace(/_/g, ' ');
+}
+
+function handoffStatusTone(status: string): string {
+  switch ((status || '').toLowerCase()) {
+    case 'accepted':
+      return 'bg-status-ok/20 text-status-ok';
+    case 'rejected':
+    case 'expired':
+      return 'bg-status-error/20 text-status-error';
+    case 'viewed':
+      return 'bg-white/10 text-white';
+    case '':
+    case 'pending':
+    case 'created':
+    case 'offered':
+      return 'bg-status-warn/15 text-status-warn';
+    default:
+      return 'bg-white/10 text-text-dim';
+  }
+}
+
+function handoffStatusLabel(status: string): string {
+  const normalized = (status || '').trim();
+  if (normalized === '') return 'pending';
+  return normalized.replace(/_/g, ' ');
 }
 
 export default HUDTab;

@@ -3,7 +3,7 @@
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HUDWorkflow } from '../../lib/types';
+import type { HUDWorkflow, HUDHandoff } from '../../lib/types';
 
 const hudMocks = vi.hoisted(() => {
   const hudMode = {
@@ -67,6 +67,9 @@ const hudMocks = vi.hoisted(() => {
       ],
     })),
     workflows: vi.fn(async (): Promise<{ workflows: HUDWorkflow[] }> => ({ workflows: [] })),
+    handoffs: vi.fn(async (): Promise<{ handoffs: HUDHandoff[] }> => ({ handoffs: [] })),
+    acceptHandoff: vi.fn(async () => ({ status: 'accepted' })),
+    rejectHandoff: vi.fn(async () => ({ status: 'rejected' })),
   };
 });
 
@@ -81,6 +84,9 @@ vi.mock('../../lib/api', () => ({
     rejectWorkflow: vi.fn(async () => {}),
     timeline: hudMocks.timeline,
     workflows: hudMocks.workflows,
+    handoffs: hudMocks.handoffs,
+    acceptHandoff: hudMocks.acceptHandoff,
+    rejectHandoff: hudMocks.rejectHandoff,
   },
 }));
 
@@ -310,6 +316,65 @@ describe('HUDTab', () => {
     expect(text).toContain('2/4 complete');
     expect(text).toContain('Review approval');
     expect(text).toContain('Approval required');
+  });
+
+  it('renders the handoff inbox and accepts a handoff with its target agent', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.handoffs.mockResolvedValue({
+      handoffs: [
+        {
+          id: 'ho-1',
+          fromAgent: 'claude',
+          toAgent: 'codex',
+          targetAgentId: 'codex',
+          status: 'pending',
+          summary: 'Finish the auth refactor and run the suite',
+          createdAt: '2026-06-07T12:00:00Z',
+        },
+      ],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Handoff inbox');
+    });
+
+    const text = pageText();
+    expect(text).toContain('claude');
+    expect(text).toContain('codex');
+    expect(text).toContain('Finish the auth refactor');
+    expect(text).toContain('1 pending');
+
+    const acceptButton = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Accept',
+    );
+    const rejectButton = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Reject',
+    );
+    expect(acceptButton).toBeTruthy();
+    expect(rejectButton).toBeTruthy();
+
+    acceptButton!.click();
+
+    await vi.waitFor(() => {
+      expect(hudMocks.acceptHandoff).toHaveBeenCalled();
+    });
+    const [calledId, calledBody] = hudMocks.acceptHandoff.mock.calls[0];
+    expect(calledId).toBe('ho-1');
+    expect(calledBody).toMatchObject({ target_agent_id: 'codex' });
+  });
+
+  it('shows an empty handoff inbox when there are no handoffs', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.handoffs.mockResolvedValue({ handoffs: [] });
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Handoff inbox');
+    });
+    expect(pageText()).toContain('No handoffs in flight');
   });
 
   it('surfaces disabled HUD mode as an operator error state', async () => {

@@ -79,6 +79,20 @@ export interface HUDClaim {
   stale?: boolean;
 }
 
+// Inter-agent handoff (the handoff inbox). One agent packages context + an
+// instruction and routes it to another agent, who accepts or rejects it.
+export interface HUDHandoff {
+  id: string;
+  fromAgent: string;
+  toAgent?: string;
+  targetAgentId?: string;
+  status: string;
+  summary: string;
+  context?: string;
+  createdAt?: string;
+  acceptedAt?: string;
+}
+
 export interface HUDCapabilitiesResponse {
   available: boolean;
   passthroughEnabled: boolean;

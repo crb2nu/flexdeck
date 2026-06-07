@@ -107,6 +107,68 @@ func (h *Handler) HUDClaims(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HUDHandoffs returns inter-agent handoffs (the handoff inbox) from the Loom HUD API.
+func (h *Handler) HUDHandoffs(w http.ResponseWriter, r *http.Request) {
+	if !h.loomHUDPassthroughEnabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+	h.cachedProxyJSON(w, r, "hud:handoffs", 10*time.Second, "hud handoffs", func() (any, error) {
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths("/api/handoffs", "/api/mobile/v1/handoffs")...)
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDHandoffsResponse(raw)
+	})
+}
+
+// HUDHandoffAccept accepts an inter-agent handoff, adopting its context.
+func (h *Handler) HUDHandoffAccept(w http.ResponseWriter, r *http.Request) {
+	h.proxyHUDHandoffAction(w, r, "accept")
+}
+
+// HUDHandoffReject rejects an inter-agent handoff. The primary HUD only exposes
+// reject on the mobile surface, so the mobile path is the effective target.
+func (h *Handler) HUDHandoffReject(w http.ResponseWriter, r *http.Request) {
+	h.proxyHUDHandoffAction(w, r, "reject")
+}
+
+// proxyHUDHandoffAction forwards an accept/reject mutation for a handoff,
+// trying the primary path then the mobile fallback, and invalidates the
+// handoff + timeline caches so the inbox reflects the change on next poll.
+func (h *Handler) proxyHUDHandoffAction(w http.ResponseWriter, r *http.Request, action string) {
+	if !h.loomHUDPassthroughEnabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	paths := h.hudPaths(
+		fmt.Sprintf("/api/handoffs/%s/%s", id, action),
+		fmt.Sprintf("/api/mobile/v1/handoffs/%s/%s", id, action),
+	)
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxHUDRequestBody))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read request body"})
+		return
+	}
+
+	result, err := h.postHUDPaths(r.Context(), body, paths...)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if h.cache != nil {
+		h.cache.Invalidate(r.Context(), "hud:handoffs")
+		h.cache.Invalidate(r.Context(), "hud:timeline")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(result)
+}
+
 // HUDWorkflowApprove approves a workflow step that requires human approval.
 func (h *Handler) HUDWorkflowApprove(w http.ResponseWriter, r *http.Request) {
 	if !h.loomHUDPassthroughEnabled() {
