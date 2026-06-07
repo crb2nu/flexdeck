@@ -155,6 +155,43 @@ func TestPublicDeploymentUsesLimitedServiceAccount(t *testing.T) {
 	}
 }
 
+// TestPrimaryDeploymentLokiURLTargetsSingleBinaryService guards against
+// regressing LOKI_URL to a service that does not exist in this cluster.
+// Loki runs in single-binary mode here, exposed as loki:3100; the
+// loki-gateway service only exists in SSD/distributed Helm deployments, so
+// pointing at it made every Loki proxy call fail DNS and surface as a 502.
+func TestPrimaryDeploymentLokiURLTargetsSingleBinaryService(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read deployment manifest: %v", err)
+	}
+
+	var deployment deploymentManifest
+	if err := yaml.Unmarshal(content, &deployment); err != nil {
+		t.Fatalf("decode deployment manifest: %v", err)
+	}
+	if len(deployment.Spec.Template.Spec.Containers) == 0 {
+		t.Fatal("expected at least one container")
+	}
+
+	env := map[string]string{}
+	for _, item := range deployment.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item.Value
+	}
+
+	got, ok := env["LOKI_URL"]
+	if !ok {
+		t.Fatal("expected LOKI_URL to be set on the primary deployment")
+	}
+	const want = "http://loki.logging.svc.cluster.local:3100"
+	if got != want {
+		t.Fatalf("LOKI_URL = %q, want %q (loki-gateway service does not exist in single-binary mode)", got, want)
+	}
+	if strings.Contains(got, "loki-gateway") {
+		t.Fatalf("LOKI_URL points at nonexistent loki-gateway service: %q", got)
+	}
+}
+
 func TestPrimaryServiceDoesNotSelectPublicPods(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join("base", "service.yaml"))
 	if err != nil {

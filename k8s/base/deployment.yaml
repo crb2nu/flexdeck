@@ -59,9 +59,9 @@ spec:
             # Prometheus
             - name: PROM_URL
               value: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
-            # Loki
+            # Loki (single-binary deployment; no gateway service exists)
             - name: LOKI_URL
-              value: "http://loki-gateway.logging.svc.cluster.local:80"
+              value: "http://loki.logging.svc.cluster.local:3100"
             # LiteLLM
             - name: LITELLM_URL
               value: "http://litellm.ai.svc.cluster.local:8000"
