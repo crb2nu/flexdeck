@@ -40,7 +40,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 
 	// Try cache first (5 minute TTL for repo list)
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "ci:repos", 5*time.Minute, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(ctx, "ci:repos", 5*time.Minute, func() (any, error) {
 			return h.fetchRepositories()
 		})
 		if err == nil {
@@ -163,7 +163,7 @@ func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("ci:config:%d", id)
 
 	if h.cache != nil {
-		cached, cacheErr := h.cache.GetOrFetch(ctx, cacheKey, 5*time.Minute, func() (any, error) {
+		cached, cacheErr := h.cache.GetOrFetchSmooth(ctx, cacheKey, 5*time.Minute, func() (any, error) {
 			return h.fetchRepoConfig(id)
 		})
 		if cacheErr == nil {
@@ -503,7 +503,7 @@ func (h *Handler) fetchOrCachePipeline(ctx context.Context, idStr string) (any, 
 	// Fall back to cache-aside → GitLab API.
 	if h.cache != nil {
 		cacheKey := fmt.Sprintf("ci:pipeline:api:%s", idStr)
-		cachedBytes, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+		cachedBytes, err := h.cache.GetOrFetchSmooth(ctx, cacheKey, 30*time.Second, func() (any, error) {
 			return h.fetchRepoPipeline(ctx, idStr)
 		})
 		if err == nil {

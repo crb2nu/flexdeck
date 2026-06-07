@@ -382,3 +382,67 @@ func TestStatsCountersIncrementCorrectly(t *testing.T) {
 		t.Fatalf("expected at least 1 stale hit, got %d", s.StaleHits)
 	}
 }
+
+func TestSmoothOptionsEnablesStaleAndJitter(t *testing.T) {
+	t.Parallel()
+
+	opts := SmoothOptions(30 * time.Second)
+	if opts.TTL != 30*time.Second {
+		t.Errorf("TTL: got %s want 30s", opts.TTL)
+	}
+	if opts.StaleTTL != 2*time.Minute {
+		t.Errorf("StaleTTL: got %s want 2m (ttl*4)", opts.StaleTTL)
+	}
+	if opts.JitterFraction != 0.15 {
+		t.Errorf("JitterFraction: got %v want 0.15", opts.JitterFraction)
+	}
+	if opts.BackgroundRefreshTimeout != 3*time.Second {
+		t.Errorf("BackgroundRefreshTimeout: got %s want 3s", opts.BackgroundRefreshTimeout)
+	}
+	if !opts.useStale() {
+		t.Error("SmoothOptions should enable stale-while-revalidate")
+	}
+}
+
+func TestGetOrFetchSmoothServesStaleWhileRevalidating(t *testing.T) {
+	t.Parallel()
+
+	c, server := newTestCache(t)
+	ctx := context.Background()
+
+	var fetchCalls atomic.Int32
+	refreshed := make(chan struct{}, 1)
+	fetch := func() (any, error) {
+		call := fetchCalls.Add(1)
+		if call == 1 {
+			return map[string]any{"version": 1}, nil
+		}
+		refreshed <- struct{}{}
+		return map[string]any{"version": 2}, nil
+	}
+
+	// Prime the cache (TTL 1s, stale window 4s via SmoothOptions).
+	if _, err := c.GetOrFetchSmooth(ctx, "smooth", time.Second, fetch); err != nil {
+		t.Fatalf("first GetOrFetchSmooth: %v", err)
+	}
+
+	// Past the fresh TTL but within the stale window: must serve stale instantly
+	// and kick off a background refresh rather than block on the upstream.
+	server.FastForward(2 * time.Second)
+	stale, err := c.GetOrFetchSmooth(ctx, "smooth", time.Second, fetch)
+	if err != nil {
+		t.Fatalf("stale GetOrFetchSmooth: %v", err)
+	}
+	if string(stale) != `{"version":1}` {
+		t.Fatalf("expected stale version 1, got %q", string(stale))
+	}
+
+	select {
+	case <-refreshed:
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not start")
+	}
+	if got := fetchCalls.Load(); got != 2 {
+		t.Fatalf("expected 2 fetch calls (initial + background), got %d", got)
+	}
+}

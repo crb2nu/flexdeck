@@ -32,6 +32,24 @@ type FetchOptions struct {
 	BackgroundRefreshTimeout time.Duration
 }
 
+// SmoothOptions returns FetchOptions tuned for read-through caches backed by a
+// slow or flaky external upstream (GitLab, Grafana, Alertmanager, the inference
+// proxy). It enables stale-while-revalidate (serve a slightly stale value
+// instantly while a background refresh runs, instead of blocking the request on
+// the upstream when the entry expires) and TTL jitter (so keys that expire on
+// aligned boundaries don't stampede the upstream together). Values mirror the
+// proven Prometheus query cache. Do NOT use for caches whose fetch already hits
+// fast local state (Redis materializations, in-cluster k8s reads) — plain
+// GetOrFetch is appropriate there.
+func SmoothOptions(ttl time.Duration) FetchOptions {
+	return FetchOptions{
+		TTL:                      ttl,
+		StaleTTL:                 ttl * 4,
+		JitterFraction:           0.15,
+		BackgroundRefreshTimeout: 3 * time.Second,
+	}
+}
+
 // Cache provides a generic Redis cache layer with TTL-based expiration.
 type Cache struct {
 	redis  *redis.Client
@@ -88,6 +106,16 @@ func NewRedisClient(cfg config.RedisConfig) (*redis.Client, error) {
 // JSON-serialized and stored with the given TTL.
 func (c *Cache) GetOrFetch(ctx context.Context, key string, ttl time.Duration, fetch func() (any, error)) ([]byte, error) {
 	return c.GetOrFetchWithOptions(ctx, key, FetchOptions{TTL: ttl}, func(context.Context) (any, error) {
+		return fetch()
+	})
+}
+
+// GetOrFetchSmooth is GetOrFetch with stale-while-revalidate + TTL jitter
+// applied (see SmoothOptions). It is a drop-in replacement for GetOrFetch on
+// read-through caches backed by a slow external upstream: callers get an
+// instant (possibly slightly stale) response while a background refresh runs.
+func (c *Cache) GetOrFetchSmooth(ctx context.Context, key string, ttl time.Duration, fetch func() (any, error)) ([]byte, error) {
+	return c.GetOrFetchWithOptions(ctx, key, SmoothOptions(ttl), func(context.Context) (any, error) {
 		return fetch()
 	})
 }

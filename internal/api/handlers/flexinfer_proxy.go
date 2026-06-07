@@ -53,7 +53,9 @@ func (h *Handler) FlexInferProxyMetrics(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) cachedProxyJSON(w http.ResponseWriter, r *http.Request, cacheKey string, ttl time.Duration, label string, fetchFn func() (any, error)) {
 	ctx := r.Context()
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, cacheKey, ttl, fetchFn)
+		// Proxy/HUD/LoRA endpoints hit an external HTTP service; serve stale
+		// while revalidating so the UI never blocks on a slow upstream.
+		cached, err := h.cache.GetOrFetchSmooth(ctx, cacheKey, ttl, fetchFn)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(cached)
