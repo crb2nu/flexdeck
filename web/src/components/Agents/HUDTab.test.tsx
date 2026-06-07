@@ -3,7 +3,7 @@
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HUDWorkflow, HUDHandoff } from '../../lib/types';
+import type { HUDWorkflow, HUDHandoff, HUDSession, HUDSessionDetail } from '../../lib/types';
 
 const hudMocks = vi.hoisted(() => {
   const hudMode = {
@@ -37,6 +37,7 @@ const hudMocks = vi.hoisted(() => {
           tags: [],
         },
       ],
+      sessions: [] as HUDSession[],
       kpis: {},
     })),
     createPolling: vi.fn((
@@ -68,8 +69,9 @@ const hudMocks = vi.hoisted(() => {
     })),
     workflows: vi.fn(async (): Promise<{ workflows: HUDWorkflow[] }> => ({ workflows: [] })),
     handoffs: vi.fn(async (): Promise<{ handoffs: HUDHandoff[] }> => ({ handoffs: [] })),
-    acceptHandoff: vi.fn(async () => ({ status: 'accepted' })),
-    rejectHandoff: vi.fn(async () => ({ status: 'rejected' })),
+    acceptHandoff: vi.fn(async (_id: string, _body?: Record<string, unknown>) => ({ status: 'accepted' })),
+    rejectHandoff: vi.fn(async (_id: string, _reason?: string) => ({ status: 'rejected' })),
+    sessionDetail: vi.fn(async (_id: string): Promise<HUDSessionDetail> => ({ entries: [] })),
   };
 });
 
@@ -87,6 +89,7 @@ vi.mock('../../lib/api', () => ({
     handoffs: hudMocks.handoffs,
     acceptHandoff: hudMocks.acceptHandoff,
     rejectHandoff: hudMocks.rejectHandoff,
+    sessionDetail: hudMocks.sessionDetail,
   },
 }));
 
@@ -174,6 +177,8 @@ describe('HUDTab', () => {
     hudMocks.createPolling.mockClear();
     hudMocks.timeline.mockReset();
     hudMocks.workflows.mockReset();
+    hudMocks.handoffs.mockReset();
+    hudMocks.sessionDetail.mockReset();
 
     hudMocks.fleet.mockResolvedValue({
       agents: [
@@ -195,6 +200,7 @@ describe('HUDTab', () => {
           tags: [],
         },
       ],
+      sessions: [] as HUDSession[],
       kpis: {},
     });
     hudMocks.timeline.mockResolvedValue({
@@ -208,6 +214,8 @@ describe('HUDTab', () => {
       ],
     });
     hudMocks.workflows.mockResolvedValue({ workflows: [] });
+    hudMocks.handoffs.mockResolvedValue({ handoffs: [] });
+    hudMocks.sessionDetail.mockResolvedValue({ entries: [] });
   });
 
   afterEach(() => {
@@ -274,14 +282,18 @@ describe('HUDTab', () => {
 
     cleanup = mount(() => <HUDTab />);
 
+    // The pull-only panels only render their fallbacks once the push fetch
+    // resolves, so wait on a fallback rather than just the mode label.
     await vi.waitFor(() => {
-      expect(pageText()).toContain('Push mode (agent snapshots)');
+      expect(pageText()).toContain('Push mode — sessions unavailable');
     });
 
     const text = pageText();
+    expect(text).toContain('Push mode (agent snapshots)');
     expect(text).toContain('Presence snapshots only');
     expect(text).not.toContain('Claim ledger');
     expect(text).not.toContain('Workflow queue');
+    expect(text).not.toContain('Agent sessions');
   });
 
   it('renders workflow phase detail for the active Loom workflow step', async () => {
@@ -375,6 +387,155 @@ describe('HUDTab', () => {
       expect(pageText()).toContain('Handoff inbox');
     });
     expect(pageText()).toContain('No handoffs in flight');
+  });
+
+  const sessionFixture = (overrides: Partial<HUDSession> = {}): HUDSession => ({
+    id: 'sess-1',
+    agentId: 'claude-1',
+    agentType: 'claude',
+    status: 'active',
+    namespace: 'flexdeck/hud',
+    project: 'flexdeck',
+    description: 'Build the sessions panel',
+    startedAt: '2026-06-07T12:00:00Z',
+    contextCount: 12,
+    totalTokens: 3400,
+    taskCount: 0,
+    ...overrides,
+  });
+
+  function fleetWithSessions(sessions: HUDSession[]) {
+    return { agents: [], claims: [], tasks: [], sessions, kpis: {} };
+  }
+
+  it('renders the sessions panel from fleet sessions with a Sessions metric', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture()]));
+
+    cleanup = mount(() => <HUDTab />);
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('Agent sessions');
+    });
+
+    const text = pageText();
+    expect(text).toContain('claude-1');
+    expect(text).toContain('Build the sessions panel');
+    expect(text).toContain('12 entries');
+    expect(text).toContain('1/1 active');
+    expect(text).toContain('Sessions');
+    // Enriched fields that the normalizer used to drop must render.
+    expect(text).toContain('flexdeck/hud · flexdeck');
+    expect(text).toContain('3,400 tok');
+  });
+
+  it('counts an ended session as inactive in the sessions header', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([
+      sessionFixture({ id: 'sess-1', status: 'active' }),
+      sessionFixture({ id: 'sess-2', agentId: 'codex-2', status: 'ended' }),
+    ]));
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('Agent sessions'));
+
+    expect(pageText()).toContain('1/2 active');
+    expect(pageText()).toContain('ended');
+  });
+
+  it('renders the empty sessions state when the fleet carries no sessions', async () => {
+    hudMocks.degradedFeed = false;
+    // Default fleet mock already has sessions: [].
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('Agent sessions'));
+    expect(pageText()).toContain('No sessions recorded');
+    expect(pageText()).toContain('0/0 active');
+  });
+
+  it('collapses the session detail when the expanded card is clicked again', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture({ contextCount: 1 })]));
+    hudMocks.sessionDetail.mockResolvedValue({
+      entries: [{ id: 'e1', entryType: 'decision', title: 'Expanded once', timestamp: '2026-06-07T12:01:00Z' }],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+
+    const card = () => Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'))!;
+    card().click();
+    await vi.waitFor(() => expect(pageText()).toContain('Expanded once'));
+    expect(card().getAttribute('aria-expanded')).toBe('true');
+
+    card().click();
+    await vi.waitFor(() => expect(pageText()).not.toContain('Expanded once'));
+    expect(card().getAttribute('aria-expanded')).toBe('false');
+    // Re-expanding uses the memoized detail — no second fetch.
+    expect(hudMocks.sessionDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates session entries to 15 and shows the remaining count', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture({ contextCount: 25 })]));
+    hudMocks.sessionDetail.mockResolvedValue({
+      entries: Array.from({ length: 25 }, (_, i) => ({
+        id: `e${i}`,
+        entryType: 'finding',
+        title: `entry ${i}`,
+        timestamp: '2026-06-07T12:00:00Z',
+      })),
+    });
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+    Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'))!.click();
+
+    await vi.waitFor(() => expect(pageText()).toContain('entry 0'));
+    expect(pageText()).toContain('entry 14');
+    expect(pageText()).not.toContain('entry 15');
+    expect(pageText()).toContain('+10 more entries');
+  });
+
+  it('lazy-loads session entries only when a session card is expanded', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture({ contextCount: 2 })]));
+    hudMocks.sessionDetail.mockResolvedValue({
+      entries: [
+        { id: 'e1', entryType: 'decision', title: 'Chose inline drill-in', timestamp: '2026-06-07T12:01:00Z' },
+        { id: 'e2', entryType: 'finding', content: 'fleet already carries sessions', timestamp: '2026-06-07T12:02:00Z' },
+      ],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+
+    // Detail must NOT be fetched until the operator expands the card.
+    expect(hudMocks.sessionDetail).not.toHaveBeenCalled();
+
+    const card = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'));
+    expect(card).toBeTruthy();
+    card!.click();
+
+    await vi.waitFor(() => expect(hudMocks.sessionDetail).toHaveBeenCalledWith('sess-1'));
+    await vi.waitFor(() => expect(pageText()).toContain('Chose inline drill-in'));
+    expect(pageText()).toContain('decision');
+  });
+
+  it('shows an inline error when session detail fails without blanking the list', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture({ contextCount: 0 })]));
+    hudMocks.sessionDetail.mockRejectedValue(new Error('detail upstream offline'));
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+
+    const card = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'));
+    card!.click();
+
+    await vi.waitFor(() => expect(pageText()).toContain('detail upstream offline'));
+    // The list must survive a detail failure (supplementary-failure philosophy).
+    expect(pageText()).toContain('claude-1');
+    expect(pageText()).toContain('Agent sessions');
   });
 
   it('surfaces disabled HUD mode as an operator error state', async () => {

@@ -11,11 +11,38 @@ export interface HUDSession {
   id: string;
   agentId: string;
   agentType: string;
+  status: string;
   namespace: string;
+  project?: string;
   description: string;
   startedAt: string;
+  endedAt?: string;
   contextCount: number;
+  totalTokens: number;
   taskCount: number;
+  parentSessionId?: string;
+  rootSessionId?: string;
+}
+
+// A single context entry within a session (the drill-in detail).
+export interface HUDSessionEntry {
+  id: string;
+  entryType: string;
+  agentId?: string;
+  namespace?: string;
+  title?: string;
+  content?: string;
+  timestamp: string;
+  score?: number;
+  filePath?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  tokenCount?: number;
+}
+
+export interface HUDSessionDetail {
+  session?: HUDSession;
+  entries: HUDSessionEntry[];
 }
 
 export interface HUDAgentPresence {

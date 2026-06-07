@@ -356,6 +356,8 @@ export const hudApi = {
   workflows: () => api<import("../types").HUDWorkflow[]>("/hud/workflows"),
   timeline: () => api<import("../types").HUDTimelineEvent[]>("/hud/timeline"),
   handoffs: () => api<import("../types").HUDHandoff[]>("/hud/handoffs"),
+  sessionDetail: (id: string) =>
+    api<import("../types").HUDSessionDetail>(`/hud/sessions/${encodeURIComponent(id)}`),
   acceptHandoff: (id: string, body?: Record<string, unknown>) =>
     api<any>(`/hud/handoffs/${id}/accept`, {
       method: "POST",

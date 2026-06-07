@@ -376,6 +376,182 @@ func TestHUDHandoffsProxyNormalizesAndForwardsActions(t *testing.T) {
 	})
 }
 
+func TestNormalizeHUDSessionsFromValueEnrichesFields(t *testing.T) {
+	raw := []any{
+		map[string]any{
+			"id":                "sess-1",
+			"agent_id":          "claude-1",
+			"agent_type":        "claude",
+			"status":            "active",
+			"namespace":         "flexdeck/hud",
+			"project":           "flexdeck",
+			"description":       "Build the sessions panel",
+			"started_at":        "2026-06-07T12:00:00Z",
+			"ended_at":          "",
+			"entry_count":       json.Number("12"),
+			"total_tokens":      json.Number("3400"),
+			"parent_session_id": "root-1",
+			"root_session_id":   "root-1",
+		},
+	}
+	out := normalizeHUDSessionsFromValue(raw)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(out))
+	}
+	s := out[0]
+	if s["agentType"] != "claude" {
+		t.Errorf("agentType: expected 'claude' (no longer hardcoded ''), got %v", s["agentType"])
+	}
+	if s["status"] != "active" {
+		t.Errorf("status: expected 'active', got %v", s["status"])
+	}
+	if s["totalTokens"] != 3400 {
+		t.Errorf("totalTokens: expected 3400, got %v", s["totalTokens"])
+	}
+	if s["contextCount"] != 12 {
+		t.Errorf("contextCount: expected 12 (from entry_count), got %v", s["contextCount"])
+	}
+	if s["project"] != "flexdeck" || s["parentSessionId"] != "root-1" {
+		t.Errorf("expected project + parentSessionId to surface, got %v / %v", s["project"], s["parentSessionId"])
+	}
+}
+
+func TestNormalizeHUDSessionDetailResponse(t *testing.T) {
+	t.Run("primary entries shape", func(t *testing.T) {
+		raw := []byte(`{"entries":[{"id":"e1","entry_type":"decision","title":"Chose inline drill-in","timestamp":"2026-06-07T12:01:00Z","file_path":"web/x.tsx","line_start":10,"token_count":42}]}`)
+		out, err := normalizeHUDSessionDetailResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		entries, ok := out["entries"].([]map[string]any)
+		if !ok || len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %v", out["entries"])
+		}
+		e := entries[0]
+		if e["entryType"] != "decision" || e["filePath"] != "web/x.tsx" || e["lineStart"] != 10 || e["tokenCount"] != 42 {
+			t.Fatalf("entry not normalized: %+v", e)
+		}
+	})
+
+	t.Run("mobile envelope shape", func(t *testing.T) {
+		// Mobile detail wraps in {ok,data:{...}} and uses top_entries + a session summary.
+		raw := []byte(`{"ok":true,"data":{"session":{"id":"sess-2","agent_id":"codex","status":"ended","total_tokens":99},"top_entries":[{"id":"e9","entry_type":"finding","timestamp":"2026-06-07T12:05:00Z"}]}}`)
+		out, err := normalizeHUDSessionDetailResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		entries, ok := out["entries"].([]map[string]any)
+		if !ok || len(entries) != 1 || entries[0]["entryType"] != "finding" {
+			t.Fatalf("expected mobile top_entries to surface, got %v", out["entries"])
+		}
+		session, ok := out["session"].(map[string]any)
+		if !ok || session["id"] != "sess-2" || session["status"] != "ended" || session["totalTokens"] != 99 {
+			t.Fatalf("expected mobile session summary to surface, got %v", out["session"])
+		}
+	})
+}
+
+func TestHUDSessionDetailProxyPrimaryThenMobileFallback(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/sessions/sess-1/entries":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"entries":[{"id":"e1","entry_type":"decision","title":"Did the thing","timestamp":"2026-06-07T12:00:00Z"}]}`))
+		// Primary has no entries for sess-2 -> exercise the mobile fallback.
+		case "/api/sessions/sess-2/entries":
+			http.NotFound(w, r)
+		case "/api/mobile/v1/sessions/sess-2":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"session":{"id":"sess-2","agent_id":"codex","status":"active"},"top_entries":[{"id":"e2","entry_type":"finding","timestamp":"2026-06-07T12:01:00Z"}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	h := &Handler{cfg: &config.Config{LoomHUD: config.LoomHUDConfig{URL: upstream.URL}}}
+	router := chi.NewRouter()
+	router.Get("/api/hud/sessions/{id}", h.HUDSessionDetail)
+
+	t.Run("primary entries", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/hud/sessions/sess-1", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		entries, ok := payload["entries"].([]any)
+		if !ok || len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %v", payload["entries"])
+		}
+		if entries[0].(map[string]any)["entryType"] != "decision" {
+			t.Fatalf("unexpected entry: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("mobile fallback", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/hud/sessions/sess-2", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		session, ok := payload["session"].(map[string]any)
+		if !ok || session["id"] != "sess-2" {
+			t.Fatalf("expected mobile session summary, got %s", rec.Body.String())
+		}
+	})
+}
+
+// The Sessions panel reads the session LIST off the fleet snapshot, so the
+// fleet endpoint must carry normalized (enriched) sessions end to end.
+func TestHUDFleetSurfacesNormalizedSessions(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/fleet" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"agents":[],"tasks":[],"claims":[],"sessions":[{"id":"sess-1","agent_id":"claude-1","agent_type":"claude","status":"active","namespace":"flexdeck/hud","project":"flexdeck","started_at":"2026-06-07T12:00:00Z","entry_count":12,"total_tokens":3400}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	h := &Handler{cfg: &config.Config{LoomHUD: config.LoomHUDConfig{URL: upstream.URL}}}
+	router := chi.NewRouter()
+	router.Get("/api/hud/fleet", h.HUDFleet)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hud/fleet", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode fleet payload: %v", err)
+	}
+	sessions, ok := payload["sessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("expected 1 normalized session in fleet, got %v", payload["sessions"])
+	}
+	s := sessions[0].(map[string]any)
+	if s["agentType"] != "claude" || s["status"] != "active" {
+		t.Fatalf("expected enriched agentType/status to survive the fleet path, got %v", s)
+	}
+	if s["contextCount"] != float64(12) || s["totalTokens"] != float64(3400) {
+		t.Fatalf("expected contextCount=12 totalTokens=3400, got %v / %v", s["contextCount"], s["totalTokens"])
+	}
+}
+
 func TestNormalizeHUDSSEDataLine(t *testing.T) {
 	line := `data: {"timestamp":"2026-03-27T12:00:00Z","event_type":"agent.session.start","agent_id":"codex","data":{"message":"Session started"}}`
 	normalized := normalizeHUDSSEDataLine(line)

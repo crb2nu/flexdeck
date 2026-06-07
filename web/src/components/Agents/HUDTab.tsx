@@ -1,9 +1,11 @@
-import { batch, Component, createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { batch, Component, createEffect, createMemo, createSignal, For, onMount, Show, untrack } from 'solid-js';
+import { createStore, produce } from 'solid-js/store';
 import { agentsApi, hudApi } from '../../lib/api';
+import { stableListByKey } from '../../lib/stableList';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
 import { createAsyncStatusController } from '../../lib/asyncState';
-import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff } from '../../lib/types';
+import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff, HUDSession, HUDSessionDetail } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
 import {
@@ -24,7 +26,7 @@ import {
 } from './hudUtils';
 import HUDConsoleScaffold, { type HUDConsoleMetric } from '../LoomHUD/HUDConsoleScaffold';
 
-type HUDTabFocus = 'full' | 'overview' | 'presence' | 'workflows' | 'handoffs' | 'claims' | 'timeline';
+type HUDTabFocus = 'full' | 'overview' | 'presence' | 'sessions' | 'workflows' | 'handoffs' | 'claims' | 'timeline';
 
 interface HUDTabProps {
   focus?: HUDTabFocus;
@@ -37,9 +39,16 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [workflows, setWorkflows] = createSignal<HUDWorkflow[]>([]);
   const [timeline, setTimeline] = createSignal<HUDTimelineEvent[]>([]);
   const [handoffs, setHandoffs] = createSignal<HUDHandoff[]>([]);
+  const [sessions, setSessions] = createSignal<HUDSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
+  // Lazily-fetched per-session detail, memoized so re-expanding is instant.
+  const [sessionDetails, setSessionDetails] = createStore<Record<string, HUDSessionDetail>>({});
   const asyncState = createAsyncStatusController({
     workflowAction: null as string | null,
     handoffAction: null as string | null,
+    sessionDetailLoading: null as string | null,
+    // Keyed by session id so one session's failure never surfaces under another.
+    sessionDetailErrors: {} as Record<string, string>,
     eventsConnection: 'disabled' as FeedConnectionState,
     lastSuccessfulPull: 0,
     now: Date.now(),
@@ -64,6 +73,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
         setPresence(extractItems<HUDAgentPresence>(fleetResult.value, 'agents'));
         setClaims(extractItems<HUDClaim>(fleetResult.value, 'claims'));
         setTasks(extractItems<HUDTask>(fleetResult.value, 'tasks'));
+        setSessions(extractItems<HUDSession>(fleetResult.value, 'sessions'));
       }
       if (workflowsResult.status === 'fulfilled') setWorkflows(extractItems<HUDWorkflow>(workflowsResult.value, 'workflows'));
       if (timelineResult.status === 'fulfilled') setTimeline(extractItems<HUDTimelineEvent>(timelineResult.value, 'events'));
@@ -95,6 +105,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     setWorkflows([]);
     setTimeline([]);
     setHandoffs([]);
+    setSessions([]);
     patchState({ error: '' });
   };
 
@@ -191,6 +202,55 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     return `${Math.floor(age / 86_400_000)}d ago`;
   };
 
+  const setSessionError = (id: string, message: string) =>
+    patchState({ sessionDetailErrors: { ...state.sessionDetailErrors, [id]: message } });
+
+  const loadSessionDetail = async (id: string, force = false) => {
+    if (sessionDetails[id] && !force) return;
+    batch(() => {
+      patchState({ sessionDetailLoading: id });
+      setSessionError(id, '');
+    });
+    try {
+      const detail = await hudApi.sessionDetail(id);
+      setSessionDetails(id, {
+        session: detail?.session,
+        entries: Array.isArray(detail?.entries) ? detail.entries : [],
+      });
+    } catch (err) {
+      setSessionError(id, toErrorMessage(err, 'Failed to load session detail'));
+    } finally {
+      patchState({ sessionDetailLoading: null });
+    }
+  };
+
+  const toggleSession = (id: string) => {
+    if (selectedSessionId() === id) {
+      setSelectedSessionId(null);
+      return;
+    }
+    setSelectedSessionId(id);
+    setSessionError(id, '');
+    void loadSessionDetail(id);
+  };
+
+  // When a session leaves the fleet, drop a stale expansion and prune its cached
+  // detail so the selection stays valid and the detail cache stays bounded.
+  createEffect(() => {
+    const ids = new Set(sessions().map((session) => session.id));
+    untrack(() => {
+      const selected = selectedSessionId();
+      if (selected && !ids.has(selected)) setSelectedSessionId(null);
+      setSessionDetails(
+        produce((cache) => {
+          for (const id of Object.keys(cache)) {
+            if (!ids.has(id)) delete cache[id];
+          }
+        }),
+      );
+    });
+  });
+
   createPolling('agents-hud-pull', fetchAll, 15000, true, false);
 
   createPolling('hud-now-ticker', () => { patchState({ now: Date.now() }); }, 5000);
@@ -233,6 +293,25 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     return normalized === '' || normalized === 'pending' || normalized === 'viewed' || normalized === 'created' || normalized === 'offered';
   };
   const pendingHandoffs = () => handoffs().filter((handoff) => isHandoffActionable(handoff.status));
+  const isSessionActive = (status: string) => (status || '').toLowerCase() === 'active' || status === '';
+  const activeSessions = () => sessions().filter((session) => isSessionActive(session.status)).length;
+  // Active sessions first, then most-recently started. Stable ordering avoids
+  // the list jumping under the operator on each 15s fleet refresh.
+  const sortedSessions = createMemo(() =>
+    sessions()
+      .slice()
+      .sort((a, b) => {
+        const aActive = isSessionActive(a.status) ? 0 : 1;
+        const bActive = isSessionActive(b.status) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return (b.startedAt || '').localeCompare(a.startedAt || '');
+      }),
+  );
+  // Keep each session card's DOM (and its expanded drill-in) stable across the
+  // 15s fleet poll: the fleet re-parses to fresh objects every tick, so a plain
+  // <For> would tear down every card. stableListByKey reuses the row ref when
+  // the session's content is unchanged.
+  const stableSessions = stableListByKey(sortedSessions, (session) => session.id);
 
   const claimsByAgent = () => {
     return groupClaimsByAgent(claims());
@@ -254,6 +333,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     claims().length > 0 ||
     tasks().length > 0 ||
     workflows().length > 0 ||
+    sessions().length > 0 ||
     timeline().length > 0;
   const isInitialLoading = () => state.loading && !state.error && !hasInitialData();
   const metrics = (): HUDConsoleMetric[] => [
@@ -262,6 +342,12 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       value: `${activePresence()}/${presence().length}`,
       detail: `${idlePresence()} idle · ${offlinePresence()} offline`,
       tone: activePresence() > 0 ? 'ok' : 'warn',
+    },
+    {
+      label: 'Sessions',
+      value: `${activeSessions()}`,
+      detail: `${sessions().length} total`,
+      tone: activeSessions() > 0 ? 'ok' : 'cyan',
     },
     {
       label: 'Claims',
@@ -297,6 +383,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const focus = () => props.focus ?? 'full';
   const showOverview = () => focus() === 'overview';
   const showPresence = () => focus() === 'full' || focus() === 'presence';
+  const showSessions = () => focus() === 'full' || focus() === 'sessions';
   const showWorkflows = () => focus() === 'full' || focus() === 'workflows';
   const showHandoffs = () => focus() === 'full' || focus() === 'handoffs';
   const showClaims = () => focus() === 'full' || focus() === 'claims';
@@ -567,6 +654,125 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     </Show>
   );
 
+  const sessionsPanel = () => (
+    <Show when={pullEnabled()} fallback={
+      <div class="surface p-4 text-sm text-text-dim">
+        Push mode — sessions unavailable
+      </div>
+    }>
+      <div class="surface p-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="heading-section">Agent sessions</h3>
+          <span class="text-xs font-mono text-text-dim tabular-nums">
+            {activeSessions()}/{sessions().length} active
+          </span>
+        </div>
+
+        <Show when={sessions().length > 0} fallback={
+          <div class="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-text-dim">
+            No sessions recorded
+          </div>
+        }>
+          <div class="flex flex-col gap-2">
+            <For each={stableSessions()}>
+              {(session) => {
+                const expanded = () => selectedSessionId() === session.id;
+                const detail = () => sessionDetails[session.id];
+                const detailRegionId = `hud-session-detail-${session.id}`;
+                const loadingThis = () => state.sessionDetailLoading === session.id;
+                const sessionError = () => state.sessionDetailErrors[session.id];
+                return (
+                  <div class="overflow-hidden rounded-xl border border-white/8 bg-white/5">
+                    <button
+                      type="button"
+                      onClick={() => toggleSession(session.id)}
+                      aria-expanded={expanded()}
+                      aria-controls={expanded() ? detailRegionId : undefined}
+                      class="flex w-full items-start justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04]"
+                    >
+                      <div class="min-w-0 space-y-1">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          <span class="font-mono text-sm text-text-main">{session.agentId || 'unknown'}</span>
+                          <Show when={session.agentType}>
+                            <span class="rounded-full bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-text-dim">{session.agentType}</span>
+                          </Show>
+                          <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sessionStatusTone(session.status)}`}>
+                            {sessionStatusLabel(session.status)}
+                          </span>
+                        </div>
+                        <Show when={session.description}>
+                          <p class="line-clamp-2 text-xs text-text-muted" title={session.description}>{session.description}</p>
+                        </Show>
+                        <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-text-dim">
+                          <span class="truncate" title={session.project ? `${session.namespace} · ${session.project}` : session.namespace}>{session.namespace}{session.project ? ` · ${session.project}` : ''}</span>
+                          <span class="text-text-dim/40" aria-hidden="true">·</span>
+                          <span>{session.contextCount} entries</span>
+                          <Show when={session.totalTokens > 0}>
+                            <span class="text-text-dim/40" aria-hidden="true">·</span>
+                            <span>{session.totalTokens.toLocaleString()} tok</span>
+                          </Show>
+                          <span class="text-text-dim/40" aria-hidden="true">·</span>
+                          <span title={session.startedAt}>started {relativeAge(session.startedAt)}</span>
+                        </div>
+                      </div>
+                      <span class="mt-0.5 shrink-0 text-text-dim" aria-hidden="true">{expanded() ? '▾' : '▸'}</span>
+                    </button>
+
+                    <Show when={expanded()}>
+                      <div id={detailRegionId} role="region" aria-label="Session detail" class="border-t border-white/8 px-3 py-2.5">
+                        <Show when={loadingThis()}>
+                          <div class="animate-pulse text-[11px] text-text-dim">Loading entries…</div>
+                        </Show>
+                        <Show when={sessionError() && !loadingThis()}>
+                          <div class="flex items-center justify-between gap-2 text-[11px] text-status-error">
+                            <span>{sessionError()}</span>
+                            <button
+                              type="button"
+                              onClick={() => void loadSessionDetail(session.id, true)}
+                              aria-label={`Retry loading entries for session ${session.agentId || session.id}`}
+                              class="rounded bg-white/10 px-2 py-0.5 text-text-main transition-colors hover:bg-white/20"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        </Show>
+                        <Show when={detail() && !loadingThis() && !sessionError()}>
+                          <Show when={detail()!.entries.length > 0} fallback={
+                            <div class="text-[11px] text-text-dim">No context entries in this session.</div>
+                          }>
+                            <ul class="space-y-1">
+                              <For each={detail()!.entries.slice(0, 15)}>
+                                {(entry) => (
+                                  <li class="flex items-start gap-2 text-[11px]">
+                                    <span class="mt-px shrink-0 rounded bg-black/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-text-dim">{entry.entryType || 'entry'}</span>
+                                    <div class="min-w-0">
+                                      <div class="truncate text-text-muted" title={entry.title || entry.content || undefined}>{entry.title || entry.content || '—'}</div>
+                                      <div class="font-mono text-[9px] text-text-dim">
+                                        <span title={entry.timestamp}>{relativeAge(entry.timestamp)}</span>
+                                        <Show when={entry.filePath}><span> · {entry.filePath}</span></Show>
+                                      </div>
+                                    </div>
+                                  </li>
+                                )}
+                              </For>
+                            </ul>
+                            <Show when={detail()!.entries.length > 15}>
+                              <div class="mt-1.5 text-[10px] text-text-dim">+{detail()!.entries.length - 15} more entries</div>
+                            </Show>
+                          </Show>
+                        </Show>
+                      </div>
+                    </Show>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+      </div>
+    </Show>
+  );
+
   const handoffsPanel = () => (
     <Show when={pullEnabled()} fallback={
       <div class="surface p-4 text-sm text-text-dim">
@@ -703,6 +909,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                 <Show when={showPresence()}>
                   {presencePanel()}
                 </Show>
+                <Show when={showSessions()}>
+                  {sessionsPanel()}
+                </Show>
                 <Show when={showClaims()}>
                   {claimsPanel()}
                 </Show>
@@ -725,6 +934,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
             <div class="space-y-4">
               <Show when={showPresence()}>
                 {presencePanel()}
+              </Show>
+              <Show when={showSessions()}>
+                {sessionsPanel()}
               </Show>
               <Show when={showWorkflows()}>
                 {workflowsPanel()}
@@ -898,6 +1110,32 @@ function handoffStatusTone(status: string): string {
 function handoffStatusLabel(status: string): string {
   const normalized = (status || '').trim();
   if (normalized === '') return 'pending';
+  return normalized.replace(/_/g, ' ');
+}
+
+function sessionStatusTone(status: string): string {
+  switch ((status || '').toLowerCase()) {
+    case 'active':
+    case '':
+      return 'bg-status-ok/20 text-status-ok';
+    case 'summarized':
+      return 'bg-white/10 text-white';
+    case 'ended':
+    case 'closed':
+      return 'bg-white/10 text-text-muted';
+    case 'failed':
+    case 'error':
+      return 'bg-status-error/20 text-status-error';
+    case 'stale':
+      return 'bg-status-warn/15 text-status-warn';
+    default:
+      return 'bg-white/10 text-text-dim';
+  }
+}
+
+function sessionStatusLabel(status: string): string {
+  const normalized = (status || '').trim();
+  if (normalized === '') return 'active';
   return normalized.replace(/_/g, ' ');
 }
 
