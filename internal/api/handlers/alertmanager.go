@@ -18,7 +18,7 @@ func (h *Handler) AlertmanagerAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(r.Context(), "am:alerts", 15*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:alerts", 15*time.Second, func() (any, error) {
 			return h.fetchAlertmanager("/api/v2/alerts")
 		})
 		if err == nil {
@@ -46,7 +46,7 @@ func (h *Handler) AlertmanagerSilences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(r.Context(), "am:silences", 15*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:silences", 15*time.Second, func() (any, error) {
 			return h.fetchAlertmanager("/api/v2/silences")
 		})
 		if err == nil {
@@ -74,7 +74,7 @@ func (h *Handler) AlertmanagerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(r.Context(), "am:status", 60*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:status", 60*time.Second, func() (any, error) {
 			return h.fetchAlertmanager("/api/v2/status")
 		})
 		if err == nil {

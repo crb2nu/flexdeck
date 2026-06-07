@@ -40,7 +40,7 @@ func (h *Handler) ModelsInferenceMetrics(w http.ResponseWriter, r *http.Request)
 	cacheKey := fmt.Sprintf("models:inference:%s:%s", ns, name)
 
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 15*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(ctx, cacheKey, 15*time.Second, func() (any, error) {
 			return h.fetchInferenceMetrics(ctx, ns, name)
 		})
 		if err == nil {

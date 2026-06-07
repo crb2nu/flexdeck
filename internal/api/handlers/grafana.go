@@ -22,7 +22,7 @@ func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "grafana:dashboards", 60*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(ctx, "grafana:dashboards", 60*time.Second, func() (any, error) {
 			return h.fetchGrafanaAPI("/api/search?type=dash-db")
 		})
 		if err == nil {
@@ -52,7 +52,7 @@ func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	cacheKey := fmt.Sprintf("grafana:dashboard:%s", uid)
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, cacheKey, 30*time.Second, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(ctx, cacheKey, 30*time.Second, func() (any, error) {
 			return h.fetchGrafanaAPI(fmt.Sprintf("/api/dashboards/uid/%s", uid))
 		})
 		if err == nil {
@@ -80,7 +80,7 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if h.cache != nil {
-		cached, err := h.cache.GetOrFetch(ctx, "grafana:datasources", 5*time.Minute, func() (any, error) {
+		cached, err := h.cache.GetOrFetchSmooth(ctx, "grafana:datasources", 5*time.Minute, func() (any, error) {
 			return h.fetchGrafanaAPI("/api/datasources")
 		})
 		if err == nil {
