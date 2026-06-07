@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -288,7 +289,13 @@ func (ps *PipelineScraper) fetchPipelineJobs(ctx context.Context, projectID, pip
 		return nil, err
 	}
 
-	// Aggregate by stage
+	// GitLab returns jobs newest-first (descending ID). Sort ascending so the
+	// first-seen stage order matches the pipeline's definition order
+	// (prepare → ... → deploy) instead of the reversed jobs-API order, which
+	// otherwise renders the orchestrator stages backwards.
+	sort.Slice(jobs, func(i, j int) bool { return jobs[i].ID < jobs[j].ID })
+
+	// Aggregate by stage, preserving each job so fan-out counts survive.
 	stageMap := make(map[string]*StageRun)
 	stageOrder := []string{}
 	for _, j := range jobs {
@@ -299,6 +306,7 @@ func (ps *PipelineScraper) fetchPipelineJobs(ctx context.Context, projectID, pip
 			stageOrder = append(stageOrder, j.Stage)
 		}
 		sr.Duration += j.Duration
+		sr.Jobs = append(sr.Jobs, JobRun{Name: j.Name, Status: j.Status, Duration: j.Duration})
 		// Promote stage status: failed > running > pending > success
 		if j.Status == "failed" {
 			sr.Status = "failed"

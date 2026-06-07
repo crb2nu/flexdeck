@@ -540,15 +540,30 @@ func (h *Handler) pipelineRunToResponse(run metrics.PipelineRun) any {
 
 	stages := make([]Stage, 0, len(run.Stages))
 	for _, s := range run.Stages {
-		stages = append(stages, Stage{
-			Name: s.Name,
-			Jobs: []Job{{
+		jobs := make([]Job, 0, len(s.Jobs))
+		for idx, j := range s.Jobs {
+			jobs = append(jobs, Job{
+				// Synthesize a stable, unique id so the frontend can key rows.
+				// The store does not persist GitLab job ids.
+				ID:       fmt.Sprintf("%s-%d", s.Name, idx),
+				Name:     j.Name,
+				Stage:    s.Name,
+				Status:   j.Status,
+				Duration: j.Duration,
+			})
+		}
+		// Backward compatibility: runs cached before per-job data existed have
+		// no Jobs — fall back to a single synthetic job from the stage aggregate
+		// so older entries still render (as 1/1) instead of an empty stage.
+		if len(jobs) == 0 {
+			jobs = append(jobs, Job{
 				Name:     s.Name,
 				Stage:    s.Name,
 				Status:   s.Status,
 				Duration: s.Duration,
-			}},
-		})
+			})
+		}
+		stages = append(stages, Stage{Name: s.Name, Jobs: jobs})
 	}
 
 	return PipelineResponse{

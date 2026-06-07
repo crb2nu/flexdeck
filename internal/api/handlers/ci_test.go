@@ -10,10 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flexinfer/flexdeck/internal/config"
+	"github.com/flexinfer/flexdeck/internal/metrics"
 )
 
 func TestCIHandlers(t *testing.T) {
@@ -137,6 +139,73 @@ func TestFetchRepoPipeline_UsesStageOrderFromGitLabCI(t *testing.T) {
 	want := []string{"lint", "test", "deploy"}
 	if !reflect.DeepEqual(stageNames, want) {
 		t.Fatalf("unexpected stage order: got %v want %v", stageNames, want)
+	}
+}
+
+// pipelineRunToResponse must emit every job in a stage so the frontend renders
+// the real fan-out (e.g. "test 3/3"), and fall back to a single synthetic job
+// for legacy runs cached before per-job data was stored.
+func TestPipelineRunToResponse_PreservesFanoutAndFallsBack(t *testing.T) {
+	h := &Handler{}
+	run := metrics.PipelineRun{
+		PipelineID: 100,
+		Ref:        "main",
+		Status:     "running",
+		CreatedAt:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Stages: []metrics.StageRun{
+			{
+				Name:   "test",
+				Status: "running",
+				Jobs: []metrics.JobRun{
+					{Name: "test 1/3", Status: "success"},
+					{Name: "test 2/3", Status: "running"},
+					{Name: "test 3/3", Status: "success"},
+				},
+			},
+			// Legacy stage: cached before per-job data existed (no Jobs).
+			{Name: "lint", Status: "success"},
+		},
+	}
+
+	raw, err := json.Marshal(h.pipelineRunToResponse(run))
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+
+	var got struct {
+		Stages []struct {
+			Name string `json:"name"`
+			Jobs []struct {
+				ID     string `json:"id"`
+				Name   string `json:"name"`
+				Status string `json:"status"`
+			} `json:"jobs"`
+		} `json:"stages"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(got.Stages) != 2 {
+		t.Fatalf("expected 2 stages, got %d", len(got.Stages))
+	}
+	// Fan-out preserved for the stage that carries per-job data.
+	if got.Stages[0].Name != "test" || len(got.Stages[0].Jobs) != 3 {
+		t.Fatalf("test stage: expected 3 jobs, got %d", len(got.Stages[0].Jobs))
+	}
+	if got.Stages[0].Jobs[1].Name != "test 2/3" || got.Stages[0].Jobs[1].Status != "running" {
+		t.Errorf("unexpected second test job: %+v", got.Stages[0].Jobs[1])
+	}
+	// Synthetic ids are unique so the frontend can key rows.
+	if got.Stages[0].Jobs[0].ID == got.Stages[0].Jobs[1].ID {
+		t.Errorf("expected unique job ids, got duplicate %q", got.Stages[0].Jobs[0].ID)
+	}
+	// Legacy stage falls back to a single synthetic job (renders as 1/1).
+	if got.Stages[1].Name != "lint" || len(got.Stages[1].Jobs) != 1 {
+		t.Fatalf("lint stage: expected 1 fallback job, got %d", len(got.Stages[1].Jobs))
+	}
+	if got.Stages[1].Jobs[0].Status != "success" {
+		t.Errorf("lint fallback job: expected status success, got %q", got.Stages[1].Jobs[0].Status)
 	}
 }
 

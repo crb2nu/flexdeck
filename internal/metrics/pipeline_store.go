@@ -28,6 +28,18 @@ type StageRun struct {
 	Name     string  `json:"name"`
 	Status   string  `json:"status"`
 	Duration float64 `json:"duration_s"`
+	// Jobs preserves the individual jobs in this stage so fan-out (N parallel
+	// jobs per stage) survives the metrics-store round-trip. Runs cached before
+	// this field existed decode with an empty slice; handlers fall back to a
+	// single synthetic job derived from the stage aggregate.
+	Jobs []JobRun `json:"jobs,omitempty"`
+}
+
+// JobRun represents a single job within a stage run.
+type JobRun struct {
+	Name     string  `json:"name"`
+	Status   string  `json:"status"`
+	Duration float64 `json:"duration_s"`
 }
 
 // PipelineTrend holds computed trend data for a project's pipelines.
