@@ -10,17 +10,35 @@ import (
 	"github.com/flexinfer/flexdeck/internal/workspace"
 )
 
-// WorkspaceRepos returns a read-only inventory of local services and libs.
+// WorkspaceRepos returns a read-only inventory of services and libs. It prefers
+// the GitLab API (every repo + real git metadata, independent of the disk
+// sync) and falls back to scanning the mounted workspace when no GitLab token
+// is configured.
 func (h *Handler) WorkspaceRepos(w http.ResponseWriter, r *http.Request) {
-	if h.cfg == nil || strings.TrimSpace(h.cfg.WorkspaceDir) == "" {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "workspace root not configured"})
+	useGitLab := h.cfg != nil &&
+		strings.TrimSpace(h.cfg.GitLab.Token) != "" &&
+		strings.TrimSpace(h.cfg.GitLab.URL) != ""
+	if !useGitLab && (h.cfg == nil || strings.TrimSpace(h.cfg.WorkspaceDir) == "") {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "workspace inventory not configured"})
 		return
 	}
 
-	scanCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	scanCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	scan := func(ctx context.Context) (any, error) {
+		if useGitLab {
+			client := h.gitlabClient
+			if client == nil {
+				client = newGitLabClient()
+			}
+			return workspace.ScanGitLab(ctx, workspace.GitLabScanOptions{
+				BaseURL: h.cfg.GitLab.URL,
+				Token:   h.cfg.GitLab.Token,
+				Client:  client,
+				Buckets: []string{workspace.BucketServices, workspace.BucketLibs},
+			})
+		}
 		return workspace.Scan(ctx, h.cfg.WorkspaceDir, workspace.ScanOptions{})
 	}
 
@@ -29,7 +47,7 @@ func (h *Handler) WorkspaceRepos(w http.ResponseWriter, r *http.Request) {
 			TTL:                      30 * time.Second,
 			StaleTTL:                 2 * time.Minute,
 			JitterFraction:           0.1,
-			BackgroundRefreshTimeout: 5 * time.Second,
+			BackgroundRefreshTimeout: 20 * time.Second,
 		}, scan)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
