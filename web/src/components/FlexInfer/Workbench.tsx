@@ -430,18 +430,19 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     return { tier: 'healthy', label: 'Healthy', summary };
   });
 
+  // Sort by model name for a STABLE row order. The old worst-first-by-severity
+  // sort reordered the table on every 15s poll as live queue/error counters
+  // jitter — that reshuffle was the visible "constant resort". Saturated rows
+  // are now surfaced via a highlight (see proxyRowIsHot) instead of by moving.
   const proxyModelRows = createMemo(() => {
     const metrics = proxyMetrics();
     if (!metrics?.byModel) return [];
     return Object.entries(metrics.byModel)
       .filter(([name]) => name !== '_total')
-      .sort(([, left], [, right]) => {
-        const leftScore = (left.queueDepth || 0) * 10 + (left.errorsTotal || 0);
-        const rightScore = (right.queueDepth || 0) * 10 + (right.errorsTotal || 0);
-        if (leftScore !== rightScore) return rightScore - leftScore;
-        return 0;
-      });
+      .sort(([leftName], [rightName]) => leftName.localeCompare(rightName));
   });
+  const proxyRowIsHot = (metrics: FlexInferProxyModelMetrics): boolean =>
+    (metrics.queueDepth || 0) > 0 || (metrics.errorsTotal || 0) > 0;
 
   const registryRows = createMemo(() => controller.registryModels().slice().sort((a, b) => a.name.localeCompare(b.name)));
   const searchResults = () => controller.searchResults();
@@ -473,8 +474,13 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         row.proxyMetricName ?? '',
       ].join('|'),
   );
+  // Signature is the model name only: the <tr> for a model is created once and
+  // never torn down across polls. The cells read live counters from
+  // proxyMetrics() reactively (see render), so values still update in place
+  // without recreating the row — no flicker.
   const stableProxyModelRows = stableListByKey(
     proxyModelRows,
+    ([name]) => name,
     ([name]) => name,
   );
   const stableRegistryRows = stableListByKey(
@@ -897,17 +903,26 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                       </tr>
                     }
                   >
-                    {([name, metrics]) => (
-                      <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-mono text-text-main">{name}</td>
-                        <td class="px-4 py-3 text-right font-mono text-text-muted">{metrics.requestsTotal.toFixed(0)}</td>
-                        <td class="px-4 py-3 text-right font-mono text-text-muted">{metrics.queueDepth.toFixed(0)}</td>
-                        <td class="px-4 py-3 text-right font-mono text-text-muted">{metrics.activeConnections.toFixed(0)}</td>
-                        <td class={`px-4 py-3 text-right font-mono ${metrics.errorsTotal > 0 ? 'text-status-warn' : 'text-text-muted'}`}>
-                          {((proxyErrorRateForModel(proxyMetrics(), name) || 0) * 100).toFixed(2)}%
-                        </td>
-                      </tr>
-                    )}
+                    {([name, cached]) => {
+                      // Read live counters from proxyMetrics() so the row updates
+                      // in place; the cached tuple (name-keyed signature) is only
+                      // a fallback for the first paint before live data lands.
+                      const live = () => proxyMetrics()?.byModel?.[name] ?? cached;
+                      return (
+                        <tr
+                          class="border-b border-white/5 transition-colors hover:bg-white/5"
+                          classList={{ 'bg-status-warn/[0.06]': proxyRowIsHot(live()) }}
+                        >
+                          <td class="px-4 py-3 font-mono text-text-main">{name}</td>
+                          <td class="px-4 py-3 text-right font-mono text-text-muted">{live().requestsTotal.toFixed(0)}</td>
+                          <td class={`px-4 py-3 text-right font-mono ${live().queueDepth > 0 ? 'text-status-warn' : 'text-text-muted'}`}>{live().queueDepth.toFixed(0)}</td>
+                          <td class="px-4 py-3 text-right font-mono text-text-muted">{live().activeConnections.toFixed(0)}</td>
+                          <td class={`px-4 py-3 text-right font-mono ${live().errorsTotal > 0 ? 'text-status-warn' : 'text-text-muted'}`}>
+                            {((proxyErrorRateForModel(proxyMetrics(), name) || 0) * 100).toFixed(2)}%
+                          </td>
+                        </tr>
+                      );
+                    }}
                   </For>
                 </tbody>
               </table>

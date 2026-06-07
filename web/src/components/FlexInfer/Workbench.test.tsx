@@ -681,6 +681,43 @@ describe('Workbench', () => {
     expect(text).not.toContain('throughput absent');
   });
 
+  it('renders per-model telemetry in stable name order and highlights saturated rows', async () => {
+    const metric = (
+      patch: Partial<import('../../lib/types').FlexInferProxyModelMetrics>,
+    ): import('../../lib/types').FlexInferProxyModelMetrics => ({
+      requestsTotal: 0,
+      errorsTotal: 0,
+      queueDepth: 0,
+      activeConnections: 0,
+      scaleUps: 0,
+      queueRejectedTotal: 0,
+      queuedRequestsTotal: 0,
+      ...patch,
+    });
+    // Insertion order is non-alphabetical and the busiest model is last, so the
+    // old worst-first-by-severity sort would have floated it to the top. The
+    // table must stay in name order regardless of live queue/error pressure —
+    // that reshuffle was the visible "constant resort".
+    workbenchMocks.storeState.proxyMetrics.byModel = {
+      'zebra-model': metric({ requestsTotal: 10 }),
+      'alpha-model': metric({ requestsTotal: 99, queueDepth: 50, errorsTotal: 3 }),
+      'mango-model': metric({ requestsTotal: 5 }),
+    };
+
+    cleanup = mount(() => <Workbench />);
+    await vi.waitFor(() => expect(pageText()).toContain('alpha-model'));
+
+    const section = document.getElementById('telemetry')!;
+    const telemetryTable = section.querySelector('table')!; // per-model telemetry is the first table
+    const rows = [...telemetryTable.querySelectorAll('tbody tr')];
+    const names = rows.map((r) => r.querySelector('td')?.textContent?.trim());
+    expect(names).toEqual(['alpha-model', 'mango-model', 'zebra-model']);
+
+    // The saturated row (queue + errors) carries the highlight; quiet rows do not.
+    expect(rows[0].classList.contains('bg-status-warn/[0.06]')).toBe(true);
+    expect(rows[2].classList.contains('bg-status-warn/[0.06]')).toBe(false);
+  });
+
   it('treats idle CRDs without live proxy pressure as standby instead of degraded', async () => {
     workbenchMocks.controllerState.crdModels[0].status = {
       phase: 'Idle',
