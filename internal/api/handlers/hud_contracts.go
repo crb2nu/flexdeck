@@ -181,14 +181,20 @@ func normalizeHUDSessionsFromValue(value any) []map[string]any {
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		out = append(out, map[string]any{
-			"id":           hudString(item["id"]),
-			"agentId":      hudString(item["agent_id"]),
-			"agentType":    "",
-			"namespace":    hudString(item["namespace"]),
-			"description":  hudString(item["description"]),
-			"startedAt":    hudString(item["started_at"]),
-			"contextCount": hudInt(item["entry_count"]),
-			"taskCount":    0,
+			"id":              hudString(item["id"]),
+			"agentId":         hudString(item["agent_id"]),
+			"agentType":       hudString(item["agent_type"]),
+			"status":          hudString(item["status"]),
+			"namespace":       hudString(item["namespace"]),
+			"project":         hudString(item["project"]),
+			"description":     hudString(item["description"]),
+			"startedAt":       hudString(item["started_at"]),
+			"endedAt":         hudString(item["ended_at"]),
+			"contextCount":    hudInt(item["entry_count"]),
+			"totalTokens":     hudInt(item["total_tokens"]),
+			"taskCount":       hudInt(item["task_count"]),
+			"parentSessionId": hudString(item["parent_session_id"]),
+			"rootSessionId":   hudString(item["root_session_id"]),
 		})
 	}
 	return out
@@ -375,6 +381,62 @@ func normalizeHUDHandoffsResponse(raw json.RawMessage) ([]map[string]any, error)
 		return normalizeHUDHandoffsFromValue(envelope["handoffs"]), nil
 	}
 	return normalizeHUDHandoffsFromValue(envelope["items"]), nil
+}
+
+// normalizeHUDSessionEntriesFromValue reshapes a session's context entries to
+// the camelCase contract the frontend expects. `score` is left as the raw
+// numeric value so the relevance float survives.
+func normalizeHUDSessionEntriesFromValue(value any) []map[string]any {
+	items := hudItemsFromValue(value)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"id":         hudString(item["id"]),
+			"entryType":  hudString(item["entry_type"]),
+			"agentId":    hudString(item["agent_id"]),
+			"namespace":  hudString(item["namespace"]),
+			"title":      hudString(item["title"]),
+			"content":    hudString(item["content"]),
+			"timestamp":  hudString(item["timestamp"]),
+			"score":      item["score"],
+			"filePath":   hudString(item["file_path"]),
+			"lineStart":  hudInt(item["line_start"]),
+			"lineEnd":    hudInt(item["line_end"]),
+			"tokenCount": hudInt(item["token_count"]),
+		})
+	}
+	return out
+}
+
+// normalizeHUDSessionDetailResponse reshapes a single session's detail. The
+// primary HUD returns {entries:[...]}; the mobile detail surface returns a
+// richer envelope with top_entries + a session summary. Both are handled so the
+// drill-in works regardless of which upstream answered.
+func normalizeHUDSessionDetailResponse(raw json.RawMessage) (map[string]any, error) {
+	envelope, err := parseHUDEnvelope(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var entriesSource any
+	switch {
+	case envelope["entries"] != nil:
+		entriesSource = envelope["entries"]
+	case envelope["top_entries"] != nil:
+		entriesSource = envelope["top_entries"]
+	default:
+		entriesSource = envelope["items"]
+	}
+
+	result := map[string]any{
+		"entries": normalizeHUDSessionEntriesFromValue(entriesSource),
+	}
+	if envelope["session"] != nil {
+		if sessions := normalizeHUDSessionsFromValue([]any{envelope["session"]}); len(sessions) > 0 {
+			result["session"] = sessions[0]
+		}
+	}
+	return result, nil
 }
 
 func normalizeHUDTimelineResponse(raw json.RawMessage) ([]map[string]any, error) {

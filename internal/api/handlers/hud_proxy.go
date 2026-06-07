@@ -122,6 +122,27 @@ func (h *Handler) HUDHandoffs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HUDSessionDetail returns the context entries (and a summary, when the mobile
+// surface answers) for a single agent session — the drill-in for the Sessions
+// panel. The session LIST comes from the fleet snapshot; this is detail-only.
+func (h *Handler) HUDSessionDetail(w http.ResponseWriter, r *http.Request) {
+	if !h.loomHUDPassthroughEnabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	h.cachedProxyJSON(w, r, "hud:session:detail:"+id, 10*time.Second, "hud session detail", func() (any, error) {
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths(
+			fmt.Sprintf("/api/sessions/%s/entries", id),
+			fmt.Sprintf("/api/mobile/v1/sessions/%s", id),
+		)...)
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDSessionDetailResponse(raw)
+	})
+}
+
 // HUDHandoffAccept accepts an inter-agent handoff, adopting its context.
 func (h *Handler) HUDHandoffAccept(w http.ResponseWriter, r *http.Request) {
 	h.proxyHUDHandoffAction(w, r, "accept")
