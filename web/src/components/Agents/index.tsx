@@ -19,7 +19,7 @@ import { isHUDAgent } from './hudUtils';
 
 const HUDTab = lazy(() => import('./HUDTab'));
 
-type OperationsSection = 'overview' | 'presence' | 'workflows' | 'claims' | 'timeline' | 'registry' | 'flow';
+type OperationsSection = 'overview' | 'presence' | 'workflows' | 'handoffs' | 'claims' | 'timeline' | 'registry' | 'flow';
 type EditableAgentType = 'langgraph' | 'custom';
 
 const toEditableAgentType = (type: Agent['type']): EditableAgentType =>
@@ -130,6 +130,7 @@ const Agents: Component = () => {
     { id: 'overview' as const, label: 'Overview', group: 'Primary' },
     { id: 'presence' as const, label: 'Presence & tasks', group: 'Live HUD' },
     { id: 'workflows' as const, label: 'Workflow queue', group: 'Live HUD' },
+    { id: 'handoffs' as const, label: 'Handoff inbox', group: 'Live HUD' },
     { id: 'claims' as const, label: 'Claim ledger', group: 'Live HUD' },
     { id: 'timeline' as const, label: 'Timeline', group: 'Live HUD' },
     { id: 'registry' as const, label: 'Registry', group: 'Tooling' },
@@ -144,6 +145,8 @@ const Agents: Component = () => {
         return 'presence' as const;
       case 'workflows':
         return 'workflows' as const;
+      case 'handoffs':
+        return 'handoffs' as const;
       case 'claims':
         return 'claims' as const;
       case 'timeline':

@@ -72,7 +72,7 @@ const HUDConsoleScaffold: Component<HUDConsoleScaffoldProps> = (props) => {
           </div>
         </div>
 
-        <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <For each={props.metrics}>
             {(metric) => (
               <div class="surface px-3 py-2.5">

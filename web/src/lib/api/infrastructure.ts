@@ -355,6 +355,17 @@ export const hudApi = {
   tasks: () => api<import("../types").HUDTask[]>("/hud/tasks"),
   workflows: () => api<import("../types").HUDWorkflow[]>("/hud/workflows"),
   timeline: () => api<import("../types").HUDTimelineEvent[]>("/hud/timeline"),
+  handoffs: () => api<import("../types").HUDHandoff[]>("/hud/handoffs"),
+  acceptHandoff: (id: string, body?: Record<string, unknown>) =>
+    api<any>(`/hud/handoffs/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  rejectHandoff: (id: string, reason?: string) =>
+    api<any>(`/hud/handoffs/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
   approveWorkflow: (id: string) =>
     api<any>(`/hud/workflows/${id}/approve`, { method: "POST" }),
   rejectWorkflow: (id: string) =>

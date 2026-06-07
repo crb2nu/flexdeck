@@ -313,10 +313,13 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/tasks", h.HUDTasks)
 		r.Get("/workflows", h.HUDWorkflows)
 		r.Get("/timeline", h.HUDTimeline)
+		r.Get("/handoffs", h.HUDHandoffs)
 		r.Get("/events", h.HUDEventsSSE)
 		r.With(logFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
 		r.With(logFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)
 		r.With(logFunc("hud.workflow.cancel")).Post("/workflows/{id}/cancel", h.HUDWorkflowCancel)
+		r.With(logFunc("hud.handoff.accept")).Post("/handoffs/{id}/accept", h.HUDHandoffAccept)
+		r.With(logFunc("hud.handoff.reject")).Post("/handoffs/{id}/reject", h.HUDHandoffReject)
 	})
 
 	r.Route("/api/langfuse", func(r chi.Router) {
