@@ -228,3 +228,17 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/workspace/binding.go`
   - [S2] `.loom/31-iteration-plan-stack-cluster-binding-2026-06-08.md`
   - [S3] `web/src/components/Stack/stackUtils.ts`
+
+### 2026-06-08: Verify service bindings via project-path join to live Flux sources
+
+- Decision: Upgrade an inferred service binding to `confidence=verified` when the repo's GitLab **project path** matches a live Flux `GitRepository.spec.url`, then resolve the owning Kustomization (and its `targetNamespace` when set). The live list happens in the handler (`fluxBindingTargets`) and feeds a pure `workspace.EnrichBindings`; the workspace package stays Kubernetes-free.
+- Rationale: The kill-test against the real cluster proved the binding can be verified, but also that Flux `GitRepository` URLs use the **internal** git host (`gitlab-vm.gitlab.svc.cluster.local`) while repo remotes use the public host (`gitlab.flexinfer.ai`). A host-based `matchKey` join would silently fail; a **path-based** join (`services/flexdeck`) works for both. Keeping the I/O in the handler and the join pure keeps the scanner decoupled and unit-testable, and best-effort enrichment means the endpoint degrades to `inferred` when the cluster is unreachable.
+- Alternatives considered:
+  - Match on the host-qualified `matchKey` (simplest, but the internal-vs-public host mismatch makes it never match in this cluster).
+  - Resolve the deploy namespace from live Deployments instead of the Kustomization (more authoritative, but larger surface; deferred to the next slice).
+  - Compute the join inside `internal/workspace` with an injected client (couples the scanner to Kubernetes; rejected).
+- Consequences: Canonical services verify correctly (live probe: `flexdeck`→`flux-system/flexdeck`, `flexinfer`→`flexinfer-models` deterministically). One source can own many Kustomizations, so selection prefers the repo-name match else the lexicographically smallest. Namespace is only overridden when the Kustomization sets `targetNamespace` (flexdeck's does not), so it stays inferred there.
+- Sources:
+  - [S1] `internal/api/handlers/workspace_binding.go`
+  - [S2] `internal/workspace/binding.go` (`EnrichBindings`, `ProjectPathFromURL`)
+  - [S3] `.loom/31-iteration-plan-stack-verified-binding-2026-06-08.md`

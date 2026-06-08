@@ -124,7 +124,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 - [x] **Workspace Repository Inventory API**: Read-only `/api/workspace/repos` scanner for top-level `WORKSPACE_DIR/services` and `WORKSPACE_DIR/libs` repos, including language/package hints, docs markers, worktree counts, sanitized git remotes, branch, and dirty state.
 - [x] **Stack Explorer UI**: Service/lib cards over the repository inventory with search, grouping, and readiness summaries.
-- ◐ **Service-To-Cluster Binding (Partial)**: Inferred binding — namespace, Flux source, Kustomization, GitLab project, and a normalized match key — is derived from inventory metadata (repo name, GitLab path, sanitized remote) and surfaced on Stack cards at `inferred` confidence (2026-06-08). Live K8s/Flux/GitLab-CI/Loom-HUD cross-reference to reach `verified` confidence, plus image-label and HUD signals, remains pending.
+- ◐ **Service-To-Cluster Binding (Partial)**: Inferred binding — namespace, Flux source, Kustomization, GitLab project, and a normalized match key — is derived from inventory metadata and **upgraded to `verified` when the repo's project path matches a live Flux `GitRepository` source**, resolving the owning Kustomization and its `targetNamespace` (2026-06-08). The join is path-based so it works across the internal Flux git host and the public remote. Remaining: live K8s Deployment/health binding and image-label / Loom HUD signals.
 - [ ] **Library Adoption And Contract Coverage**: Map local shared-lib usage across services and surface observability/resilience/UI-token contract drift.
 
 ### Phase 3.5: Reliability And Contract Hardening (March 2026)

@@ -41,6 +41,7 @@ export interface WorkspaceRepoBinding {
   gitlabProject?: string;
   namespace?: string;
   fluxSource?: string;
+  fluxNamespace?: string;
   kustomization?: string;
   matchKey?: string;
   signals?: string[];

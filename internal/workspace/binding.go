@@ -40,11 +40,64 @@ type RepoBinding struct {
 	Kind          BindingKind       `json:"kind"`
 	Confidence    BindingConfidence `json:"confidence"`
 	GitLabProject string            `json:"gitlabProject,omitempty"` // group/repo, e.g. services/flexdeck
-	Namespace     string            `json:"namespace,omitempty"`     // inferred Kubernetes namespace
-	FluxSource    string            `json:"fluxSource,omitempty"`    // inferred Flux GitRepository source name
-	Kustomization string            `json:"kustomization,omitempty"` // inferred Flux Kustomization name
+	Namespace     string            `json:"namespace,omitempty"`     // Kubernetes namespace (inferred, or verified targetNamespace)
+	FluxSource    string            `json:"fluxSource,omitempty"`    // Flux GitRepository source name
+	FluxNamespace string            `json:"fluxNamespace,omitempty"` // namespace of the Flux GitRepository (verified only)
+	Kustomization string            `json:"kustomization,omitempty"` // Flux Kustomization name
 	MatchKey      string            `json:"matchKey,omitempty"`      // normalized host/path for live cross-reference
 	Signals       []string          `json:"signals,omitempty"`       // which inputs produced this binding
+}
+
+// FluxTarget is a cluster-agnostic description of a live Flux GitRepository (and
+// its owning Kustomization) that a repository may bind to. It is built by the
+// handler layer from live cluster state and passed to EnrichBindings so this
+// package stays free of any Kubernetes dependency.
+type FluxTarget struct {
+	ProjectPath     string // normalized group/repo, host-stripped (e.g. services/flexdeck)
+	SourceName      string // GitRepository name
+	SourceNamespace string // GitRepository namespace (e.g. flux-system)
+	Kustomization   string // owning Kustomization name, if resolved
+	TargetNamespace string // Kustomization spec.targetNamespace, if set
+}
+
+// EnrichBindings upgrades inferred service bindings to verified when their
+// GitLab project path matches a live Flux source. The join is path-based
+// (host-independent) because Flux sources use an internal git host while repo
+// remotes use the public one. Libraries and unmatched services are left
+// unchanged, so this is safe to skip entirely when no cluster data is present.
+func EnrichBindings(inv *Inventory, targetsByPath map[string]FluxTarget) {
+	if inv == nil || len(targetsByPath) == 0 {
+		return
+	}
+	for i := range inv.Repositories {
+		binding := inv.Repositories[i].Binding
+		if binding == nil || binding.Kind != BindingKindService || binding.GitLabProject == "" {
+			continue
+		}
+		target, ok := targetsByPath[strings.ToLower(binding.GitLabProject)]
+		if !ok {
+			continue
+		}
+		binding.Confidence = BindingConfidenceVerified
+		binding.FluxSource = target.SourceName
+		binding.FluxNamespace = target.SourceNamespace
+		binding.Signals = appendUnique(binding.Signals, "flux-source")
+		if target.Kustomization != "" {
+			binding.Kustomization = target.Kustomization
+			binding.Signals = appendUnique(binding.Signals, "flux-kustomization")
+		}
+		if target.TargetNamespace != "" {
+			binding.Namespace = target.TargetNamespace
+		}
+	}
+}
+
+// ProjectPathFromURL extracts the normalized group/repo path from a git URL,
+// stripping host, credentials, and the .git suffix. This is the host-independent
+// key used to join repositories to live Flux GitRepository sources.
+func ProjectPathFromURL(raw string) string {
+	_, projectPath := parseRemoteIdentity(raw)
+	return projectPath
 }
 
 // deriveBinding infers a repository's cluster relationship from already-known

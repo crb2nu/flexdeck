@@ -98,6 +98,27 @@ describe('stackUtils', () => {
     });
   });
 
+  it('marks a verified binding with the verified detail and flag', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        fluxNamespace: 'flux-system',
+        kustomization: 'flexdeck',
+        gitlabProject: 'services/flexdeck',
+      },
+    }));
+
+    expect(summary).toEqual({
+      label: 'ns flexdeck · flux flexdeck',
+      detail: 'verified target',
+      confidence: 'verified',
+      verified: true,
+    });
+  });
+
   it('summarizes a library binding as not deployed', () => {
     const summary = summarizeBinding(makeRepo({
       bucket: 'libs',
