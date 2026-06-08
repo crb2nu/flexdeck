@@ -27,8 +27,23 @@ export interface WorkspaceRepository {
   docs: WorkspaceDocs;
   worktreeCount?: number;
   git: WorkspaceGitState;
+  binding?: WorkspaceRepoBinding;
   discoveryReasons?: string[];
   errors?: string[];
+}
+
+export type WorkspaceBindingKind = 'service' | 'library' | 'unknown';
+export type WorkspaceBindingConfidence = 'verified' | 'inferred' | 'none';
+
+export interface WorkspaceRepoBinding {
+  kind: WorkspaceBindingKind;
+  confidence: WorkspaceBindingConfidence;
+  gitlabProject?: string;
+  namespace?: string;
+  fluxSource?: string;
+  kustomization?: string;
+  matchKey?: string;
+  signals?: string[];
 }
 
 export interface WorkspaceManifest {

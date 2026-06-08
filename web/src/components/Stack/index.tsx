@@ -9,6 +9,7 @@ import {
   getRepositoryLanguage,
   hasManifest,
   repositoryMatches,
+  summarizeBinding,
   summarizeRemote,
   type StackBucketFilter,
   type StackReadinessFilter,
@@ -360,6 +361,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
   const readiness = createMemo(() => getRepoReadiness(props.repo));
   const language = createMemo(() => getRepositoryLanguage(props.repo));
   const remote = createMemo(() => summarizeRemote(props.repo));
+  const binding = createMemo(() => summarizeBinding(props.repo));
   const manifestLabels = createMemo(() => (props.repo.manifests ?? []).map((manifest) => manifest.path));
   const packageManagers = createMemo(() => props.repo.packageManagers ?? []);
   const docFlags = createMemo(() => [
@@ -452,6 +454,28 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
             <span class="heading-label min-w-[58px]">Remote</span>
             <span class="truncate font-mono text-text-muted" title={remote()}>{remote()}</span>
           </div>
+        </Show>
+        <Show when={binding()}>
+          {(summary) => (
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="heading-label min-w-[58px]">Cluster</span>
+              <span class="truncate font-mono text-text-muted" title={`${summary().label} (${summary().detail})`}>
+                {summary().label}
+              </span>
+              <Show when={summary().confidence !== 'none'}>
+                <span
+                  class={`flex-shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                    summary().verified
+                      ? 'border-status-ok/20 bg-status-ok/10 text-status-ok'
+                      : 'border-white/10 bg-white/5 text-text-dim/70'
+                  }`}
+                  title={summary().detail}
+                >
+                  {summary().confidence}
+                </span>
+              </Show>
+            </div>
+          )}
         </Show>
         <div class="flex min-w-0 items-center gap-2">
           <span class="heading-label min-w-[58px]">Manifests</span>

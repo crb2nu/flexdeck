@@ -43,17 +43,18 @@ type Totals struct {
 
 // Repository describes one top-level repo-like directory in the workspace.
 type Repository struct {
-	Name             string     `json:"name"`
-	Bucket           string     `json:"bucket"`
-	Path             string     `json:"path"`
-	PrimaryLanguage  string     `json:"primaryLanguage,omitempty"`
-	PackageManagers  []string   `json:"packageManagers,omitempty"`
-	Manifests        []Manifest `json:"manifests,omitempty"`
-	Docs             Docs       `json:"docs"`
-	WorktreeCount    int        `json:"worktreeCount,omitempty"`
-	Git              GitState   `json:"git"`
-	DiscoveryReasons []string   `json:"discoveryReasons,omitempty"`
-	Errors           []string   `json:"errors,omitempty"`
+	Name             string       `json:"name"`
+	Bucket           string       `json:"bucket"`
+	Path             string       `json:"path"`
+	PrimaryLanguage  string       `json:"primaryLanguage,omitempty"`
+	PackageManagers  []string     `json:"packageManagers,omitempty"`
+	Manifests        []Manifest   `json:"manifests,omitempty"`
+	Docs             Docs         `json:"docs"`
+	WorktreeCount    int          `json:"worktreeCount,omitempty"`
+	Git              GitState     `json:"git"`
+	Binding          *RepoBinding `json:"binding,omitempty"`
+	DiscoveryReasons []string     `json:"discoveryReasons,omitempty"`
+	Errors           []string     `json:"errors,omitempty"`
 }
 
 // Manifest records a known safe-to-read metadata file.
@@ -226,6 +227,8 @@ func inspectRepository(ctx context.Context, bucket, name, path string, opts Scan
 		return repo.Manifests[left].Path < repo.Manifests[right].Path
 	})
 	sort.Strings(repo.DiscoveryReasons)
+
+	repo.Binding = deriveBinding(repo)
 
 	return repo
 }

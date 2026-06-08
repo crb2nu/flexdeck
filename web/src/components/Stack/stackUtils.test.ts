@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceRepository } from '../../lib/api';
-import { getRepoReadiness, repositoryMatches, summarizeRemote } from './stackUtils';
+import { getRepoReadiness, repositoryMatches, summarizeBinding, summarizeRemote } from './stackUtils';
 
 function makeRepo(overrides: Partial<WorkspaceRepository> = {}): WorkspaceRepository {
   return {
@@ -75,5 +75,57 @@ describe('stackUtils', () => {
         remotes: [{ name: 'origin', url: 'git@gitlab.example.com:libs/visual-kit.git' }],
       },
     }))).toBe('origin: gitlab.example.com/libs/visual-kit');
+  });
+
+  it('summarizes an inferred service binding as namespace + flux source', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'inferred',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        kustomization: 'flexdeck',
+        gitlabProject: 'services/flexdeck',
+        matchKey: 'gitlab.example.com/services/flexdeck',
+      },
+    }));
+
+    expect(summary).toEqual({
+      label: 'ns flexdeck · flux flexdeck',
+      detail: 'inferred from naming',
+      confidence: 'inferred',
+      verified: false,
+    });
+  });
+
+  it('summarizes a library binding as not deployed', () => {
+    const summary = summarizeBinding(makeRepo({
+      bucket: 'libs',
+      binding: { kind: 'library', confidence: 'none', gitlabProject: 'libs/visual-kit' },
+    }));
+
+    expect(summary).toMatchObject({ label: 'Library', confidence: 'none', verified: false });
+  });
+
+  it('returns null when no binding metadata is present', () => {
+    expect(summarizeBinding(makeRepo({ binding: undefined }))).toBeNull();
+  });
+
+  it('matches search terms across inferred binding fields', () => {
+    const repo = makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'inferred',
+        namespace: 'inference-zone',
+        fluxSource: 'edge-source',
+        gitlabProject: 'services/flexdeck',
+        matchKey: 'gitlab.example.com/services/flexdeck',
+      },
+    });
+
+    // Tokens that only exist on the binding, not on name/path/remote.
+    expect(repositoryMatches(repo, 'inference-zone')).toBe(true);
+    expect(repositoryMatches(repo, 'edge-source')).toBe(true);
+    expect(repositoryMatches(repo, 'not-present')).toBe(false);
   });
 });
