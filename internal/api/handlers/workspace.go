@@ -26,20 +26,33 @@ func (h *Handler) WorkspaceRepos(w http.ResponseWriter, r *http.Request) {
 	scanCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
+	// Captured once per request so the cached background refresh can reuse it.
+	// Verifying bindings against live Flux state is best-effort: when no cluster
+	// client is available the inventory keeps its inferred bindings.
+	kc := h.k8sForRequest(r)
+
 	scan := func(ctx context.Context) (any, error) {
+		var inventory *workspace.Inventory
+		var err error
 		if useGitLab {
 			client := h.gitlabClient
 			if client == nil {
 				client = newGitLabClient()
 			}
-			return workspace.ScanGitLab(ctx, workspace.GitLabScanOptions{
+			inventory, err = workspace.ScanGitLab(ctx, workspace.GitLabScanOptions{
 				BaseURL: h.cfg.GitLab.URL,
 				Token:   h.cfg.GitLab.Token,
 				Client:  client,
 				Buckets: []string{workspace.BucketServices, workspace.BucketLibs},
 			})
+		} else {
+			inventory, err = workspace.Scan(ctx, h.cfg.WorkspaceDir, workspace.ScanOptions{})
 		}
-		return workspace.Scan(ctx, h.cfg.WorkspaceDir, workspace.ScanOptions{})
+		if err != nil {
+			return nil, err
+		}
+		workspace.EnrichBindings(inventory, h.fluxBindingTargets(ctx, kc))
+		return inventory, nil
 	}
 
 	if h.cache != nil {

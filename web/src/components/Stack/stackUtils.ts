@@ -56,6 +56,8 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     binding?.kind ?? '',
     binding?.namespace ?? '',
     binding?.fluxSource ?? '',
+    binding?.fluxNamespace ?? '',
+    binding?.kustomization ?? '',
     binding?.gitlabProject ?? '',
     binding?.matchKey ?? '',
   ];
