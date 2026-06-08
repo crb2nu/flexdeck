@@ -1,6 +1,7 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { alertmanagerApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
+import { stableListByKey } from '../../lib/stableList';
 import type { AlertmanagerAlert, AlertmanagerSilence } from '../../lib/types';
 import { formatRelativeTime } from '../../lib/format';
 import { TabBar, LoadingState, ErrorState, EmptyState } from '../shared';
@@ -53,6 +54,13 @@ const Alerts: Component = () => {
     }
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   });
+
+  // The polled signals are replaced wholesale every 30s, so without stabilizing
+  // these the alert groups and silence rows remount (and collapse) on each
+  // refresh. Reuse the prior ref per group (keyed by alertname) and per silence
+  // (keyed by id) when the JSON signature is unchanged.
+  const stableGroupedAlerts = stableListByKey(groupedAlerts, ([name]) => name);
+  const stableSilences = stableListByKey(silences, (s) => s.id);
 
   const toggleExpand = (key: string) => {
     setExpanded(prev => {
@@ -146,7 +154,7 @@ const Alerts: Component = () => {
           <EmptyState title="No alerts" size="sm" />
         </Show>
         <div class="space-y-2">
-          <For each={groupedAlerts()}>
+          <For each={stableGroupedAlerts()}>
             {([name, group]) => (
               <div class="surface overflow-hidden">
                 <button
@@ -276,7 +284,7 @@ const Alerts: Component = () => {
         </Show>
 
         <div class="space-y-2">
-          <For each={silences()}>
+          <For each={stableSilences()}>
             {(silence) => (
               <div class="surface px-4 py-3">
                 <div class="flex items-center gap-3">
