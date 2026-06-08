@@ -202,6 +202,8 @@ func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket str
 		repo.PrimaryLanguage = strings.ToLower(topLanguage(langs))
 	}
 
+	repo.Binding = deriveBinding(repo)
+
 	return repo
 }
 

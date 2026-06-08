@@ -215,3 +215,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `ROADMAP.md`
   - [S2] `.loom/42-slice-handoff-local-stack-inventory-kill-test-2026-06-06.md`
   - [S3] `web/src/components/Stack/index.tsx`
+
+### 2026-06-08: Ship inferred service-to-cluster binding before live verification
+
+- Decision: Add an additive `binding` field to the workspace inventory that infers each service repo's cluster identity (namespace, Flux source, Kustomization, GitLab project, and a normalized `matchKey`) purely from metadata the scanner already collects, surfaced on Stack cards at `inferred` confidence. Libraries are classified as non-deployed.
+- Rationale: The Phase 5 handoff named service-to-cluster binding as the next slice. The smallest end-to-end increment derives binding from existing inventory signals (repo name, `services/<repo>` GitLab path, sanitized remote) without coupling the read-only scanner to live cluster availability. This proves the binding contract and naming-convention assumption cheaply, and the live cross-reference slice can raise confidence to `verified` against the same `matchKey`.
+- Alternatives considered:
+  - Cross-reference live Flux `GitRepository` source URLs immediately (higher value, but couples the inventory scan to cluster availability and is harder to test deterministically).
+  - Defer binding until `.flexdeck.yaml` hints exist (more explicit, but blocks visible progress on convention-following repos that need no hints).
+- Consequences: Bindings are honest about being heuristic via an `inferred` confidence chip; no live data is read. The kill-test confirmed the convention holds for canonical services (`flexdeck`/`flexinfer`/`loom-core` → matching namespace/source). Next slice verifies `matchKey` against live Flux sources and folds in image-label/HUD signals.
+- Sources:
+  - [S1] `internal/workspace/binding.go`
+  - [S2] `.loom/31-iteration-plan-stack-cluster-binding-2026-06-08.md`
+  - [S3] `web/src/components/Stack/stackUtils.ts`

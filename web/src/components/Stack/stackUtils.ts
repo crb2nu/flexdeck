@@ -42,6 +42,7 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery === '') return true;
 
+  const binding = repo.binding;
   const searchable = [
     repo.name,
     repo.bucket,
@@ -52,6 +53,11 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     ...(repo.manifests ?? []).flatMap((manifest) => [manifest.path, manifest.type]),
     ...(repo.git.remotes ?? []).flatMap((remote) => [remote.name, remote.url]),
     ...(repo.discoveryReasons ?? []),
+    binding?.kind ?? '',
+    binding?.namespace ?? '',
+    binding?.fluxSource ?? '',
+    binding?.gitlabProject ?? '',
+    binding?.matchKey ?? '',
   ];
 
   return searchable.some((value) => value.toLowerCase().includes(normalizedQuery));
@@ -73,6 +79,41 @@ export function formatBucketLabel(bucket: string): string {
   if (bucket === 'services') return 'Services';
   if (bucket === 'libs') return 'Libraries';
   return bucket;
+}
+
+export interface BindingSummary {
+  label: string;
+  detail: string;
+  confidence: 'verified' | 'inferred' | 'none';
+  verified: boolean;
+}
+
+// summarizeBinding turns the inferred service-to-cluster binding into a compact
+// card descriptor. Services report their inferred namespace + Flux source;
+// libraries report that they are consumed rather than deployed. Returns null
+// when no binding metadata is present (older payloads or unknown kinds).
+export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | null {
+  const binding = repo.binding;
+  if (!binding) return null;
+
+  if (binding.kind === 'library') {
+    return { label: 'Library', detail: 'consumed, not deployed', confidence: 'none', verified: false };
+  }
+
+  if (binding.kind === 'service') {
+    const parts: string[] = [];
+    if (binding.namespace) parts.push(`ns ${binding.namespace}`);
+    if (binding.fluxSource) parts.push(`flux ${binding.fluxSource}`);
+    if (parts.length === 0) return null;
+    return {
+      label: parts.join(' · '),
+      detail: binding.confidence === 'verified' ? 'verified target' : 'inferred from naming',
+      confidence: binding.confidence,
+      verified: binding.confidence === 'verified',
+    };
+  }
+
+  return null;
 }
 
 export function summarizeRemote(repo: WorkspaceRepository): string {
