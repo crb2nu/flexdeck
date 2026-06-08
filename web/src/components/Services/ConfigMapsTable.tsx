@@ -1,5 +1,6 @@
 import { Component, For, Show } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
+import { stableListByKey } from '../../lib/stableList';
 import EmptyState from '../shared/EmptyState';
 
 export interface ConfigMapsTableProps {
@@ -9,7 +10,15 @@ export interface ConfigMapsTableProps {
   onToggle: (ns: string, name: string) => void;
 }
 
-const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => (
+const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => {
+  // Each 30s poll replaces props.configmaps with freshly-fetched objects, which
+  // would remount every row (and collapse any expanded entry) on refresh. Reuse
+  // the prior ref per configmap so <For> keeps the row mounted.
+  const stableConfigmaps = stableListByKey(
+    () => props.configmaps,
+    (cm) => `${cm.metadata?.namespace}/${cm.metadata?.name}`,
+  );
+  return (
   <Show
     when={props.configmaps.length > 0}
     fallback={
@@ -26,7 +35,7 @@ const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => (
     }
   >
     <div class="divide-y divide-white/5">
-      <For each={props.configmaps}>
+      <For each={stableConfigmaps()}>
         {(cm) => {
           const key = `${cm.metadata?.namespace}/${cm.metadata?.name}`;
           const isExpanded = props.expanded.has(key);
@@ -76,6 +85,7 @@ const ConfigMapsTable: Component<ConfigMapsTableProps> = (props) => (
       </For>
     </div>
   </Show>
-);
+  );
+};
 
 export default ConfigMapsTable;

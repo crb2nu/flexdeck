@@ -1,5 +1,6 @@
 import { Component, For, Show } from 'solid-js';
 import { formatRelativeTime } from '../../lib/format';
+import { stableListByKey } from '../../lib/stableList';
 import EmptyState from '../shared/EmptyState';
 
 export interface SecretsTableProps {
@@ -11,7 +12,15 @@ export interface SecretsTableProps {
   onRevealKey: (key: string) => void;
 }
 
-const SecretsTable: Component<SecretsTableProps> = (props) => (
+const SecretsTable: Component<SecretsTableProps> = (props) => {
+  // Each 30s poll replaces props.secrets with freshly-fetched objects, which
+  // would remount every row (and collapse any expanded entry) on refresh. Reuse
+  // the prior ref per secret so <For> keeps the row mounted.
+  const stableSecrets = stableListByKey(
+    () => props.secrets,
+    (secret) => `${secret.metadata?.namespace}/${secret.metadata?.name}`,
+  );
+  return (
   <Show
     when={props.secrets.length > 0}
     fallback={
@@ -27,7 +36,7 @@ const SecretsTable: Component<SecretsTableProps> = (props) => (
     }
   >
     <div class="divide-y divide-white/5">
-      <For each={props.secrets}>
+      <For each={stableSecrets()}>
         {(secret) => {
           const key = `${secret.metadata?.namespace}/${secret.metadata?.name}`;
           const isExpanded = props.expanded.has(key);
@@ -96,6 +105,7 @@ const SecretsTable: Component<SecretsTableProps> = (props) => (
       </For>
     </div>
   </Show>
-);
+  );
+};
 
 export default SecretsTable;
