@@ -90,13 +90,28 @@ export interface BindingSummary {
   verified: boolean;
   workload?: string;
   workloadHealthy?: boolean;
+  workloadKinds?: string;
+}
+
+function describeWorkloadKinds(
+  workload: NonNullable<WorkspaceRepository['binding']>['workload'],
+): string | undefined {
+  if (!workload) return undefined;
+  const parts: string[] = [];
+  const add = (count: number | undefined, singular: string) => {
+    if (count && count > 0) parts.push(`${count} ${count === 1 ? singular : `${singular}s`}`);
+  };
+  add(workload.deployments, 'deployment');
+  add(workload.statefulSets, 'statefulset');
+  add(workload.daemonSets, 'daemonset');
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
 // summarizeBinding turns the service-to-cluster binding into a compact card
-// descriptor. Services report their namespace + Flux source, plus live
-// Deployment health when known; libraries report that they are consumed rather
-// than deployed. Returns null when no binding metadata is present (older
-// payloads or unknown kinds).
+// descriptor. Services report their namespace + Flux source, plus live workload
+// health (Deployments/StatefulSets/DaemonSets) when known; libraries report that
+// they are consumed rather than deployed. Returns null when no binding metadata
+// is present (older payloads or unknown kinds).
 export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | null {
   const binding = repo.binding;
   if (!binding) return null;
@@ -119,6 +134,7 @@ export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | nu
       verified: binding.confidence === 'verified',
       workload: workload ? `${workload.ready}/${workload.desired} ready` : undefined,
       workloadHealthy: workload ? workload.ready >= workload.desired && workload.desired > 0 : undefined,
+      workloadKinds: describeWorkloadKinds(workload),
     };
   }
 
