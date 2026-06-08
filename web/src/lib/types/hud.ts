@@ -45,6 +45,41 @@ export interface HUDSessionDetail {
   entries: HUDSessionEntry[];
 }
 
+// A daemon audit tool-call trace associated with a session (the trace drill-in).
+export interface HUDSessionTraceCall {
+  timestamp: string;
+  agentId?: string;
+  agentType?: string;
+  server: string;
+  tool: string;
+  status: string;
+  error?: string;
+  target?: string;
+  cached?: boolean;
+  pipelineStage?: string;
+  durationMs?: number;
+}
+
+// An in-band partial-source failure reported by the trace endpoint, so the
+// drill-in can show which upstream source was unavailable rather than blanking.
+export interface HUDSessionTraceError {
+  source: string;
+  message: string;
+}
+
+// The trace timeline for a single session: lifecycle events plus tool-call
+// traces. `events` reuses the timeline contract since the shapes are identical.
+export interface HUDSessionTrace {
+  session?: HUDSession;
+  sessionId: string;
+  agentId?: string;
+  events: HUDTimelineEvent[];
+  traces: HUDSessionTraceCall[];
+  traceEnabled: boolean;
+  tracePath?: string;
+  errors: HUDSessionTraceError[];
+}
+
 export interface HUDAgentPresence {
   agentId: string;
   agentType: string;

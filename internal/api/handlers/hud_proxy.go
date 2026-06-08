@@ -143,6 +143,29 @@ func (h *Handler) HUDSessionDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HUDSessionTrace returns a single session's trace timeline — the lifecycle
+// events and daemon audit tool-call traces associated with the session, plus
+// any in-band partial-source errors. It is the deeper drill-in beneath the
+// Sessions panel's context-entry detail. Both the primary HUD and the mobile
+// surface answer with the same SessionTraceResponse shape.
+func (h *Handler) HUDSessionTrace(w http.ResponseWriter, r *http.Request) {
+	if !h.loomHUDPassthroughEnabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "loom hud disabled"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	h.cachedProxyJSON(w, r, "hud:session:trace:"+id, 10*time.Second, "hud session trace", func() (any, error) {
+		raw, err := h.fetchHUDPaths(r.Context(), h.hudPaths(
+			fmt.Sprintf("/api/sessions/%s/trace", id),
+			fmt.Sprintf("/api/mobile/v1/sessions/%s/trace", id),
+		)...)
+		if err != nil {
+			return nil, err
+		}
+		return normalizeHUDSessionTraceResponse(raw)
+	})
+}
+
 // HUDHandoffAccept accepts an inter-agent handoff, adopting its context.
 func (h *Handler) HUDHandoffAccept(w http.ResponseWriter, r *http.Request) {
 	h.proxyHUDHandoffAction(w, r, "accept")

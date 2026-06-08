@@ -574,3 +574,112 @@ func TestNormalizeHUDSSEDataLine(t *testing.T) {
 		t.Fatalf("expected fleet snapshot summary to normalize, got %s", normalized)
 	}
 }
+
+func TestNormalizeHUDSessionTraceResponse(t *testing.T) {
+	t.Run("primary trace shape", func(t *testing.T) {
+		raw := []byte(`{"session_id":"sess-1","agent_id":"claude-1","trace_enabled":true,"trace_path":"/var/trace.jsonl",` +
+			`"session":{"id":"sess-1","agent_id":"claude-1","status":"active","total_tokens":42},` +
+			`"events":[{"event_type":"session_start","timestamp":"2026-06-07T12:00:00Z","agent_id":"claude-1"}],` +
+			`"traces":[{"timestamp":"2026-06-07T12:00:01Z","server":"git","tool":"git_status","status":"ok","duration_ms":42,"cached":true}],` +
+			`"errors":[{"source":"audit_traces","message":"trace file unavailable"}]}`)
+		out, err := normalizeHUDSessionTraceResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		if out["sessionId"] != "sess-1" || out["agentId"] != "claude-1" || out["traceEnabled"] != true {
+			t.Fatalf("scalar fields not normalized: %+v", out)
+		}
+		events, ok := out["events"].([]map[string]any)
+		if !ok || len(events) != 1 || events[0]["type"] != "session_start" {
+			t.Fatalf("events not normalized via timeline normalizer: %v", out["events"])
+		}
+		traces, ok := out["traces"].([]map[string]any)
+		if !ok || len(traces) != 1 {
+			t.Fatalf("expected 1 trace call, got %v", out["traces"])
+		}
+		if traces[0]["tool"] != "git_status" || traces[0]["server"] != "git" || traces[0]["durationMs"] != 42 || traces[0]["cached"] != true {
+			t.Fatalf("trace call not normalized: %+v", traces[0])
+		}
+		errs, ok := out["errors"].([]map[string]any)
+		if !ok || len(errs) != 1 || errs[0]["source"] != "audit_traces" {
+			t.Fatalf("partial-source errors not surfaced: %v", out["errors"])
+		}
+		session, ok := out["session"].(map[string]any)
+		if !ok || session["id"] != "sess-1" || session["totalTokens"] != 42 {
+			t.Fatalf("session summary not surfaced: %v", out["session"])
+		}
+	})
+
+	t.Run("mobile envelope shape", func(t *testing.T) {
+		// Mobile wraps the identical SessionTraceResponse in {ok,data:{...}}.
+		raw := []byte(`{"ok":true,"data":{"session_id":"sess-2","events":[{"event_type":"task_update","timestamp":"2026-06-07T12:05:00Z"}],"traces":[],"trace_enabled":false,"errors":[]}}`)
+		out, err := normalizeHUDSessionTraceResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		events, ok := out["events"].([]map[string]any)
+		if !ok || len(events) != 1 || events[0]["type"] != "task_update" {
+			t.Fatalf("expected mobile events to surface, got %v", out["events"])
+		}
+		if out["sessionId"] != "sess-2" || out["traceEnabled"] != false {
+			t.Fatalf("mobile scalars not normalized: %+v", out)
+		}
+	})
+}
+
+func TestHUDSessionTraceProxyPrimaryThenMobileFallback(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/sessions/sess-1/trace":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"session_id":"sess-1","events":[{"event_type":"session_start","timestamp":"2026-06-07T12:00:00Z"}],"traces":[],"trace_enabled":false,"errors":[]}`))
+		// Primary has no trace for sess-2 -> exercise the mobile fallback.
+		case "/api/sessions/sess-2/trace":
+			http.NotFound(w, r)
+		case "/api/mobile/v1/sessions/sess-2/trace":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"session_id":"sess-2","events":[{"event_type":"task_update","timestamp":"2026-06-07T12:01:00Z"}],"traces":[],"trace_enabled":false,"errors":[]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	h := &Handler{cfg: &config.Config{LoomHUD: config.LoomHUDConfig{URL: upstream.URL}}}
+	router := chi.NewRouter()
+	router.Get("/api/hud/sessions/{id}/trace", h.HUDSessionTrace)
+
+	t.Run("primary trace", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/hud/sessions/sess-1/trace", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		events, ok := payload["events"].([]any)
+		if !ok || len(events) != 1 || events[0].(map[string]any)["type"] != "session_start" {
+			t.Fatalf("expected primary trace events, got %s", rec.Body.String())
+		}
+	})
+
+	t.Run("mobile fallback", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/hud/sessions/sess-2/trace", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		events, ok := payload["events"].([]any)
+		if !ok || len(events) != 1 || events[0].(map[string]any)["type"] != "task_update" {
+			t.Fatalf("expected mobile fallback trace events, got %s", rec.Body.String())
+		}
+	})
+}

@@ -3,7 +3,7 @@
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HUDWorkflow, HUDHandoff, HUDSession, HUDSessionDetail } from '../../lib/types';
+import type { HUDWorkflow, HUDHandoff, HUDSession, HUDSessionDetail, HUDSessionTrace } from '../../lib/types';
 
 const hudMocks = vi.hoisted(() => {
   const hudMode = {
@@ -72,6 +72,13 @@ const hudMocks = vi.hoisted(() => {
     acceptHandoff: vi.fn(async (_id: string, _body?: Record<string, unknown>) => ({ status: 'accepted' })),
     rejectHandoff: vi.fn(async (_id: string, _reason?: string) => ({ status: 'rejected' })),
     sessionDetail: vi.fn(async (_id: string): Promise<HUDSessionDetail> => ({ entries: [] })),
+    sessionTrace: vi.fn(async (id: string): Promise<HUDSessionTrace> => ({
+      sessionId: id,
+      events: [],
+      traces: [],
+      traceEnabled: false,
+      errors: [],
+    })),
   };
 });
 
@@ -90,6 +97,7 @@ vi.mock('../../lib/api', () => ({
     acceptHandoff: hudMocks.acceptHandoff,
     rejectHandoff: hudMocks.rejectHandoff,
     sessionDetail: hudMocks.sessionDetail,
+    sessionTrace: hudMocks.sessionTrace,
   },
 }));
 
@@ -179,6 +187,7 @@ describe('HUDTab', () => {
     hudMocks.workflows.mockReset();
     hudMocks.handoffs.mockReset();
     hudMocks.sessionDetail.mockReset();
+    hudMocks.sessionTrace.mockReset();
 
     hudMocks.fleet.mockResolvedValue({
       agents: [
@@ -216,6 +225,7 @@ describe('HUDTab', () => {
     hudMocks.workflows.mockResolvedValue({ workflows: [] });
     hudMocks.handoffs.mockResolvedValue({ handoffs: [] });
     hudMocks.sessionDetail.mockResolvedValue({ entries: [] });
+    hudMocks.sessionTrace.mockResolvedValue({ sessionId: 'sess-1', events: [], traces: [], traceEnabled: false, errors: [] });
   });
 
   afterEach(() => {
@@ -535,6 +545,99 @@ describe('HUDTab', () => {
     await vi.waitFor(() => expect(pageText()).toContain('detail upstream offline'));
     // The list must survive a detail failure (supplementary-failure philosophy).
     expect(pageText()).toContain('claude-1');
+    expect(pageText()).toContain('Agent sessions');
+  });
+
+  // Expand a session card, then open its "Trace timeline" sub-section.
+  async function expandSessionAndTrace() {
+    const card = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'));
+    expect(card).toBeTruthy();
+    card!.click();
+    await vi.waitFor(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Trace timeline'));
+      expect(btn).toBeTruthy();
+    });
+    const traceBtn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Trace timeline'));
+    traceBtn!.click();
+  }
+
+  it('lazy-loads the session trace only when its sub-section is opened', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture()]));
+    hudMocks.sessionTrace.mockResolvedValue({
+      sessionId: 'sess-1',
+      events: [{ timestamp: '2026-06-07T12:05:00Z', type: 'session_start', agentId: 'claude-1', summary: 'session started' }],
+      traces: [{ timestamp: '2026-06-07T12:05:01Z', server: 'git', tool: 'git_status', status: 'ok', durationMs: 42 }],
+      traceEnabled: true,
+      errors: [],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+
+    // The card expanded (entries fetched) must NOT trigger a trace fetch.
+    const card = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('claude-1'));
+    card!.click();
+    await vi.waitFor(() => expect(hudMocks.sessionDetail).toHaveBeenCalledWith('sess-1'));
+    expect(hudMocks.sessionTrace).not.toHaveBeenCalled();
+
+    const traceBtn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Trace timeline'));
+    traceBtn!.click();
+
+    await vi.waitFor(() => expect(hudMocks.sessionTrace).toHaveBeenCalledWith('sess-1'));
+    await vi.waitFor(() => expect(pageText()).toContain('session started'));
+    expect(pageText()).toContain('git/git_status');
+    expect(pageText()).toContain('42ms');
+  });
+
+  it('shows the empty trace state when a session has no events or tool calls', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture()]));
+    // Default trace mock already resolves empty events + traces.
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+    await expandSessionAndTrace();
+
+    await vi.waitFor(() => expect(pageText()).toContain('No trace activity recorded'));
+  });
+
+  it('surfaces an in-band partial-source failure in the trace', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture()]));
+    hudMocks.sessionTrace.mockResolvedValue({
+      sessionId: 'sess-1',
+      events: [{ timestamp: '2026-06-07T12:05:00Z', type: 'session_start', agentId: 'claude-1', summary: 'session started' }],
+      traces: [],
+      traceEnabled: false,
+      errors: [{ source: 'audit_traces', message: 'trace file unavailable' }],
+    });
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+    await expandSessionAndTrace();
+
+    await vi.waitFor(() => expect(pageText()).toContain('Partial trace'));
+    expect(pageText()).toContain('audit_traces');
+    // Events still render alongside the partial-source notice.
+    expect(pageText()).toContain('session started');
+  });
+
+  it('shows an inline error when the trace fails without blanking the entries', async () => {
+    hudMocks.degradedFeed = false;
+    hudMocks.fleet.mockResolvedValue(fleetWithSessions([sessionFixture()]));
+    hudMocks.sessionDetail.mockResolvedValue({
+      entries: [{ id: 'e1', entryType: 'decision', title: 'Chose inline drill-in', timestamp: '2026-06-07T12:01:00Z' }],
+    });
+    hudMocks.sessionTrace.mockRejectedValue(new Error('trace upstream offline'));
+
+    cleanup = mount(() => <HUDTab />);
+    await vi.waitFor(() => expect(pageText()).toContain('claude-1'));
+    await expandSessionAndTrace();
+
+    await vi.waitFor(() => expect(pageText()).toContain('trace upstream offline'));
+    // The entries drill-in must survive a trace failure.
+    expect(pageText()).toContain('Chose inline drill-in');
     expect(pageText()).toContain('Agent sessions');
   });
 

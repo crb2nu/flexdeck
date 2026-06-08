@@ -358,6 +358,8 @@ export const hudApi = {
   handoffs: () => api<import("../types").HUDHandoff[]>("/hud/handoffs"),
   sessionDetail: (id: string) =>
     api<import("../types").HUDSessionDetail>(`/hud/sessions/${encodeURIComponent(id)}`),
+  sessionTrace: (id: string) =>
+    api<import("../types").HUDSessionTrace>(`/hud/sessions/${encodeURIComponent(id)}/trace`),
   acceptHandoff: (id: string, body?: Record<string, unknown>) =>
     api<any>(`/hud/handoffs/${id}/accept`, {
       method: "POST",
