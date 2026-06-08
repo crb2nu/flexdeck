@@ -37,7 +37,9 @@ export type WorkspaceBindingConfidence = 'verified' | 'inferred' | 'none';
 
 export interface WorkspaceWorkload {
   namespaces?: string[];
-  deployments: number;
+  deployments?: number;
+  statefulSets?: number;
+  daemonSets?: number;
   ready: number;
   desired: number;
 }

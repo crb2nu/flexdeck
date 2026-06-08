@@ -148,6 +148,20 @@ describe('stackUtils', () => {
     expect(summary).toMatchObject({ workload: '2/3 ready', workloadHealthy: false });
   });
 
+  it('describes a StatefulSet-backed workload by kind', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'smarthome',
+        fluxSource: 'smarthome',
+        workload: { namespaces: ['smarthome'], statefulSets: 1, ready: 1, desired: 1 },
+      },
+    }));
+
+    expect(summary).toMatchObject({ workload: '1/1 ready', workloadHealthy: true, workloadKinds: '1 statefulset' });
+  });
+
   it('summarizes a library binding as not deployed', () => {
     const summary = summarizeBinding(makeRepo({
       bucket: 'libs',

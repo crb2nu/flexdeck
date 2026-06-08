@@ -55,8 +55,80 @@ func (h *Handler) fluxBindingTargets(ctx context.Context, kc *k8s.Client) map[st
 	if list, err := kc.GetDeployments(ctx, ""); err == nil {
 		deployments = list.Items
 	}
+	var statefulSets []appsv1.StatefulSet
+	if list, err := kc.GetStatefulSets(ctx, ""); err == nil {
+		statefulSets = list.Items
+	}
+	var daemonSets []appsv1.DaemonSet
+	if list, err := kc.GetDaemonSets(ctx, ""); err == nil {
+		daemonSets = list.Items
+	}
 
-	return buildFluxTargets(gitRepos.Items, kustomizations, deployments)
+	return buildFluxTargets(gitRepos.Items, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets))
+}
+
+const (
+	workloadKindDeployment  = "Deployment"
+	workloadKindStatefulSet = "StatefulSet"
+	workloadKindDaemonSet   = "DaemonSet"
+)
+
+// workloadUnit is a kind-agnostic view of a single Flux-managed workload, with
+// replica counts already normalized across Deployment/StatefulSet/DaemonSet.
+type workloadUnit struct {
+	ksKey     string // kustomization namespace/name from the Flux labels
+	namespace string
+	kind      string
+	desired   int
+	ready     int
+}
+
+// appsWorkloadUnits flattens the three apps/v1 workload kinds into a single
+// slice, normalizing the kind-specific replica fields (DaemonSets report
+// scheduling counts rather than spec replicas). Workloads without a Flux
+// Kustomization name label are dropped.
+func appsWorkloadUnits(deployments []appsv1.Deployment, statefulSets []appsv1.StatefulSet, daemonSets []appsv1.DaemonSet) []workloadUnit {
+	units := make([]workloadUnit, 0, len(deployments)+len(statefulSets)+len(daemonSets))
+	for i := range deployments {
+		d := &deployments[i]
+		if unit, ok := workloadUnitFromMeta(d.Labels, d.Namespace, workloadKindDeployment, replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas)); ok {
+			units = append(units, unit)
+		}
+	}
+	for i := range statefulSets {
+		s := &statefulSets[i]
+		if unit, ok := workloadUnitFromMeta(s.Labels, s.Namespace, workloadKindStatefulSet, replicaInt(s.Spec.Replicas), int(s.Status.ReadyReplicas)); ok {
+			units = append(units, unit)
+		}
+	}
+	for i := range daemonSets {
+		ds := &daemonSets[i]
+		if unit, ok := workloadUnitFromMeta(ds.Labels, ds.Namespace, workloadKindDaemonSet, int(ds.Status.DesiredNumberScheduled), int(ds.Status.NumberReady)); ok {
+			units = append(units, unit)
+		}
+	}
+	return units
+}
+
+func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int) (workloadUnit, bool) {
+	ksName := labels[fluxKustomizationNameLabel]
+	if ksName == "" {
+		return workloadUnit{}, false
+	}
+	return workloadUnit{
+		ksKey:     labels[fluxKustomizationNamespaceLabel] + "/" + ksName,
+		namespace: namespace,
+		kind:      kind,
+		desired:   desired,
+		ready:     ready,
+	}, true
+}
+
+func replicaInt(replicas *int32) int {
+	if replicas == nil {
+		return 1
+	}
+	return int(*replicas)
 }
 
 type fluxKustomizationInfo struct {
@@ -64,12 +136,12 @@ type fluxKustomizationInfo struct {
 }
 
 // buildFluxTargets is the pure join. It normalizes each GitRepository URL to a
-// project path, attaches the owning Kustomization, and aggregates the live
-// Deployment health across all of the source's kustomizations (a source can own
-// several). Deployments are joined back to a source through the
+// project path, attaches the owning Kustomization, and aggregates live workload
+// health across all of the source's kustomizations (a source can own several).
+// Workloads are joined back to a source through the
 // kustomize.toolkit.fluxcd.io/{name,namespace} labels Flux stamps on everything
 // it applies, so the namespace they run in is authoritative.
-func buildFluxTargets(gitRepos, kustomizations []unstructured.Unstructured, deployments []appsv1.Deployment) map[string]workspace.FluxTarget {
+func buildFluxTargets(gitRepos, kustomizations []unstructured.Unstructured, workloads []workloadUnit) map[string]workspace.FluxTarget {
 	targets := map[string]workspace.FluxTarget{}
 	sourceKeyToPath := map[string]string{}
 
@@ -114,7 +186,7 @@ func buildFluxTargets(gitRepos, kustomizations []unstructured.Unstructured, depl
 		ksKeyToPath[info.namespace+"/"+info.name] = key
 	}
 
-	workloadByPath, namespacesByPath, kustomizationsWithWorkloads := aggregateWorkloads(deployments, ksKeyToPath)
+	workloadByPath, namespacesByPath, kustomizationsWithWorkloads := aggregateWorkloads(workloads, ksKeyToPath)
 	for path, workload := range workloadByPath {
 		workload.Namespaces = sortedSetKeys(namespacesByPath[path])
 	}
@@ -135,29 +207,19 @@ func buildFluxTargets(gitRepos, kustomizations []unstructured.Unstructured, depl
 	return targets
 }
 
-// aggregateWorkloads joins Deployments to source project paths via the Flux
-// Kustomization labels and sums replica health per path.
-func aggregateWorkloads(deployments []appsv1.Deployment, ksKeyToPath map[string]string) (
+// aggregateWorkloads joins workloads to source project paths via the Flux
+// Kustomization labels and sums replica health (and per-kind counts) per path.
+func aggregateWorkloads(workloads []workloadUnit, ksKeyToPath map[string]string) (
 	map[string]*workspace.Workload, map[string]map[string]bool, map[string]bool,
 ) {
 	workloadByPath := map[string]*workspace.Workload{}
 	namespacesByPath := map[string]map[string]bool{}
 	kustomizationsWithWorkloads := map[string]bool{}
 
-	for i := range deployments {
-		deployment := &deployments[i]
-		ksName := deployment.Labels[fluxKustomizationNameLabel]
-		if ksName == "" {
-			continue
-		}
-		ksKey := deployment.Labels[fluxKustomizationNamespaceLabel] + "/" + ksName
-		path, ok := ksKeyToPath[ksKey]
+	for _, unit := range workloads {
+		path, ok := ksKeyToPath[unit.ksKey]
 		if !ok {
 			continue
-		}
-		desired := 1
-		if deployment.Spec.Replicas != nil {
-			desired = int(*deployment.Spec.Replicas)
 		}
 
 		workload := workloadByPath[path]
@@ -166,11 +228,18 @@ func aggregateWorkloads(deployments []appsv1.Deployment, ksKeyToPath map[string]
 			workloadByPath[path] = workload
 			namespacesByPath[path] = map[string]bool{}
 		}
-		workload.Deployments++
-		workload.Desired += desired
-		workload.Ready += int(deployment.Status.ReadyReplicas)
-		namespacesByPath[path][deployment.Namespace] = true
-		kustomizationsWithWorkloads[ksKey] = true
+		switch unit.kind {
+		case workloadKindStatefulSet:
+			workload.StatefulSets++
+		case workloadKindDaemonSet:
+			workload.DaemonSets++
+		default:
+			workload.Deployments++
+		}
+		workload.Desired += unit.desired
+		workload.Ready += unit.ready
+		namespacesByPath[path][unit.namespace] = true
+		kustomizationsWithWorkloads[unit.ksKey] = true
 	}
 
 	return workloadByPath, namespacesByPath, kustomizationsWithWorkloads

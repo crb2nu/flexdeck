@@ -481,7 +481,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
                       ? 'border-status-ok/20 bg-status-ok/10 text-status-ok'
                       : 'border-status-warn/20 bg-status-warn/10 text-status-warn'
                   }`}
-                  title="Live Deployment replicas (ready/desired)"
+                  title={summary().workloadKinds ? `Live workloads — ${summary().workloadKinds} (ready/desired)` : 'Live workload replicas (ready/desired)'}
                 >
                   {summary().workload}
                 </span>

@@ -49,13 +49,16 @@ type RepoBinding struct {
 	Signals       []string          `json:"signals,omitempty"`       // which inputs produced this binding
 }
 
-// Workload summarizes the live Kubernetes Deployments that a service's Flux
-// source manages: which namespaces they run in and aggregate replica health.
+// Workload summarizes the live Kubernetes workloads that a service's Flux source
+// manages (Deployments, StatefulSets, DaemonSets): which namespaces they run in,
+// per-kind counts, and aggregate replica health across all kinds.
 type Workload struct {
-	Namespaces  []string `json:"namespaces,omitempty"` // namespaces the Deployments run in
-	Deployments int      `json:"deployments"`          // number of Deployments
-	Ready       int      `json:"ready"`                // sum of ready replicas
-	Desired     int      `json:"desired"`              // sum of desired replicas
+	Namespaces   []string `json:"namespaces,omitempty"`   // namespaces the workloads run in
+	Deployments  int      `json:"deployments,omitempty"`  // number of Deployments
+	StatefulSets int      `json:"statefulSets,omitempty"` // number of StatefulSets
+	DaemonSets   int      `json:"daemonSets,omitempty"`   // number of DaemonSets
+	Ready        int      `json:"ready"`                  // sum of ready replicas across all kinds
+	Desired      int      `json:"desired"`                // sum of desired replicas across all kinds
 }
 
 // FluxTarget is a cluster-agnostic description of a live Flux GitRepository (and

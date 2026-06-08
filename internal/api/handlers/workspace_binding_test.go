@@ -30,24 +30,40 @@ func ksObj(name, namespace, sourceName, sourceNamespace, targetNamespace string)
 	}}
 }
 
+func fluxLabels(ksName, ksNamespace string) map[string]string {
+	return map[string]string{
+		"kustomize.toolkit.fluxcd.io/name":      ksName,
+		"kustomize.toolkit.fluxcd.io/namespace": ksNamespace,
+	}
+}
+
 func deployObj(name, namespace, ksName, ksNamespace string, desired, ready int32) appsv1.Deployment {
 	replicas := desired
 	return appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"kustomize.toolkit.fluxcd.io/name":      ksName,
-				"kustomize.toolkit.fluxcd.io/namespace": ksNamespace,
-			},
-		},
-		Spec:   appsv1.DeploymentSpec{Replicas: &replicas},
-		Status: appsv1.DeploymentStatus{ReadyReplicas: ready},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
+		Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+		Status:     appsv1.DeploymentStatus{ReadyReplicas: ready},
+	}
+}
+
+func stsObj(name, namespace, ksName, ksNamespace string, desired, ready int32) appsv1.StatefulSet {
+	replicas := desired
+	return appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: ready},
+	}
+}
+
+func dsObj(name, namespace, ksName, ksNamespace string, desired, ready int32) appsv1.DaemonSet {
+	return appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
+		Status:     appsv1.DaemonSetStatus{DesiredNumberScheduled: desired, NumberReady: ready},
 	}
 }
 
 // Shapes mirror the live cluster: internal git host, sources in flux-system,
-// one source owning several kustomizations, mostly without targetNamespace.
+// one source owning several kustomizations.
 func bindingFixtures() (gitRepos, kustomizations []unstructured.Unstructured) {
 	gitRepos = []unstructured.Unstructured{
 		gitRepoObj("flexdeck", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/flexdeck.git"),
@@ -58,61 +74,86 @@ func bindingFixtures() (gitRepos, kustomizations []unstructured.Unstructured) {
 		ksObj("flexdeck", "flux-system", "flexdeck", "", ""),
 		ksObj("flexinfer-system", "flux-system", "flexinfer", "", ""),
 		ksObj("flexinfer-models", "flux-system", "flexinfer", "", ""),
-		ksObj("smarthome", "flux-system", "smarthome", "flux-system", "home"),
+		ksObj("smarthome", "flux-system", "smarthome", "flux-system", ""),
 	}
 	return gitRepos, kustomizations
+}
+
+func TestAppsWorkloadUnits(t *testing.T) {
+	t.Parallel()
+
+	deployments := []appsv1.Deployment{
+		deployObj("nil-replicas", "x", "ks-x", "flux-system", 0, 0),
+	}
+	deployments[0].Spec.Replicas = nil // a nil replica count defaults to 1
+	statefulSets := []appsv1.StatefulSet{stsObj("db", "y", "ks-y", "flux-system", 2, 1)}
+	daemonSets := []appsv1.DaemonSet{dsObj("agent", "z", "ks-z", "flux-system", 4, 3)}
+	// Workloads without the Flux name label are dropped.
+	unlabeled := appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "orphan", Namespace: "n"}}
+
+	units := appsWorkloadUnits(append(deployments, unlabeled), statefulSets, daemonSets)
+
+	if len(units) != 3 {
+		t.Fatalf("got %d units, want 3 (unlabeled dropped): %#v", len(units), units)
+	}
+	byKind := map[string]workloadUnit{}
+	for _, u := range units {
+		byKind[u.kind] = u
+	}
+	if d := byKind[workloadKindDeployment]; d.desired != 1 {
+		t.Errorf("deployment nil replicas desired = %d, want 1", d.desired)
+	}
+	if s := byKind[workloadKindStatefulSet]; s.desired != 2 || s.ready != 1 {
+		t.Errorf("statefulset = %d/%d, want 1/2", s.ready, s.desired)
+	}
+	if ds := byKind[workloadKindDaemonSet]; ds.desired != 4 || ds.ready != 3 {
+		t.Errorf("daemonset = %d/%d, want 3/4 (scheduling counts)", ds.ready, ds.desired)
+	}
 }
 
 func TestBuildFluxTargetsWithWorkloads(t *testing.T) {
 	t.Parallel()
 
 	gitRepos, kustomizations := bindingFixtures()
-	// flexdeck's kustomization owns 3 deployments in ns flexdeck; flexinfer's
-	// running deployments belong to the flexinfer-system kustomization in a
-	// different namespace than the inferred guess.
 	deployments := []appsv1.Deployment{
 		deployObj("flexdeck", "flexdeck", "flexdeck", "flux-system", 1, 1),
 		deployObj("flexdeck-public", "flexdeck", "flexdeck", "flux-system", 1, 1),
 		deployObj("redis", "flexdeck", "flexdeck", "flux-system", 1, 0),
-		deployObj("kokoro-tts", "flexinfer-system", "flexinfer-system", "flux-system", 1, 1),
-		deployObj("pyannote", "flexinfer-system", "flexinfer-system", "flux-system", 2, 2),
+	}
+	statefulSets := []appsv1.StatefulSet{
+		// smarthome runs ONLY as a StatefulSet — invisible before this slice.
+		stsObj("home-assistant", "smarthome", "smarthome", "flux-system", 1, 1),
+		// flexinfer's workloads live under the flexinfer-system kustomization.
+		stsObj("vllm", "flexinfer-system", "flexinfer-system", "flux-system", 2, 2),
+	}
+	daemonSets := []appsv1.DaemonSet{
+		// Belongs to a platform kustomization (not a service source) -> ignored.
+		dsObj("node-exporter", "kube-system", "apps", "flux-system", 3, 3),
 	}
 
-	targets := buildFluxTargets(gitRepos, kustomizations, deployments)
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets))
 
-	flexdeck := targets["services/flexdeck"]
-	if flexdeck.Kustomization != "flexdeck" {
-		t.Errorf("flexdeck kustomization = %q, want flexdeck", flexdeck.Kustomization)
-	}
-	if flexdeck.Workload == nil {
-		t.Fatalf("flexdeck workload is nil")
-	}
-	if flexdeck.Workload.Deployments != 3 || flexdeck.Workload.Desired != 3 || flexdeck.Workload.Ready != 2 {
-		t.Errorf("flexdeck workload = %#v, want 3 deploys 2/3 ready", flexdeck.Workload)
-	}
-	if len(flexdeck.Workload.Namespaces) != 1 || flexdeck.Workload.Namespaces[0] != "flexdeck" {
-		t.Errorf("flexdeck workload namespaces = %#v, want [flexdeck]", flexdeck.Workload.Namespaces)
+	flexdeck := targets["services/flexdeck"].Workload
+	if flexdeck == nil || flexdeck.Deployments != 3 || flexdeck.StatefulSets != 0 || flexdeck.Ready != 2 || flexdeck.Desired != 3 {
+		t.Fatalf("flexdeck workload = %#v, want 3 deploys 2/3 ready", flexdeck)
 	}
 
-	// The kustomization that actually owns workloads is preferred for display.
+	// StatefulSet-only service is now visible.
+	smarthome := targets["services/smarthome"]
+	if smarthome.Workload == nil || smarthome.Workload.StatefulSets != 1 || smarthome.Workload.Ready != 1 {
+		t.Fatalf("smarthome workload = %#v, want 1 statefulset 1/1", smarthome.Workload)
+	}
+	if len(smarthome.Workload.Namespaces) != 1 || smarthome.Workload.Namespaces[0] != "smarthome" {
+		t.Errorf("smarthome namespaces = %#v, want [smarthome]", smarthome.Workload.Namespaces)
+	}
+
+	// The StatefulSet drives the workload-owning kustomization pick for flexinfer.
 	flexinfer := targets["services/flexinfer"]
 	if flexinfer.Kustomization != "flexinfer-system" {
-		t.Errorf("flexinfer kustomization = %q, want flexinfer-system (owns workloads)", flexinfer.Kustomization)
+		t.Errorf("flexinfer kustomization = %q, want flexinfer-system", flexinfer.Kustomization)
 	}
-	if flexinfer.Workload == nil || flexinfer.Workload.Deployments != 2 {
-		t.Fatalf("flexinfer workload = %#v, want 2 deployments", flexinfer.Workload)
-	}
-	if len(flexinfer.Workload.Namespaces) != 1 || flexinfer.Workload.Namespaces[0] != "flexinfer-system" {
-		t.Errorf("flexinfer workload namespaces = %#v, want [flexinfer-system]", flexinfer.Workload.Namespaces)
-	}
-
-	// A source with no workloads keeps its targetNamespace and a nil workload.
-	smarthome := targets["services/smarthome"]
-	if smarthome.TargetNamespace != "home" {
-		t.Errorf("smarthome targetNamespace = %q, want home", smarthome.TargetNamespace)
-	}
-	if smarthome.Workload != nil {
-		t.Errorf("smarthome workload = %#v, want nil", smarthome.Workload)
+	if flexinfer.Workload == nil || flexinfer.Workload.StatefulSets != 1 || flexinfer.Workload.Desired != 2 {
+		t.Fatalf("flexinfer workload = %#v, want 1 statefulset 2/2", flexinfer.Workload)
 	}
 }
 
@@ -122,13 +163,11 @@ func TestBuildFluxTargetsWithoutWorkloads(t *testing.T) {
 	gitRepos, kustomizations := bindingFixtures()
 	targets := buildFluxTargets(gitRepos, kustomizations, nil)
 
-	// With no workload signal, the deterministic pick falls back to the
-	// lexicographically smallest kustomization name.
 	if flexinfer := targets["services/flexinfer"]; flexinfer.Kustomization != "flexinfer-models" {
 		t.Errorf("flexinfer kustomization = %q, want flexinfer-models fallback", flexinfer.Kustomization)
 	}
 	if flexdeck := targets["services/flexdeck"]; flexdeck.Workload != nil {
-		t.Errorf("flexdeck workload = %#v, want nil without deployments", flexdeck.Workload)
+		t.Errorf("flexdeck workload = %#v, want nil without workloads", flexdeck.Workload)
 	}
 }
 

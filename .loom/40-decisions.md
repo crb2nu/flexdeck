@@ -256,3 +256,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/api/handlers/workspace_binding.go` (`aggregateWorkloads`, `pickKustomization`)
   - [S2] `internal/workspace/binding.go` (`Workload`, `EnrichBindings`)
   - [S3] `.loom/31-iteration-plan-stack-workload-binding-2026-06-08.md`
+
+### 2026-06-08: Extend workload binding to StatefulSets and DaemonSets
+
+- Decision: Aggregate StatefulSet and DaemonSet replica health into the service workload binding (not just Deployments), via the same `kustomize.toolkit.fluxcd.io` label join. Refactor the join through a kind-agnostic `workloadUnit` intermediate; add per-kind counts to `Workload`; sum `ready`/`desired` across kinds. DaemonSets report `desiredNumberScheduled`/`numberReady`.
+- Rationale: The kill-test showed services run real workloads as StatefulSets that Deployment-only binding missed entirely — `smarthome`/`news-analyzer`/`jobsearch-app` have StatefulSet data tiers (and `jobsearch-app`'s workloads run in ns `daemon`, not the inferred name). DaemonSets carrying Flux labels all belong to platform kustomizations (`apps`/`system`/`monitoring`) whose source is `gitops-gitlab`, so they never attach to a service binding — making DaemonSet support cheap and safe to include now.
+- Alternatives considered:
+  - Deployments only (status quo) — under-reports or shows zero workload for StatefulSet-backed services.
+  - StatefulSets only, defer DaemonSets — marginally smaller, but the `workloadUnit` refactor makes DaemonSets nearly free and future-proofs node-agent services.
+- Consequences: Live probe — `smarthome` dep=4/sts=1, `news-analyzer` dep=5/sts=2, `jobsearch-app` dep=3/sts=2 in authoritative ns `daemon`; all services show 0 DaemonSets (correct). Per-kind counts feed a card tooltip. Pod/rollout-condition health and Jobs/CronJobs remain out of scope. Best-effort per kind: a failed list of one workload kind still surfaces the others.
+- Sources:
+  - [S1] `internal/api/handlers/workspace_binding.go` (`appsWorkloadUnits`, `workloadUnit`, `aggregateWorkloads`)
+  - [S2] `internal/workspace/binding.go` (`Workload` per-kind counts)
+  - [S3] `.loom/31-iteration-plan-stack-statefulset-binding-2026-06-08.md`
