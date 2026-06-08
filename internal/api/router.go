@@ -315,6 +315,7 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/timeline", h.HUDTimeline)
 		r.Get("/handoffs", h.HUDHandoffs)
 		r.Get("/sessions/{id}", h.HUDSessionDetail)
+		r.Get("/sessions/{id}/trace", h.HUDSessionTrace)
 		r.Get("/events", h.HUDEventsSSE)
 		r.With(logFunc("hud.workflow.approve")).Post("/workflows/{id}/approve", h.HUDWorkflowApprove)
 		r.With(logFunc("hud.workflow.reject")).Post("/workflows/{id}/reject", h.HUDWorkflowReject)

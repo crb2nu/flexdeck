@@ -125,6 +125,17 @@ func hudInt(value any) int {
 	}
 }
 
+func hudBool(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return typed == "true" || typed == "1"
+	default:
+		return false
+	}
+}
+
 func normalizeHUDWorkflowStatus(status string) string {
 	switch strings.TrimSpace(status) {
 	case "waiting_approval":
@@ -430,6 +441,72 @@ func normalizeHUDSessionDetailResponse(raw json.RawMessage) (map[string]any, err
 
 	result := map[string]any{
 		"entries": normalizeHUDSessionEntriesFromValue(entriesSource),
+	}
+	if envelope["session"] != nil {
+		if sessions := normalizeHUDSessionsFromValue([]any{envelope["session"]}); len(sessions) > 0 {
+			result["session"] = sessions[0]
+		}
+	}
+	return result, nil
+}
+
+// normalizeHUDSessionTraceCallsFromValue reshapes a session's daemon audit
+// tool-call traces to the camelCase contract the frontend expects. Timing
+// fields beyond the total duration are dropped to keep the drill-in compact.
+func normalizeHUDSessionTraceCallsFromValue(value any) []map[string]any {
+	items := hudItemsFromValue(value)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"timestamp":     hudString(item["timestamp"]),
+			"agentId":       hudString(item["agent_id"]),
+			"agentType":     hudString(item["agent_type"]),
+			"server":        hudString(item["server"]),
+			"tool":          hudString(item["tool"]),
+			"status":        hudString(item["status"]),
+			"error":         hudString(item["error"]),
+			"target":        hudString(item["target"]),
+			"cached":        hudBool(item["cached"]),
+			"pipelineStage": hudString(item["pipeline_stage"]),
+			"durationMs":    hudInt(item["duration_ms"]),
+		})
+	}
+	return out
+}
+
+// normalizeHUDSessionTraceErrorsFromValue reshapes the in-band partial-source
+// failures the trace endpoint reports so the drill-in can show which upstream
+// source (context entries, audit traces) was unavailable.
+func normalizeHUDSessionTraceErrorsFromValue(value any) []map[string]any {
+	items := hudItemsFromValue(value)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"source":  hudString(item["source"]),
+			"message": hudString(item["message"]),
+		})
+	}
+	return out
+}
+
+// normalizeHUDSessionTraceResponse reshapes a single session's trace timeline.
+// Both the primary HUD (/api/sessions/{id}/trace) and the mobile surface return
+// the same SessionTraceResponse shape — the mobile {ok,data} wrapper is
+// unwrapped by parseHUDEnvelope — so one normalizer serves both. The `events`
+// array matches the timeline contract exactly, so it reuses that normalizer.
+func normalizeHUDSessionTraceResponse(raw json.RawMessage) (map[string]any, error) {
+	envelope, err := parseHUDEnvelope(raw)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{
+		"sessionId":    hudString(envelope["session_id"]),
+		"agentId":      hudString(envelope["agent_id"]),
+		"events":       normalizeHUDTimelineFromValue(envelope["events"]),
+		"traces":       normalizeHUDSessionTraceCallsFromValue(envelope["traces"]),
+		"traceEnabled": hudBool(envelope["trace_enabled"]),
+		"tracePath":    hudString(envelope["trace_path"]),
+		"errors":       normalizeHUDSessionTraceErrorsFromValue(envelope["errors"]),
 	}
 	if envelope["session"] != nil {
 		if sessions := normalizeHUDSessionsFromValue([]any{envelope["session"]}); len(sessions) > 0 {

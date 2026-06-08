@@ -5,7 +5,7 @@ import { stableListByKey } from '../../lib/stableList';
 import { createPolling } from '../../hooks/createPolling';
 import { healthStore } from '../../stores/health';
 import { createAsyncStatusController } from '../../lib/asyncState';
-import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff, HUDSession, HUDSessionDetail } from '../../lib/types';
+import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff, HUDSession, HUDSessionDetail, HUDSessionTrace } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
 import { getHudModeState } from '../../lib/featureFlags';
 import {
@@ -43,12 +43,18 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
   // Lazily-fetched per-session detail, memoized so re-expanding is instant.
   const [sessionDetails, setSessionDetails] = createStore<Record<string, HUDSessionDetail>>({});
+  // Which expanded session has its trace timeline sub-section open (a deeper,
+  // opt-in drill-in beneath the context entries), plus its memoized payload.
+  const [expandedTraceId, setExpandedTraceId] = createSignal<string | null>(null);
+  const [sessionTraces, setSessionTraces] = createStore<Record<string, HUDSessionTrace>>({});
   const asyncState = createAsyncStatusController({
     workflowAction: null as string | null,
     handoffAction: null as string | null,
     sessionDetailLoading: null as string | null,
     // Keyed by session id so one session's failure never surfaces under another.
     sessionDetailErrors: {} as Record<string, string>,
+    sessionTraceLoading: null as string | null,
+    sessionTraceErrors: {} as Record<string, string>,
     eventsConnection: 'disabled' as FeedConnectionState,
     lastSuccessfulPull: 0,
     now: Date.now(),
@@ -225,6 +231,9 @@ const HUDTab: Component<HUDTabProps> = (props) => {
   };
 
   const toggleSession = (id: string) => {
+    // Collapsing a card — or switching to another — always resets the trace
+    // sub-section so a freshly-expanded card starts with the trace collapsed.
+    setExpandedTraceId(null);
     if (selectedSessionId() === id) {
       setSelectedSessionId(null);
       return;
@@ -234,14 +243,61 @@ const HUDTab: Component<HUDTabProps> = (props) => {
     void loadSessionDetail(id);
   };
 
+  const setTraceError = (id: string, message: string) =>
+    patchState({ sessionTraceErrors: { ...state.sessionTraceErrors, [id]: message } });
+
+  const loadSessionTrace = async (id: string, force = false) => {
+    if (sessionTraces[id] && !force) return;
+    batch(() => {
+      patchState({ sessionTraceLoading: id });
+      setTraceError(id, '');
+    });
+    try {
+      const trace = await hudApi.sessionTrace(id);
+      setSessionTraces(id, {
+        session: trace?.session,
+        sessionId: trace?.sessionId ?? id,
+        agentId: trace?.agentId,
+        events: Array.isArray(trace?.events) ? trace.events : [],
+        traces: Array.isArray(trace?.traces) ? trace.traces : [],
+        traceEnabled: Boolean(trace?.traceEnabled),
+        tracePath: trace?.tracePath,
+        errors: Array.isArray(trace?.errors) ? trace.errors : [],
+      });
+    } catch (err) {
+      setTraceError(id, toErrorMessage(err, 'Failed to load session trace'));
+    } finally {
+      patchState({ sessionTraceLoading: null });
+    }
+  };
+
+  const toggleSessionTrace = (id: string) => {
+    if (expandedTraceId() === id) {
+      setExpandedTraceId(null);
+      return;
+    }
+    setExpandedTraceId(id);
+    setTraceError(id, '');
+    void loadSessionTrace(id);
+  };
+
   // When a session leaves the fleet, drop a stale expansion and prune its cached
-  // detail so the selection stays valid and the detail cache stays bounded.
+  // detail + trace so the selection stays valid and the caches stay bounded.
   createEffect(() => {
     const ids = new Set(sessions().map((session) => session.id));
     untrack(() => {
       const selected = selectedSessionId();
       if (selected && !ids.has(selected)) setSelectedSessionId(null);
+      const tracing = expandedTraceId();
+      if (tracing && !ids.has(tracing)) setExpandedTraceId(null);
       setSessionDetails(
+        produce((cache) => {
+          for (const id of Object.keys(cache)) {
+            if (!ids.has(id)) delete cache[id];
+          }
+        }),
+      );
+      setSessionTraces(
         produce((cache) => {
           for (const id of Object.keys(cache)) {
             if (!ids.has(id)) delete cache[id];
@@ -681,6 +737,11 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                 const detailRegionId = `hud-session-detail-${session.id}`;
                 const loadingThis = () => state.sessionDetailLoading === session.id;
                 const sessionError = () => state.sessionDetailErrors[session.id];
+                const traceOpen = () => expandedTraceId() === session.id;
+                const trace = () => sessionTraces[session.id];
+                const traceRegionId = `hud-session-trace-${session.id}`;
+                const traceLoadingThis = () => state.sessionTraceLoading === session.id;
+                const traceError = () => state.sessionTraceErrors[session.id];
                 return (
                   <div class="overflow-hidden rounded-xl border border-white/8 bg-white/5">
                     <button
@@ -761,6 +822,89 @@ const HUDTab: Component<HUDTabProps> = (props) => {
                             </Show>
                           </Show>
                         </Show>
+
+                        <div class="mt-2.5 border-t border-white/8 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleSessionTrace(session.id)}
+                            aria-expanded={traceOpen()}
+                            aria-controls={traceOpen() ? traceRegionId : undefined}
+                            class="flex items-center gap-1.5 text-[11px] font-medium text-text-dim transition-colors hover:text-text-main"
+                          >
+                            <span aria-hidden="true">{traceOpen() ? '▾' : '▸'}</span>
+                            Trace timeline
+                          </button>
+                          <Show when={traceOpen()}>
+                            <div id={traceRegionId} role="region" aria-label="Session trace timeline" class="mt-2">
+                              <Show when={traceLoadingThis()}>
+                                <div class="animate-pulse text-[11px] text-text-dim">Loading trace…</div>
+                              </Show>
+                              <Show when={traceError() && !traceLoadingThis()}>
+                                <div class="flex items-center justify-between gap-2 text-[11px] text-status-error">
+                                  <span>{traceError()}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void loadSessionTrace(session.id, true)}
+                                    aria-label={`Retry loading trace for session ${session.agentId || session.id}`}
+                                    class="rounded bg-white/10 px-2 py-0.5 text-text-main transition-colors hover:bg-white/20"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              </Show>
+                              <Show when={trace() && !traceLoadingThis() && !traceError()}>
+                                <Show when={trace()!.errors.length > 0}>
+                                  <div class="mb-2 rounded border border-status-warn/30 bg-status-warn/10 px-2 py-1 text-[10px] text-status-warn">
+                                    Partial trace: {trace()!.errors.map((e) => e.source).join(', ')} unavailable
+                                  </div>
+                                </Show>
+                                <Show
+                                  when={trace()!.events.length > 0 || trace()!.traces.length > 0}
+                                  fallback={<div class="text-[11px] text-text-dim">No trace activity recorded for this session.</div>}
+                                >
+                                  <Show when={trace()!.events.length > 0}>
+                                    <div class="mb-1 text-[9px] font-mono uppercase tracking-wide text-text-dim/70">Events</div>
+                                    <ul class="space-y-1">
+                                      <For each={trace()!.events.slice(0, 12)}>
+                                        {(event) => (
+                                          <li class="flex items-start gap-2 text-[11px]">
+                                            <span class="mt-px shrink-0 rounded bg-black/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-text-dim">{event.type || 'event'}</span>
+                                            <div class="min-w-0">
+                                              <div class="truncate text-text-muted" title={event.summary || undefined}>{event.summary || '—'}</div>
+                                              <div class="font-mono text-[9px] text-text-dim"><span title={event.timestamp}>{relativeAge(event.timestamp)}</span></div>
+                                            </div>
+                                          </li>
+                                        )}
+                                      </For>
+                                    </ul>
+                                    <Show when={trace()!.events.length > 12}>
+                                      <div class="mt-1 text-[10px] text-text-dim">+{trace()!.events.length - 12} more events</div>
+                                    </Show>
+                                  </Show>
+                                  <Show when={trace()!.traces.length > 0}>
+                                    <div class="mb-1 mt-2 text-[9px] font-mono uppercase tracking-wide text-text-dim/70">Tool calls</div>
+                                    <ul class="space-y-1">
+                                      <For each={trace()!.traces.slice(0, 12)}>
+                                        {(call) => (
+                                          <li class="flex items-center justify-between gap-2 text-[11px]">
+                                            <div class="min-w-0 truncate font-mono text-text-muted" title={call.error || `${call.server}/${call.tool}`}>
+                                              <span class={call.status === 'error' ? 'text-status-error' : 'text-text-dim'}>{call.status === 'error' ? '✕' : '✓'}</span>{' '}
+                                              {call.server ? `${call.server}/` : ''}{call.tool || 'call'}
+                                            </div>
+                                            <span class="shrink-0 font-mono text-[9px] text-text-dim tabular-nums">{call.durationMs ? `${call.durationMs}ms` : ''}</span>
+                                          </li>
+                                        )}
+                                      </For>
+                                    </ul>
+                                    <Show when={trace()!.traces.length > 12}>
+                                      <div class="mt-1 text-[10px] text-text-dim">+{trace()!.traces.length - 12} more tool calls</div>
+                                    </Show>
+                                  </Show>
+                                </Show>
+                              </Show>
+                            </div>
+                          </Show>
+                        </div>
                       </div>
                     </Show>
                   </div>
