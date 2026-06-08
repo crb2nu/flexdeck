@@ -1,5 +1,6 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
+import { stableListByKey } from '../../lib/stableList';
 import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 import { computeFluxSyncState, type FluxSyncState } from './syncState';
@@ -39,6 +40,14 @@ const FluxStatus: Component = () => {
   };
 
   createPolling('dash-flux', fetchAll, POLL_INTERVAL);
+
+  // Each 15s poll replaces these signals with freshly-fetched objects, so the
+  // <For> rows below would otherwise remount every refresh (the fastest poll on
+  // the dashboard, so the most visible flicker). Reuse the prior ref per
+  // resource (keyed by namespace/name) when its signature is unchanged.
+  const stableSources = stableListByKey(sources, (s) => `${s.namespace}/${s.name}`);
+  const stableKustomizations = stableListByKey(kustomizations, (r) => `${r.namespace}/${r.name}`);
+  const stableHelmReleases = stableListByKey(helmReleases, (r) => `${r.namespace}/${r.name}`);
 
   const handleReconcile = async (kind: string, namespace: string, name: string) => {
     const key = `${kind}/${namespace}/${name}`;
@@ -149,7 +158,7 @@ const FluxStatus: Component = () => {
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
-                  <For each={sources()}>
+                  <For each={stableSources()}>
                     {(src) => <FluxSourceRow source={src} />}
                   </For>
                 </div>
@@ -169,7 +178,7 @@ const FluxStatus: Component = () => {
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
-                  <For each={kustomizations()}>
+                  <For each={stableKustomizations()}>
                     {(ks) => (
                       <FluxResourceRow
                         resource={ks}
@@ -197,7 +206,7 @@ const FluxStatus: Component = () => {
                   </span>
                 </div>
                 <div class="divide-y divide-white/5">
-                  <For each={helmReleases()}>
+                  <For each={stableHelmReleases()}>
                     {(hr) => {
                       const hrKey = `${hr.namespace}/${hr.name}`;
                       return (
