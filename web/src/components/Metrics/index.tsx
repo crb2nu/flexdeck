@@ -1,7 +1,7 @@
 import {
   Component,
   createSignal,
-  For,
+  Index,
   Show,
   createMemo,
   lazy,
@@ -99,9 +99,13 @@ const Metrics: Component = () => {
           </Show>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <For each={panels()}>
-              {(panel) => <MetricCard panel={panel} loading={loading()} />}
-            </For>
+            {/* Index (not For): the panel list is fixed-length/fixed-order;
+                only `values` change each poll. Index keeps each MetricCard's
+                DOM node mounted and updates contents reactively, so charts
+                don't remount/flicker every 30s. */}
+            <Index each={panels()}>
+              {(panel) => <MetricCard panel={panel()} loading={loading()} />}
+            </Index>
           </div>
         </Show>
 

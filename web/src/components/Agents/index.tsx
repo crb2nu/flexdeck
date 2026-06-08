@@ -3,6 +3,7 @@ import { createStore } from 'solid-js/store';
 import type { Agent, AgentNode, AgentEdge } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
+import { stableListByKey } from '../../lib/stableList';
 import { LoadingState, EmptyState, ErrorState, OperationsSidebarNav } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
 import PageHeader from '../shared/PageHeader';
@@ -27,6 +28,11 @@ const toEditableAgentType = (type: Agent['type']): EditableAgentType =>
 
 const Agents: Component = () => {
   const [agents, setAgents] = createStore<Agent[]>([]);
+  // Each poll replaces the whole store array with freshly-built objects, which
+  // tears down every registry card's DOM (losing hover/menu state). Reuse the
+  // prior object ref for any agent whose structural signature is unchanged so
+  // <For> can skip the remount.
+  const stableAgents = stableListByKey(() => agents, (agent) => agent.id);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
@@ -364,7 +370,7 @@ const Agents: Component = () => {
                   </div>
 
                   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <For each={agents}>
+                    <For each={stableAgents()}>
                       {(agent) => {
                         const isBuiltIn = agent.id === 'agent-builder' || agent.tags?.includes('built-in');
 
