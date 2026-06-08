@@ -479,6 +479,18 @@ func (h *Handler) fetchMobileHUDFleet(ctx context.Context) (map[string]any, erro
 		return nil, err
 	}
 
+	// Sessions are supplementary in this degraded mobile path: a mobile HUD that
+	// predates the sessions surface (or a transient error) must not blank the
+	// whole fleet view. Fetch ?status=all for parity with the primary fleet
+	// snapshot (which carries ended sessions too), and degrade to an empty list
+	// on any failure rather than propagating the error.
+	sessions := []map[string]any{}
+	if sessionsRaw, sessErr := h.fetchHUD(ctx, "/api/mobile/v1/sessions?status=all"); sessErr == nil {
+		if normalized, normErr := normalizeHUDSessionsResponse(sessionsRaw); normErr == nil {
+			sessions = normalized
+		}
+	}
+
 	agents, err := normalizeHUDPresenceResponse(presenceRaw)
 	if err != nil {
 		return nil, err
@@ -529,7 +541,7 @@ func (h *Handler) fetchMobileHUDFleet(ctx context.Context) (map[string]any, erro
 	}
 
 	return map[string]any{
-		"sessions": []map[string]any{},
+		"sessions": sessions,
 		"agents":   agents,
 		"claims":   claims,
 		"tasks":    tasks,

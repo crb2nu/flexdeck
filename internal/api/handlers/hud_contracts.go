@@ -360,6 +360,21 @@ func normalizeHUDTasksResponse(raw json.RawMessage) ([]map[string]any, error) {
 	return normalizeHUDTasksFromValue(envelope["items"]), nil
 }
 
+// normalizeHUDSessionsResponse reshapes a sessions LIST response (the mobile
+// `/api/mobile/v1/sessions` surface) to the camelCase contract the Sessions
+// panel expects. parseHUDEnvelope unwraps the mobile {ok,data} wrapper, so the
+// sessions live under envelope["sessions"] (or a bare {items} array).
+func normalizeHUDSessionsResponse(raw json.RawMessage) ([]map[string]any, error) {
+	envelope, err := parseHUDEnvelope(raw)
+	if err != nil {
+		return nil, err
+	}
+	if envelope["sessions"] != nil {
+		return normalizeHUDSessionsFromValue(envelope["sessions"]), nil
+	}
+	return normalizeHUDSessionsFromValue(envelope["items"]), nil
+}
+
 // normalizeHUDHandoffsFromValue reshapes raw handoff entries to the camelCase
 // contract the frontend expects. It tolerates both the HandoffInfo shape
 // (id/from_agent/summary) and the inbox-entry shape (handoff_id/source_agent/

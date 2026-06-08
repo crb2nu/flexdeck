@@ -225,6 +225,12 @@ func TestHUDMobileSurfaceFallbacks(t *testing.T) {
 		if !ok || kpis["pending_approvals"] != float64(1) {
 			t.Fatalf("expected pending approvals from mobile workflows, got %v", payload["kpis"])
 		}
+		// This upstream serves no /api/mobile/v1/sessions, so sessions must
+		// degrade to a present-but-empty array — the fleet view stays intact.
+		sessions, ok := payload["sessions"].([]any)
+		if !ok || len(sessions) != 0 {
+			t.Fatalf("expected empty sessions when the mobile sessions surface is absent, got %v", payload["sessions"])
+		}
 	})
 
 	t.Run("claims", func(t *testing.T) {
@@ -682,4 +688,87 @@ func TestHUDSessionTraceProxyPrimaryThenMobileFallback(t *testing.T) {
 			t.Fatalf("expected mobile fallback trace events, got %s", rec.Body.String())
 		}
 	})
+}
+
+func TestNormalizeHUDSessionsResponse(t *testing.T) {
+	t.Run("mobile envelope shape", func(t *testing.T) {
+		raw := []byte(`{"ok":true,"data":{"sessions":[{"id":"sess-1","agent_id":"claude-1","agent_type":"claude","status":"active","namespace":"flexdeck/hud","started_at":"2026-06-07T12:00:00Z","entry_count":12,"total_tokens":3400}]}}`)
+		out, err := normalizeHUDSessionsResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		if len(out) != 1 {
+			t.Fatalf("expected 1 session, got %d", len(out))
+		}
+		s := out[0]
+		if s["id"] != "sess-1" || s["agentId"] != "claude-1" || s["status"] != "active" || s["contextCount"] != 12 || s["totalTokens"] != 3400 {
+			t.Fatalf("session not normalized: %+v", s)
+		}
+	})
+
+	t.Run("bare items array", func(t *testing.T) {
+		raw := []byte(`[{"id":"sess-9","agent_id":"codex","status":"ended"}]`)
+		out, err := normalizeHUDSessionsResponse(raw)
+		if err != nil {
+			t.Fatalf("normalize: %v", err)
+		}
+		if len(out) != 1 || out[0]["id"] != "sess-9" || out[0]["status"] != "ended" {
+			t.Fatalf("expected bare {items} array to normalize, got %v", out)
+		}
+	})
+}
+
+// When the primary /api/fleet is down, the mobile fallback must now surface the
+// session list (previously hardcoded empty), so the Sessions panel + trace
+// drill-in keep working in degraded mode.
+func TestHUDMobileFleetPopulatesSessions(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		// Primary fleet is unavailable -> force the mobile fallback path.
+		case r.URL.Path == "/api/fleet":
+			http.NotFound(w, r)
+		case r.URL.Path == "/api/mobile/v1/presence":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"agents":[],"claims":[]}}`))
+		case r.URL.Path == "/api/mobile/v1/tasks":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"tasks":[]}}`))
+		case r.URL.Path == "/api/mobile/v1/workflows":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"workflows":[]}}`))
+		case r.URL.Path == "/api/mobile/v1/sessions":
+			// status=all is forwarded as a query string; assert parity intent.
+			if r.URL.Query().Get("status") != "all" {
+				t.Errorf("expected ?status=all for primary-fleet parity, got %q", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"sessions":[{"id":"sess-1","agent_id":"claude-1","agent_type":"claude","status":"active","namespace":"flexdeck/hud","started_at":"2026-06-07T12:00:00Z","entry_count":7,"total_tokens":1200}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	h := &Handler{cfg: &config.Config{LoomHUD: config.LoomHUDConfig{URL: upstream.URL}}}
+	router := chi.NewRouter()
+	router.Get("/api/hud/fleet", h.HUDFleet)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hud/fleet", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	sessions, ok := payload["sessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("expected 1 normalized session from the mobile fallback, got %v", payload["sessions"])
+	}
+	s := sessions[0].(map[string]any)
+	if s["agentId"] != "claude-1" || s["contextCount"] != float64(7) {
+		t.Fatalf("session not normalized through the fleet fallback: %v", s)
+	}
 }
