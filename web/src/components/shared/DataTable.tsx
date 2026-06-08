@@ -1,5 +1,6 @@
 import { For, Show, JSX, createSignal, createMemo } from 'solid-js';
 import EmptyState from './EmptyState';
+import { stableListByKey } from '../../lib/stableList';
 
 export interface ColumnDef<T> {
   id: string;
@@ -37,12 +38,20 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
     }
   };
 
+  // rowKey was previously declared but unused, so every poll that handed
+  // DataTable a fresh array of equal-content objects made <For> tear down and
+  // remount every row (the K8s resource tables flickered on each refresh).
+  // Reuse the prior row ref whenever its signature is unchanged so <For> keeps
+  // the DOM node; sorting below operates on these stable refs.
+  const stableData = stableListByKey(() => props.data, props.rowKey);
+
   const sortedData = createMemo(() => {
+    const rows = stableData();
     const col = props.columns.find((c) => c.id === sortCol());
-    if (!col || !col.sortable) return props.data;
+    if (!col || !col.sortable) return rows;
 
     const dir = sortDir() === 'asc' ? 1 : -1;
-    return [...props.data].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const va = col.accessor(a);
       const vb = col.accessor(b);
       if (va == null && vb == null) return 0;

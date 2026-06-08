@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { render } from 'solid-js/web';
+import { createSignal } from 'solid-js';
 import { describe, expect, it, afterEach } from 'vitest';
 import DataTable from './DataTable';
 import type { ColumnDef } from './DataTable';
@@ -88,6 +89,33 @@ describe('DataTable', () => {
     expect(valueCells[0].textContent).toBe('10');
     expect(valueCells[1].textContent).toBe('20');
     expect(valueCells[2].textContent).toBe('30');
+  });
+
+  it('reuses row DOM nodes across refreshes with stable rowKey (no flicker)', () => {
+    const [rows, setRows] = createSignal<Row[]>([
+      { id: '1', name: 'Charlie', value: 30 },
+      { id: '2', name: 'Alice', value: 10 },
+    ]);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    dispose = render(
+      () => <DataTable data={rows()} columns={columns} rowKey={(r: Row) => r.id} />,
+      container,
+    );
+
+    const firstRowBefore = container.querySelector('tbody tr');
+    expect(firstRowBefore).not.toBeNull();
+
+    // Simulate a poll returning brand-new objects with identical content. With
+    // rowKey wired through stableListByKey the row refs (and DOM nodes) persist;
+    // before the fix this remounted every <tr>.
+    setRows([
+      { id: '1', name: 'Charlie', value: 30 },
+      { id: '2', name: 'Alice', value: 10 },
+    ]);
+
+    const firstRowAfter = container.querySelector('tbody tr');
+    expect(firstRowAfter).toBe(firstRowBefore);
   });
 
   it('shows empty state when data is empty', () => {
