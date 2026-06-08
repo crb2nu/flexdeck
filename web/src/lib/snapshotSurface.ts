@@ -1,5 +1,5 @@
 import { createMemo, type Accessor } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import {
   isOfflineError,
   operatorStateBadgeClass,
@@ -99,13 +99,24 @@ export function createSnapshotSurfaceController<T>(
     succeed: (nextData, successOptions = {}) => {
       const updatedAt = successOptions.updatedAt ?? now();
       setState({
-        data: nextData,
         loading: false,
         refreshing: false,
         error: '',
         updatedAt,
         sourceUpdatedAt: successOptions.sourceUpdatedAt ?? updatedAt,
       });
+      // Reconcile rather than replace the snapshot payload. A plain
+      // `data: nextData` swaps in a brand-new object tree every poll, so every
+      // <For> over a nested list (nodes, pvcs, ingresses, …) sees fresh refs
+      // and tears down/remounts each row — the snapshot flickers on refresh.
+      // reconcile diffs in place so unchanged rows keep their identity and only
+      // changed leaves update. merge:true reconciles positionally, which keeps
+      // refs stable for our keyless DTO arrays (no top-level `id` field).
+      if (state.data == null) {
+        setState('data', () => nextData);
+      } else {
+        setState('data', reconcile(nextData, { merge: true }));
+      }
     },
     fail: (error) => {
       setState({

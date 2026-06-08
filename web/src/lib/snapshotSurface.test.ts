@@ -70,4 +70,33 @@ describe('createSnapshotSurfaceController', () => {
       dispose();
     });
   });
+
+  it('reconciles nested lists so unchanged rows keep their identity across refreshes', () => {
+    createRoot((dispose) => {
+      interface Snap {
+        nodes: { name: string; cpu: number }[];
+      }
+      const surface = createSnapshotSurfaceController<Snap>({
+        staleAfterMs: 30_000,
+        now: () => 100_000,
+      });
+
+      surface.succeed({ nodes: [{ name: 'a', cpu: 1 }, { name: 'b', cpu: 2 }] });
+      const firstA = surface.data()!.nodes[0];
+      const firstB = surface.data()!.nodes[1];
+
+      // A brand-new fetched payload with identical structure; only b's cpu moved.
+      surface.succeed({ nodes: [{ name: 'a', cpu: 1 }, { name: 'b', cpu: 9 }] });
+
+      // Unchanged row 'a' must keep its object identity so <For> reuses its DOM
+      // node instead of remounting (this is what stops the poll flicker). Before
+      // the reconcile fix, replacing `data` wholesale made every row a new ref.
+      expect(surface.data()!.nodes[0]).toBe(firstA);
+      // Row 'b' changed, so its leaf updates in place (same proxy, new value).
+      expect(surface.data()!.nodes[1]).toBe(firstB);
+      expect(surface.data()!.nodes[1].cpu).toBe(9);
+
+      dispose();
+    });
+  });
 });
