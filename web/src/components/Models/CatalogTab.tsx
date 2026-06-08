@@ -2,6 +2,7 @@ import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
+import { stableListByKey } from '../../lib/stableList';
 import type { ModelCatalogEntry } from '../../lib/types';
 
 type RegistrySource = 'huggingface' | 'civitai';
@@ -182,6 +183,11 @@ const CatalogTab: Component = () => {
       );
     });
   });
+  // allRows rebuilds every poll via flatMap/map, so each row is a new object
+  // ref even when unchanged — that remounts every rendered card and drops
+  // in-flight button state. Reuse prior refs by stable key so <For> can skip
+  // the teardown. modelKey is globally unique across catalogs.
+  const stableFilteredRows = stableListByKey(filteredRows, modelKey);
   const summary = createMemo(() => ({
     catalogs: catalogs().length,
     models: allRows().length,
@@ -257,7 +263,7 @@ const CatalogTab: Component = () => {
           {(catalog) => {
             const catalogID = `${catalog.namespace}/${catalog.name}`;
             const modelsForCatalog = () =>
-              filteredRows().filter((row) => `${row.namespace}/${row.catalogName}` === catalogID);
+              stableFilteredRows().filter((row) => `${row.namespace}/${row.catalogName}` === catalogID);
 
             return (
               <div class="surface-hover p-4 flex flex-col gap-3">
