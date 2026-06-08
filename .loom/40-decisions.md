@@ -242,3 +242,17 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/api/handlers/workspace_binding.go`
   - [S2] `internal/workspace/binding.go` (`EnrichBindings`, `ProjectPathFromURL`)
   - [S3] `.loom/31-iteration-plan-stack-verified-binding-2026-06-08.md`
+
+### 2026-06-08: Bind services to live K8s Deployments via Flux labels for authoritative namespace + health
+
+- Decision: Join live Deployments to a service's Flux source through the `kustomize.toolkit.fluxcd.io/{name,namespace}` labels Flux stamps on everything it applies, aggregate replica health per source across **all** of its kustomizations, and attach a `workload` (`{namespaces, deployments, ready, desired}`) to the verified binding. The single workload namespace overrides the inferred/targetNamespace guess; the displayed Kustomization prefers the one that owns workloads.
+- Rationale: The kill-test showed the C-2 deterministic kustomization pick is not where the workloads necessarily live — flexinfer's running Deployments belong to the `flexinfer-system` kustomization in namespace `flexinfer-system`, not the inferred `flexinfer`. The Flux label join is authoritative and already used elsewhere in the dashboard. Listing Deployments cluster-wide once inside the cached `workspace:repos` fetch is cheap; the typed lister gives replica counts directly.
+- Alternatives considered:
+  - Match Deployments by name == repo name (fragile; flexinfer has no `flexinfer` Deployment, its workloads are `kokoro-tts`/`pyannote-diarization`).
+  - Scope workloads to the single displayed Kustomization (would show flexinfer as having no workloads).
+  - Use `targetNamespace` as authoritative (usually empty; the running namespace is the real signal).
+- Consequences: Live probe — `flexdeck` 3/3 ready in `flexdeck`; `flexinfer` 2/2 ready with namespace corrected to `flexinfer-system`. Multi-namespace workloads do not override the namespace (kept ambiguous-safe). Only Deployments are covered; StatefulSet/DaemonSet and pod/rollout health are deferred. Best-effort: a failed Deployment list leaves the C-2 verified binding intact.
+- Sources:
+  - [S1] `internal/api/handlers/workspace_binding.go` (`aggregateWorkloads`, `pickKustomization`)
+  - [S2] `internal/workspace/binding.go` (`Workload`, `EnrichBindings`)
+  - [S3] `.loom/31-iteration-plan-stack-workload-binding-2026-06-08.md`

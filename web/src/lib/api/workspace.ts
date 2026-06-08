@@ -35,6 +35,13 @@ export interface WorkspaceRepository {
 export type WorkspaceBindingKind = 'service' | 'library' | 'unknown';
 export type WorkspaceBindingConfidence = 'verified' | 'inferred' | 'none';
 
+export interface WorkspaceWorkload {
+  namespaces?: string[];
+  deployments: number;
+  ready: number;
+  desired: number;
+}
+
 export interface WorkspaceRepoBinding {
   kind: WorkspaceBindingKind;
   confidence: WorkspaceBindingConfidence;
@@ -44,6 +51,7 @@ export interface WorkspaceRepoBinding {
   fluxNamespace?: string;
   kustomization?: string;
   matchKey?: string;
+  workload?: WorkspaceWorkload;
   signals?: string[];
 }
 

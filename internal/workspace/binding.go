@@ -45,19 +45,30 @@ type RepoBinding struct {
 	FluxNamespace string            `json:"fluxNamespace,omitempty"` // namespace of the Flux GitRepository (verified only)
 	Kustomization string            `json:"kustomization,omitempty"` // Flux Kustomization name
 	MatchKey      string            `json:"matchKey,omitempty"`      // normalized host/path for live cross-reference
+	Workload      *Workload         `json:"workload,omitempty"`      // live K8s Deployment health (verified only)
 	Signals       []string          `json:"signals,omitempty"`       // which inputs produced this binding
 }
 
+// Workload summarizes the live Kubernetes Deployments that a service's Flux
+// source manages: which namespaces they run in and aggregate replica health.
+type Workload struct {
+	Namespaces  []string `json:"namespaces,omitempty"` // namespaces the Deployments run in
+	Deployments int      `json:"deployments"`          // number of Deployments
+	Ready       int      `json:"ready"`                // sum of ready replicas
+	Desired     int      `json:"desired"`              // sum of desired replicas
+}
+
 // FluxTarget is a cluster-agnostic description of a live Flux GitRepository (and
-// its owning Kustomization) that a repository may bind to. It is built by the
-// handler layer from live cluster state and passed to EnrichBindings so this
-// package stays free of any Kubernetes dependency.
+// its owning Kustomization and workloads) that a repository may bind to. It is
+// built by the handler layer from live cluster state and passed to
+// EnrichBindings so this package stays free of any Kubernetes dependency.
 type FluxTarget struct {
-	ProjectPath     string // normalized group/repo, host-stripped (e.g. services/flexdeck)
-	SourceName      string // GitRepository name
-	SourceNamespace string // GitRepository namespace (e.g. flux-system)
-	Kustomization   string // owning Kustomization name, if resolved
-	TargetNamespace string // Kustomization spec.targetNamespace, if set
+	ProjectPath     string    // normalized group/repo, host-stripped (e.g. services/flexdeck)
+	SourceName      string    // GitRepository name
+	SourceNamespace string    // GitRepository namespace (e.g. flux-system)
+	Kustomization   string    // owning Kustomization name, if resolved
+	TargetNamespace string    // Kustomization spec.targetNamespace, if set
+	Workload        *Workload // live Deployment health across the source's kustomizations
 }
 
 // EnrichBindings upgrades inferred service bindings to verified when their
@@ -88,6 +99,16 @@ func EnrichBindings(inv *Inventory, targetsByPath map[string]FluxTarget) {
 		}
 		if target.TargetNamespace != "" {
 			binding.Namespace = target.TargetNamespace
+		}
+		if target.Workload != nil {
+			binding.Workload = target.Workload
+			// The namespace the Deployments actually run in is the most
+			// authoritative signal — override the inferred/targetNamespace guess
+			// when it is unambiguous.
+			if len(target.Workload.Namespaces) == 1 {
+				binding.Namespace = target.Workload.Namespaces[0]
+			}
+			binding.Signals = appendUnique(binding.Signals, "k8s-workload")
 		}
 	}
 }

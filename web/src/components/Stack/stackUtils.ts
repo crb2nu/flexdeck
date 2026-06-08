@@ -88,12 +88,15 @@ export interface BindingSummary {
   detail: string;
   confidence: 'verified' | 'inferred' | 'none';
   verified: boolean;
+  workload?: string;
+  workloadHealthy?: boolean;
 }
 
-// summarizeBinding turns the inferred service-to-cluster binding into a compact
-// card descriptor. Services report their inferred namespace + Flux source;
-// libraries report that they are consumed rather than deployed. Returns null
-// when no binding metadata is present (older payloads or unknown kinds).
+// summarizeBinding turns the service-to-cluster binding into a compact card
+// descriptor. Services report their namespace + Flux source, plus live
+// Deployment health when known; libraries report that they are consumed rather
+// than deployed. Returns null when no binding metadata is present (older
+// payloads or unknown kinds).
 export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | null {
   const binding = repo.binding;
   if (!binding) return null;
@@ -107,11 +110,15 @@ export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | nu
     if (binding.namespace) parts.push(`ns ${binding.namespace}`);
     if (binding.fluxSource) parts.push(`flux ${binding.fluxSource}`);
     if (parts.length === 0) return null;
+
+    const workload = binding.workload;
     return {
       label: parts.join(' · '),
       detail: binding.confidence === 'verified' ? 'verified target' : 'inferred from naming',
       confidence: binding.confidence,
       verified: binding.confidence === 'verified',
+      workload: workload ? `${workload.ready}/${workload.desired} ready` : undefined,
+      workloadHealthy: workload ? workload.ready >= workload.desired && workload.desired > 0 : undefined,
     };
   }
 
