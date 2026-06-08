@@ -106,6 +106,51 @@ func TestEnrichBindingsKeepsInferredNamespaceWithoutTargetNamespace(t *testing.T
 	}
 }
 
+func TestEnrichBindingsAttachesWorkloadAndOverridesNamespace(t *testing.T) {
+	t.Parallel()
+
+	inv := serviceInventory()
+	EnrichBindings(inv, map[string]FluxTarget{
+		"services/flexdeck": {
+			ProjectPath: "services/flexdeck", SourceName: "flexdeck", SourceNamespace: "flux-system",
+			Kustomization: "flexdeck",
+			// The Deployments run in a different namespace than the inferred guess.
+			Workload: &Workload{Namespaces: []string{"deck-system"}, Deployments: 3, Ready: 2, Desired: 3},
+		},
+	})
+
+	flexdeck := inv.Repositories[0].Binding
+	if flexdeck.Confidence != BindingConfidenceVerified {
+		t.Fatalf("confidence = %q, want verified", flexdeck.Confidence)
+	}
+	if flexdeck.Workload == nil || flexdeck.Workload.Ready != 2 || flexdeck.Workload.Desired != 3 {
+		t.Fatalf("workload = %#v, want 2/3 ready", flexdeck.Workload)
+	}
+	if flexdeck.Namespace != "deck-system" {
+		t.Fatalf("namespace = %q, want authoritative workload namespace deck-system", flexdeck.Namespace)
+	}
+	if !contains(flexdeck.Signals, "k8s-workload") {
+		t.Fatalf("signals = %#v, want k8s-workload", flexdeck.Signals)
+	}
+}
+
+func TestEnrichBindingsKeepsNamespaceWhenWorkloadSpansNamespaces(t *testing.T) {
+	t.Parallel()
+
+	inv := serviceInventory()
+	EnrichBindings(inv, map[string]FluxTarget{
+		"services/flexdeck": {
+			ProjectPath: "services/flexdeck", SourceName: "flexdeck", SourceNamespace: "flux-system",
+			Workload: &Workload{Namespaces: []string{"a", "b"}, Deployments: 2, Ready: 2, Desired: 2},
+		},
+	})
+
+	// Ambiguous (multi-namespace) workloads must not override the namespace.
+	if ns := inv.Repositories[0].Binding.Namespace; ns != "flexdeck" {
+		t.Fatalf("namespace = %q, want inferred flexdeck preserved on multi-namespace workload", ns)
+	}
+}
+
 func TestEnrichBindingsNoTargetsIsNoop(t *testing.T) {
 	t.Parallel()
 

@@ -119,6 +119,35 @@ describe('stackUtils', () => {
     });
   });
 
+  it('includes live workload health on a verified binding', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexinfer-system',
+        fluxSource: 'flexinfer',
+        kustomization: 'flexinfer-system',
+        workload: { namespaces: ['flexinfer-system'], deployments: 2, ready: 2, desired: 2 },
+      },
+    }));
+
+    expect(summary).toMatchObject({ verified: true, workload: '2/2 ready', workloadHealthy: true });
+  });
+
+  it('flags an unhealthy workload', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        workload: { namespaces: ['flexdeck'], deployments: 3, ready: 2, desired: 3 },
+      },
+    }));
+
+    expect(summary).toMatchObject({ workload: '2/3 ready', workloadHealthy: false });
+  });
+
   it('summarizes a library binding as not deployed', () => {
     const summary = summarizeBinding(makeRepo({
       bucket: 'libs',
