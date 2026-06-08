@@ -1,6 +1,7 @@
 import { Component, createSignal, For, Show } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
+import { stableListByKey } from '../../lib/stableList';
 import { litellm } from '../../lib/api';
 import type { LiteLLMRouterResponse, LiteLLMModelEntry } from '../../lib/types';
 
@@ -22,6 +23,14 @@ const LiteLLMRouterPanel: Component = () => {
   };
 
   createPolling('models-litellm-router', fetchRouter, 30000);
+
+  // Each 30s poll replaces `data` with a freshly-fetched object, so the router
+  // table's rows would remount every refresh. Reuse the prior ref per model
+  // (keyed by model_name) when its signature is unchanged.
+  const stableModelInfo = stableListByKey(
+    () => data()?.modelInfo || [],
+    (model: LiteLLMModelEntry) => model.model_name,
+  );
 
   return (
     <div class="flex flex-col gap-4">
@@ -65,7 +74,7 @@ const LiteLLMRouterPanel: Component = () => {
                 </tr>
               </thead>
               <tbody class="divide-y divide-white/5">
-                <For each={data()!.modelInfo || []}>
+                <For each={stableModelInfo()}>
                   {(model: LiteLLMModelEntry) => (
                     <tr class="hover:bg-white/5 transition-colors">
                       <td class="px-4 py-2 font-mono text-text-main">{model.model_name}</td>
