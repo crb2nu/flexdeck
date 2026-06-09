@@ -53,6 +53,8 @@ type Repository struct {
 	WorktreeCount    int          `json:"worktreeCount,omitempty"`
 	Git              GitState     `json:"git"`
 	Binding          *RepoBinding `json:"binding,omitempty"`
+	DependsOn        []string     `json:"dependsOn,omitempty"` // workspace libs this service depends on (by lib dir name)
+	UsedBy           []string     `json:"usedBy,omitempty"`    // services that depend on this lib (by service name)
 	DiscoveryReasons []string     `json:"discoveryReasons,omitempty"`
 	Errors           []string     `json:"errors,omitempty"`
 }
@@ -141,6 +143,7 @@ func Scan(ctx context.Context, root string, opts ScanOptions) (*Inventory, error
 		}
 		return inv.Repositories[left].Name < inv.Repositories[right].Name
 	})
+	computeAdoption(inv)
 	populateTotals(inv)
 
 	return inv, nil

@@ -7,6 +7,7 @@ import {
   isDegradedBinding,
   isInferredBinding,
   isVerifiedBinding,
+  libAdoptionLabel,
   matchesBindingFilter,
   repositoryMatches,
   summarizeBinding,
@@ -220,6 +221,24 @@ describe('stackUtils', () => {
     expect(repositoryMatches(repo, 'inference-zone')).toBe(true);
     expect(repositoryMatches(repo, 'edge-source')).toBe(true);
     expect(repositoryMatches(repo, 'not-present')).toBe(false);
+  });
+
+  describe('library adoption', () => {
+    it('labels library adoption, surfacing unadopted libs', () => {
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs', usedBy: ['loom-core'] }))).toBe('1 service: loom-core');
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs', usedBy: ['a', 'b', 'c'] }))).toBe('3 services: a, b, c');
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs', usedBy: [] }))).toBe('No service adopters yet');
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs' }))).toBe('No service adopters yet');
+    });
+
+    it('matches search across adoption fields', () => {
+      const service = makeRepo({ name: 'diff-surgeon', dependsOn: ['mcp-go', 'fi-accel'] });
+      expect(repositoryMatches(service, 'mcp-go')).toBe(true);
+      expect(repositoryMatches(service, 'fi-accel')).toBe(true);
+
+      const lib = makeRepo({ name: 'mcp-go', bucket: 'libs', usedBy: ['diff-surgeon', 'loom-core'] });
+      expect(repositoryMatches(lib, 'loom-core')).toBe(true);
+    });
   });
 
   describe('cluster binding filter', () => {

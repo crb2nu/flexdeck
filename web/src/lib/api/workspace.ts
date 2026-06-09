@@ -28,6 +28,8 @@ export interface WorkspaceRepository {
   worktreeCount?: number;
   git: WorkspaceGitState;
   binding?: WorkspaceRepoBinding;
+  dependsOn?: string[]; // workspace libs this service depends on
+  usedBy?: string[]; // services that depend on this lib
   discoveryReasons?: string[];
   errors?: string[];
 }

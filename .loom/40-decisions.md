@@ -309,3 +309,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `web/src/components/Stack/stackUtils.ts` (`bindingSeverity`, `compareByBindingConcern`)
   - [S2] `web/src/components/Stack/index.tsx` (sort wiring)
   - [S3] `.loom/31-iteration-plan-stack-health-sort-2026-06-08.md`
+
+### 2026-06-08: Map library adoption via per-ecosystem identifier resolution
+
+- Decision: Add a post-`Scan` adoption pass that maps service→lib dependencies. For each library, resolve its identifiers — the `libs/<dir>` path, the Go module path, and the Python/Node package `name` from its manifest — then text-scan each service's dependency manifests (go.mod, pyproject.toml, package.json, web/package.json) for those identifiers. Store `DependsOn` on services and `UsedBy` on libs.
+- Rationale: The kill-test showed a uniform `libs/<name>` path scan only works for Go; Node/Python reference libs by package name (dir name != package name: `visual-kit` → `@flexinfer/visual-kit`, `py-observability` → `flexinfer-observability`). Name-based matching also avoids a real false positive — `flexinfer-site` references `visual-kit` only as a *script path*, not a dependency. Reading manifest text + per-ecosystem identifiers is robust and ecosystem-agnostic at the match step.
+- Alternatives considered:
+  - Uniform `libs/<dir>` path scan — Go-only; misses Node/Python and would false-positive on script paths.
+  - Per-ecosystem AST parsing (go list, parse pyproject/package.json deps) — more precise but much larger surface and fragile across tool versions; substring-on-resolved-identifier is sufficient.
+- Consequences: Filesystem scan only (GitLab-API source has no local files → no-op, graceful). Live `Scan` produced the correct graph: 5 Go services → 3 Go libs (`mcp-go` used by 5). The cross-cutting contract libs (observability/resilience/UI-token, all Python/Node) have **zero service adopters** today — surfaced as "No service adopters yet", which is the contract-coverage signal. Contract version-drift and lib→lib adoption are deferred.
+- Sources:
+  - [S1] `internal/workspace/adoption.go` (`computeAdoption`, `libraryIdentifiers`)
+  - [S2] `web/src/components/Stack/{stackUtils.ts,index.tsx}` (`libAdoptionLabel`, card rows)
+  - [S3] `.loom/31-iteration-plan-lib-adoption-2026-06-08.md`
