@@ -171,6 +171,24 @@ describe('stackUtils', () => {
     expect(summary).toMatchObject({ workload: '1/1 ready', workloadHealthy: true, workloadKinds: '1 statefulset' });
   });
 
+  it('reports progressing vs degraded rollout status', () => {
+    const progressing = summarizeBinding(makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'x', fluxSource: 'x', workload: { ready: 1, desired: 2, status: 'progressing' } },
+    }));
+    expect(progressing).toMatchObject({ workload: '1/2 ready', workloadStatus: 'progressing', workloadHealthy: false });
+
+    const degraded = summarizeBinding(makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'x', fluxSource: 'x', workload: { ready: 0, desired: 1, status: 'degraded' } },
+    }));
+    expect(degraded).toMatchObject({ workloadStatus: 'degraded', workloadHealthy: false });
+
+    // Older payloads without status fall back to a replica comparison.
+    const fallback = summarizeBinding(makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'x', fluxSource: 'x', workload: { ready: 1, desired: 1 } },
+    }));
+    expect(fallback).toMatchObject({ workloadStatus: 'healthy', workloadHealthy: true });
+  });
+
   it('summarizes a library binding as not deployed', () => {
     const summary = summarizeBinding(makeRepo({
       bucket: 'libs',
@@ -207,7 +225,10 @@ describe('stackUtils', () => {
       binding: { kind: 'service', confidence: 'verified', namespace: 'flexdeck', fluxSource: 'flexdeck', workload: { ready: 3, desired: 3 } },
     });
     const verifiedDegraded = makeRepo({
-      binding: { kind: 'service', confidence: 'verified', namespace: 'flexinfer-system', fluxSource: 'flexinfer', workload: { ready: 1, desired: 2 } },
+      binding: { kind: 'service', confidence: 'verified', namespace: 'flexinfer-system', fluxSource: 'flexinfer', workload: { ready: 1, desired: 2, status: 'degraded' } },
+    });
+    const verifiedProgressing = makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'svc', fluxSource: 'svc', workload: { ready: 1, desired: 2, status: 'progressing' } },
     });
     const inferredOnly = makeRepo({
       binding: { kind: 'service', confidence: 'inferred', namespace: 'loom-core', fluxSource: 'loom-core' },
@@ -223,6 +244,8 @@ describe('stackUtils', () => {
       expect(isDegradedBinding(verifiedDegraded)).toBe(true);
       expect(isDegradedBinding(verifiedHealthy)).toBe(false);
       expect(isDegradedBinding(inferredOnly)).toBe(false);
+      // A workload mid-rollout is progressing, not degraded.
+      expect(isDegradedBinding(verifiedProgressing)).toBe(false);
 
       expect(isInferredBinding(inferredOnly)).toBe(true);
       expect(isInferredBinding(verifiedHealthy)).toBe(false);
@@ -236,9 +259,11 @@ describe('stackUtils', () => {
       expect(matchesBindingFilter(verifiedDegraded, 'verified')).toBe(true);
       expect(matchesBindingFilter(inferredOnly, 'verified')).toBe(false);
 
-      // Degraded is the verified subset that is unhealthy.
+      // Degraded is the verified subset that is genuinely unhealthy, not a rollout.
       expect(matchesBindingFilter(verifiedDegraded, 'degraded')).toBe(true);
       expect(matchesBindingFilter(verifiedHealthy, 'degraded')).toBe(false);
+      expect(matchesBindingFilter(verifiedProgressing, 'degraded')).toBe(false);
+      expect(matchesBindingFilter(verifiedProgressing, 'verified')).toBe(true);
 
       expect(matchesBindingFilter(inferredOnly, 'inferred')).toBe(true);
       expect(matchesBindingFilter(verifiedHealthy, 'inferred')).toBe(false);

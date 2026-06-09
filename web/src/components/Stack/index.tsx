@@ -514,11 +514,13 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
               <Show when={summary().workload}>
                 <span
                   class={`flex-shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] ${
-                    summary().workloadHealthy
-                      ? 'border-status-ok/20 bg-status-ok/10 text-status-ok'
-                      : 'border-status-warn/20 bg-status-warn/10 text-status-warn'
+                    summary().workloadStatus === 'degraded'
+                      ? 'border-status-error/20 bg-status-error/10 text-status-error'
+                      : summary().workloadStatus === 'progressing'
+                        ? 'border-status-warn/20 bg-status-warn/10 text-status-warn'
+                        : 'border-status-ok/20 bg-status-ok/10 text-status-ok'
                   }`}
-                  title={summary().workloadKinds ? `Live workloads — ${summary().workloadKinds} (ready/desired)` : 'Live workload replicas (ready/desired)'}
+                  title={`Live workloads${summary().workloadKinds ? ` — ${summary().workloadKinds}` : ''} · ${summary().workloadStatus ?? 'ready'} (ready/desired)`}
                 >
                   {summary().workload}
                 </span>

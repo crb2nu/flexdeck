@@ -8,6 +8,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/workspace"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -74,43 +75,47 @@ const (
 )
 
 // workloadUnit is a kind-agnostic view of a single Flux-managed workload, with
-// replica counts already normalized across Deployment/StatefulSet/DaemonSet.
+// replica counts and rollout health already normalized across
+// Deployment/StatefulSet/DaemonSet.
 type workloadUnit struct {
 	ksKey     string // kustomization namespace/name from the Flux labels
 	namespace string
 	kind      string
 	desired   int
 	ready     int
+	status    string // healthy | progressing | degraded
 }
 
 // appsWorkloadUnits flattens the three apps/v1 workload kinds into a single
 // slice, normalizing the kind-specific replica fields (DaemonSets report
-// scheduling counts rather than spec replicas). Workloads without a Flux
-// Kustomization name label are dropped.
+// scheduling counts rather than spec replicas) and classifying rollout health.
+// Workloads without a Flux Kustomization name label are dropped.
 func appsWorkloadUnits(deployments []appsv1.Deployment, statefulSets []appsv1.StatefulSet, daemonSets []appsv1.DaemonSet) []workloadUnit {
 	units := make([]workloadUnit, 0, len(deployments)+len(statefulSets)+len(daemonSets))
 	for i := range deployments {
 		d := &deployments[i]
-		if unit, ok := workloadUnitFromMeta(d.Labels, d.Namespace, workloadKindDeployment, replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas)); ok {
+		if unit, ok := workloadUnitFromMeta(d.Labels, d.Namespace, workloadKindDeployment, replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas), deploymentRolloutStatus(d)); ok {
 			units = append(units, unit)
 		}
 	}
 	for i := range statefulSets {
 		s := &statefulSets[i]
-		if unit, ok := workloadUnitFromMeta(s.Labels, s.Namespace, workloadKindStatefulSet, replicaInt(s.Spec.Replicas), int(s.Status.ReadyReplicas)); ok {
+		desired := replicaInt(s.Spec.Replicas)
+		if unit, ok := workloadUnitFromMeta(s.Labels, s.Namespace, workloadKindStatefulSet, desired, int(s.Status.ReadyReplicas), rolloutStatus(desired, int(s.Status.ReadyReplicas), int(s.Status.UpdatedReplicas), false)); ok {
 			units = append(units, unit)
 		}
 	}
 	for i := range daemonSets {
 		ds := &daemonSets[i]
-		if unit, ok := workloadUnitFromMeta(ds.Labels, ds.Namespace, workloadKindDaemonSet, int(ds.Status.DesiredNumberScheduled), int(ds.Status.NumberReady)); ok {
+		desired := int(ds.Status.DesiredNumberScheduled)
+		if unit, ok := workloadUnitFromMeta(ds.Labels, ds.Namespace, workloadKindDaemonSet, desired, int(ds.Status.NumberReady), rolloutStatus(desired, int(ds.Status.NumberReady), int(ds.Status.UpdatedNumberScheduled), false)); ok {
 			units = append(units, unit)
 		}
 	}
 	return units
 }
 
-func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int) (workloadUnit, bool) {
+func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int, status string) (workloadUnit, bool) {
 	ksName := labels[fluxKustomizationNameLabel]
 	if ksName == "" {
 		return workloadUnit{}, false
@@ -121,6 +126,7 @@ func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desi
 		kind:      kind,
 		desired:   desired,
 		ready:     ready,
+		status:    status,
 	}, true
 }
 
@@ -129,6 +135,43 @@ func replicaInt(replicas *int32) int {
 		return 1
 	}
 	return int(*replicas)
+}
+
+// rolloutStatus classifies a single workload from normalized counts. A workload
+// rolling out a new revision (updated < desired) is progressing, not degraded;
+// a workload whose current revision is fully rolled out but missing ready
+// replicas (or explicitly stuck) is degraded.
+func rolloutStatus(desired, ready, updated int, stuck bool) string {
+	if stuck {
+		return workspace.WorkloadDegraded
+	}
+	if desired > 0 && updated < desired {
+		return workspace.WorkloadProgressing
+	}
+	if ready < desired {
+		return workspace.WorkloadDegraded
+	}
+	return workspace.WorkloadHealthy
+}
+
+// deploymentRolloutStatus uses the Deployment's Progressing/Available conditions
+// (which StatefulSets and DaemonSets do not have) to detect a stuck rollout
+// before falling back to the numeric classification.
+func deploymentRolloutStatus(d *appsv1.Deployment) string {
+	stuck := false
+	for _, cond := range d.Status.Conditions {
+		switch cond.Type {
+		case appsv1.DeploymentProgressing:
+			if cond.Status == corev1.ConditionFalse {
+				stuck = true // ProgressDeadlineExceeded
+			}
+		case appsv1.DeploymentAvailable:
+			if cond.Status == corev1.ConditionFalse {
+				stuck = true
+			}
+		}
+	}
+	return rolloutStatus(replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas), int(d.Status.UpdatedReplicas), stuck)
 }
 
 type fluxKustomizationInfo struct {
@@ -238,11 +281,30 @@ func aggregateWorkloads(workloads []workloadUnit, ksKeyToPath map[string]string)
 		}
 		workload.Desired += unit.desired
 		workload.Ready += unit.ready
+		workload.Status = worseRolloutStatus(workload.Status, unit.status)
 		namespacesByPath[path][unit.namespace] = true
 		kustomizationsWithWorkloads[unit.ksKey] = true
 	}
 
 	return workloadByPath, namespacesByPath, kustomizationsWithWorkloads
+}
+
+var rolloutSeverity = map[string]int{
+	workspace.WorkloadHealthy:     0,
+	workspace.WorkloadProgressing: 1,
+	workspace.WorkloadDegraded:    2,
+}
+
+// worseRolloutStatus returns the more severe of two rollout statuses so a
+// source's aggregate reflects its unhealthiest workload.
+func worseRolloutStatus(current, next string) string {
+	if current == "" {
+		return next
+	}
+	if rolloutSeverity[next] > rolloutSeverity[current] {
+		return next
+	}
+	return current
 }
 
 // pickKustomization chooses the Kustomization to display for a source: the one

@@ -1,4 +1,4 @@
-import type { WorkspaceRepository } from '../../lib/api';
+import type { WorkspaceRepository, WorkspaceWorkloadStatus } from '../../lib/api';
 
 export type StackBucketFilter = 'all' | 'services' | 'libs';
 export type StackReadinessFilter = 'all' | 'ready' | 'attention';
@@ -91,6 +91,7 @@ export interface BindingSummary {
   verified: boolean;
   workload?: string;
   workloadHealthy?: boolean;
+  workloadStatus?: WorkspaceWorkloadStatus;
   workloadKinds?: string;
 }
 
@@ -128,13 +129,15 @@ export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | nu
     if (parts.length === 0) return null;
 
     const workload = binding.workload;
+    const status = workloadStatus(repo);
     return {
       label: parts.join(' · '),
       detail: binding.confidence === 'verified' ? 'verified target' : 'inferred from naming',
       confidence: binding.confidence,
       verified: binding.confidence === 'verified',
       workload: workload ? `${workload.ready}/${workload.desired} ready` : undefined,
-      workloadHealthy: workload ? workload.ready >= workload.desired && workload.desired > 0 : undefined,
+      workloadHealthy: status ? status === 'healthy' : undefined,
+      workloadStatus: status,
       workloadKinds: describeWorkloadKinds(workload),
     };
   }
@@ -153,11 +156,20 @@ export function isInferredBinding(repo: WorkspaceRepository): boolean {
   return repo.binding?.confidence === 'inferred';
 }
 
-// isDegradedBinding reports a service whose live workload has fewer ready
-// replicas than desired (a running deployment that is not fully healthy).
-export function isDegradedBinding(repo: WorkspaceRepository): boolean {
+// workloadStatus resolves a workload's rollout health, falling back to a replica
+// comparison for older payloads that predate the backend `status`. A workload
+// mid-rollout reports `progressing`, not `degraded`.
+export function workloadStatus(repo: WorkspaceRepository): WorkspaceWorkloadStatus | undefined {
   const workload = repo.binding?.workload;
-  return !!workload && workload.desired > 0 && workload.ready < workload.desired;
+  if (!workload) return undefined;
+  if (workload.status) return workload.status;
+  return workload.desired > 0 && workload.ready < workload.desired ? 'degraded' : 'healthy';
+}
+
+// isDegradedBinding reports a service whose live workload is genuinely unhealthy
+// (stuck or missing replicas), excluding an in-flight rollout.
+export function isDegradedBinding(repo: WorkspaceRepository): boolean {
+  return workloadStatus(repo) === 'degraded';
 }
 
 // matchesBindingFilter applies the Stack "Cluster" filter. Degraded is a subset
