@@ -172,6 +172,33 @@ export function isDegradedBinding(repo: WorkspaceRepository): boolean {
   return workloadStatus(repo) === 'degraded';
 }
 
+// bindingSeverity ranks a repo by live cluster-health urgency so the Stack list
+// can surface problems first: degraded (2) > progressing (1) > everything else.
+export function bindingSeverity(repo: WorkspaceRepository): number {
+  switch (workloadStatus(repo)) {
+    case 'degraded':
+      return 2;
+    case 'progressing':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+// compareByBindingConcern orders repositories for the Stack list: unhealthy
+// cluster workloads first, then the existing scanner-readiness score, then a
+// stable bucket/name tiebreak.
+export function compareByBindingConcern(left: WorkspaceRepository, right: WorkspaceRepository): number {
+  const severityDelta = bindingSeverity(right) - bindingSeverity(left);
+  if (severityDelta !== 0) return severityDelta;
+
+  const readinessDelta = getRepoReadiness(right).score - getRepoReadiness(left).score;
+  if (readinessDelta !== 0) return readinessDelta;
+
+  if (left.bucket !== right.bucket) return left.bucket.localeCompare(right.bucket);
+  return left.name.localeCompare(right.name);
+}
+
 // matchesBindingFilter applies the Stack "Cluster" filter. Degraded is a subset
 // of verified surfaced on its own so operators can triage unhealthy services.
 export function matchesBindingFilter(repo: WorkspaceRepository, filter: StackBindingFilter): boolean {

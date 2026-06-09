@@ -3,6 +3,7 @@ import { workspaceApi, type WorkspaceInventory, type WorkspaceRepository } from 
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, Select, TabBar } from '../shared';
 import type { SelectOption, TabDef } from '../shared';
 import {
+  compareByBindingConcern,
   formatBucketLabel,
   getDocsCount,
   getRepoReadiness,
@@ -183,12 +184,7 @@ const Stack: Component = () => {
       .filter((repo) => selectedReadiness === 'all' || getRepoReadiness(repo).level === selectedReadiness)
       .filter((repo) => matchesBindingFilter(repo, selectedBinding))
       .filter((repo) => repositoryMatches(repo, search))
-      .sort((left, right) => {
-        const readinessDelta = getRepoReadiness(right).score - getRepoReadiness(left).score;
-        if (readinessDelta !== 0) return readinessDelta;
-        if (left.bucket !== right.bucket) return left.bucket.localeCompare(right.bucket);
-        return left.name.localeCompare(right.name);
-      });
+      .sort(compareByBindingConcern);
   });
 
   const sections = createMemo<StackSection[]>(() => {
