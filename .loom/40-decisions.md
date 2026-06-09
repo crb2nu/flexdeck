@@ -283,3 +283,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `web/src/components/Stack/stackUtils.ts` (binding predicates)
   - [S2] `web/src/components/Stack/index.tsx` (Cluster filter + tile)
   - [S3] `.loom/31-iteration-plan-stack-binding-filter-2026-06-08.md`
+
+### 2026-06-08: Classify workload rollout health (healthy/progressing/degraded)
+
+- Decision: Add a per-workload rollout classification and aggregate it (worst-of) onto `Workload.Status`. A workload rolling out a new revision (`updatedReplicas < desired`) is `progressing`; a rolled-out workload missing ready replicas — or a Deployment whose `Progressing`/`Available` condition is `False` (ProgressDeadlineExceeded / unavailable) — is `degraded`; otherwise `healthy`. The Stack "Degraded" filter and the workload chip become status-aware (3-color), so an in-flight deploy is no longer flagged broken.
+- Rationale: C-5's degraded signal used `ready < desired`, which false-flags every healthy deploy mid-rollout. Deployments expose Progressing/Available conditions that distinguish stuck from in-flight; StatefulSets/DaemonSets lack those conditions, so they use updated-vs-desired numerics. The classifier is pure and unit-tested; the frontend falls back to the replica comparison for payloads predating `status`.
+- Alternatives considered:
+  - Keep `ready < desired` as "degraded" — simplest, but noisy during every rollout.
+  - Read pod-level conditions/events (crashloop/imagepull) — richer, but a much larger surface; deferred to a follow-up.
+- Consequences: Live probe over the real cluster classified 15 services — 14 healthy and **1 genuinely degraded (`smarthome`, a flapped workload)** — so both the healthy and degraded paths are live-confirmed; the progressing path is unit-tested only (no in-flight rollout during validation). StatefulSets/DaemonSets without rollout conditions can't detect a "stuck" state beyond the replica comparison.
+- Sources:
+  - [S1] `internal/api/handlers/workspace_binding.go` (`rolloutStatus`, `deploymentRolloutStatus`, `worseRolloutStatus`)
+  - [S2] `internal/workspace/binding.go` (`Workload.Status` + state constants)
+  - [S3] `.loom/31-iteration-plan-stack-rollout-health-2026-06-08.md`

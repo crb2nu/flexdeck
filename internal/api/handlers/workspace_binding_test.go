@@ -3,7 +3,9 @@ package handlers
 import (
 	"testing"
 
+	"github.com/flexinfer/flexdeck/internal/workspace"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -37,12 +39,14 @@ func fluxLabels(ksName, ksNamespace string) map[string]string {
 	}
 }
 
+// The builders default to a fully rolled-out revision (updated == desired) so
+// `ready < desired` reads as degraded; rollout tests override `updated`.
 func deployObj(name, namespace, ksName, ksNamespace string, desired, ready int32) appsv1.Deployment {
 	replicas := desired
 	return appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
 		Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
-		Status:     appsv1.DeploymentStatus{ReadyReplicas: ready},
+		Status:     appsv1.DeploymentStatus{ReadyReplicas: ready, UpdatedReplicas: desired},
 	}
 }
 
@@ -51,14 +55,14 @@ func stsObj(name, namespace, ksName, ksNamespace string, desired, ready int32) a
 	return appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
 		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-		Status:     appsv1.StatefulSetStatus{ReadyReplicas: ready},
+		Status:     appsv1.StatefulSetStatus{ReadyReplicas: ready, UpdatedReplicas: desired},
 	}
 }
 
 func dsObj(name, namespace, ksName, ksNamespace string, desired, ready int32) appsv1.DaemonSet {
 	return appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)},
-		Status:     appsv1.DaemonSetStatus{DesiredNumberScheduled: desired, NumberReady: ready},
+		Status:     appsv1.DaemonSetStatus{DesiredNumberScheduled: desired, NumberReady: ready, UpdatedNumberScheduled: desired},
 	}
 }
 
@@ -137,11 +141,18 @@ func TestBuildFluxTargetsWithWorkloads(t *testing.T) {
 	if flexdeck == nil || flexdeck.Deployments != 3 || flexdeck.StatefulSets != 0 || flexdeck.Ready != 2 || flexdeck.Desired != 3 {
 		t.Fatalf("flexdeck workload = %#v, want 3 deploys 2/3 ready", flexdeck)
 	}
+	// redis is 0/1 with the revision rolled out -> the source aggregates degraded.
+	if flexdeck.Status != workspace.WorkloadDegraded {
+		t.Errorf("flexdeck status = %q, want degraded", flexdeck.Status)
+	}
 
 	// StatefulSet-only service is now visible.
 	smarthome := targets["services/smarthome"]
 	if smarthome.Workload == nil || smarthome.Workload.StatefulSets != 1 || smarthome.Workload.Ready != 1 {
 		t.Fatalf("smarthome workload = %#v, want 1 statefulset 1/1", smarthome.Workload)
+	}
+	if smarthome.Workload.Status != workspace.WorkloadHealthy {
+		t.Errorf("smarthome status = %q, want healthy", smarthome.Workload.Status)
 	}
 	if len(smarthome.Workload.Namespaces) != 1 || smarthome.Workload.Namespaces[0] != "smarthome" {
 		t.Errorf("smarthome namespaces = %#v, want [smarthome]", smarthome.Workload.Namespaces)
@@ -168,6 +179,75 @@ func TestBuildFluxTargetsWithoutWorkloads(t *testing.T) {
 	}
 	if flexdeck := targets["services/flexdeck"]; flexdeck.Workload != nil {
 		t.Errorf("flexdeck workload = %#v, want nil without workloads", flexdeck.Workload)
+	}
+}
+
+func TestRolloutStatus(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		desired, ready, updated int
+		stuck                   bool
+		want                    string
+	}{
+		{2, 2, 2, false, workspace.WorkloadHealthy},
+		{3, 2, 1, false, workspace.WorkloadProgressing}, // new revision rolling out
+		{2, 1, 2, false, workspace.WorkloadDegraded},    // rolled out but a replica is down
+		{2, 1, 2, true, workspace.WorkloadDegraded},     // explicitly stuck
+		{0, 0, 0, false, workspace.WorkloadHealthy},     // scaled to zero
+	}
+	for _, tc := range cases {
+		if got := rolloutStatus(tc.desired, tc.ready, tc.updated, tc.stuck); got != tc.want {
+			t.Errorf("rolloutStatus(%d,%d,%d,%v) = %q, want %q", tc.desired, tc.ready, tc.updated, tc.stuck, got, tc.want)
+		}
+	}
+}
+
+func TestDeploymentRolloutStatusUsesConditions(t *testing.T) {
+	t.Parallel()
+
+	mk := func(desired, ready, updated int32, progressing, available corev1.ConditionStatus) *appsv1.Deployment {
+		replicas := desired
+		return &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{Replicas: &replicas},
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: ready, UpdatedReplicas: updated,
+				Conditions: []appsv1.DeploymentCondition{
+					{Type: appsv1.DeploymentProgressing, Status: progressing},
+					{Type: appsv1.DeploymentAvailable, Status: available},
+				},
+			},
+		}
+	}
+
+	if s := deploymentRolloutStatus(mk(2, 2, 2, corev1.ConditionTrue, corev1.ConditionTrue)); s != workspace.WorkloadHealthy {
+		t.Errorf("healthy deployment = %q, want healthy", s)
+	}
+	// ProgressDeadlineExceeded surfaces as Progressing=False -> degraded.
+	if s := deploymentRolloutStatus(mk(2, 1, 2, corev1.ConditionFalse, corev1.ConditionTrue)); s != workspace.WorkloadDegraded {
+		t.Errorf("progress-deadline deployment = %q, want degraded", s)
+	}
+	// Available=False -> degraded even though a rollout may look in-flight.
+	if s := deploymentRolloutStatus(mk(2, 0, 1, corev1.ConditionTrue, corev1.ConditionFalse)); s != workspace.WorkloadDegraded {
+		t.Errorf("unavailable deployment = %q, want degraded", s)
+	}
+}
+
+func TestWorkloadStatusAggregatesWorst(t *testing.T) {
+	t.Parallel()
+
+	gitRepos := []unstructured.Unstructured{
+		gitRepoObj("svc", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/svc.git"),
+	}
+	kustomizations := []unstructured.Unstructured{ksObj("svc", "flux-system", "svc", "", "")}
+	// One healthy deployment + one progressing deployment -> aggregate progressing.
+	healthy := deployObj("web", "svc", "svc", "flux-system", 2, 2)
+	progressing := deployObj("worker", "svc", "svc", "flux-system", 3, 2)
+	progressing.Status.UpdatedReplicas = 1 // new revision still rolling out
+
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits([]appsv1.Deployment{healthy, progressing}, nil, nil))
+	if got := targets["services/svc"].Workload.Status; got != workspace.WorkloadProgressing {
+		t.Fatalf("aggregate status = %q, want progressing", got)
 	}
 }
 

@@ -59,7 +59,15 @@ type Workload struct {
 	DaemonSets   int      `json:"daemonSets,omitempty"`   // number of DaemonSets
 	Ready        int      `json:"ready"`                  // sum of ready replicas across all kinds
 	Desired      int      `json:"desired"`                // sum of desired replicas across all kinds
+	Status       string   `json:"status,omitempty"`       // rollout health: healthy | progressing | degraded
 }
+
+// Rollout health states for Workload.Status, ordered by severity.
+const (
+	WorkloadHealthy     = "healthy"
+	WorkloadProgressing = "progressing"
+	WorkloadDegraded    = "degraded"
+)
 
 // FluxTarget is a cluster-agnostic description of a live Flux GitRepository (and
 // its owning Kustomization and workloads) that a repository may bind to. It is

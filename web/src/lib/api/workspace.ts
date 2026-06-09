@@ -35,6 +35,8 @@ export interface WorkspaceRepository {
 export type WorkspaceBindingKind = 'service' | 'library' | 'unknown';
 export type WorkspaceBindingConfidence = 'verified' | 'inferred' | 'none';
 
+export type WorkspaceWorkloadStatus = 'healthy' | 'progressing' | 'degraded';
+
 export interface WorkspaceWorkload {
   namespaces?: string[];
   deployments?: number;
@@ -42,6 +44,7 @@ export interface WorkspaceWorkload {
   daemonSets?: number;
   ready: number;
   desired: number;
+  status?: WorkspaceWorkloadStatus;
 }
 
 export interface WorkspaceRepoBinding {
