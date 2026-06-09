@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-06-09T15:05:19.644Z",
+  "budgets": {
+    "landingJsGzBytes": 163840
+  },
+  "metrics": {
+    "entryInitialJsGzBytes": 31870,
+    "landingInitialJsGzBytes": 103208,
+    "totalChunks": 41
+  },
+  "deferredVendors": {
+    "vendor-three": "deferred",
+    "vendor-yaml": "deferred"
+  },
+  "failures": [],
+  "warnings": []
+}
