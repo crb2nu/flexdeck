@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
+import { Component, createSignal, createMemo, onMount, onCleanup, Show, For, lazy, Suspense } from 'solid-js';
 import { PulseCard, TabBar, LoadingState } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
@@ -7,7 +7,10 @@ import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import { isK8sNodeReady } from '../../lib/k8sStatus';
 import TopologyGraph from './TopologyGraph';
-import HoloDeck from './HoloDeck';
+// HoloDeck pulls in three.js (~200KB+ gzipped, the single heaviest dependency) and
+// only renders in the opt-in 3D view. Lazy-load it so its vendor-three chunk stays
+// out of the default 2D Dashboard (the app's landing page) and is fetched on demand.
+const HoloDeck = lazy(() => import('./HoloDeck'));
 import PodLogPanel from './PodLogPanel';
 import EventsFeed from './EventsFeed';
 import AlertsPanel from './AlertsPanel';
@@ -473,15 +476,17 @@ const Dashboard: Component = () => {
           }
         >
           <Show when={viewMode() === '2d'} fallback={
-              <HoloDeck
-                nodes={nodes()}
-                pods={pods()}
-                services={services()}
-                topologyVersion={k8sStore.topologyVersion}
-                styleVersion={k8sStore.styleVersion}
-                filter={filter()}
-                onSelect={handleSelect}
-              />
+              <Suspense fallback={<LoadingState message="Loading 3D view..." />}>
+                <HoloDeck
+                  nodes={nodes()}
+                  pods={pods()}
+                  services={services()}
+                  topologyVersion={k8sStore.topologyVersion}
+                  styleVersion={k8sStore.styleVersion}
+                  filter={filter()}
+                  onSelect={handleSelect}
+                />
+              </Suspense>
           }>
             <TopologyGraph
                 nodes={nodes()}
