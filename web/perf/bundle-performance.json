@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "metrics": [
+    {
+      "name": "bundle_landing_initial_js_gz",
+      "value": 101,
+      "unit": "KiB"
+    },
+    {
+      "name": "bundle_entry_initial_js_gz",
+      "value": 31,
+      "unit": "KiB"
+    },
+    {
+      "name": "bundle_total_chunks",
+      "value": 41,
+      "unit": "count"
+    },
+    {
+      "name": "bundle_vendor_three_deferred",
+      "value": 1,
+      "unit": "bool"
+    },
+    {
+      "name": "bundle_vendor_yaml_deferred",
+      "value": 1,
+      "unit": "bool"
+    }
+  ]
+}
