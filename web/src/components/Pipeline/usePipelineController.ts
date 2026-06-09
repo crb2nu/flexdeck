@@ -1,6 +1,5 @@
 import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
-import { parse } from 'yaml';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import type { Pipeline as VizPipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
 import {
@@ -12,6 +11,18 @@ import {
   type PipelineDataState,
   type PipelineSortConfig,
 } from './utils';
+
+// The `yaml` parser (vendor-yaml ~30KB gzipped) is only needed to render a static
+// CI-config preview, which happens on demand when a user selects a repo. Load it
+// lazily and cache the resolved parser so the chunk stays out of the Pipeline
+// route's initial bundle.
+let yamlParsePromise: Promise<(src: string) => unknown> | null = null;
+const loadYamlParse = (): Promise<(src: string) => unknown> => {
+  if (!yamlParsePromise) {
+    yamlParsePromise = import('yaml').then((mod) => mod.parse);
+  }
+  return yamlParsePromise;
+};
 
 export const PIPELINE_POLL_ACTIVE = 10_000;   // Running/pending pipelines
 export const PIPELINE_POLL_RECENT = 30_000;   // Terminal <5min
@@ -334,9 +345,10 @@ export function usePipelineController() {
     }
   });
 
-  const parseGitLabCi = (content: string, repoName: string): VizPipeline => {
+  const parseGitLabCi = async (content: string, repoName: string): Promise<VizPipeline> => {
     let parsed: unknown;
     try {
+      const parse = await loadYamlParse();
       parsed = parse(content);
     } catch (error) {
       console.error('Failed to parse YAML', error);
@@ -428,7 +440,7 @@ export function usePipelineController() {
           const updated = repos().find((r) => r.id === repoId);
           if (updated) {
             setSelectedRepo(updated);
-            setPipelineData(parseGitLabCi(data.configContent, updated.name));
+            setPipelineData(await parseGitLabCi(data.configContent, updated.name));
           }
         }
       }
@@ -446,7 +458,7 @@ export function usePipelineController() {
 
     // Use already-loaded configContent if available; otherwise lazy-load it
     if (repo.hasConfig && repo.configContent) {
-      setPipelineData(parseGitLabCi(repo.configContent, repo.name));
+      setPipelineData(await parseGitLabCi(repo.configContent, repo.name));
     } else if (repo.hasConfig && repo.id) {
       setPipelineData(undefined);
       void fetchConfig(repo.id);
