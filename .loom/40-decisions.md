@@ -296,3 +296,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/api/handlers/workspace_binding.go` (`rolloutStatus`, `deploymentRolloutStatus`, `worseRolloutStatus`)
   - [S2] `internal/workspace/binding.go` (`Workload.Status` + state constants)
   - [S3] `.loom/31-iteration-plan-stack-rollout-health-2026-06-08.md`
+
+### 2026-06-08: Sort the Stack list health-first, defer pod-level reasons
+
+- Decision: Make the Stack list sort by cluster-health urgency first (`degraded` > `progressing` > rest via `bindingSeverity`/`compareByBindingConcern`), then the existing scanner-readiness score and bucket/name. This completes the triage trio: classify (C-6) → filter (C-5) → sort. **Deferred** the originally-queued pod-level degraded reasons (CrashLoopBackOff/ImagePullBackOff/OOMKilled).
+- Rationale: A live scan found no currently-degraded service workload, so pod-reason extraction could not be live-validated (a weak kill-test under the riskiest-assumption policy), and it is the highest-complexity option (pod listing + owner/name matching). The health-first sort is internal-only over data already produced, fully unit-testable, immediately valuable (problems surface to the top even without filtering), and low risk. Health severity outranks git-readiness because a degraded running service is more urgent than a dirty working tree.
+- Alternatives considered:
+  - Ship pod reasons anyway — most valuable when something is broken, but unverifiable now and fragile name-prefix matching; returned to the backlog for when a workload is actually degraded.
+  - A user-facing sort toggle — unnecessary; health-first is the right default for a triage dashboard.
+- Consequences: The default Stack ordering changes (unhealthy services jump to the top); predictable and the intended value. Pod reasons remain the clear next step once a degraded workload exists to validate against.
+- Sources:
+  - [S1] `web/src/components/Stack/stackUtils.ts` (`bindingSeverity`, `compareByBindingConcern`)
+  - [S2] `web/src/components/Stack/index.tsx` (sort wiring)
+  - [S3] `.loom/31-iteration-plan-stack-health-sort-2026-06-08.md`

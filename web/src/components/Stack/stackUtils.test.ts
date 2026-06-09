@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceRepository } from '../../lib/api';
 import {
+  bindingSeverity,
+  compareByBindingConcern,
   getRepoReadiness,
   isDegradedBinding,
   isInferredBinding,
@@ -268,6 +270,38 @@ describe('stackUtils', () => {
       expect(matchesBindingFilter(inferredOnly, 'inferred')).toBe(true);
       expect(matchesBindingFilter(verifiedHealthy, 'inferred')).toBe(false);
       expect(matchesBindingFilter(library, 'inferred')).toBe(false);
+    });
+  });
+
+  describe('health-first sort', () => {
+    const svc = (name: string, status?: 'healthy' | 'progressing' | 'degraded') =>
+      makeRepo({
+        name,
+        binding: status
+          ? { kind: 'service', confidence: 'verified', namespace: name, fluxSource: name, workload: { ready: 1, desired: 2, status } }
+          : undefined,
+      });
+
+    it('ranks binding severity degraded > progressing > rest', () => {
+      expect(bindingSeverity(svc('a', 'degraded'))).toBe(2);
+      expect(bindingSeverity(svc('b', 'progressing'))).toBe(1);
+      expect(bindingSeverity(svc('c', 'healthy'))).toBe(0);
+      expect(bindingSeverity(svc('d'))).toBe(0);
+    });
+
+    it('sorts degraded first, then progressing, then by readiness/name', () => {
+      const degraded = svc('zeta', 'degraded');
+      const progressing = svc('alpha', 'progressing');
+      const healthyA = svc('mango', 'healthy');
+      // A clean healthy repo and a dirty one (higher readiness score) to check the tiebreak.
+      const dirty = makeRepo({
+        name: 'kilo',
+        git: { isRepository: true, branch: 'main', clean: false, dirtyCount: 3 },
+      });
+
+      const sorted = [healthyA, dirty, progressing, degraded].sort(compareByBindingConcern).map((r) => r.name);
+      // degraded first, progressing second, then the dirty repo (readiness score) before the clean one.
+      expect(sorted).toEqual(['zeta', 'alpha', 'kilo', 'mango']);
     });
   });
 });
