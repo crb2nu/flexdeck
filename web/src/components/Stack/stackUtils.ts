@@ -2,6 +2,7 @@ import type { WorkspaceRepository } from '../../lib/api';
 
 export type StackBucketFilter = 'all' | 'services' | 'libs';
 export type StackReadinessFilter = 'all' | 'ready' | 'attention';
+export type StackBindingFilter = 'all' | 'verified' | 'degraded' | 'inferred';
 export type RepoReadinessLevel = 'ready' | 'attention';
 
 export interface RepoReadiness {
@@ -139,6 +140,39 @@ export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | nu
   }
 
   return null;
+}
+
+// isVerifiedBinding reports whether a repo's binding was confirmed against live
+// Flux/cluster state (confidence === 'verified').
+export function isVerifiedBinding(repo: WorkspaceRepository): boolean {
+  return repo.binding?.confidence === 'verified';
+}
+
+// isInferredBinding reports a binding guessed from naming but not verified.
+export function isInferredBinding(repo: WorkspaceRepository): boolean {
+  return repo.binding?.confidence === 'inferred';
+}
+
+// isDegradedBinding reports a service whose live workload has fewer ready
+// replicas than desired (a running deployment that is not fully healthy).
+export function isDegradedBinding(repo: WorkspaceRepository): boolean {
+  const workload = repo.binding?.workload;
+  return !!workload && workload.desired > 0 && workload.ready < workload.desired;
+}
+
+// matchesBindingFilter applies the Stack "Cluster" filter. Degraded is a subset
+// of verified surfaced on its own so operators can triage unhealthy services.
+export function matchesBindingFilter(repo: WorkspaceRepository, filter: StackBindingFilter): boolean {
+  switch (filter) {
+    case 'verified':
+      return isVerifiedBinding(repo);
+    case 'degraded':
+      return isDegradedBinding(repo);
+    case 'inferred':
+      return isInferredBinding(repo);
+    default:
+      return true;
+  }
 }
 
 export function summarizeRemote(repo: WorkspaceRepository): string {

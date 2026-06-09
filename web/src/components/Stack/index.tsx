@@ -8,9 +8,14 @@ import {
   getRepoReadiness,
   getRepositoryLanguage,
   hasManifest,
+  isDegradedBinding,
+  isInferredBinding,
+  isVerifiedBinding,
+  matchesBindingFilter,
   repositoryMatches,
   summarizeBinding,
   summarizeRemote,
+  type StackBindingFilter,
   type StackBucketFilter,
   type StackReadinessFilter,
 } from './stackUtils';
@@ -57,6 +62,7 @@ const Stack: Component = () => {
   const [query, setQuery] = createSignal('');
   const [bucketFilter, setBucketFilter] = createSignal<StackBucketFilter>('all');
   const [readinessFilter, setReadinessFilter] = createSignal<StackReadinessFilter>('all');
+  const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
   const [languageFilter, setLanguageFilter] = createSignal('all');
 
   const loadInventory = async (silent = false) => {
@@ -100,6 +106,10 @@ const Stack: Component = () => {
       ? Math.round((repos.reduce((sum, repo) => sum + getDocsCount(repo), 0) / docsSlots) * 100)
       : 0;
 
+    const verified = repos.filter(isVerifiedBinding).length;
+    const degraded = repos.filter(isDegradedBinding).length;
+    const inferred = repos.filter(isInferredBinding).length;
+
     return {
       total,
       services: inventory()?.totals.services ?? repos.filter((repo) => repo.bucket === 'services').length,
@@ -110,6 +120,9 @@ const Stack: Component = () => {
       worktrees,
       ci,
       docsCoverage,
+      verified,
+      degraded,
+      inferred,
     };
   });
 
@@ -123,6 +136,13 @@ const Stack: Component = () => {
     { id: 'all', label: 'All states', count: summary().total },
     { id: 'ready', label: 'Ready', count: summary().ready },
     { id: 'attention', label: 'Review', count: summary().review },
+  ]);
+
+  const bindingTabs = createMemo((): TabDef<StackBindingFilter>[] => [
+    { id: 'all', label: 'Any cluster', count: summary().total },
+    { id: 'verified', label: 'Verified', count: summary().verified },
+    { id: 'degraded', label: 'Degraded', count: summary().degraded },
+    { id: 'inferred', label: 'Inferred', count: summary().inferred },
   ]);
 
   const languageOptions = createMemo<SelectOption[]>(() => {
@@ -153,6 +173,7 @@ const Stack: Component = () => {
   const filteredRepositories = createMemo(() => {
     const selectedBucket = bucketFilter();
     const selectedReadiness = readinessFilter();
+    const selectedBinding = bindingFilter();
     const selectedLanguage = languageFilter();
     const search = query();
 
@@ -160,6 +181,7 @@ const Stack: Component = () => {
       .filter((repo) => selectedBucket === 'all' || repo.bucket === selectedBucket)
       .filter((repo) => selectedLanguage === 'all' || getRepositoryLanguage(repo) === selectedLanguage)
       .filter((repo) => selectedReadiness === 'all' || getRepoReadiness(repo).level === selectedReadiness)
+      .filter((repo) => matchesBindingFilter(repo, selectedBinding))
       .filter((repo) => repositoryMatches(repo, search))
       .sort((left, right) => {
         const readinessDelta = getRepoReadiness(right).score - getRepoReadiness(left).score;
@@ -196,13 +218,18 @@ const Stack: Component = () => {
   });
 
   const hasActiveFilters = createMemo(() =>
-    query().trim() !== '' || bucketFilter() !== 'all' || readinessFilter() !== 'all' || languageFilter() !== 'all',
+    query().trim() !== '' ||
+    bucketFilter() !== 'all' ||
+    readinessFilter() !== 'all' ||
+    bindingFilter() !== 'all' ||
+    languageFilter() !== 'all',
   );
 
   const resetFilters = () => {
     setQuery('');
     setBucketFilter('all');
     setReadinessFilter('all');
+    setBindingFilter('all');
     setLanguageFilter('all');
   };
 
@@ -263,7 +290,7 @@ const Stack: Component = () => {
               </div>
             </Show>
 
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <SummaryTile
                 label="Repositories"
                 value={summary().total}
@@ -271,6 +298,12 @@ const Stack: Component = () => {
                 tone="info"
               />
               <SummaryTile label="Ready" value={summary().ready} sub={`${summary().review} need review`} tone="ok" />
+              <SummaryTile
+                label="Cluster bound"
+                value={summary().verified}
+                sub={summary().degraded > 0 ? `${summary().degraded} degraded` : 'verified via Flux'}
+                tone={summary().degraded > 0 ? 'warn' : 'ok'}
+              />
               <SummaryTile label="Dirty" value={summary().dirty} sub={`${summary().worktrees} with worktrees`} tone={summary().dirty > 0 ? 'warn' : 'default'} />
               <SummaryTile label="CI manifests" value={summary().ci} sub="metadata only" />
               <SummaryTile label="Docs coverage" value={`${summary().docsCoverage}%`} sub="AGENTS/README/ROADMAP/LOOM" />
@@ -302,6 +335,10 @@ const Stack: Component = () => {
                 >
                   Reset
                 </Button>
+              </div>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <span class="heading-label">Cluster</span>
+                <TabBar tabs={bindingTabs()} active={bindingFilter()} onChange={setBindingFilter} />
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
                 <span class="font-mono text-text-muted">{inventory()?.root ?? 'WORKSPACE_DIR'}</span>

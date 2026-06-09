@@ -269,3 +269,17 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/api/handlers/workspace_binding.go` (`appsWorkloadUnits`, `workloadUnit`, `aggregateWorkloads`)
   - [S2] `internal/workspace/binding.go` (`Workload` per-kind counts)
   - [S3] `.loom/31-iteration-plan-stack-statefulset-binding-2026-06-08.md`
+
+### 2026-06-08: Surface a Cluster-binding filter on the Stack view
+
+- Decision: Add a "Cluster" filter (`All` / `Verified` / `Degraded` / `Inferred`) and a "Cluster bound" summary tile to the Stack Explorer, built on pure `stackUtils` predicates (`isVerifiedBinding`, `isDegradedBinding`, `isInferredBinding`, `matchesBindingFilter`). Degraded = a verified service whose live workload has `ready < desired`.
+- Rationale: Four binding slices (C-1..C-4) put rich per-service cluster data behind 57 cards but no way to triage it. A filter turns "which services are degraded / unverified" into one click, making the backend work actionable. This is an internal-only UI slice over data already produced and verified live, so it needs no live kill-test; correctness lives in the unit-tested predicates.
+- Alternatives considered:
+  - Backend rollout-condition health (progressing vs degraded) — more signal but defers actionability; queued as the next slice.
+  - Sort-by-health instead of a filter — reorders all cards surprisingly; a filter is more predictable and composable with existing filters.
+  - One combined confidence+health filter — muddy; kept Verified (all confirmed) with Degraded as an explicit unhealthy subset.
+- Consequences: Degraded overlaps Verified by design (a degraded repo is also verified); selecting Degraded narrows to the unhealthy ones. The filter composes with bucket/readiness/language/search and Reset; the summary tile turns warn-toned when any service is degraded. No backend change.
+- Sources:
+  - [S1] `web/src/components/Stack/stackUtils.ts` (binding predicates)
+  - [S2] `web/src/components/Stack/index.tsx` (Cluster filter + tile)
+  - [S3] `.loom/31-iteration-plan-stack-binding-filter-2026-06-08.md`

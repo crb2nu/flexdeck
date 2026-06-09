@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceRepository } from '../../lib/api';
-import { getRepoReadiness, repositoryMatches, summarizeBinding, summarizeRemote } from './stackUtils';
+import {
+  getRepoReadiness,
+  isDegradedBinding,
+  isInferredBinding,
+  isVerifiedBinding,
+  matchesBindingFilter,
+  repositoryMatches,
+  summarizeBinding,
+  summarizeRemote,
+} from './stackUtils';
 
 function makeRepo(overrides: Partial<WorkspaceRepository> = {}): WorkspaceRepository {
   return {
@@ -191,5 +200,49 @@ describe('stackUtils', () => {
     expect(repositoryMatches(repo, 'inference-zone')).toBe(true);
     expect(repositoryMatches(repo, 'edge-source')).toBe(true);
     expect(repositoryMatches(repo, 'not-present')).toBe(false);
+  });
+
+  describe('cluster binding filter', () => {
+    const verifiedHealthy = makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'flexdeck', fluxSource: 'flexdeck', workload: { ready: 3, desired: 3 } },
+    });
+    const verifiedDegraded = makeRepo({
+      binding: { kind: 'service', confidence: 'verified', namespace: 'flexinfer-system', fluxSource: 'flexinfer', workload: { ready: 1, desired: 2 } },
+    });
+    const inferredOnly = makeRepo({
+      binding: { kind: 'service', confidence: 'inferred', namespace: 'loom-core', fluxSource: 'loom-core' },
+    });
+    const library = makeRepo({ bucket: 'libs', binding: { kind: 'library', confidence: 'none' } });
+    const noBinding = makeRepo({ binding: undefined });
+
+    it('classifies binding predicates', () => {
+      expect(isVerifiedBinding(verifiedHealthy)).toBe(true);
+      expect(isVerifiedBinding(verifiedDegraded)).toBe(true);
+      expect(isVerifiedBinding(inferredOnly)).toBe(false);
+
+      expect(isDegradedBinding(verifiedDegraded)).toBe(true);
+      expect(isDegradedBinding(verifiedHealthy)).toBe(false);
+      expect(isDegradedBinding(inferredOnly)).toBe(false);
+
+      expect(isInferredBinding(inferredOnly)).toBe(true);
+      expect(isInferredBinding(verifiedHealthy)).toBe(false);
+    });
+
+    it('matchesBindingFilter selects the right repos', () => {
+      expect(matchesBindingFilter(library, 'all')).toBe(true);
+      expect(matchesBindingFilter(noBinding, 'all')).toBe(true);
+
+      expect(matchesBindingFilter(verifiedHealthy, 'verified')).toBe(true);
+      expect(matchesBindingFilter(verifiedDegraded, 'verified')).toBe(true);
+      expect(matchesBindingFilter(inferredOnly, 'verified')).toBe(false);
+
+      // Degraded is the verified subset that is unhealthy.
+      expect(matchesBindingFilter(verifiedDegraded, 'degraded')).toBe(true);
+      expect(matchesBindingFilter(verifiedHealthy, 'degraded')).toBe(false);
+
+      expect(matchesBindingFilter(inferredOnly, 'inferred')).toBe(true);
+      expect(matchesBindingFilter(verifiedHealthy, 'inferred')).toBe(false);
+      expect(matchesBindingFilter(library, 'inferred')).toBe(false);
+    });
   });
 });
