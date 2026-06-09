@@ -61,9 +61,20 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     binding?.kustomization ?? '',
     binding?.gitlabProject ?? '',
     binding?.matchKey ?? '',
+    ...(repo.dependsOn ?? []),
+    ...(repo.usedBy ?? []),
   ];
 
   return searchable.some((value) => value.toLowerCase().includes(normalizedQuery));
+}
+
+// libAdoptionLabel describes how widely a library is adopted across services.
+// A library with no service adopters is surfaced explicitly — that gap is the
+// point of the contract-coverage view.
+export function libAdoptionLabel(repo: WorkspaceRepository): string {
+  const users = repo.usedBy ?? [];
+  if (users.length === 0) return 'No service adopters yet';
+  return `${users.length} ${users.length === 1 ? 'service' : 'services'}: ${users.join(', ')}`;
 }
 
 export function hasManifest(repo: WorkspaceRepository, manifestType: string): boolean {

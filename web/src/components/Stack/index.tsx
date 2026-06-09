@@ -12,6 +12,7 @@ import {
   isDegradedBinding,
   isInferredBinding,
   isVerifiedBinding,
+  libAdoptionLabel,
   matchesBindingFilter,
   repositoryMatches,
   summarizeBinding,
@@ -395,6 +396,8 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
   const language = createMemo(() => getRepositoryLanguage(props.repo));
   const remote = createMemo(() => summarizeRemote(props.repo));
   const binding = createMemo(() => summarizeBinding(props.repo));
+  const dependsOn = createMemo(() => props.repo.dependsOn ?? []);
+  const isLib = createMemo(() => props.repo.bucket === 'libs');
   const manifestLabels = createMemo(() => (props.repo.manifests ?? []).map((manifest) => manifest.path));
   const packageManagers = createMemo(() => props.repo.packageManagers ?? []);
   const docFlags = createMemo(() => [
@@ -530,6 +533,23 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
             {manifestLabels().length > 0 ? manifestLabels().join(', ') : 'None'}
           </span>
         </div>
+        <Show when={!isLib() && dependsOn().length > 0}>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="heading-label min-w-[58px]">Uses libs</span>
+            <span class="truncate font-mono text-text-muted" title={dependsOn().join(', ')}>{dependsOn().join(', ')}</span>
+          </div>
+        </Show>
+        <Show when={isLib()}>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="heading-label min-w-[58px]">Adoption</span>
+            <span
+              class={`truncate ${(props.repo.usedBy?.length ?? 0) > 0 ? 'text-text-muted' : 'text-text-dim/60'}`}
+              title={libAdoptionLabel(props.repo)}
+            >
+              {libAdoptionLabel(props.repo)}
+            </span>
+          </div>
+        </Show>
         <Show
           when={readiness().reasons.length > 0}
           fallback={<div class="text-text-muted">No local review flags from scanner metadata.</div>}
