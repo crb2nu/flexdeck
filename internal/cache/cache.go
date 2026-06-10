@@ -233,15 +233,21 @@ func (c *Cache) readValue(ctx context.Context, fullKey string) ([]byte, bool) {
 }
 
 func (c *Cache) storeFetchedValue(ctx context.Context, fullKey, staleKey string, data []byte, opts FetchOptions) {
+	// A slow fetch may have consumed the caller's entire deadline by the time it
+	// returns data. The writes must still happen — dropping them means every
+	// subsequent request repeats the expensive fetch.
+	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	ttl := applyTTLJitter(opts.TTL, opts.JitterFraction)
 	if ttl >= 0 {
-		if setErr := c.redis.Set(ctx, fullKey, data, ttl).Err(); setErr != nil {
+		if setErr := c.redis.Set(storeCtx, fullKey, data, ttl).Err(); setErr != nil {
 			slog.Warn("cache set error", "key", fullKey, "error", setErr)
 		}
 	}
 
 	if opts.useStale() {
-		if setErr := c.redis.Set(ctx, staleKey, data, opts.StaleTTL).Err(); setErr != nil {
+		if setErr := c.redis.Set(storeCtx, staleKey, data, opts.StaleTTL).Err(); setErr != nil {
 			slog.Warn("cache stale set error", "key", staleKey, "error", setErr)
 		}
 	}
