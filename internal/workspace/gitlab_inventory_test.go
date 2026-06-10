@@ -110,3 +110,40 @@ func hasManifestFile(r Repository, file string) bool {
 	}
 	return false
 }
+
+func TestScanGitLabRejectsDeadlineExhaustedPartialScan(t *testing.T) {
+	// Regression: when per-repo calls outlive the context, the scan used to
+	// return a partial inventory (repos with errors, no manifests) that the
+	// handler then cached for the full TTL + stale window.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v4/projects", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"id":1,"path":"loom","path_with_namespace":"services/loom","default_branch":"main","web_url":"https://gl/services/loom"}
+		]`))
+	})
+	mux.HandleFunc("/api/v4/projects/1/repository/tree", func(w http.ResponseWriter, r *http.Request) {
+		cancel() // the per-repo phase exhausts the caller's budget
+		<-r.Context().Done()
+	})
+	mux.HandleFunc("/api/v4/projects/1/languages", func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	inv, err := ScanGitLab(ctx, GitLabScanOptions{
+		BaseURL: ts.URL,
+		Token:   "test-token",
+		Buckets: []string{"services", "libs"},
+	})
+	if err == nil {
+		t.Fatalf("expected error for deadline-exhausted scan, got inventory with %d repos", inv.Totals.Repositories)
+	}
+}

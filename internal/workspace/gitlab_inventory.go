@@ -100,6 +100,15 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 	}
 	wg.Wait()
 
+	// A scan that outlived its context produced a partial inventory: cancelled
+	// tree/languages calls leave repos with scanner errors and no manifests.
+	// Refuse to return it — the caller's cache layer would otherwise serve the
+	// partial result for its full TTL + stale window. Failing here lets the
+	// previous (complete) stale value keep serving instead.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("scan incomplete: %w", err)
+	}
+
 	sort.Slice(repos, func(a, b int) bool {
 		if repos[a].Bucket != repos[b].Bucket {
 			return repos[a].Bucket < repos[b].Bucket
