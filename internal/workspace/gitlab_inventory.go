@@ -61,7 +61,7 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 	}
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
-		concurrency = 8
+		concurrency = 16
 	}
 
 	gl := &gitlabAPI{base: base, token: opts.Token, client: client}
@@ -154,7 +154,9 @@ func (g *gitlabAPI) listProjects(ctx context.Context) ([]glProject, error) {
 	var all []glProject
 	for page := 1; page <= 20; page++ {
 		var batch []glProject
-		path := fmt.Sprintf("/api/v4/projects?simple=false&per_page=100&page=%d&order_by=path&sort=asc", page)
+		// simple=true payloads still carry everything glProject needs (id,
+		// paths, default_branch, web_url) at roughly half the response time.
+		path := fmt.Sprintf("/api/v4/projects?simple=true&per_page=100&page=%d&order_by=path&sort=asc", page)
 		if err := g.get(ctx, path, &batch); err != nil {
 			return nil, err
 		}

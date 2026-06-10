@@ -23,7 +23,11 @@ func (h *Handler) WorkspaceRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scanCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	// A full GitLab scan is ~110 sequential-ish API calls against a slow
+	// instance; 20s was never enough, so every request ran to the deadline and
+	// returned a partial inventory. The budget must cover a complete cold scan —
+	// warm requests are served from cache and never feel this.
+	scanCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
 
 	// Captured once per request so the cached background refresh can reuse it.
@@ -56,11 +60,14 @@ func (h *Handler) WorkspaceRepos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cache != nil {
+		// The inventory changes on the cadence of repo pushes, not seconds. Long
+		// TTLs + a wide stale window keep the page instant and make cold scans
+		// rare; freshness comes from the stale-triggered background refresh.
 		cached, err := h.cache.GetOrFetchWithOptions(scanCtx, "workspace:repos", cache.FetchOptions{
-			TTL:                      30 * time.Second,
-			StaleTTL:                 2 * time.Minute,
+			TTL:                      5 * time.Minute,
+			StaleTTL:                 30 * time.Minute,
 			JitterFraction:           0.1,
-			BackgroundRefreshTimeout: 20 * time.Second,
+			BackgroundRefreshTimeout: 60 * time.Second,
 		}, scan)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")

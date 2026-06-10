@@ -446,3 +446,49 @@ func TestGetOrFetchSmoothServesStaleWhileRevalidating(t *testing.T) {
 		t.Fatalf("expected 2 fetch calls (initial + background), got %d", got)
 	}
 }
+
+func TestStoreFetchedValueSurvivesExhaustedCallerContext(t *testing.T) {
+	t.Parallel()
+
+	cache, _ := newTestCache(t)
+
+	// Regression: a fetch slow enough to consume the caller's entire deadline
+	// still returns data, but the cache writes used the same (now dead)
+	// context — so nothing was ever cached and every request re-fetched.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var fetchCalls atomic.Int64
+	opts := FetchOptions{TTL: time.Minute, StaleTTL: 10 * time.Minute}
+	fetch := func(context.Context) ([]byte, error) {
+		fetchCalls.Add(1)
+		cancel() // simulate the fetch exhausting the request deadline
+		return []byte(`{"ok":true}`), nil
+	}
+
+	first, err := cache.GetOrFetchBytesWithOptions(ctx, "slow-key", opts, fetch)
+	if err != nil {
+		t.Fatalf("GetOrFetchBytesWithOptions() returned error: %v", err)
+	}
+
+	// A later request with a healthy context must hit the cache, not re-fetch.
+	second, err := cache.GetOrFetchBytesWithOptions(context.Background(), "slow-key", opts, fetch)
+	if err != nil {
+		t.Fatalf("second GetOrFetchBytesWithOptions() returned error: %v", err)
+	}
+	if got := fetchCalls.Load(); got != 1 {
+		t.Fatalf("expected 1 fetch call (second request served from cache), got %d", got)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("cached payload mismatch: first=%s second=%s", first, second)
+	}
+
+	// The stale fallback must have been written as well.
+	stale, err := cache.Get(context.Background(), "slow-key"+staleKeySuffix)
+	if err != nil {
+		t.Fatalf("reading stale key returned error: %v", err)
+	}
+	if string(stale) != string(first) {
+		t.Fatalf("stale payload mismatch: stale=%s first=%s", stale, first)
+	}
+}
