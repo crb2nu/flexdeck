@@ -125,17 +125,17 @@ spec:
                   name: flexdeck-secrets
                   key: hud-push-token
                   optional: true
-            # Stack Explorer inventory root — points at the read-only
-            # workspace NFS mount below (config default $HOME/workspace does
-            # not exist in the pod).
-            - name: WORKSPACE_DIR
-              value: "/workspace"
+            # Stack Explorer reads its inventory from the GitLab API
+            # (GITLAB_TOKEN above), which runs in-cluster and is independent
+            # of the NAS. We deliberately do NOT mount the workspace NFS
+            # export here: a required `hard` NFS volume cannot mount while the
+            # NAS is down, which blocks pod startup and takes the whole
+            # dashboard offline (incident 2026-06-13). WORKSPACE_DIR is left
+            # unset so the disk-scan fallback degrades to a graceful 503
+            # ("workspace unavailable") instead of being a startup dependency.
           volumeMounts:
             - name: data
               mountPath: /data
-            - name: workspace
-              mountPath: /workspace
-              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -166,10 +166,6 @@ spec:
       volumes:
         - name: data
           emptyDir: {}
-        - name: workspace
-          persistentVolumeClaim:
-            claimName: flexdeck-workspace-nfs
-            readOnly: true
       securityContext:
         fsGroup: 1000
         seccompProfile:

@@ -37,7 +37,20 @@ type deploymentManifest struct {
 						Name  string `yaml:"name"`
 						Value string `yaml:"value"`
 					} `yaml:"env"`
+					VolumeMounts []struct {
+						Name      string `yaml:"name"`
+						MountPath string `yaml:"mountPath"`
+					} `yaml:"volumeMounts"`
 				} `yaml:"containers"`
+				Volumes []struct {
+					Name                  string `yaml:"name"`
+					PersistentVolumeClaim *struct {
+						ClaimName string `yaml:"claimName"`
+					} `yaml:"persistentVolumeClaim"`
+					NFS *struct {
+						Server string `yaml:"server"`
+					} `yaml:"nfs"`
+				} `yaml:"volumes"`
 			} `yaml:"spec"`
 		} `yaml:"template"`
 	} `yaml:"spec"`
@@ -189,6 +202,43 @@ func TestPrimaryDeploymentLokiURLTargetsSingleBinaryService(t *testing.T) {
 	}
 	if strings.Contains(got, "loki-gateway") {
 		t.Fatalf("LOKI_URL points at nonexistent loki-gateway service: %q", got)
+	}
+}
+
+// TestPrimaryDeploymentHasNoNASStartupDependency guards against regressing the
+// flexdeck server into a hard dependency on the workspace NFS export. On
+// 2026-06-13 a NAS outage left the required `hard` NFS volume unmountable, so
+// the pod was stuck ContainerCreating for ~14h, the Service had zero
+// endpoints, and the entire dashboard returned 100% ingress errors. Stack
+// Explorer now reads its inventory from the in-cluster GitLab API, so the pod
+// must not mount any PVC/NFS-backed volume that could block startup when the
+// NAS is down.
+func TestPrimaryDeploymentHasNoNASStartupDependency(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read deployment manifest: %v", err)
+	}
+
+	var deployment deploymentManifest
+	if err := yaml.Unmarshal(content, &deployment); err != nil {
+		t.Fatalf("decode deployment manifest: %v", err)
+	}
+
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil {
+			t.Fatalf("primary deployment must not mount a PVC-backed volume (volume %q claims %q); it makes pod startup depend on external storage availability", vol.Name, vol.PersistentVolumeClaim.ClaimName)
+		}
+		if vol.NFS != nil {
+			t.Fatalf("primary deployment must not mount an NFS-backed volume (volume %q server %q); it makes pod startup depend on NAS availability", vol.Name, vol.NFS.Server)
+		}
+	}
+
+	for _, container := range deployment.Spec.Template.Spec.Containers {
+		for _, mount := range container.VolumeMounts {
+			if mount.MountPath == "/workspace" {
+				t.Fatalf("container %q must not mount /workspace; the workspace NFS dependency caused the 2026-06-13 dashboard outage", container.Name)
+			}
+		}
 	}
 }
 
