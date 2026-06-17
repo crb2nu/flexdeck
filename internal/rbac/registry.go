@@ -5,36 +5,46 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
-// Registry manages RBAC users with JSON file persistence.
+// Registry manages RBAC users, persisting them through a pluggable userStore.
 type Registry struct {
-	mu       sync.RWMutex
-	users    map[string]*User
-	byHash   map[string]*User // tokenHash -> user (lookup index)
-	filePath string
+	mu     sync.RWMutex
+	users  map[string]*User
+	byHash map[string]*User // tokenHash -> user (lookup index)
+	store  userStore
 }
 
-// NewRegistry creates a new RBAC registry, loading from file and optionally
-// bootstrapping an admin user when the registry is empty and AdminToken is set.
+// NewRegistry creates a file-backed RBAC registry, loading from disk and
+// optionally bootstrapping an admin user when the registry is empty and
+// AdminToken is set.
 func NewRegistry(cfg config.RBACConfig) (*Registry, error) {
+	return newRegistry(cfg, fileStore{path: cfg.UsersPath})
+}
+
+// NewRedisRegistry creates a Redis-backed RBAC registry. Durability is provided
+// by the Redis deployment, keeping the flexdeck server pod free of any
+// external-storage startup dependency.
+func NewRedisRegistry(cfg config.RBACConfig, client *redis.Client) (*Registry, error) {
+	return newRegistry(cfg, redisStore{client: client, key: redisUsersKey})
+}
+
+func newRegistry(cfg config.RBACConfig, store userStore) (*Registry, error) {
 	r := &Registry{
-		users:    make(map[string]*User),
-		byHash:   make(map[string]*User),
-		filePath: cfg.UsersPath,
+		users:  make(map[string]*User),
+		byHash: make(map[string]*User),
+		store:  store,
 	}
 
-	if err := r.load(); err != nil && !os.IsNotExist(err) {
+	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("failed to load RBAC registry: %w", err)
 	}
 
@@ -208,14 +218,9 @@ func HasPermission(user *User, perm Permission) bool {
 // --- persistence ---
 
 func (r *Registry) load() error {
-	data, err := os.ReadFile(r.filePath)
+	users, err := r.store.Load()
 	if err != nil {
 		return err
-	}
-
-	var users []*User
-	if err := json.Unmarshal(data, &users); err != nil {
-		return fmt.Errorf("failed to parse RBAC registry: %w", err)
 	}
 
 	r.users = make(map[string]*User, len(users))
@@ -234,17 +239,7 @@ func (r *Registry) save() error {
 	for _, u := range r.users {
 		users = append(users, u)
 	}
-
-	data, err := json.MarshalIndent(users, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal RBAC registry: %w", err)
-	}
-
-	dir := filepath.Dir(r.filePath)
-	if dir != "" && dir != "." {
-		_ = os.MkdirAll(dir, 0755)
-	}
-	return os.WriteFile(r.filePath, data, 0644)
+	return r.store.Save(users)
 }
 
 // --- helpers ---
