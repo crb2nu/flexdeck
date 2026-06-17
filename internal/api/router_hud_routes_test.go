@@ -38,6 +38,7 @@ func TestRouter_HUDClaimsAndCancelRoutesProxyThrough(t *testing.T) {
 
 	cfg := &config.Config{
 		AllowedOrigins: []string{"*"},
+		RBAC:           config.RBACConfig{Disabled: true},
 		LoomHUD: config.LoomHUDConfig{
 			Disabled: false,
 			URL:      upstream.URL,
@@ -108,6 +109,7 @@ func TestRouter_HUDClaimsUnavailableWhenDisabled(t *testing.T) {
 
 	cfg := &config.Config{
 		AllowedOrigins: []string{"*"},
+		RBAC:           config.RBACConfig{Disabled: true},
 		LoomHUD: config.LoomHUDConfig{
 			Disabled: true,
 			URL:      upstream.URL,
@@ -135,6 +137,7 @@ func TestRouter_HUDCapabilitiesExposeDirectEntryState(t *testing.T) {
 
 	router := NewRouterWithDeps(&config.Config{
 		AllowedOrigins: []string{"*"},
+		RBAC:           config.RBACConfig{Disabled: true},
 		LoomHUD: config.LoomHUDConfig{
 			Disabled:  false,
 			URL:       "http://mobile-hud.loom-hub.svc.cluster.local",

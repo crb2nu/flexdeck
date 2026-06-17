@@ -27,6 +27,16 @@ func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm
 	return NewRouterWithDeps(cfg, k8sClient, litellmClient, metricsStore, nil)
 }
 
+// rbacUnavailableHandler rejects every request with 503 Service Unavailable. It
+// guards the protected route group when RBAC is enabled by configuration but its
+// registry failed to initialize, ensuring the group never falls back to
+// legacy-token or unauthenticated access (fail closed).
+func rbacUnavailableHandler(http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "rbac enabled but unavailable", http.StatusServiceUnavailable)
+	})
+}
+
 func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store, deps *handlers.HandlerDeps) chi.Router {
 	r := chi.NewRouter()
 
@@ -105,9 +115,15 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	}
 
 	r.Group(func(r chi.Router) {
-		if rbacMiddleware != nil {
+		switch {
+		case rbacMiddleware != nil:
 			r.Use(rbacMiddleware.Handler)
-		} else if cfg.Token != "" {
+		case !cfg.RBAC.Disabled:
+			// RBAC is enabled by configuration but its registry is unavailable.
+			// Fail closed: never fall back to legacy-token or unauthenticated access
+			// on the protected route group.
+			r.Use(rbacUnavailableHandler)
+		case cfg.Token != "":
 			r.Use(authMiddleware.Handler)
 		}
 

@@ -71,6 +71,29 @@ func TestRouter_Phase4RoutesStayUnavailableWhenDependenciesMissing(t *testing.T)
 	assertStatus(t, router, http.MethodGet, "/api/clusters/", http.StatusNotFound)
 }
 
+// TestRouter_RBACEnabledFailsClosedWhenRegistryUnavailable verifies that when RBAC
+// is enabled by configuration but its registry is unavailable, the protected route
+// group fails closed (503) instead of falling back to unauthenticated access.
+func TestRouter_RBACEnabledFailsClosedWhenRegistryUnavailable(t *testing.T) {
+	t.Parallel()
+
+	router := newPhase4RouterWithMissingDeps(t)
+
+	// Protected, non-RBAC routes must not serve unauthenticated traffic.
+	assertStatus(t, router, http.MethodGet, "/api/dashboard/summary", http.StatusServiceUnavailable)
+	assertStatus(t, router, http.MethodGet, "/api/ui/config", http.StatusServiceUnavailable)
+
+	// A bearer token must not unlock the routes either: the registry is gone, so
+	// there is nothing to authenticate against and the group stays closed.
+	req := httptest.NewRequest(http.MethodGet, "/api/dashboard/summary", nil)
+	req.Header.Set("Authorization", "Bearer "+phase4AdminToken)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("authenticated /api/dashboard/summary status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func newPhase4RouterWithMissingDeps(t *testing.T) http.Handler {
 	t.Helper()
 
