@@ -187,8 +187,9 @@ type AlertmanagerConfig struct {
 
 type RBACConfig struct {
 	Disabled   bool
-	UsersPath  string // JSON file for user/role persistence
+	UsersPath  string // JSON file for user/role persistence (used when RedisURL is empty)
 	AdminToken string // Bootstrap admin token (creates admin user on first run)
+	RedisURL   string // When set, users persist to this dedicated Redis instead of UsersPath
 }
 
 type AuditConfig struct {
@@ -315,6 +316,7 @@ func Load() (*Config, error) {
 			Disabled:   parseBool(getEnv("RBAC_DISABLED", "true")),
 			UsersPath:  getEnv("RBAC_USERS_PATH", "/data/rbac-users.json"),
 			AdminToken: getEnv("RBAC_ADMIN_TOKEN", ""),
+			RedisURL:   getEnv("RBAC_REDIS_URL", ""),
 		},
 
 		Audit: AuditConfig{

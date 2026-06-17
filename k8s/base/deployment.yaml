@@ -96,6 +96,11 @@ spec:
             # Redis (cache, pipeline trends, metrics buffering)
             - name: REDIS_URL
               value: "redis://redis.flexdeck.svc.cluster.local:6379/0"
+            # Dedicated durable Redis for RBAC user persistence (separate from the
+            # LRU cache above). Inert while RBAC_DISABLED=true; consumed only when
+            # RBAC is enabled. See redis-rbac.yaml.
+            - name: RBAC_REDIS_URL
+              value: "redis://redis-rbac.flexdeck.svc.cluster.local:6379/0"
             # AI namespace for FlexInfer CRDs
             - name: AI_NAMESPACE
               value: "flexinfer-system"
