@@ -101,6 +101,17 @@ spec:
             # RBAC is enabled. See redis-rbac.yaml.
             - name: RBAC_REDIS_URL
               value: "redis://redis-rbac.flexdeck.svc.cluster.local:6379/0"
+            # RBAC enablement: enforce role-based auth on the authenticated API.
+            # The admin user is bootstrapped from rbac-admin-token on first run;
+            # users persist in redis-rbac. Rollback = set RBAC_DISABLED back to
+            # "true" (reverts to the prior open/legacy-token posture).
+            - name: RBAC_DISABLED
+              value: "false"
+            - name: RBAC_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: rbac-admin-token
             # AI namespace for FlexInfer CRDs
             - name: AI_NAMESPACE
               value: "flexinfer-system"
