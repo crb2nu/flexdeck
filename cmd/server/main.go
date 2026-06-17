@@ -167,16 +167,30 @@ func main() {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
-		rbacRegistry, err := rbac.NewRegistry(cfg.RBAC)
+		var rbacRegistry *rbac.Registry
+		var err error
+		if cfg.RBAC.RedisURL != "" {
+			// Dedicated, durable Redis instance (AOF + PVC, no eviction) keeps the
+			// user set persistent without giving the flexdeck pod a PVC startup
+			// dependency. A connection failure here is fatal (fail closed).
+			rbacRedis, cerr := cache.NewRedisClient(config.RedisConfig{URL: cfg.RBAC.RedisURL})
+			if cerr != nil {
+				slog.Error("RBAC enabled but dedicated Redis is unavailable; refusing to start", "error", cerr, "url", cfg.RBAC.RedisURL)
+				os.Exit(1)
+			}
+			rbacRegistry, err = rbac.NewRedisRegistry(cfg.RBAC, rbacRedis)
+		} else {
+			rbacRegistry, err = rbac.NewRegistry(cfg.RBAC)
+		}
 		if err != nil {
 			// RBAC was explicitly enabled but its registry could not be initialized.
 			// Refuse to start rather than boot into a state where protected routes
 			// would serve unauthenticated traffic (fail closed).
-			slog.Error("RBAC enabled but registry initialization failed; refusing to start", "error", err, "path", cfg.RBAC.UsersPath)
+			slog.Error("RBAC enabled but registry initialization failed; refusing to start", "error", err, "path", cfg.RBAC.UsersPath, "redisURL", cfg.RBAC.RedisURL)
 			os.Exit(1)
 		}
 		handlerDeps.RBACRegistry = rbacRegistry
-		slog.Info("RBAC registry initialized", "path", cfg.RBAC.UsersPath)
+		slog.Info("RBAC registry initialized", "usersPath", cfg.RBAC.UsersPath, "redisURL", cfg.RBAC.RedisURL)
 	}
 
 	// Initialize audit store (requires Redis)

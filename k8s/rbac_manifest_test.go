@@ -257,6 +257,129 @@ func TestPrimaryServiceDoesNotSelectPublicPods(t *testing.T) {
 	}
 }
 
+type redisRBACManifest struct {
+	Kind string `yaml:"kind"`
+	Spec struct {
+		Strategy struct {
+			Type string `yaml:"type"`
+		} `yaml:"strategy"`
+		Template struct {
+			Spec struct {
+				Containers []struct {
+					Args         []string `yaml:"args"`
+					VolumeMounts []struct {
+						MountPath string `yaml:"mountPath"`
+					} `yaml:"volumeMounts"`
+				} `yaml:"containers"`
+				Volumes []struct {
+					PersistentVolumeClaim *struct {
+						ClaimName string `yaml:"claimName"`
+					} `yaml:"persistentVolumeClaim"`
+				} `yaml:"volumes"`
+			} `yaml:"spec"`
+		} `yaml:"template"`
+	} `yaml:"spec"`
+}
+
+// TestRedisRBACInstanceIsDurableAndNonEvicting guards the load-bearing
+// properties of the dedicated RBAC Redis: AOF persistence on a PVC and a
+// noeviction policy. Regressing any of these would silently lose RBAC users
+// (the cache Redis uses allkeys-lru, which is why RBAC needs its own instance).
+func TestRedisRBACInstanceIsDurableAndNonEvicting(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "redis-rbac.yaml"))
+	if err != nil {
+		t.Fatalf("read redis-rbac manifest: %v", err)
+	}
+
+	var pvcFound bool
+	var deployment *redisRBACManifest
+	decoder := yaml.NewDecoder(strings.NewReader(string(content)))
+	for {
+		var doc redisRBACManifest
+		err := decoder.Decode(&doc)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("decode redis-rbac manifest: %v", err)
+		}
+		switch doc.Kind {
+		case "PersistentVolumeClaim":
+			pvcFound = true
+		case "Deployment":
+			d := doc
+			deployment = &d
+		}
+	}
+
+	if !pvcFound {
+		t.Fatal("expected redis-rbac to declare a PersistentVolumeClaim for durable storage")
+	}
+	if deployment == nil {
+		t.Fatal("expected a redis-rbac Deployment")
+	}
+	if deployment.Spec.Strategy.Type != "Recreate" {
+		t.Fatalf("redis-rbac strategy = %q, want Recreate (RWO PVC cannot attach to two pods)", deployment.Spec.Strategy.Type)
+	}
+	if len(deployment.Spec.Template.Spec.Containers) == 0 {
+		t.Fatal("expected at least one container in redis-rbac")
+	}
+
+	args := deployment.Spec.Template.Spec.Containers[0].Args
+	if !argPairPresent(args, "--appendonly", "yes") {
+		t.Fatalf("redis-rbac must run with --appendonly yes (AOF durability); args=%v", args)
+	}
+	if !argPairPresent(args, "--maxmemory-policy", "noeviction") {
+		t.Fatalf("redis-rbac must run with --maxmemory-policy noeviction (never evict the user set); args=%v", args)
+	}
+
+	var pvcVolume bool
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil {
+			pvcVolume = true
+		}
+	}
+	if !pvcVolume {
+		t.Fatal("expected redis-rbac pod to mount its PersistentVolumeClaim")
+	}
+}
+
+// TestPrimaryDeploymentWiresRBACRedisURL ensures the flexdeck server points RBAC
+// persistence at the dedicated redis-rbac service rather than the LRU cache.
+func TestPrimaryDeploymentWiresRBACRedisURL(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read deployment manifest: %v", err)
+	}
+
+	var deployment deploymentManifest
+	if err := yaml.Unmarshal(content, &deployment); err != nil {
+		t.Fatalf("decode deployment manifest: %v", err)
+	}
+	if len(deployment.Spec.Template.Spec.Containers) == 0 {
+		t.Fatal("expected at least one container")
+	}
+
+	env := map[string]string{}
+	for _, item := range deployment.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item.Value
+	}
+	const want = "redis://redis-rbac.flexdeck.svc.cluster.local:6379/0"
+	if got := env["RBAC_REDIS_URL"]; got != want {
+		t.Fatalf("RBAC_REDIS_URL = %q, want %q", got, want)
+	}
+}
+
+// argPairPresent reports whether args contains flag immediately followed by value.
+func argPairPresent(args []string, flag, value string) bool {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) && args[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

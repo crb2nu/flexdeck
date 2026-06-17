@@ -1,0 +1,126 @@
+# Dedicated, durable Redis for RBAC user persistence.
+#
+# This is intentionally SEPARATE from the cache Redis (redis.yaml), which runs
+# allkeys-lru and would evict the user set under memory pressure. RBAC data must
+# never be evicted, so this instance uses noeviction + AOF persistence on its own
+# PVC. The PVC lives on THIS pod, not the flexdeck server pod, so it does not
+# reintroduce the no-startup-dependency guard violation
+# (k8s/rbac_manifest_test.go); if this Redis is down, RBAC fails closed (503)
+# while the rest of the dashboard degrades gracefully.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-rbac-data
+  namespace: flexdeck
+  labels:
+    app.kubernetes.io/name: redis-rbac
+    app.kubernetes.io/component: rbac-store
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-rbac
+  namespace: flexdeck
+  labels:
+    app.kubernetes.io/name: redis-rbac
+    app.kubernetes.io/component: rbac-store
+spec:
+  replicas: 1
+  # Recreate (not RollingUpdate): the ReadWriteOnce PVC can only attach to one
+  # pod at a time, so the old pod must terminate before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-rbac
+      app.kubernetes.io/component: rbac-store
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-rbac
+        app.kubernetes.io/component: rbac-store
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # AOF on for durability; noeviction so the user set is never dropped;
+          # an explicit maxmemory bounds the pod, and noeviction turns an
+          # (effectively impossible for tiny user data) overflow into a loud
+          # write error rather than silent data loss.
+          args:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            - "--maxmemory"
+            - "48mb"
+            - "--maxmemory-policy"
+            - "noeviction"
+            - "--dir"
+            - "/data"
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-rbac-data
+      securityContext:
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-rbac
+  namespace: flexdeck
+  labels:
+    app.kubernetes.io/name: redis-rbac
+    app.kubernetes.io/component: rbac-store
+spec:
+  selector:
+    app.kubernetes.io/name: redis-rbac
+    app.kubernetes.io/component: rbac-store
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
