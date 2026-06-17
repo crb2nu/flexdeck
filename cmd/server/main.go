@@ -169,11 +169,14 @@ func main() {
 		}
 		rbacRegistry, err := rbac.NewRegistry(cfg.RBAC)
 		if err != nil {
-			slog.Warn("failed to create RBAC registry", "error", err)
-		} else {
-			handlerDeps.RBACRegistry = rbacRegistry
-			slog.Info("RBAC registry initialized", "path", cfg.RBAC.UsersPath)
+			// RBAC was explicitly enabled but its registry could not be initialized.
+			// Refuse to start rather than boot into a state where protected routes
+			// would serve unauthenticated traffic (fail closed).
+			slog.Error("RBAC enabled but registry initialization failed; refusing to start", "error", err, "path", cfg.RBAC.UsersPath)
+			os.Exit(1)
 		}
+		handlerDeps.RBACRegistry = rbacRegistry
+		slog.Info("RBAC registry initialized", "path", cfg.RBAC.UsersPath)
 	}
 
 	// Initialize audit store (requires Redis)
