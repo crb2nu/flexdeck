@@ -49,6 +49,16 @@ vi.mock('./components/Navigation/ClusterSelector', () => ({
   default: () => <div data-testid="cluster-selector">cluster selector</div>,
 }));
 
+// The RBAC login gate is covered by stores/auth.test.ts; here it is a passthrough
+// so AppLayout's own behavior (nav, drawer, routing) is tested in isolation.
+vi.mock('./components/Auth/LoginGate', () => ({
+  default: (props: { children?: unknown }) => props.children,
+}));
+
+vi.mock('./components/Auth/AuthBadge', () => ({
+  default: () => null,
+}));
+
 import AppLayout from './AppLayout';
 
 function mount(path = '/') {
