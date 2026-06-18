@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { authenticatedFetch } from "../../stores/auth";
+import { authenticatedFetch, notifyUnauthorized } from "../../stores/auth";
 import { getApiBasePath } from "./base";
 
 interface ApiErrorDetail {
@@ -87,6 +87,12 @@ export async function api<T>(
   });
 
   if (!response.ok) {
+    // A 401 means RBAC rejected the request (missing/expired/revoked token).
+    // Re-open the login gate so the user can re-authenticate instead of staring
+    // at an empty dashboard.
+    if (response.status === 401) {
+      notifyUnauthorized();
+    }
     let message = `Request failed: ${response.status}`;
     const contentType = response.headers.get("content-type") || "";
     try {

@@ -6,6 +6,8 @@ import CommandPalette from './components/QuickLaunch/CommandPalette';
 import ShortcutsOverlay from './components/QuickLaunch/ShortcutsOverlay';
 import SystemCore from './components/Navigation/SystemCore';
 import ClusterSelector from './components/Navigation/ClusterSelector';
+import LoginGate from './components/Auth/LoginGate';
+import AuthBadge from './components/Auth/AuthBadge';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { buildNavItems, isNavItemActive } from './lib/featureFlags';
 
@@ -130,6 +132,7 @@ const AppLayout: Component<ParentProps> = (props) => {
                 <span>⌘K</span>
              </div>
 
+            <AuthBadge />
             <ClusterSelector />
             <SystemCore />
           </div>
@@ -200,7 +203,9 @@ const AppLayout: Component<ParentProps> = (props) => {
                 </div>
             </div>
         }>
-          {props.children}
+          <LoginGate>
+            {props.children}
+          </LoginGate>
         </Suspense>
       </main>
 
