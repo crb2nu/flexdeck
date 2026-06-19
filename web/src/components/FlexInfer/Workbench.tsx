@@ -858,8 +858,9 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                 <thead>
                   <tr class="border-b border-white/5 text-left text-text-dim">
                     <th class="px-4 py-3 font-medium">Model</th>
-                    <th class="px-4 py-3 font-medium">Backend</th>
+                    <th class="px-4 py-3 font-medium">Upstream</th>
                     <th class="px-4 py-3 font-medium text-right">RPM</th>
+                    <th class="px-4 py-3 font-medium text-right">TPM</th>
                     <th class="px-4 py-3 font-medium text-right">Max tokens</th>
                   </tr>
                 </thead>
@@ -868,7 +869,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                     each={stableRouterModels()}
                     fallback={
                       <tr>
-                        <td class="px-4 py-5 text-center text-text-dim" colSpan={4}>
+                        <td class="px-4 py-5 text-center text-text-dim" colSpan={5}>
                           No router mapping available.
                         </td>
                       </tr>
@@ -877,9 +878,10 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                     {(entry) => (
                       <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                         <td class="px-4 py-3 font-mono text-text-main">{entry.model_name}</td>
-                        <td class="px-4 py-3 font-mono text-text-dim">{entry.litellm_params?.api_base || entry.litellm_params?.model || '—'}</td>
-                        <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.litellm_params?.rpm || '—'}</td>
-                        <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.model_info?.max_tokens?.toLocaleString() || '—'}</td>
+                        <td class="px-4 py-3 font-mono text-text-dim">{entry.litellm_params?.model || '—'}</td>
+                        <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.litellm_params?.rpm?.toLocaleString() || '—'}</td>
+                        <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.litellm_params?.tpm?.toLocaleString() || '—'}</td>
+                        <td class="px-4 py-3 text-right font-mono text-text-muted">{entry.litellm_params?.max_tokens?.toLocaleString() || '—'}</td>
                       </tr>
                     )}
                   </For>
