@@ -148,6 +148,68 @@ flexinfer_proxy_scale_ups_total{model="model-a"} 1
 	}
 }
 
+func TestParsePrometheusMetricsDerivesLatencyPercentiles(t *testing.T) {
+	// Cumulative histogram: 100 observations spread so the quantiles land on
+	// deterministic interpolated values.
+	body := []byte(`
+flexinfer_proxy_requests_total{model="model-a",status="200"} 100
+flexinfer_proxy_request_duration_seconds_bucket{model="model-a",le="0.1"} 0
+flexinfer_proxy_request_duration_seconds_bucket{model="model-a",le="0.5"} 50
+flexinfer_proxy_request_duration_seconds_bucket{model="model-a",le="1.0"} 90
+flexinfer_proxy_request_duration_seconds_bucket{model="model-a",le="2.0"} 100
+flexinfer_proxy_request_duration_seconds_bucket{model="model-a",le="+Inf"} 100
+flexinfer_proxy_request_duration_seconds_sum{model="model-a"} 70
+flexinfer_proxy_request_duration_seconds_count{model="model-a"} 100
+`)
+
+	got := parsePrometheusMetrics(body)
+	byModel := got["byModel"].(map[string]map[string]float64)
+
+	if _, ok := byModel["_total"]; ok {
+		t.Fatalf("histogram parsing must not synthesize a _total model row")
+	}
+
+	modelA := byModel["model-a"]
+	wants := map[string]float64{
+		"latencyP50Ms": 500,
+		"latencyP95Ms": 1500,
+		"latencyP99Ms": 1900,
+		"latencyAvgMs": 700,
+	}
+	for key, want := range wants {
+		if math.Abs(modelA[key]-want) > 1e-6 {
+			t.Fatalf("byModel[%q]=%v, want %v", key, modelA[key], want)
+		}
+	}
+
+	totals := got["totals"].(map[string]any)
+	for key, want := range wants {
+		got, ok := totals[key].(float64)
+		if !ok {
+			t.Fatalf("totals[%q] missing or wrong type: %v", key, totals[key])
+		}
+		if math.Abs(got-want) > 1e-6 {
+			t.Fatalf("totals[%q]=%v, want %v", key, got, want)
+		}
+	}
+}
+
+func TestParsePrometheusMetricsOmitsLatencyWhenNoHistogram(t *testing.T) {
+	body := []byte(`
+flexinfer_proxy_requests_total{model="model-a",status="200"} 5
+flexinfer_proxy_queue_depth{model="model-a"} 1
+`)
+
+	got := parsePrometheusMetrics(body)
+	modelA := got["byModel"].(map[string]map[string]float64)["model-a"]
+
+	for _, key := range []string{"latencyP50Ms", "latencyP95Ms", "latencyP99Ms", "latencyAvgMs"} {
+		if _, present := modelA[key]; present {
+			t.Fatalf("expected %q to be absent when no histogram is exported", key)
+		}
+	}
+}
+
 func TestFlexInferProxyHealthAcceptsPlainTextHealthz(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/healthz" {
