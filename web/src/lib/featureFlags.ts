@@ -53,12 +53,28 @@ function enabled(features: FeatureMap, key: string): boolean {
   return features[key]?.enabled ?? false;
 }
 
+// Defaults ON: a flag that the backend has not yet published (undefined)
+// counts as enabled. Used for in-flight features that ship the frontend
+// ahead of (or alongside) the backend flag.
+function enabledByDefault(features: FeatureMap, key: string): boolean {
+  return features[key]?.enabled ?? true;
+}
+
+// Projects nav is gated by `projects.enabled`, defaulting ON until the
+// backend flag is published. Set `projects: { enabled: false }` to hide it.
+export function isProjectsEnabled(features: FeatureMap): boolean {
+  return enabledByDefault(features, 'projects');
+}
+
 export function isAdminEnabled(features: FeatureMap): boolean {
   return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
 }
 
 export function buildNavItems(features: FeatureMap): NavItem[] {
   const items = [...baseNavItems];
+  if (isProjectsEnabled(features)) {
+    items.push({ label: 'Projects', path: '/projects' });
+  }
   if (isAdminEnabled(features)) {
     items.push({ label: 'Admin', path: '/admin' });
   }
