@@ -16,6 +16,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
+	"github.com/flexinfer/flexdeck/internal/qdrant"
 	"github.com/flexinfer/flexdeck/internal/rbac"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -46,6 +47,7 @@ type Handler struct {
 	metricsStore           *metrics.Store
 	cache                  *cache.Cache
 	gitlabClient           *http.Client
+	qdrant                 qdrantScroller
 	dynamicClientForConfig func(*rest.Config) (dynamic.Interface, error)
 
 	// Infrastructure cache worker
@@ -108,11 +110,18 @@ func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Clien
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
 		gitlabClient: newGitLabClient(),
+		qdrant:       newQdrantClient(cfg),
 	}
 	if metricsStore != nil {
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
 	}
 	return h
+}
+
+// newQdrantClient builds the read-only Qdrant client from config. It always
+// returns a non-nil client; an unreachable Qdrant degrades at the call site.
+func newQdrantClient(cfg *config.Config) qdrantScroller {
+	return qdrant.New(cfg.Qdrant.URL, qdrant.WithAPIKey(cfg.Qdrant.APIKey))
 }
 
 // NewWithDeps creates a handler with all dependencies
@@ -123,6 +132,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		litellm:      litellmClient,
 		metricsStore: metricsStore,
 		gitlabClient: newGitLabClient(),
+		qdrant:       newQdrantClient(cfg),
 	}
 
 	if deps != nil && deps.Cache != nil {

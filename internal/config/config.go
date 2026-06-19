@@ -76,6 +76,9 @@ type Config struct {
 
 	// Multi-Cluster
 	MultiCluster MultiClusterConfig
+
+	// Qdrant (vector store, read-only — project-tracking federation)
+	Qdrant QdrantConfig
 }
 
 type K8sConfig struct {
@@ -200,6 +203,11 @@ type AuditConfig struct {
 type MultiClusterConfig struct {
 	Disabled     bool
 	RegistryPath string // JSON file for cluster registry persistence
+}
+
+type QdrantConfig struct {
+	URL    string // env: QDRANT_URL, default: http://localhost:6333
+	APIKey string // env: QDRANT_API_KEY (optional; sent as api-key header when set)
 }
 
 func Load() (*Config, error) {
@@ -327,6 +335,11 @@ func Load() (*Config, error) {
 		MultiCluster: MultiClusterConfig{
 			Disabled:     parseBool(getEnv("MULTICLUSTER_DISABLED", "true")),
 			RegistryPath: getEnv("CLUSTERS_REGISTRY_PATH", "/data/clusters.json"),
+		},
+
+		Qdrant: QdrantConfig{
+			URL:    getEnv("QDRANT_URL", "http://localhost:6333"),
+			APIKey: strings.TrimSpace(getEnv("QDRANT_API_KEY", "")),
 		},
 
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),

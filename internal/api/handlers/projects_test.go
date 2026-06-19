@@ -1,0 +1,447 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/flexinfer/flexdeck/internal/config"
+	"github.com/flexinfer/flexdeck/internal/qdrant"
+)
+
+// fakeQdrant is an injectable, goroutine-safe qdrantScroller for hermetic
+// tests. The handler scrolls collections concurrently (errgroup), so the
+// recorded filters must be guarded.
+type fakeQdrant struct {
+	// byCollection maps a collection name to the points it returns.
+	byCollection map[string][]qdrant.Point
+	// errCollections forces an error for the named collections.
+	errCollections map[string]bool
+
+	mu sync.Mutex
+	// lastFilters records the filter passed per collection (for assertions).
+	lastFilters map[string]map[string]any
+}
+
+func (f *fakeQdrant) Scroll(_ context.Context, collection string, filter map[string]any, _ int) ([]qdrant.Point, error) {
+	f.mu.Lock()
+	if f.lastFilters == nil {
+		f.lastFilters = map[string]map[string]any{}
+	}
+	f.lastFilters[collection] = filter
+	f.mu.Unlock()
+
+	if f.errCollections[collection] {
+		return nil, fmt.Errorf("qdrant %s unavailable", collection)
+	}
+	return f.byCollection[collection], nil
+}
+
+// filterFor returns the recorded filter for a collection under the lock.
+func (f *fakeQdrant) filterFor(collection string) map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastFilters[collection]
+}
+
+// newGitLabStub returns an httptest server emulating the GitLab REST endpoints
+// the project handlers touch. handler may override behavior per path.
+func newGitLabStub(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(handler)
+}
+
+func decodeDetail(t *testing.T, body []byte) projectDetail {
+	t.Helper()
+	var d projectDetail
+	if err := json.Unmarshal(body, &d); err != nil {
+		t.Fatalf("decode detail: %v\nbody=%s", err, string(body))
+	}
+	return d
+}
+
+func TestGetProject_MergesAllSources(t *testing.T) {
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/issues"):
+			_, _ = fmt.Fprint(w, `[{"iid":1,"title":"bug","state":"opened","labels":["x"],"web_url":"http://gl/issues/1"}]`)
+		case strings.Contains(r.URL.Path, "/milestones"):
+			_, _ = fmt.Fprint(w, `[{"id":7,"title":"v1","state":"active","due_date":"2999-01-01","web_url":"http://gl/m/7"}]`)
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `[]`)
+		}
+	})
+	defer ts.Close()
+
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantTasksCollection: {
+				{Payload: map[string]any{"id": "t1", "title": "task one", "status": "in_progress", "priority": "high", "session_id": "s1"}},
+				{Payload: map[string]any{"id": "t2", "title": "task two", "status": "completed", "priority": "low", "session_id": "s1"}},
+			},
+			qdrantRisksCollection: {
+				{Payload: map[string]any{"id": "r1", "title": "risk one", "likelihood": "medium", "impact": "high", "status": "open"}},
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	rr := serveProject(h, "services/flexdeck")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+
+	if d.Project != "services/flexdeck" {
+		t.Errorf("project = %q, want services/flexdeck", d.Project)
+	}
+	if d.Partial {
+		t.Errorf("expected partial=false, got true")
+	}
+	if len(d.Issues) != 1 || d.Issues[0].IID != 1 {
+		t.Errorf("issues = %+v", d.Issues)
+	}
+	if len(d.Milestones) != 1 || d.Milestones[0].ID != 7 {
+		t.Errorf("milestones = %+v", d.Milestones)
+	}
+	if len(d.Tasks) != 2 {
+		t.Errorf("tasks len = %d, want 2", len(d.Tasks))
+	}
+	if len(d.Risks) != 1 || d.Risks[0].ID != "r1" {
+		t.Errorf("risks = %+v", d.Risks)
+	}
+	// Decisions are best-effort empty (see fetchProjectDecisions).
+	if len(d.Decisions) != 0 {
+		t.Errorf("decisions = %+v, want empty", d.Decisions)
+	}
+
+	// The Qdrant filter must target the canonical project key.
+	gotFilter := fq.filterFor(qdrantTasksCollection)
+	if fmt.Sprintf("%v", gotFilter) != fmt.Sprintf("%v", qdrant.MatchProject("services/flexdeck")) {
+		t.Errorf("tasks filter = %v, want project match for services/flexdeck", gotFilter)
+	}
+}
+
+func TestGetProject_OneSourceDownIsPartial(t *testing.T) {
+	// GitLab milestones endpoint errors (500); issues still succeed.
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/milestones") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/issues") {
+			_, _ = fmt.Fprint(w, `[{"iid":9,"title":"open","state":"opened","labels":[],"web_url":"u"}]`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `[]`)
+	})
+	defer ts.Close()
+
+	// Risks collection errors (e.g. pm_risks missing); tasks succeed.
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantTasksCollection: {
+				{Payload: map[string]any{"id": "t1", "title": "task", "status": "pending", "priority": "med", "session_id": "s"}},
+			},
+		},
+		errCollections: map[string]bool{qdrantRisksCollection: true},
+	}
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	rr := serveProject(h, "services/flexdeck")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 despite source failure, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+
+	if !d.Partial {
+		t.Errorf("expected partial=true when a source fails")
+	}
+	// Surviving sources are still present.
+	if len(d.Issues) != 1 {
+		t.Errorf("issues should survive, got %+v", d.Issues)
+	}
+	if len(d.Tasks) != 1 {
+		t.Errorf("tasks should survive, got %+v", d.Tasks)
+	}
+	// Failed sources degrade to empty (never nil in JSON).
+	if d.Milestones == nil || len(d.Milestones) != 0 {
+		t.Errorf("milestones should be empty slice, got %+v", d.Milestones)
+	}
+	if d.Risks == nil || len(d.Risks) != 0 {
+		t.Errorf("risks should be empty slice, got %+v", d.Risks)
+	}
+}
+
+func TestGetProject_EmptyProject(t *testing.T) {
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `[]`)
+	})
+	defer ts.Close()
+
+	fq := &fakeQdrant{byCollection: map[string][]qdrant.Point{}}
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	rr := serveProject(h, "services/empty")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+
+	if d.Partial {
+		t.Errorf("expected partial=false for clean-but-empty project")
+	}
+	// All arrays must serialize as [] not null (frozen contract).
+	for name, arr := range map[string]int{
+		"tasks":      len(d.Tasks),
+		"issues":     len(d.Issues),
+		"milestones": len(d.Milestones),
+		"risks":      len(d.Risks),
+		"decisions":  len(d.Decisions),
+	} {
+		if arr != 0 {
+			t.Errorf("%s expected empty, got %d", name, arr)
+		}
+	}
+	body := rr.Body.String()
+	for _, key := range []string{`"tasks":[]`, `"issues":[]`, `"milestones":[]`, `"risks":[]`, `"decisions":[]`} {
+		if !strings.Contains(strings.ReplaceAll(body, " ", ""), key) {
+			t.Errorf("response missing %s; body=%s", key, body)
+		}
+	}
+}
+
+func TestGetProject_URLEncodedIDDecodes(t *testing.T) {
+	var seenIssueURI string
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		// RequestURI is the raw, undecoded request target — Go decodes r.URL.Path,
+		// so the %2F is only observable here.
+		if strings.Contains(r.RequestURI, "/issues") {
+			seenIssueURI = r.RequestURI
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `[]`)
+	})
+	defer ts.Close()
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
+
+	// Drive through the real chi router so {id} parsing matches production.
+	r := chi.NewRouter()
+	r.Get("/api/projects/{id}", h.GetProject)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/projects/services%2Fflexdeck", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+	if d.Project != "services/flexdeck" {
+		t.Errorf("decoded project = %q, want services/flexdeck", d.Project)
+	}
+	// The GitLab issues request must url-encode the project path back into one segment.
+	if !strings.Contains(seenIssueURI, "services%2Fflexdeck") {
+		t.Errorf("issue request-uri = %q, want services%%2Fflexdeck", seenIssueURI)
+	}
+}
+
+func TestListProjects_Rollup(t *testing.T) {
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/projects"):
+			// Project enumeration.
+			_, _ = fmt.Fprint(w, `[{"path_with_namespace":"services/flexdeck"}]`)
+		case strings.Contains(r.URL.Path, "/issues"):
+			_, _ = fmt.Fprint(w, `[{"iid":1,"title":"a","state":"opened","labels":[],"web_url":"u"}]`)
+		case strings.Contains(r.URL.Path, "/milestones"):
+			// Overdue milestone => at risk.
+			_, _ = fmt.Fprint(w, `[{"id":1,"title":"past","state":"active","due_date":"2000-01-01","web_url":"u"}]`)
+		default:
+			_, _ = fmt.Fprint(w, `[]`)
+		}
+	})
+	defer ts.Close()
+
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantTasksCollection: {
+				{Payload: map[string]any{"id": "t1", "status": "pending"}},
+				{Payload: map[string]any{"id": "t2", "status": "completed"}},
+			},
+			qdrantRisksCollection: {
+				{Payload: map[string]any{"id": "r1", "status": "open"}},
+				{Payload: map[string]any{"id": "r2", "status": "closed"}},
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
+	rr := httptest.NewRecorder()
+	h.ListProjects(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp struct {
+		Projects []projectRollup `json:"projects"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode rollup: %v\nbody=%s", err, rr.Body.String())
+	}
+	if len(resp.Projects) != 1 {
+		t.Fatalf("expected 1 project row, got %d", len(resp.Projects))
+	}
+	row := resp.Projects[0]
+	if row.Project != "services/flexdeck" {
+		t.Errorf("project = %q", row.Project)
+	}
+	if row.OpenTasks != 1 {
+		t.Errorf("open_tasks = %d, want 1 (one completed excluded)", row.OpenTasks)
+	}
+	if row.OpenIssues != 1 {
+		t.Errorf("open_issues = %d, want 1", row.OpenIssues)
+	}
+	if row.MilestonesAtRisk != 1 {
+		t.Errorf("milestones_at_risk = %d, want 1 (overdue)", row.MilestonesAtRisk)
+	}
+	if row.OpenRisks != 1 {
+		t.Errorf("open_risks = %d, want 1 (closed excluded)", row.OpenRisks)
+	}
+}
+
+func TestGetProject_QdrantUnreachableNeverErrors(t *testing.T) {
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `[]`)
+	})
+	defer ts.Close()
+
+	// Real Qdrant client pointed at a dead address => Scroll errors,
+	// handler must still 200 with partial=true.
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{
+		cfg:          cfg,
+		gitlabClient: newGitLabClient(),
+		qdrant:       qdrant.New("http://127.0.0.1:0"),
+	}
+
+	rr := serveProject(h, "services/flexdeck")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with dead qdrant, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+	if !d.Partial {
+		t.Errorf("expected partial=true when qdrant unreachable")
+	}
+	if d.Tasks == nil || d.Risks == nil {
+		t.Errorf("failed sources must be empty slices, not nil")
+	}
+}
+
+func TestMilestoneAtRiskWindow(t *testing.T) {
+	cases := []struct {
+		due  string
+		risk bool
+	}{
+		{"2000-01-01", true},  // overdue
+		{"2999-01-01", false}, // far future
+	}
+	for _, c := range cases {
+		ms := []projectMilestone{{State: "active", DueDate: c.due}}
+		got := countMilestonesAtRisk(ms) == 1
+		if got != c.risk {
+			t.Errorf("due %s: at-risk=%v, want %v", c.due, got, c.risk)
+		}
+	}
+	// Closed milestones are never at risk.
+	if countMilestonesAtRisk([]projectMilestone{{State: "closed", DueDate: "2000-01-01"}}) != 0 {
+		t.Errorf("closed milestone counted as at risk")
+	}
+}
+
+func TestGetProject_EmptyIDIsBadRequest(t *testing.T) {
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
+	r := chi.NewRouter()
+	r.Get("/api/projects/{id}", h.GetProject)
+
+	// A whitespace-only id decodes to empty -> 400.
+	req := httptest.NewRequest(http.MethodGet, "/api/projects/%20", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty id, got %d", rr.Code)
+	}
+}
+
+func TestListProjects_GitLabUnconfiguredEmpty(t *testing.T) {
+	// No GitLab token => listProjectPaths returns empty, rollup is an empty list.
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
+	req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
+	rr := httptest.NewRecorder()
+	h.ListProjects(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp struct {
+		Projects []projectRollup `json:"projects"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Projects) != 0 {
+		t.Errorf("expected empty rollup, got %d rows", len(resp.Projects))
+	}
+}
+
+// serveProject invokes GetProject with a chi route context carrying the
+// url-encoded id, mirroring how the router delivers the param.
+func serveProject(h *Handler, project string) *httptest.ResponseRecorder {
+	encoded := url.PathEscape(project)
+	req := httptest.NewRequest(http.MethodGet, "/api/projects/"+encoded, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", encoded)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	h.GetProject(rr, req)
+	return rr
+}
