@@ -80,6 +80,12 @@ spec:
                 secretKeyRef:
                   name: flexdeck-secrets
                   key: gitlab-token
+            # Qdrant (read-only federation source for /api/projects:
+            # agent tasks + pm_risks scrolled by `project` key). Same instance
+            # the loom MCP servers use. Unreachable Qdrant degrades to empty +
+            # partial; never blocks the response.
+            - name: QDRANT_URL
+              value: "http://192.168.50.176:6333"
             # Langfuse (LLM observability)
             - name: LANGFUSE_URL
               value: "http://langfuse-web.ai.svc.cluster.local:3000"

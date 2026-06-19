@@ -60,6 +60,16 @@ describe('featureFlags', () => {
     expect(isNavItemActive('/website-metrics', website!)).toBe(true);
   });
 
+  it('shows Projects nav item by default and hides it when explicitly disabled', () => {
+    expect(buildNavItems({}).some((item) => item.path === '/projects')).toBe(true);
+    expect(
+      buildNavItems({ projects: { enabled: false } }).some((item) => item.path === '/projects'),
+    ).toBe(false);
+    expect(
+      buildNavItems({ projects: { enabled: true } }).some((item) => item.path === '/projects'),
+    ).toBe(true);
+  });
+
   it('exposes Stack as the local workspace inventory nav item', () => {
     const items = buildNavItems({});
     const stack = items.find((item) => item.path === '/stack');
