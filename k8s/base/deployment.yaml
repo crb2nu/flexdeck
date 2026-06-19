@@ -86,6 +86,14 @@ spec:
             # partial; never blocks the response.
             - name: QDRANT_URL
               value: "http://192.168.50.176:6333"
+            # API key for the loom Qdrant (it returns 401 without it). Sent as the
+            # `api-key` header on every scroll. Without this, tasks/risks/decisions
+            # all 401 and the page shows the partial banner.
+            - name: QDRANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: qdrant-api-key
             # Langfuse (LLM observability)
             - name: LANGFUSE_URL
               value: "http://langfuse-web.ai.svc.cluster.local:3000"

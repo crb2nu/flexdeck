@@ -290,13 +290,8 @@ func TestListProjects_Rollup(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/projects"):
-			// Project enumeration.
-			_, _ = fmt.Fprint(w, `[{"path_with_namespace":"services/flexdeck"}]`)
-		case strings.Contains(r.URL.Path, "/issues"):
-			_, _ = fmt.Fprint(w, `[{"iid":1,"title":"a","state":"opened","labels":[],"web_url":"u"}]`)
-		case strings.Contains(r.URL.Path, "/milestones"):
-			// Overdue milestone => at risk.
-			_, _ = fmt.Fprint(w, `[{"id":1,"title":"past","state":"active","due_date":"2000-01-01","web_url":"u"}]`)
+			// Project enumeration carries open_issues_count (no per-project fan-out).
+			_, _ = fmt.Fprint(w, `[{"path_with_namespace":"services/flexdeck","open_issues_count":1}]`)
 		default:
 			_, _ = fmt.Fprint(w, `[]`)
 		}
@@ -306,12 +301,12 @@ func TestListProjects_Rollup(t *testing.T) {
 	fq := &fakeQdrant{
 		byCollection: map[string][]qdrant.Point{
 			qdrantTasksCollection: {
-				{Payload: map[string]any{"id": "t1", "status": "pending"}},
-				{Payload: map[string]any{"id": "t2", "status": "completed"}},
+				{Payload: map[string]any{"id": "t1", "project": "services/flexdeck", "status": "pending"}},
+				{Payload: map[string]any{"id": "t2", "project": "services/flexdeck", "status": "completed"}},
 			},
 			qdrantRisksCollection: {
-				{Payload: map[string]any{"id": "r1", "status": "open"}},
-				{Payload: map[string]any{"id": "r2", "status": "closed"}},
+				{Payload: map[string]any{"id": "r1", "project": "services/flexdeck", "status": "open"}},
+				{Payload: map[string]any{"id": "r2", "project": "services/flexdeck", "status": "closed"}},
 			},
 		},
 	}
@@ -346,10 +341,7 @@ func TestListProjects_Rollup(t *testing.T) {
 		t.Errorf("open_tasks = %d, want 1 (one completed excluded)", row.OpenTasks)
 	}
 	if row.OpenIssues != 1 {
-		t.Errorf("open_issues = %d, want 1", row.OpenIssues)
-	}
-	if row.MilestonesAtRisk != 1 {
-		t.Errorf("milestones_at_risk = %d, want 1 (overdue)", row.MilestonesAtRisk)
+		t.Errorf("open_issues = %d, want 1 (from open_issues_count)", row.OpenIssues)
 	}
 	if row.OpenRisks != 1 {
 		t.Errorf("open_risks = %d, want 1 (closed excluded)", row.OpenRisks)
@@ -384,27 +376,6 @@ func TestGetProject_QdrantUnreachableNeverErrors(t *testing.T) {
 	}
 	if d.Tasks == nil || d.Risks == nil {
 		t.Errorf("failed sources must be empty slices, not nil")
-	}
-}
-
-func TestMilestoneAtRiskWindow(t *testing.T) {
-	cases := []struct {
-		due  string
-		risk bool
-	}{
-		{"2000-01-01", true},  // overdue
-		{"2999-01-01", false}, // far future
-	}
-	for _, c := range cases {
-		ms := []projectMilestone{{State: "active", DueDate: c.due}}
-		got := countMilestonesAtRisk(ms) == 1
-		if got != c.risk {
-			t.Errorf("due %s: at-risk=%v, want %v", c.due, got, c.risk)
-		}
-	}
-	// Closed milestones are never at risk.
-	if countMilestonesAtRisk([]projectMilestone{{State: "closed", DueDate: "2000-01-01"}}) != 0 {
-		t.Errorf("closed milestone counted as at risk")
 	}
 }
 
