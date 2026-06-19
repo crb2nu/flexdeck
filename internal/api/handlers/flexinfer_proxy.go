@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -166,6 +168,13 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 	byModel := metrics["byModel"].(map[string]map[string]float64)
 	requestsByStatus := metrics["requestsByStatus"].(map[string]map[string]float64)
 
+	// Latency histogram accumulators. The proxy already exports request-duration
+	// buckets in the same scrape; we parse them here to derive p50/p95/p99 and
+	// the mean without any additional upstream call. Keyed by model -> le -> count.
+	latencyBuckets := map[string]map[float64]float64{}
+	latencyCount := map[string]float64{}
+	latencySum := map[string]float64{}
+
 	parseErrors := 0
 
 	for _, line := range lines {
@@ -199,6 +208,18 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 			requestsByStatus[model][status] += value
 		case "flexinfer_proxy_request_duration_seconds_sum":
 			legacyLatency[model] += value
+			latencySum[model] += value
+		case "flexinfer_proxy_request_duration_seconds_count":
+			latencyCount[model] += value
+		case "flexinfer_proxy_request_duration_seconds_bucket":
+			le, ok := parseHistogramBound(labels["le"])
+			if !ok {
+				break
+			}
+			if latencyBuckets[model] == nil {
+				latencyBuckets[model] = map[float64]float64{}
+			}
+			latencyBuckets[model][le] = value
 		case "flexinfer_proxy_queue_depth":
 			ensureModelMetrics(byModel, model)["queueDepth"] = value
 			legacyQueueDepth[model] = value
@@ -301,6 +322,38 @@ func parsePrometheusMetrics(body []byte) map[string]any {
 		totals["errorRate"] = totals["errorsTotal"].(float64) / requestsTotal
 	}
 
+	// Derive latency percentiles per model from the histogram buckets, and an
+	// aggregate set summed across all real models (the sum of independent
+	// histograms is itself a valid histogram). Values are only set when data is
+	// present so the UI can distinguish "no traffic" from "0ms".
+	aggBuckets := map[float64]float64{}
+	var aggCount, aggSum float64
+	for model, buckets := range latencyBuckets {
+		if model == "_total" {
+			continue
+		}
+		bucket := ensureModelMetrics(byModel, model)
+		setLatencyPercentiles(bucket, buckets)
+		if c := latencyCount[model]; c > 0 {
+			bucket["latencyAvgMs"] = (latencySum[model] / c) * 1000
+		}
+		for le, v := range buckets {
+			aggBuckets[le] += v
+		}
+		aggCount += latencyCount[model]
+		aggSum += latencySum[model]
+	}
+	if len(aggBuckets) > 0 {
+		aggLatency := map[string]float64{}
+		setLatencyPercentiles(aggLatency, aggBuckets)
+		for k, v := range aggLatency {
+			totals[k] = v
+		}
+	}
+	if aggCount > 0 {
+		totals["latencyAvgMs"] = (aggSum / aggCount) * 1000
+	}
+
 	legacyRequests["_total"] = totals["requestsTotal"].(float64)
 	legacyQueueDepth["_total"] = totals["queueDepth"].(float64)
 	legacyActiveConn["_total"] = totals["activeConnections"].(float64)
@@ -335,6 +388,89 @@ func ensureModelMetrics(byModel map[string]map[string]float64, model string) map
 		}
 	}
 	return byModel[model]
+}
+
+// parseHistogramBound parses a Prometheus histogram "le" label, mapping the
+// "+Inf" sentinel to positive infinity.
+func parseHistogramBound(le string) (float64, bool) {
+	switch le {
+	case "":
+		return 0, false
+	case "+Inf", "Inf":
+		return math.Inf(1), true
+	}
+	v, err := strconv.ParseFloat(le, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// setLatencyPercentiles computes p50/p95/p99 from cumulative histogram buckets
+// (le -> count, in seconds) and writes them into target as milliseconds. Keys
+// are only written when a finite quantile can be resolved.
+func setLatencyPercentiles(target map[string]float64, buckets map[float64]float64) {
+	for _, q := range []struct {
+		key      string
+		quantile float64
+	}{
+		{"latencyP50Ms", 0.50},
+		{"latencyP95Ms", 0.95},
+		{"latencyP99Ms", 0.99},
+	} {
+		if v := histogramQuantile(q.quantile, buckets); !math.IsNaN(v) {
+			target[q.key] = v * 1000
+		}
+	}
+}
+
+// histogramQuantile estimates a quantile from cumulative Prometheus histogram
+// buckets using linear interpolation within the resolved bucket, mirroring
+// PromQL's histogram_quantile. Returns NaN when it cannot be resolved.
+func histogramQuantile(q float64, buckets map[float64]float64) float64 {
+	if len(buckets) < 2 {
+		return math.NaN()
+	}
+	type bound struct {
+		le    float64
+		count float64
+	}
+	bs := make([]bound, 0, len(buckets))
+	for le, count := range buckets {
+		bs = append(bs, bound{le, count})
+	}
+	sort.Slice(bs, func(i, j int) bool { return bs[i].le < bs[j].le })
+
+	total := bs[len(bs)-1].count // the +Inf bucket carries the full count
+	if total <= 0 {
+		return math.NaN()
+	}
+	rank := q * total
+	idx := sort.Search(len(bs), func(i int) bool { return bs[i].count >= rank })
+	if idx >= len(bs) {
+		idx = len(bs) - 1
+	}
+
+	bucketEnd := bs[idx].le
+	countEnd := bs[idx].count
+	var bucketStart, countStart float64
+	if idx > 0 {
+		bucketStart = bs[idx-1].le
+		countStart = bs[idx-1].count
+	}
+
+	// When the quantile falls in the open-ended +Inf bucket, the best estimate is
+	// the largest finite upper bound we observed.
+	if math.IsInf(bucketEnd, 1) {
+		if idx == 0 {
+			return math.NaN()
+		}
+		return bs[idx-1].le
+	}
+	if countEnd == countStart {
+		return bucketEnd
+	}
+	return bucketStart + (bucketEnd-bucketStart)*(rank-countStart)/(countEnd-countStart)
 }
 
 func parsePrometheusLine(line string) (string, map[string]string, float64, bool) {
