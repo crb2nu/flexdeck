@@ -71,6 +71,7 @@ import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
 import ModelTelemetryPanel from './ModelTelemetryPanel';
+import ModelTelemetryDrawer from './ModelTelemetryDrawer';
 import { stableListByKey } from '../../lib/stableList';
 import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput, type SeverityTier } from './severity';
 
@@ -362,6 +363,20 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       if (at !== bt) return at - bt;
       return `${a.model.namespace}/${a.model.name}`.localeCompare(`${b.model.namespace}/${b.model.name}`);
     });
+  });
+
+  // Telemetry drill-in: which proxy model (if any) has its detail drawer open,
+  // and a reverse map from proxy metric name -> CRD coordinates so the drawer
+  // can fetch the richer Prometheus per-model inference series.
+  const [selectedTelemetryModel, setSelectedTelemetryModel] = createSignal<string | null>(null);
+  const proxyModelToCrd = createMemo(() => {
+    const map = new Map<string, { namespace: string; name: string }>();
+    for (const row of modelRows()) {
+      const coords = { namespace: row.model.namespace, name: row.model.name };
+      map.set(row.proxyMetricName || row.model.name, coords);
+      map.set(row.model.name, coords);
+    }
+    return map;
   });
 
   // ----- Fleet Pulse Rail (Region A) data -----
@@ -822,7 +837,16 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           }
         />
 
-        <ModelTelemetryPanel />
+        <ModelTelemetryPanel onSelectModel={setSelectedTelemetryModel} />
+        <Show when={selectedTelemetryModel()}>
+          {(model) => (
+            <ModelTelemetryDrawer
+              model={model()}
+              crd={proxyModelToCrd().get(model())}
+              onClose={() => setSelectedTelemetryModel(null)}
+            />
+          )}
+        </Show>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div class="surface overflow-hidden">
