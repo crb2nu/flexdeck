@@ -266,6 +266,12 @@ export interface FlexInferProxyModelMetrics {
   rateLimitedTotal?: number;
   activationRetriesTotal?: number;
   activationFailuresTotal?: number;
+  // Latency percentiles derived from the proxy request-duration histogram.
+  // Present only when the model has histogram data this scrape (ms).
+  latencyP50Ms?: number;
+  latencyP95Ms?: number;
+  latencyP99Ms?: number;
+  latencyAvgMs?: number;
 }
 
 export interface FlexInferProxyTotals {
@@ -288,6 +294,10 @@ export interface FlexInferProxyTotals {
   rateLimitedTotal?: number;
   activationRetriesTotal?: number;
   activationFailuresTotal?: number;
+  latencyP50Ms?: number;
+  latencyP95Ms?: number;
+  latencyP99Ms?: number;
+  latencyAvgMs?: number;
   errorRate: number;
   parseErrors: number;
 }

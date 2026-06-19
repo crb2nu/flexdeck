@@ -70,6 +70,7 @@ import {
 import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
+import ModelTelemetryPanel from './ModelTelemetryPanel';
 import { stableListByKey } from '../../lib/stableList';
 import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput, type SeverityTier } from './severity';
 
@@ -140,14 +141,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     if (proxyError()) return 'Offline';
     if (proxyHealth()?.healthy === false) return proxyHealth()?.status || 'Degraded';
     return proxyHealth()?.status || 'Healthy';
-  };
-
-  const proxyHealthTone = () => {
-    if (!proxyEnabled()) return 'text-text-dim';
-    if (proxyError()) return 'text-status-error';
-    if (proxyHealth()?.healthy === false || proxyHealth()?.status === 'error') return 'text-status-error';
-    if (resolveFreshness(proxyUpdatedAt(), 15_000) === 'stale') return 'text-status-warn';
-    return 'text-status-ok';
   };
 
   const refreshWorkbench = async () => {
@@ -430,20 +423,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     return { tier: 'healthy', label: 'Healthy', summary };
   });
 
-  // Sort by model name for a STABLE row order. The old worst-first-by-severity
-  // sort reordered the table on every 15s poll as live queue/error counters
-  // jitter — that reshuffle was the visible "constant resort". Saturated rows
-  // are now surfaced via a highlight (see proxyRowIsHot) instead of by moving.
-  const proxyModelRows = createMemo(() => {
-    const metrics = proxyMetrics();
-    if (!metrics?.byModel) return [];
-    return Object.entries(metrics.byModel)
-      .filter(([name]) => name !== '_total')
-      .sort(([leftName], [rightName]) => leftName.localeCompare(rightName));
-  });
-  const proxyRowIsHot = (metrics: FlexInferProxyModelMetrics): boolean =>
-    (metrics.queueDepth || 0) > 0 || (metrics.errorsTotal || 0) > 0;
-
   const registryRows = createMemo(() => controller.registryModels().slice().sort((a, b) => a.name.localeCompare(b.name)));
   const searchResults = () => controller.searchResults();
 
@@ -473,15 +452,6 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         row.model.status?.sharedGroup?.state ?? '',
         row.proxyMetricName ?? '',
       ].join('|'),
-  );
-  // Signature is the model name only: the <tr> for a model is created once and
-  // never torn down across polls. The cells read live counters from
-  // proxyMetrics() reactively (see render), so values still update in place
-  // without recreating the row — no flicker.
-  const stableProxyModelRows = stableListByKey(
-    proxyModelRows,
-    ([name]) => name,
-    ([name]) => name,
   );
   const stableRegistryRows = stableListByKey(
     registryRows,
@@ -852,83 +822,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           }
         />
 
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div class="surface p-4">
-            <div class="heading-label">Proxy snapshot</div>
-            <div class="mt-3 grid grid-cols-2 gap-3">
-              <WorkbenchStatCard label="Health" value={proxyHealthLabel()} tone={proxyHealthTone()} note={proxyHealth()?.message || proxyHealth()?.mode || 'FlexInfer proxy'} />
-              <WorkbenchStatCard label="Models" value={`${proxyTotals()?.modelCount ?? 0}`} tone="text-text-muted" note={proxyEnabled() ? 'live counts from metrics endpoint' : 'disabled'} />
-            </div>
-            <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
-              <MiniMetric label="Requests" value={`${proxyTotals()?.requestsTotal?.toLocaleString() || '0'}`} />
-              <MiniMetric label="Errors" value={`${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}%`} />
-              <MiniMetric label="Queue depth" value={`${proxyTotals()?.queueDepth ?? 0}`} />
-              <MiniMetric label="Active conns" value={`${proxyTotals()?.activeConnections ?? 0}`} />
-            </div>
-            <Show when={proxyMetrics()?.partial}>
-              <div class="mt-3 rounded-md border border-status-warn/20 bg-status-warn/10 px-3 py-2 text-[11px] text-status-warn">
-                Proxy metrics are partial. One or more upstream lines could not be parsed.
-              </div>
-            </Show>
-            <Show when={proxyError()}>
-              <div class="mt-3 rounded-md border border-status-error/20 bg-status-error/10 px-3 py-2 text-[11px] text-status-error">
-                {proxyError()}
-              </div>
-            </Show>
-          </div>
-
-          <div class="surface overflow-hidden xl:col-span-2">
-            <div class="border-b border-white/5 px-4 py-3">
-              <div class="heading-label">Per-model telemetry</div>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs">
-                <thead>
-                  <tr class="border-b border-white/5 text-left text-text-dim">
-                    <th class="px-4 py-3 font-medium">Model</th>
-                    <th class="px-4 py-3 font-medium text-right">Requests</th>
-                    <th class="px-4 py-3 font-medium text-right">Queue</th>
-                    <th class="px-4 py-3 font-medium text-right">Connections</th>
-                    <th class="px-4 py-3 font-medium text-right">Error %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For
-                    each={stableProxyModelRows()}
-                    fallback={
-                      <tr>
-                        <td class="px-4 py-5 text-center text-text-dim" colSpan={5}>
-                          No proxy metrics available yet.
-                        </td>
-                      </tr>
-                    }
-                  >
-                    {([name, cached]) => {
-                      // Read live counters from proxyMetrics() so the row updates
-                      // in place; the cached tuple (name-keyed signature) is only
-                      // a fallback for the first paint before live data lands.
-                      const live = () => proxyMetrics()?.byModel?.[name] ?? cached;
-                      return (
-                        <tr
-                          class="border-b border-white/5 transition-colors hover:bg-white/5"
-                          classList={{ 'bg-status-warn/[0.06]': proxyRowIsHot(live()) }}
-                        >
-                          <td class="px-4 py-3 font-mono text-text-main">{name}</td>
-                          <td class="px-4 py-3 text-right font-mono text-text-muted">{live().requestsTotal.toFixed(0)}</td>
-                          <td class={`px-4 py-3 text-right font-mono ${live().queueDepth > 0 ? 'text-status-warn' : 'text-text-muted'}`}>{live().queueDepth.toFixed(0)}</td>
-                          <td class="px-4 py-3 text-right font-mono text-text-muted">{live().activeConnections.toFixed(0)}</td>
-                          <td class={`px-4 py-3 text-right font-mono ${live().errorsTotal > 0 ? 'text-status-warn' : 'text-text-muted'}`}>
-                            {((proxyErrorRateForModel(proxyMetrics(), name) || 0) * 100).toFixed(2)}%
-                          </td>
-                        </tr>
-                      );
-                    }}
-                  </For>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <ModelTelemetryPanel />
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div class="surface overflow-hidden">
@@ -1564,13 +1458,6 @@ function verdictBadgeClass(tier: 'critical' | 'degraded' | 'healthy'): string {
     default: return 'bg-status-ok/15 text-status-ok';
   }
 }
-
-const MiniMetric: Component<{ label: string; value: string }> = (props) => (
-  <div class="surface px-3 py-2">
-    <div class="heading-label">{props.label}</div>
-    <div class="mt-1 font-mono text-sm text-text-main">{props.value}</div>
-  </div>
-);
 
 function phaseTone(phase?: string): string {
   switch (phase) {
