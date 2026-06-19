@@ -25,7 +25,7 @@ export interface LiteLLMHealthResponse {
 // LiteLLM Router (Step 2)
 export interface LiteLLMModelEntry {
   model_name: string;
-  litellm_params: { model?: string; api_base?: string; rpm?: number; tpm?: number };
+  litellm_params: { model?: string; api_base?: string; rpm?: number; tpm?: number; max_tokens?: number };
   model_info: { id?: string; mode?: string; max_tokens?: number };
 }
 
