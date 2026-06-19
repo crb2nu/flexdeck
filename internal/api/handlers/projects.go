@@ -28,16 +28,16 @@ const (
 	qdrantRisksCollection   = "pm_risks"
 	qdrantContextCollection = "agent_context_v1"
 
-	// milestoneAtRiskWindow is how soon an active milestone's due date must be
-	// for it to count as "at risk".
-	milestoneAtRiskWindow = 7 * 24 * time.Hour
-
 	// projectsRollupMaxProjects caps how many GitLab projects the rollup walks,
 	// keeping the fan-out bounded against a fragile GitLab API.
 	projectsRollupMaxProjects = 60
 
 	// qdrantScrollLimit caps points pulled per collection per project.
 	qdrantScrollLimit = 200
+
+	// qdrantRollupScrollLimit caps the single grouped scroll the rollup does per
+	// collection (all tasks/risks across all projects, tallied by project).
+	qdrantRollupScrollLimit = 2000
 )
 
 // projectTask is one agent-context task scoped to a project.
@@ -236,44 +236,49 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 // open-counts rollup. Per-project failures degrade that row's counts to zero
 // rather than failing the whole rollup.
 func (h *Handler) fetchProjectsRollup(ctx context.Context) (map[string]any, error) {
-	projects, err := h.listProjectPaths(ctx)
+	projects, err := h.listProjectsWithCounts(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	rows := make([]projectRollup, len(projects))
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(6)
-	for i, project := range projects {
-		i, project := i, project
-		g.Go(func() error {
-			detail := h.fetchProjectDetail(gctx, project)
-			rows[i] = projectRollup{
-				Project:          project,
-				OpenTasks:        countOpenTasks(detail.Tasks),
-				OpenIssues:       len(detail.Issues),
-				MilestonesAtRisk: countMilestonesAtRisk(detail.Milestones),
-				OpenRisks:        countOpenRisks(detail.Risks),
-			}
-			return nil
+	// Two grouped Qdrant scrolls (all tasks, all risks), tallied by project — not
+	// one fetch per project. Issue counts come free from the GitLab project list
+	// (open_issues_count). Milestone "at risk" is intentionally NOT computed here
+	// (it would cost one GitLab call per project); it is surfaced in the detail
+	// view instead. A scroll error degrades to zero counts, never fails the rollup.
+	openTasks := h.countOpenByProject(ctx, qdrantTasksCollection, isCompletedTaskStatus)
+	openRisks := h.countOpenByProject(ctx, qdrantRisksCollection, isClosedRiskStatus)
+
+	rows := make([]projectRollup, 0, len(projects))
+	for _, p := range projects {
+		rows = append(rows, projectRollup{
+			Project:    p.Path,
+			OpenTasks:  openTasks[p.Path],
+			OpenIssues: p.OpenIssues,
+			OpenRisks:  openRisks[p.Path],
 		})
 	}
-	_ = g.Wait()
 
 	return map[string]any{"projects": rows}, nil
 }
 
-// listProjectPaths enumerates project path_with_namespace ids for the rollup.
-func (h *Handler) listProjectPaths(ctx context.Context) ([]string, error) {
-	gitlabURL := h.cfg.GitLab.URL
+// projectMeta is the minimal per-project info the rollup needs from GitLab.
+type projectMeta struct {
+	Path       string
+	OpenIssues int
+}
+
+// listProjectsWithCounts returns project paths plus open_issues_count from a
+// single GitLab project-list call (no per-project fan-out).
+func (h *Handler) listProjectsWithCounts(ctx context.Context) ([]projectMeta, error) {
 	token := h.cfg.GitLab.Token
 	if token == "" {
 		slog.Warn("projects: GitLab token not configured")
-		return []string{}, nil
+		return []projectMeta{}, nil
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects?membership=true&simple=true&per_page=%d&order_by=last_activity_at&sort=desc",
-		gitlabURL, gitlabPerPageDefault)
+	apiURL := fmt.Sprintf("%s/api/v4/projects?membership=true&per_page=%d&order_by=last_activity_at&sort=desc",
+		h.cfg.GitLab.URL, gitlabPerPageDefault)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create projects request: %w", err)
@@ -290,24 +295,51 @@ func (h *Handler) listProjectPaths(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
 	}
 
-	var projects []struct {
+	var raw []struct {
 		PathWithNamespace string `json:"path_with_namespace"`
+		OpenIssuesCount   int    `json:"open_issues_count"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode projects: %w", err)
 	}
 
-	paths := make([]string, 0, len(projects))
-	for _, p := range projects {
+	out := make([]projectMeta, 0, len(raw))
+	for _, p := range raw {
 		if p.PathWithNamespace == "" {
 			continue
 		}
-		paths = append(paths, p.PathWithNamespace)
-		if len(paths) >= projectsRollupMaxProjects {
+		out = append(out, projectMeta{Path: p.PathWithNamespace, OpenIssues: p.OpenIssuesCount})
+		if len(out) >= projectsRollupMaxProjects {
 			break
 		}
 	}
-	return paths, nil
+	return out, nil
+}
+
+// countOpenByProject scrolls a Qdrant collection once and tallies, per canonical
+// `project`, the points whose status is NOT closed per isClosed. A scroll error
+// degrades to an empty map so the rollup shows zero counts rather than failing.
+func (h *Handler) countOpenByProject(ctx context.Context, collection string, isClosed func(string) bool) map[string]int {
+	counts := map[string]int{}
+	if h.qdrant == nil {
+		return counts
+	}
+	points, err := h.qdrant.Scroll(ctx, collection, nil, qdrantRollupScrollLimit)
+	if err != nil {
+		slog.Warn("projects: rollup scroll failed", "collection", collection, "error", err)
+		return counts
+	}
+	for _, p := range points {
+		project := payloadString(p.Payload, "project")
+		if project == "" {
+			continue
+		}
+		if isClosed(payloadString(p.Payload, "status")) {
+			continue
+		}
+		counts[project]++
+	}
+	return counts
 }
 
 // fetchProjectIssues fetches open GitLab issues for a project.
@@ -489,16 +521,6 @@ func (h *Handler) fetchProjectDecisions(ctx context.Context, project string) ([]
 
 // --- rollup helpers ---
 
-func countOpenTasks(tasks []projectTask) int {
-	n := 0
-	for _, t := range tasks {
-		if !isCompletedTaskStatus(t.Status) {
-			n++
-		}
-	}
-	return n
-}
-
 func isCompletedTaskStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "completed", "done", "closed", "cancelled", "canceled":
@@ -506,50 +528,6 @@ func isCompletedTaskStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func countMilestonesAtRisk(milestones []projectMilestone) int {
-	now := time.Now()
-	cutoff := now.Add(milestoneAtRiskWindow)
-	n := 0
-	for _, m := range milestones {
-		if strings.EqualFold(m.State, "closed") {
-			continue
-		}
-		due, ok := parseMilestoneDue(m.DueDate)
-		if !ok {
-			continue
-		}
-		// At risk = due within the window (including already overdue).
-		if !due.After(cutoff) {
-			n++
-		}
-	}
-	return n
-}
-
-func parseMilestoneDue(due string) (time.Time, bool) {
-	due = strings.TrimSpace(due)
-	if due == "" {
-		return time.Time{}, false
-	}
-	if t, err := time.Parse("2006-01-02", due); err == nil {
-		return t, true
-	}
-	if t, err := time.Parse(time.RFC3339, due); err == nil {
-		return t, true
-	}
-	return time.Time{}, false
-}
-
-func countOpenRisks(risks []projectRisk) int {
-	n := 0
-	for _, rk := range risks {
-		if !isClosedRiskStatus(rk.Status) {
-			n++
-		}
-	}
-	return n
 }
 
 func isClosedRiskStatus(status string) bool {
