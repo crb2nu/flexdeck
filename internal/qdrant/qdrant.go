@@ -88,6 +88,24 @@ func MatchProject(project string) map[string]any {
 	}
 }
 
+// MatchProjectAndEntryType builds a Qdrant filter matching points whose payload
+// `project` equals the given canonical project id AND whose `entry_type` equals
+// the given type (e.g. "decision"). Used to federate the agent-context journal.
+func MatchProjectAndEntryType(project, entryType string) map[string]any {
+	return map[string]any{
+		"must": []any{
+			map[string]any{
+				"key":   "project",
+				"match": map[string]any{"value": project},
+			},
+			map[string]any{
+				"key":   "entry_type",
+				"match": map[string]any{"value": entryType},
+			},
+		},
+	}
+}
+
 // Scroll fetches up to limit points from collection matching filter. A nil
 // filter scrolls unfiltered. Errors (including a missing collection or an
 // unreachable server) are returned so the caller can decide how to degrade;

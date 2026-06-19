@@ -24,8 +24,9 @@ type qdrantScroller interface {
 
 const (
 	// Collections federated for project tracking.
-	qdrantTasksCollection = "agent_tasks_v1"
-	qdrantRisksCollection = "pm_risks"
+	qdrantTasksCollection   = "agent_tasks_v1"
+	qdrantRisksCollection   = "pm_risks"
+	qdrantContextCollection = "agent_context_v1"
 
 	// milestoneAtRiskWindow is how soon an active milestone's due date must be
 	// for it to count as "at risk".
@@ -216,13 +217,11 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 		detail.Risks = risks
 	}
 
-	// Decisions are best-effort. The agent_context_v1 entry payload carries
-	// entry_type ("decision"), title and a timestamp, but NOT a top-level
-	// project field — entries are keyed by namespace/session_id, not by the
-	// canonical path_with_namespace. There is no reliable project filter, so we
-	// return [] and flag partial rather than emit decisions from other projects.
-	// TODO(slice5): decision schema — wire decisions once agent_context_v1 entries
-	// carry (or can be joined to) a canonical project key.
+	// Decisions come from the agent-context journal: agent_context_v1 entries of
+	// type "decision" now carry a canonical `project` (= path_with_namespace),
+	// stamped from the owning session (loom-core!734), so they filter the same
+	// way tasks/risks do. Entries recorded before that change lack `project` and
+	// simply don't match — decisions are forward-looking, so that is acceptable.
 	if decisionsErr != nil {
 		slog.Warn("projects: decisions source failed", "project", project, "error", decisionsErr)
 		detail.Partial = true
@@ -464,16 +463,28 @@ func (h *Handler) fetchProjectRisks(ctx context.Context, project string) ([]proj
 	return risks, nil
 }
 
-// fetchProjectDecisions is intentionally a no-op success. See the note in
-// fetchProjectDetail: agent_context_v1 decision entries cannot be reliably
-// filtered by canonical project, so we return an empty list (and let the caller
-// keep partial=false for this source — there is no error, just no data we can
-// safely attribute to this project).
-//
-// TODO(slice5): decision schema — return real decisions once entries carry a
-// canonical project key (path_with_namespace) or a session->project join exists.
-func (h *Handler) fetchProjectDecisions(_ context.Context, _ string) ([]projectDecision, error) {
-	return []projectDecision{}, nil
+// fetchProjectDecisions scrolls the agent-context journal (agent_context_v1)
+// for entries of type "decision" scoped to the project. Entries carry a
+// canonical `project` field stamped from the owning session (loom-core!734).
+func (h *Handler) fetchProjectDecisions(ctx context.Context, project string) ([]projectDecision, error) {
+	if h.qdrant == nil {
+		return []projectDecision{}, nil
+	}
+	points, err := h.qdrant.Scroll(ctx, qdrantContextCollection, qdrant.MatchProjectAndEntryType(project, "decision"), qdrantScrollLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	decisions := make([]projectDecision, 0, len(points))
+	for _, p := range points {
+		pl := p.Payload
+		decisions = append(decisions, projectDecision{
+			ID:        payloadString(pl, "id"),
+			Title:     payloadString(pl, "title"),
+			DecidedAt: payloadString(pl, "timestamp"),
+		})
+	}
+	return decisions, nil
 }
 
 // --- rollup helpers ---

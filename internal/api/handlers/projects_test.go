@@ -92,6 +92,9 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 			qdrantRisksCollection: {
 				{Payload: map[string]any{"id": "r1", "title": "risk one", "likelihood": "medium", "impact": "high", "status": "open"}},
 			},
+			qdrantContextCollection: {
+				{Payload: map[string]any{"id": "d1", "title": "chose Qdrant for risks", "timestamp": "2026-06-19T22:00:00Z", "entry_type": "decision"}},
+			},
 		},
 	}
 
@@ -124,15 +127,23 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 	if len(d.Risks) != 1 || d.Risks[0].ID != "r1" {
 		t.Errorf("risks = %+v", d.Risks)
 	}
-	// Decisions are best-effort empty (see fetchProjectDecisions).
-	if len(d.Decisions) != 0 {
-		t.Errorf("decisions = %+v, want empty", d.Decisions)
+	// Decisions come from the agent-context journal, filtered by project+type.
+	if len(d.Decisions) != 1 || d.Decisions[0].ID != "d1" {
+		t.Errorf("decisions = %+v, want one (d1)", d.Decisions)
+	}
+	if d.Decisions[0].DecidedAt != "2026-06-19T22:00:00Z" {
+		t.Errorf("decision decided_at = %q", d.Decisions[0].DecidedAt)
 	}
 
 	// The Qdrant filter must target the canonical project key.
 	gotFilter := fq.filterFor(qdrantTasksCollection)
 	if fmt.Sprintf("%v", gotFilter) != fmt.Sprintf("%v", qdrant.MatchProject("services/flexdeck")) {
 		t.Errorf("tasks filter = %v, want project match for services/flexdeck", gotFilter)
+	}
+	// Decisions filter must target both project and entry_type=decision.
+	gotDecFilter := fq.filterFor(qdrantContextCollection)
+	if fmt.Sprintf("%v", gotDecFilter) != fmt.Sprintf("%v", qdrant.MatchProjectAndEntryType("services/flexdeck", "decision")) {
+		t.Errorf("decisions filter = %v, want project+entry_type match", gotDecFilter)
 	}
 }
 
