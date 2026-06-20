@@ -100,7 +100,11 @@ func (s *Store) StorePipelineRun(ctx context.Context, run PipelineRun) error {
 		return err
 	}
 
-	s.materializePipelineTrend(ctx, run.ProjectID, 7*24*time.Hour)
+	// Note: do NOT materialize the project trend here. The scraper stores ~800
+	// runs per cycle (≈12 per project), so a per-run materialize recomputed each
+	// project's trend ~12× redundantly — a read of the zset + a write — every
+	// cycle, on top of the end-of-cycle MaterializeAllPipelineTrends and the
+	// background materializer. That was a major source of Redis write pressure.
 	return nil
 }
 
@@ -193,20 +197,6 @@ func (s *Store) computePipelineTrends(ctx context.Context, projectID int, window
 	trend.Trend = s.detectTrend(trend.Sparkline)
 
 	return trend, nil
-}
-
-// materializePipelineTrend computes and stores a single project's trend summary.
-func (s *Store) materializePipelineTrend(ctx context.Context, projectID int, window time.Duration) {
-	trend, err := s.computePipelineTrends(ctx, projectID, window)
-	if err != nil || trend.TotalRuns == 0 {
-		return
-	}
-	data, err := json.Marshal(trend)
-	if err != nil {
-		return
-	}
-	summaryKey := fmt.Sprintf("%s%d", pipelineTrendSummaryPrefix, projectID)
-	s.redis.Set(ctx, summaryKey, data, pipelineTrendSummaryTTL)
 }
 
 // MaterializeAllPipelineTrends iterates all projects and stores an all-projects

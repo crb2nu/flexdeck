@@ -30,11 +30,15 @@ spec:
               protocol: TCP
           resources:
             requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
+              # Bumped from 10m/100m: Redis runs commands single-threaded, and at a
+              # 100m limit the CFS scheduler throttled it ~16% of periods, producing
+              # ~90ms command stalls (visible in SLOWLOG) that cascaded into SWR cache
+              # write timeouts and pipeline-scraper "context deadline exceeded".
               cpu: 100m
-              memory: 96Mi
+              memory: 48Mi
+            limits:
+              cpu: "1"
+              memory: 128Mi
           readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
