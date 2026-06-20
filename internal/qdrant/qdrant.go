@@ -148,6 +148,14 @@ func (c *Client) Scroll(ctx context.Context, collection string, filter map[strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// A missing collection means "no data here", not "source unavailable". Qdrant
+	// returns 404 for a collection that was never created (e.g. pm_risks before
+	// the first risk is written). Treat it as an empty result so a federated view
+	// doesn't get falsely flagged partial. Real errors (auth, 5xx) still surface.
+	if resp.StatusCode == http.StatusNotFound {
+		return []Point{}, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("qdrant scroll %s returned %d: %s", collection, resp.StatusCode, strings.TrimSpace(string(snippet)))

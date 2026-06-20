@@ -38,16 +38,36 @@ func TestScroll_FilterAndPayload(t *testing.T) {
 	}
 }
 
-func TestScroll_NonOKReturnsError(t *testing.T) {
+func TestScroll_MissingCollectionIsEmpty(t *testing.T) {
+	// A 404 (collection never created, e.g. pm_risks before the first write) is
+	// "no data", not an error — so a federated view is not falsely flagged partial.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"status":{"error":"Not found"}}`))
+		_, _ = w.Write([]byte(`{"status":{"error":"Collection not found"}}`))
 	}))
 	defer ts.Close()
 
 	c := New(ts.URL)
-	if _, err := c.Scroll(context.Background(), "missing", nil, 10); err == nil {
-		t.Fatalf("expected error for 404 collection")
+	pts, err := c.Scroll(context.Background(), "missing", nil, 10)
+	if err != nil {
+		t.Fatalf("404 should not error, got %v", err)
+	}
+	if len(pts) != 0 {
+		t.Fatalf("expected empty result for missing collection, got %d", len(pts))
+	}
+}
+
+func TestScroll_NonOKReturnsError(t *testing.T) {
+	// Real errors (5xx, auth) must still surface so genuine failures flag partial.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"status":{"error":"boom"}}`))
+	}))
+	defer ts.Close()
+
+	c := New(ts.URL)
+	if _, err := c.Scroll(context.Background(), "c", nil, 10); err == nil {
+		t.Fatalf("expected error for 500")
 	}
 }
 
