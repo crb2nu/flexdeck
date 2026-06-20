@@ -198,6 +198,11 @@ func TestStore_MaterializedPipelineTrends(t *testing.T) {
 		}
 	}
 
+	// StorePipelineRun marks the project dirty (it no longer materializes per-run,
+	// which was redundant Redis load). The background materializer drains the dirty
+	// set; emulate that here.
+	store.MaterializeDirtyPipelineTrends(ctx)
+
 	// Per-project summary should exist
 	summaryKey := pipelineTrendSummaryPrefix + "42"
 	if client.Exists(ctx, summaryKey).Val() != 1 {

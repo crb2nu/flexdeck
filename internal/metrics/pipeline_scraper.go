@@ -42,9 +42,13 @@ func NewPipelineScraper(cfg config.GitLabConfig, store *Store) *PipelineScraper 
 
 // Start begins the scraping loop with a 60s interval.
 func (ps *PipelineScraper) Start(ctx context.Context) {
-	slog.Info("starting pipeline scraper", "interval", "60s")
+	slog.Info("starting pipeline scraper", "interval", "180s")
 
-	ticker := time.NewTicker(60 * time.Second)
+	// A full scrape fetches jobs per pipeline (~800 GitLab calls) against a slow
+	// self-hosted GitLab, so a cycle takes minutes; a 60s ticker meant it ran
+	// effectively back-to-back, continuously loading GitLab + Redis. 180s gives
+	// the upstreams breathing room without meaningfully staling CI dashboard data.
+	ticker := time.NewTicker(180 * time.Second)
 	defer ticker.Stop()
 	defer close(ps.doneCh)
 
