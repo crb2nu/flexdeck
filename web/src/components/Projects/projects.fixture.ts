@@ -12,6 +12,7 @@ export const projectsListFixture: ProjectsList = {
       open_issues: 1,
       milestones_at_risk: 0,
       open_risks: 2,
+      open_plans: 1,
     },
     {
       project: 'services/flexinfer',
@@ -19,6 +20,7 @@ export const projectsListFixture: ProjectsList = {
       open_issues: 3,
       milestones_at_risk: 1,
       open_risks: 0,
+      open_plans: 0,
     },
   ],
 };
@@ -83,6 +85,15 @@ export const projectDetailFixture: ProjectDetail = {
       decided_at: '2026-06-19',
     },
   ],
+  plans: [
+    {
+      id: 'plan-unified-tracking-ab12cd',
+      slug: 'unified-tracking',
+      title: 'Unified project tracking',
+      phase: 'in_progress',
+      mr_refs: 2,
+    },
+  ],
 };
 
 const partialProject: ProjectDetail = {
@@ -93,6 +104,7 @@ const partialProject: ProjectDetail = {
   milestones: projectDetailFixture.milestones,
   risks: [],
   decisions: [],
+  plans: [],
 };
 
 // Keyed by project id for the dev-mode mock lookup.

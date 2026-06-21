@@ -21,6 +21,8 @@ import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
 import {
   decisionSignature,
+  planPhaseTone,
+  planSignature,
   issueSignature,
   milestoneSignature,
   priorityTone,
@@ -176,6 +178,7 @@ const Projects: Component = () => {
   const stableMilestones = stableListByKey(() => detailValue()?.milestones ?? [], (m) => m.id, milestoneSignature);
   const stableRisks = stableListByKey(() => detailValue()?.risks ?? [], (r) => r.id, riskSignature);
   const stableDecisions = stableListByKey(() => detailValue()?.decisions ?? [], (d) => d.id, decisionSignature);
+  const stablePlans = stableListByKey(() => detailValue()?.plans ?? [], (p) => p.id, planSignature);
 
   return (
     <PageScrollBody>
@@ -371,6 +374,23 @@ const Projects: Component = () => {
                             <li class="flex items-center gap-3 py-2">
                               <span class="min-w-0 flex-1 truncate text-sm text-text-main">{decision.title}</span>
                               <span class="font-mono text-xs text-text-dim">{decision.decided_at}</span>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </SectionShell>
+
+                    {/* Plans — read-only lifecycle view; create/advance lives in the loom-hud. */}
+                    <SectionShell title="Plans" count={stablePlans().length} empty="No plans tracked.">
+                      <ul class="flex flex-col divide-y divide-white/5">
+                        <For each={stablePlans()}>
+                          {(plan) => (
+                            <li class="flex items-center gap-3 py-2">
+                              <span class="min-w-0 flex-1 truncate text-sm text-text-main">{plan.title}</span>
+                              <Show when={plan.mr_refs > 0}>
+                                <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
+                              </Show>
+                              <Badge tone={planPhaseTone(plan.phase)}>{plan.phase}</Badge>
                             </li>
                           )}
                         </For>
