@@ -3,6 +3,7 @@ import type {
   ProjectDecision,
   ProjectIssue,
   ProjectMilestone,
+  ProjectPlan,
   ProjectRisk,
   ProjectSummary,
   ProjectTask,
@@ -124,4 +125,27 @@ export function riskSignature(risk: ProjectRisk): string {
 
 export function decisionSignature(decision: ProjectDecision): string {
   return [decision.id, decision.title, decision.decided_at].join('|');
+}
+
+// Plan lifecycle phase -> badge tone. Early phases are neutral/info, review/
+// merging warm, merged/deployed/done positive, abandoned muted.
+export function planPhaseTone(phase: string): BadgeTone {
+  switch (phase.toLowerCase()) {
+    case 'in_review':
+    case 'merging':
+      return 'warn';
+    case 'merged':
+    case 'deployed':
+    case 'done':
+      return 'ok';
+    case 'in_progress':
+    case 'planned':
+      return 'info';
+    default:
+      return 'default';
+  }
+}
+
+export function planSignature(plan: ProjectPlan): string {
+  return [plan.id, plan.title, plan.phase, String(plan.mr_refs)].join('|');
 }

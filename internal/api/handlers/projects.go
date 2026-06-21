@@ -27,6 +27,7 @@ const (
 	qdrantTasksCollection   = "agent_tasks_v1"
 	qdrantRisksCollection   = "pm_risks"
 	qdrantContextCollection = "agent_context_v1"
+	qdrantPlansCollection   = "agent_plans_v1"
 
 	// projectsRollupMaxProjects caps how many GitLab projects the rollup walks,
 	// keeping the fan-out bounded against a fragile GitLab API.
@@ -83,6 +84,16 @@ type projectDecision struct {
 	DecidedAt string `json:"decided_at"`
 }
 
+// projectPlan is one plan from the agent_plans_v1 store, scoped to a project.
+// Phase is stored under the "status" payload key (shared keyword index).
+type projectPlan struct {
+	ID     string `json:"id"`
+	Slug   string `json:"slug"`
+	Title  string `json:"title"`
+	Phase  string `json:"phase"`
+	MRRefs int    `json:"mr_refs"`
+}
+
 // projectDetail is the GET /api/projects/{id} response.
 type projectDetail struct {
 	Project    string             `json:"project"`
@@ -92,6 +103,7 @@ type projectDetail struct {
 	Milestones []projectMilestone `json:"milestones"`
 	Risks      []projectRisk      `json:"risks"`
 	Decisions  []projectDecision  `json:"decisions"`
+	Plans      []projectPlan      `json:"plans"`
 }
 
 // projectRollup is one row of the GET /api/projects response.
@@ -101,6 +113,7 @@ type projectRollup struct {
 	OpenIssues       int    `json:"open_issues"`
 	MilestonesAtRisk int    `json:"milestones_at_risk"`
 	OpenRisks        int    `json:"open_risks"`
+	OpenPlans        int    `json:"open_plans"`
 }
 
 // ListProjects returns a tracking rollup across known GitLab projects.
@@ -169,6 +182,7 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 		Milestones: []projectMilestone{},
 		Risks:      []projectRisk{},
 		Decisions:  []projectDecision{},
+		Plans:      []projectPlan{},
 	}
 
 	var (
@@ -177,8 +191,9 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 		milestones []projectMilestone
 		risks      []projectRisk
 		decisions  []projectDecision
+		plans      []projectPlan
 
-		tasksErr, issuesErr, milestonesErr, risksErr, decisionsErr error
+		tasksErr, issuesErr, milestonesErr, risksErr, decisionsErr, plansErr error
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -187,6 +202,7 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 	g.Go(func() error { tasks, tasksErr = h.fetchProjectTasks(gctx, project); return nil })
 	g.Go(func() error { risks, risksErr = h.fetchProjectRisks(gctx, project); return nil })
 	g.Go(func() error { decisions, decisionsErr = h.fetchProjectDecisions(gctx, project); return nil })
+	g.Go(func() error { plans, plansErr = h.fetchProjectPlans(gctx, project); return nil })
 	_ = g.Wait()
 
 	if issuesErr != nil {
@@ -229,6 +245,17 @@ func (h *Handler) fetchProjectDetail(ctx context.Context, project string) projec
 		detail.Decisions = decisions
 	}
 
+	// Plans come from the agent-context Plan store (agent_plans_v1), keyed by the
+	// same canonical `project`. Lifecycle phase is stored under the `status`
+	// payload key. Management (create/advance) lives in the loom-hud; here the
+	// lane is read-only visibility per project.
+	if plansErr != nil {
+		slog.Warn("projects: plans source failed", "project", project, "error", plansErr)
+		detail.Partial = true
+	} else {
+		detail.Plans = plans
+	}
+
 	return detail
 }
 
@@ -248,6 +275,7 @@ func (h *Handler) fetchProjectsRollup(ctx context.Context) (map[string]any, erro
 	// view instead. A scroll error degrades to zero counts, never fails the rollup.
 	openTasks := h.countOpenByProject(ctx, qdrantTasksCollection, isCompletedTaskStatus)
 	openRisks := h.countOpenByProject(ctx, qdrantRisksCollection, isClosedRiskStatus)
+	openPlans := h.countOpenByProject(ctx, qdrantPlansCollection, isClosedPlanPhase)
 
 	rows := make([]projectRollup, 0, len(projects))
 	for _, p := range projects {
@@ -256,6 +284,7 @@ func (h *Handler) fetchProjectsRollup(ctx context.Context) (map[string]any, erro
 			OpenTasks:  openTasks[p.Path],
 			OpenIssues: p.OpenIssues,
 			OpenRisks:  openRisks[p.Path],
+			OpenPlans:  openPlans[p.Path],
 		})
 	}
 
@@ -519,7 +548,44 @@ func (h *Handler) fetchProjectDecisions(ctx context.Context, project string) ([]
 	return decisions, nil
 }
 
+// fetchProjectPlans scrolls agent_plans_v1 for plans scoped to the project.
+// Phase is stored under the "status" payload key. mr_refs is a string array;
+// we surface its length (mr count) for a compact lane.
+func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]projectPlan, error) {
+	if h.qdrant == nil {
+		return []projectPlan{}, nil
+	}
+	points, err := h.qdrant.Scroll(ctx, qdrantPlansCollection, qdrant.MatchProject(project), qdrantScrollLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	plans := make([]projectPlan, 0, len(points))
+	for _, p := range points {
+		pl := p.Payload
+		plans = append(plans, projectPlan{
+			ID:     payloadString(pl, "id"),
+			Slug:   payloadString(pl, "slug"),
+			Title:  payloadString(pl, "title"),
+			Phase:  payloadString(pl, "status"),
+			MRRefs: payloadSliceLen(pl, "mr_refs"),
+		})
+	}
+	return plans, nil
+}
+
 // --- rollup helpers ---
+
+// isClosedPlanPhase reports whether a plan phase is terminal/closed for the
+// "open plans" rollup count.
+func isClosedPlanPhase(phase string) bool {
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "merged", "deployed", "done", "abandoned":
+		return true
+	default:
+		return false
+	}
+}
 
 func isCompletedTaskStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
@@ -560,4 +626,16 @@ func payloadString(payload map[string]any, key string) string {
 	default:
 		return ""
 	}
+}
+
+// payloadSliceLen returns the length of an array payload field (e.g. mr_refs),
+// tolerating nil and non-array values.
+func payloadSliceLen(payload map[string]any, key string) int {
+	if payload == nil {
+		return 0
+	}
+	if arr, ok := payload[key].([]any); ok {
+		return len(arr)
+	}
+	return 0
 }

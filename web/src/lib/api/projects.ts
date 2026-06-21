@@ -13,6 +13,7 @@ export interface ProjectSummary {
   open_issues: number;
   milestones_at_risk: number;
   open_risks: number;
+  open_plans: number;
 }
 
 export interface ProjectsList {
@@ -61,6 +62,17 @@ export interface ProjectDecision {
   decided_at: string;
 }
 
+// ProjectPlan mirrors a plan from the agent-context Plan store. Phase is the
+// lifecycle stage; management (create/advance) lives in the loom-hud, so this
+// lane is read-only with a deep link out.
+export interface ProjectPlan {
+  id: string;
+  slug: string;
+  title: string;
+  phase: string;
+  mr_refs: number;
+}
+
 export interface ProjectDetail {
   project: string;
   partial: boolean;
@@ -69,6 +81,7 @@ export interface ProjectDetail {
   milestones: ProjectMilestone[];
   risks: ProjectRisk[];
   decisions: ProjectDecision[];
+  plans: ProjectPlan[];
 }
 
 export const projectsApi = {

@@ -95,6 +95,9 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 			qdrantContextCollection: {
 				{Payload: map[string]any{"id": "d1", "title": "chose Qdrant for risks", "timestamp": "2026-06-19T22:00:00Z", "entry_type": "decision"}},
 			},
+			qdrantPlansCollection: {
+				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}}},
+			},
 		},
 	}
 
@@ -133,6 +136,18 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 	}
 	if d.Decisions[0].DecidedAt != "2026-06-19T22:00:00Z" {
 		t.Errorf("decision decided_at = %q", d.Decisions[0].DecidedAt)
+	}
+
+	// Plans come from the agent_plans_v1 store; phase is the "status" payload key.
+	if len(d.Plans) != 1 || d.Plans[0].ID != "plan-x-1" {
+		t.Errorf("plans = %+v, want one (plan-x-1)", d.Plans)
+	}
+	if d.Plans[0].Phase != "in_progress" || d.Plans[0].MRRefs != 2 {
+		t.Errorf("plan phase/mr_refs = %q/%d, want in_progress/2", d.Plans[0].Phase, d.Plans[0].MRRefs)
+	}
+	gotPlanFilter := fq.filterFor(qdrantPlansCollection)
+	if fmt.Sprintf("%v", gotPlanFilter) != fmt.Sprintf("%v", qdrant.MatchProject("services/flexdeck")) {
+		t.Errorf("plans filter = %v, want project match", gotPlanFilter)
 	}
 
 	// The Qdrant filter must target the canonical project key.
