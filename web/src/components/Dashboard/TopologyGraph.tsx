@@ -19,6 +19,12 @@ import {
   shouldRenderNodeForDensity,
   densityOverviewSummary,
 } from './topology/densityOverview';
+import {
+  getTopologyNodeIcon,
+  getTopologyNodeRadius,
+  refreshTopologyNodeStyles,
+  type TopologyNodeStyle,
+} from './topology/nodeVisuals';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -372,7 +378,7 @@ const TopologyGraph: Component<Props> = (props) => {
 
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
-  const nodeStylesCache = new Map<string, { r: number; color: string; truncLabel: string }>();
+  const nodeStylesCache = new Map<string, TopologyNodeStyle>();
   const nodeSpriteCache = new Map<string, HTMLCanvasElement>();
   let nodeStylesCacheValid = false;
 
@@ -708,7 +714,7 @@ const TopologyGraph: Component<Props> = (props) => {
           const deltaY = y - node.y;
           const distSq = deltaX * deltaX + deltaY * deltaY;
           const cached = nodeStylesCache.get(node.id);
-          const radius = (cached?.r ?? getNodeRadius(node)) + 4;
+          const radius = (cached?.r ?? getTopologyNodeRadius(node)) + 4;
           const radiusSq = radius * radius;
           if (distSq < radiusSq && distSq < minDistSq) {
             minDistSq = distSq;
@@ -989,35 +995,6 @@ const TopologyGraph: Component<Props> = (props) => {
     topologyWorker.postMessage(request);
   };
 
-  const getNodeColor = (node: D3Node): string => {
-    if (node.type === 'node') {
-      return node.status === 'ok' ? '#00c8ff' : '#ff3d71';
-    }
-    if (node.namespace) {
-      return getNamespaceColor(node.namespace, namespaceMap);
-    }
-    const statusColors = { ok: '#22e076', warn: '#ff6b35', error: '#ff3d71' };
-    return statusColors[node.status];
-  };
-
-  const getNodeRadius = (node: D3Node): number => {
-    switch (node.type) {
-      case 'node': return 28;
-      case 'service': return 18;
-      case 'pod': return 8;
-      default: return 8;
-    }
-  };
-
-  const getNodeIcon = (node: D3Node): string => {
-    switch (node.type) {
-      case 'node': return '⬡';
-      case 'service': return '◆';
-      case 'pod': return '●';
-      default: return '●';
-    }
-  };
-
   const getNodeSprite = (type: D3Node['type'], radius: number, color: string, variant: 'full' | 'simple'): HTMLCanvasElement => {
     const key = `${type}:${radius}:${color}:${variant}`;
     const cachedSprite = nodeSpriteCache.get(key);
@@ -1146,19 +1123,7 @@ const TopologyGraph: Component<Props> = (props) => {
   const ensureNodeStylesCache = () => {
     if (nodeStylesCacheValid) return;
     const cacheStart = perfEnabled ? performance.now() : 0;
-    // Incremental update: only recompute entries for nodes whose style changed
-    const staleIds = new Set(nodeStylesCache.keys());
-    for (const node of graphNodes) {
-      staleIds.delete(node.id);
-      const r = getNodeRadius(node);
-      const color = getNodeColor(node);
-      const existing = nodeStylesCache.get(node.id);
-      if (existing && existing.r === r && existing.color === color) continue;
-      const truncLabel = node.label.length > 14 ? `${node.label.slice(0, 12)}...` : node.label;
-      nodeStylesCache.set(node.id, { r, color, truncLabel });
-    }
-    // Remove entries for nodes no longer in the graph
-    for (const id of staleIds) nodeStylesCache.delete(id);
+    refreshTopologyNodeStyles(graphNodes, nodeStylesCache, namespaceMap);
     nodeStylesCacheValid = true;
     if (perfEnabled) {
       perfCounters.styleCacheRebuilds++;
@@ -2142,7 +2107,7 @@ const TopologyGraph: Component<Props> = (props) => {
       links: graphLinks,
       width,
       height,
-      getNodeRadius,
+      getNodeRadius: getTopologyNodeRadius,
       onEnd: () => {
         isSimulationActive = false;
         simulationSettledAt = performance.now();
@@ -2407,7 +2372,7 @@ const TopologyGraph: Component<Props> = (props) => {
                                 node().type === 'service' ? 'text-text-muted' :
                                 'text-status-ok'
                             }`}>
-                                {getNodeIcon(node())}
+                                {getTopologyNodeIcon(node())}
                             </span>
                         </div>
                         <div>
