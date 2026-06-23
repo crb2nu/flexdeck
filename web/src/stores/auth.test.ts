@@ -5,6 +5,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal('fetch', fetchMock);
 
+const storageValues = new Map<string, string>();
+const localStorageMock: Storage = {
+  get length() {
+    return storageValues.size;
+  },
+  clear: () => storageValues.clear(),
+  getItem: (key: string) => storageValues.get(key) ?? null,
+  key: (index: number) => Array.from(storageValues.keys())[index] ?? null,
+  removeItem: (key: string) => {
+    storageValues.delete(key);
+  },
+  setItem: (key: string, value: string) => {
+    storageValues.set(key, value);
+  },
+};
+Object.defineProperty(window, 'localStorage', {
+  value: localStorageMock,
+  configurable: true,
+});
+
 const { authStatus, currentUser, token, setToken, checkAuth, login, logout, notifyUnauthorized } =
   await import('./auth');
 
@@ -27,6 +47,7 @@ const adminUser = {
 describe('auth store', () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    window.localStorage.clear();
     setToken(null);
   });
 
@@ -59,7 +80,7 @@ describe('auth store', () => {
     const ok = await login('  secret-token  ');
     expect(ok).toBe(true);
     expect(token()).toBe('secret-token'); // trimmed
-    expect(localStorage.getItem('flexdeck_token')).toBe('secret-token');
+    expect(window.localStorage.getItem('flexdeck_token')).toBe('secret-token');
     expect(authStatus()).toBe('authed');
   });
 

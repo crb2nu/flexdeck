@@ -4,15 +4,25 @@ import type { RBACUser } from '../lib/types/enterprise';
 
 const STORAGE_KEY = 'flexdeck_token';
 
+function getTokenStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 const [token, setTokenInternal] = createSignal<string | null>(
-  typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
+  getTokenStorage()?.getItem(STORAGE_KEY) ?? null
 );
 
 function setToken(newToken: string | null): void {
+  const storage = getTokenStorage();
   if (newToken) {
-    localStorage.setItem(STORAGE_KEY, newToken);
-  } else {
-    localStorage.removeItem(STORAGE_KEY);
+    storage?.setItem(STORAGE_KEY, newToken);
+  } else if (storage) {
+    storage.removeItem(STORAGE_KEY);
   }
   setTokenInternal(newToken);
 }
