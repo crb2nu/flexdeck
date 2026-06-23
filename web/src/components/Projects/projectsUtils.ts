@@ -91,7 +91,8 @@ export function summaryConcern(summary: ProjectSummary): number {
     summary.open_tasks +
     summary.open_issues +
     summary.milestones_at_risk +
-    summary.open_risks
+    summary.open_risks +
+    summary.open_plans
   );
 }
 
@@ -104,6 +105,7 @@ export function summarySignature(summary: ProjectSummary): string {
     summary.open_issues,
     summary.milestones_at_risk,
     summary.open_risks,
+    summary.open_plans,
   ].join('|');
 }
 
