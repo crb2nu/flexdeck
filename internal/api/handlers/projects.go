@@ -268,11 +268,12 @@ func (h *Handler) fetchProjectsRollup(ctx context.Context) (map[string]any, erro
 		return nil, err
 	}
 
-	// Two grouped Qdrant scrolls (all tasks, all risks), tallied by project — not
-	// one fetch per project. Issue counts come free from the GitLab project list
-	// (open_issues_count). Milestone "at risk" is intentionally NOT computed here
-	// (it would cost one GitLab call per project); it is surfaced in the detail
-	// view instead. A scroll error degrades to zero counts, never fails the rollup.
+	// Grouped Qdrant scrolls (all tasks, risks, and plans), tallied by project —
+	// not one fetch per project. Issue counts come free from the GitLab project
+	// list (open_issues_count). Milestone "at risk" is intentionally NOT
+	// computed here (it would cost one GitLab call per project); it is surfaced in
+	// the detail view instead. A scroll error degrades to zero counts, never fails
+	// the rollup.
 	openTasks := h.countOpenByProject(ctx, qdrantTasksCollection, isCompletedTaskStatus)
 	openRisks := h.countOpenByProject(ctx, qdrantRisksCollection, isClosedRiskStatus)
 	openPlans := h.countOpenByProject(ctx, qdrantPlansCollection, isClosedPlanPhase)

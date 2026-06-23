@@ -69,6 +69,7 @@ async function fetchDetail(id: string): Promise<ProjectDetail> {
           milestones: [],
           risks: [],
           decisions: [],
+          plans: [],
         }
       );
     }
@@ -185,7 +186,7 @@ const Projects: Component = () => {
       <div class="flex flex-col gap-4">
         <PageHeader
           title="Projects"
-          subtitle="Unified tasks, issues, milestones, risks, and decisions across the workspace"
+          subtitle="Unified tasks, issues, milestones, risks, decisions, and plans across the workspace"
           lastUpdated={lastUpdated()}
           onRefresh={() => {
             loadList();
@@ -208,7 +209,7 @@ const Projects: Component = () => {
               <EmptyState
                 icon="📋"
                 title="No projects yet"
-                subtitle="Projects appear here once agent tasks, issues, or risks are tracked."
+                subtitle="Projects appear here once agent tasks, issues, risks, or plans are tracked."
               />
             }
           >
@@ -244,6 +245,7 @@ const Projects: Component = () => {
                           <RollupChip label="issues" value={summary.open_issues} tone="info" />
                           <RollupChip label="at-risk" value={summary.milestones_at_risk} tone="warn" />
                           <RollupChip label="risks" value={summary.open_risks} tone="error" />
+                          <RollupChip label="plans" value={summary.open_plans} tone="info" />
                         </div>
                       </button>
                     );
@@ -259,7 +261,7 @@ const Projects: Component = () => {
                     <EmptyState
                       icon="👈"
                       title="Select a project"
-                      subtitle="Pick a project to see its tasks, issues, milestones, risks, and decisions."
+                      subtitle="Pick a project to see its tasks, issues, milestones, risks, decisions, and plans."
                       size="sm"
                     />
                   }

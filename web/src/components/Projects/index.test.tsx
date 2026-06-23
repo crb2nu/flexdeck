@@ -79,6 +79,43 @@ describe('Projects page', () => {
     // Rollup counts surface in the picker chips.
     expect(document.body.textContent).toContain('tasks');
     expect(document.body.textContent).toContain('risks');
+    expect(document.body.textContent).toContain('plans');
+    expect(document.body.textContent).toContain('1 plans');
+  });
+
+  it('sorts the project picker with open plans included in concern', async () => {
+    projectsMocks.list.mockResolvedValue({
+      projects: [
+        {
+          project: 'services/issues-only',
+          open_tasks: 0,
+          open_issues: 4,
+          milestones_at_risk: 0,
+          open_risks: 0,
+          open_plans: 0,
+        },
+        {
+          project: 'services/plans-heavy',
+          open_tasks: 0,
+          open_issues: 0,
+          milestones_at_risk: 0,
+          open_risks: 0,
+          open_plans: 5,
+        },
+      ],
+    });
+
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      const pickerButtons = Array.from(
+        document.querySelectorAll('aside[aria-label="Project picker"] button'),
+      );
+      expect(pickerButtons).toHaveLength(2);
+      expect(pickerButtons[0].textContent).toContain('plans-heavy');
+    });
+
+    expect(projectsMocks.get).toHaveBeenCalledWith('services/plans-heavy');
   });
 
   it('loads the selected project detail lanes from the contract', async () => {
@@ -92,11 +129,13 @@ describe('Projects page', () => {
       expect(document.body.textContent).toContain('Milestones');
       expect(document.body.textContent).toContain('Risks');
       expect(document.body.textContent).toContain('Decisions');
+      expect(document.body.textContent).toContain('Plans');
     });
 
     // Detail content from the fixture is present.
     expect(document.body.textContent).toContain('Wire /projects page to backend rollup');
     expect(document.body.textContent).toContain('Unified Project Tracking');
+    expect(document.body.textContent).toContain('Unified project tracking');
 
     // Issues link out via web_url.
     const issueLink = Array.from(document.querySelectorAll('a')).find((a) =>

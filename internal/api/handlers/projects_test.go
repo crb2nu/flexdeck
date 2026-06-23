@@ -323,6 +323,10 @@ func TestListProjects_Rollup(t *testing.T) {
 				{Payload: map[string]any{"id": "r1", "project": "services/flexdeck", "status": "open"}},
 				{Payload: map[string]any{"id": "r2", "project": "services/flexdeck", "status": "closed"}},
 			},
+			qdrantPlansCollection: {
+				{Payload: map[string]any{"id": "p1", "project": "services/flexdeck", "status": "planned"}},
+				{Payload: map[string]any{"id": "p2", "project": "services/flexdeck", "status": "done"}},
+			},
 		},
 	}
 
@@ -360,6 +364,9 @@ func TestListProjects_Rollup(t *testing.T) {
 	}
 	if row.OpenRisks != 1 {
 		t.Errorf("open_risks = %d, want 1 (closed excluded)", row.OpenRisks)
+	}
+	if row.OpenPlans != 1 {
+		t.Errorf("open_plans = %d, want 1 (done excluded)", row.OpenPlans)
 	}
 }
 
