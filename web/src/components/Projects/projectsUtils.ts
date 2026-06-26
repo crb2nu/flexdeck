@@ -148,6 +148,31 @@ export function planPhaseTone(phase: string): BadgeTone {
   }
 }
 
+// Kill-test status -> badge tone. passed=positive, failed=alarm, in-flight
+// warm, anything else (not run / unknown) muted.
+export function killTestTone(status: string): BadgeTone {
+  switch (status.toLowerCase()) {
+    case 'passed':
+    case 'pass':
+      return 'ok';
+    case 'failed':
+    case 'fail':
+      return 'error';
+    case 'running':
+    case 'in_progress':
+      return 'warn';
+    default:
+      return 'default';
+  }
+}
+
 export function planSignature(plan: ProjectPlan): string {
-  return [plan.id, plan.title, plan.phase, String(plan.mr_refs)].join('|');
+  return [
+    plan.id,
+    plan.title,
+    plan.phase,
+    String(plan.mr_refs),
+    plan.kill_test_status,
+    String(plan.issue_iid),
+  ].join('|');
 }
