@@ -4,7 +4,7 @@
 
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/1)
 
-> Last Updated: June 6, 2026
+> Last Updated: June 26, 2026
 
 ## Current Status
 
@@ -60,6 +60,7 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - ✅ **ConfigMap/Secret Viewer**: Expandable rows with per-key reveal for secrets.
 - ✅ **Helm Values/History**: Inline values display and revision history for HelmReleases.
 - ✅ **Stack Explorer**: Read-only local services/libs explorer over the workspace repository inventory, with search, grouping, and readiness summaries.
+- ✅ **Projects**: Unified project-tracking page federating GitLab issues/milestones, agent tasks, risks, decisions, and loom-core plans (with a riskiest-assumption + slice drill-in) on a shared canonical project key.
 
 ## Upcoming Work
 
@@ -116,9 +117,9 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 
 ### Phase 4: Enterprise Features
 
-- ◐ **RBAC UI (Partial)**: Backend routes and admin UI tab are implemented behind `RBAC_*` flags; rollout/default enablement is pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5))
-- ◐ **Audit Logs (Partial)**: Audit API and UI tab exist behind `AUDIT_*` flags; deployment-level enablement and operational policy remain pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6))
-- ◐ **Multi-Cluster Support (Partial)**: Cluster registry APIs and selector/admin surfaces exist behind `MULTICLUSTER_*` flags; production readiness and rollout validation are pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/7))
+- ✅ **RBAC UI**: Backend routes and admin UI tab behind `RBAC_*` flags, **enabled and enforcing in production since 2026-06-17** — fail-closed enforcement, a dedicated durable `redis-rbac` store (AOF + PVC, separate from the LRU cache), and a SOPS-managed admin token. Live verified: `RBAC_DISABLED=false`, 401 without a token / 200 with. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/5) — closed)
+- ◐ **Audit Logs (Partial)**: Audit API and UI tab are implemented behind `AUDIT_*` flags (issue closed), but the feature is **off by default** (`AUDIT_DISABLED` defaults to `true`) and is not enabled in the standard deployment; deployment-level enablement and operational/retention policy remain pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/6) — closed)
+- ◐ **Multi-Cluster Support (Partial)**: Cluster registry APIs and selector/admin surfaces are implemented behind `MULTICLUSTER_*` flags (issue closed), but the feature is **off by default** (`MULTICLUSTER_DISABLED` defaults to `true`) and is not enabled in the standard deployment; production readiness and rollout validation remain pending. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/7) — closed)
 
 ### Phase 5: Local Stack Support (June 2026)
 
@@ -133,6 +134,18 @@ FlexDeck is the central dashboard for the flexinfer.ai ecosystem, currently feat
 - [x] **Reliability Metrics Expansion**: Extended `/api/models/crd/{namespace}/{name}/inference` with additive error/queue/reject/retry fields and partial metadata. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/9))
 - [x] **HUD Degraded-Mode UX**: Added explicit stale/poll-fallback indicators for stream disconnects and delayed pull freshness. ([Issue](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/10))
 - [x] **Controller Integration Resilience**: Shared bounded-concurrency model integration fetch path with short TTL cache + in-flight dedupe across Controller and Inference views.
+
+### Phase 6: Unified Project Tracking (June 2026)
+
+A workspace-wide `/projects` page that federates project state across the
+ecosystem on a shared canonical key (GitLab `path_with_namespace`), separate from
+the Devoted/ICC deployment. Live-verified end-to-end against production data.
+
+- [x] **Projects Federation API**: `/api/projects` rollup + `/api/projects/{id}` detail correlating **six sources** on the `project` key — GitLab issues, GitLab native milestones, agent-context tasks, `mcp-pm` risks, agent-context decisions, and agent-context plans — with per-source error isolation (a single failed source degrades to a `partial` flag, never a failed response) and a cheap rollup (one GitLab list call + grouped Qdrant scrolls, no per-project fan-out).
+- [x] **Projects UI**: SolidJS `/projects` page with a concern-sorted project picker and per-project lanes for each source; poll-stable lists.
+- [x] **Risks Store (loom-core `mcp-pm`)**: A dedicated Qdrant-backed risks store (`pm_risk_create/list/update/link`) — the one planning entity nothing else owned — with write decoupled from embed. Currently dormant (no risks created yet).
+- [x] **Plans Lane (loom-core Plan store)**: Read-only visibility of the loom-core Plan store per project — lifecycle phase, a compact kill-test verdict (free-form status collapsed to passed/failed/mixed with full text on hover), born-linked GitLab issue, MR count, slice landing progress (`M/N`), and an expandable drill-in revealing the riskiest assumption and the ordered slice list (name/phase/MR).
+- ☐ **Risk Capture Wiring**: Nothing populates the risks store yet; the lane stays dormant until a workflow (e.g. riskiest-assumption kill-tests) calls `pm_risk_create`.
 
 ## References
 
