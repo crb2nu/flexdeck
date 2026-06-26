@@ -88,6 +88,20 @@ func MatchProject(project string) map[string]any {
 	}
 }
 
+// MatchKeyword builds a Qdrant filter matching points whose payload `key`
+// equals value — a generic single-keyword match (e.g. plan_id for plan slices,
+// which are keyed by plan_id rather than project).
+func MatchKeyword(key, value string) map[string]any {
+	return map[string]any{
+		"must": []any{
+			map[string]any{
+				"key":   key,
+				"match": map[string]any{"value": value},
+			},
+		},
+	}
+}
+
 // MatchProjectAndEntryType builds a Qdrant filter matching points whose payload
 // `project` equals the given canonical project id AND whose `entry_type` equals
 // the given type (e.g. "decision"). Used to federate the agent-context journal.

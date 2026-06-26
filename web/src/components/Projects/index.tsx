@@ -401,6 +401,14 @@ const Projects: Component = () => {
                                   #{plan.issue_iid}
                                 </a>
                               </Show>
+                              <Show when={plan.slice_total > 0}>
+                                <span
+                                  class="font-mono text-xs text-text-dim tabular-nums"
+                                  title="Slices landed (integrated/merged)"
+                                >
+                                  {plan.slice_done}/{plan.slice_total} slices
+                                </span>
+                              </Show>
                               <Show when={plan.mr_refs > 0}>
                                 <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
                               </Show>

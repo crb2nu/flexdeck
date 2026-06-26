@@ -174,5 +174,6 @@ export function planSignature(plan: ProjectPlan): string {
     String(plan.mr_refs),
     plan.kill_test_status,
     String(plan.issue_iid),
+    `${plan.slice_done}/${plan.slice_total}`,
   ].join('|');
 }
