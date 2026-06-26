@@ -13,10 +13,13 @@ import {
   isInferredBinding,
   isVerifiedBinding,
   libAdoptionLabel,
+  matchesAdoptionFilter,
   matchesBindingFilter,
   repositoryMatches,
+  summarizeAdoption,
   summarizeBinding,
   summarizeRemote,
+  type StackAdoptionFilter,
   type StackBindingFilter,
   type StackBucketFilter,
   type StackReadinessFilter,
@@ -65,6 +68,7 @@ const Stack: Component = () => {
   const [bucketFilter, setBucketFilter] = createSignal<StackBucketFilter>('all');
   const [readinessFilter, setReadinessFilter] = createSignal<StackReadinessFilter>('all');
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
+  const [adoptionFilter, setAdoptionFilter] = createSignal<StackAdoptionFilter>('all');
   const [languageFilter, setLanguageFilter] = createSignal('all');
 
   const loadInventory = async (silent = false) => {
@@ -112,6 +116,8 @@ const Stack: Component = () => {
     const degraded = repos.filter(isDegradedBinding).length;
     const inferred = repos.filter(isInferredBinding).length;
 
+    const adoption = summarizeAdoption(repos);
+
     return {
       total,
       services: inventory()?.totals.services ?? repos.filter((repo) => repo.bucket === 'services').length,
@@ -125,6 +131,10 @@ const Stack: Component = () => {
       verified,
       degraded,
       inferred,
+      libsAdopted: adoption.adopted,
+      libsUnadopted: adoption.unadopted,
+      libCoverage: adoption.coveragePct,
+      unadoptedNames: adoption.unadoptedNames,
     };
   });
 
@@ -145,6 +155,12 @@ const Stack: Component = () => {
     { id: 'verified', label: 'Verified', count: summary().verified },
     { id: 'degraded', label: 'Degraded', count: summary().degraded },
     { id: 'inferred', label: 'Inferred', count: summary().inferred },
+  ]);
+
+  const adoptionTabs = createMemo((): TabDef<StackAdoptionFilter>[] => [
+    { id: 'all', label: 'Any', count: summary().libs },
+    { id: 'adopted', label: 'Adopted', count: summary().libsAdopted },
+    { id: 'unadopted', label: 'No adopters', count: summary().libsUnadopted },
   ]);
 
   const languageOptions = createMemo<SelectOption[]>(() => {
@@ -176,6 +192,7 @@ const Stack: Component = () => {
     const selectedBucket = bucketFilter();
     const selectedReadiness = readinessFilter();
     const selectedBinding = bindingFilter();
+    const selectedAdoption = adoptionFilter();
     const selectedLanguage = languageFilter();
     const search = query();
 
@@ -184,6 +201,7 @@ const Stack: Component = () => {
       .filter((repo) => selectedLanguage === 'all' || getRepositoryLanguage(repo) === selectedLanguage)
       .filter((repo) => selectedReadiness === 'all' || getRepoReadiness(repo).level === selectedReadiness)
       .filter((repo) => matchesBindingFilter(repo, selectedBinding))
+      .filter((repo) => matchesAdoptionFilter(repo, selectedAdoption))
       .filter((repo) => repositoryMatches(repo, search))
       .sort(compareByBindingConcern);
   });
@@ -219,6 +237,7 @@ const Stack: Component = () => {
     bucketFilter() !== 'all' ||
     readinessFilter() !== 'all' ||
     bindingFilter() !== 'all' ||
+    adoptionFilter() !== 'all' ||
     languageFilter() !== 'all',
   );
 
@@ -227,6 +246,7 @@ const Stack: Component = () => {
     setBucketFilter('all');
     setReadinessFilter('all');
     setBindingFilter('all');
+    setAdoptionFilter('all');
     setLanguageFilter('all');
   };
 
@@ -287,7 +307,7 @@ const Stack: Component = () => {
               </div>
             </Show>
 
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <SummaryTile
                 label="Repositories"
                 value={summary().total}
@@ -302,6 +322,12 @@ const Stack: Component = () => {
                 tone={summary().degraded > 0 ? 'warn' : 'ok'}
               />
               <SummaryTile label="Dirty" value={summary().dirty} sub={`${summary().worktrees} with worktrees`} tone={summary().dirty > 0 ? 'warn' : 'default'} />
+              <SummaryTile
+                label="Lib coverage"
+                value={`${summary().libCoverage}%`}
+                sub={summary().libsUnadopted > 0 ? `${summary().libsUnadopted} with no adopters` : 'all libs adopted'}
+                tone={summary().libsUnadopted > 0 ? 'warn' : 'ok'}
+              />
               <SummaryTile label="CI manifests" value={summary().ci} sub="metadata only" />
               <SummaryTile label="Docs coverage" value={`${summary().docsCoverage}%`} sub="AGENTS/README/ROADMAP/LOOM" />
             </div>
@@ -333,9 +359,15 @@ const Stack: Component = () => {
                   Reset
                 </Button>
               </div>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <span class="heading-label">Cluster</span>
-                <TabBar tabs={bindingTabs()} active={bindingFilter()} onChange={setBindingFilter} />
+              <div class="mt-3 flex flex-wrap items-center gap-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="heading-label">Cluster</span>
+                  <TabBar tabs={bindingTabs()} active={bindingFilter()} onChange={setBindingFilter} />
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="heading-label">Adoption</span>
+                  <TabBar tabs={adoptionTabs()} active={adoptionFilter()} onChange={setAdoptionFilter} />
+                </div>
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
                 <span class="font-mono text-text-muted">{inventory()?.root ?? 'WORKSPACE_DIR'}</span>

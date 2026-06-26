@@ -174,6 +174,40 @@ describe('Stack Explorer', () => {
     });
   });
 
+  it('surfaces library adoption coverage and filters to unadopted libs', async () => {
+    const inventory: WorkspaceInventory = {
+      root: '/workspace',
+      generatedAt: '2026-06-26T12:00:00Z',
+      totals: { repositories: 3, services: 1, libs: 2 },
+      repositories: [
+        makeRepo({ name: 'flexdeck', dependsOn: ['mcp-go'] }),
+        makeRepo({ name: 'mcp-go', bucket: 'libs', path: '/workspace/libs/mcp-go', usedBy: ['flexdeck'] }),
+        makeRepo({ name: 'ts-resilience', bucket: 'libs', path: '/workspace/libs/ts-resilience', usedBy: [] }),
+      ],
+    };
+    stackMocks.getRepos.mockResolvedValue(inventory);
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(repoCard('libs', 'mcp-go')).toBeTruthy();
+      expect(repoCard('libs', 'ts-resilience')).toBeTruthy();
+    });
+
+    // Coverage tile: 1 of 2 libs adopted = 50%, 1 with no adopters.
+    expect(pageText()).toContain('Lib coverage');
+    expect(pageText()).toContain('50%');
+    expect(pageText()).toContain('1 with no adopters');
+
+    // The "No adopters" adoption filter shows only the orphan lib.
+    clickButtonWithText('No adopters');
+
+    await vi.waitFor(() => {
+      expect(repoCard('libs', 'ts-resilience')).toBeTruthy();
+      expect(repoCard('libs', 'mcp-go')).toBeNull();
+      expect(repoCard('services', 'flexdeck')).toBeNull();
+    });
+  });
+
   it('shows a blocking error when the workspace inventory is unavailable', async () => {
     stackMocks.getRepos.mockRejectedValue(new Error('workspace root not configured'));
     cleanup = mount();

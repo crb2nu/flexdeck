@@ -4,12 +4,16 @@ import {
   bindingSeverity,
   compareByBindingConcern,
   getRepoReadiness,
+  isAdoptedLib,
   isDegradedBinding,
   isInferredBinding,
+  isUnadoptedLib,
   isVerifiedBinding,
   libAdoptionLabel,
+  matchesAdoptionFilter,
   matchesBindingFilter,
   repositoryMatches,
+  summarizeAdoption,
   summarizeBinding,
   summarizeRemote,
 } from './stackUtils';
@@ -321,6 +325,53 @@ describe('stackUtils', () => {
       const sorted = [healthyA, dirty, progressing, degraded].sort(compareByBindingConcern).map((r) => r.name);
       // degraded first, progressing second, then the dirty repo (readiness score) before the clean one.
       expect(sorted).toEqual(['zeta', 'alpha', 'kilo', 'mango']);
+    });
+  });
+
+  describe('library adoption', () => {
+    const lib = (name: string, usedBy: string[]) =>
+      makeRepo({ name, bucket: 'libs', path: `/workspace/libs/${name}`, usedBy });
+
+    it('partitions libraries by whether any service adopts them', () => {
+      expect(isAdoptedLib(lib('mcp-go', ['flexdeck']))).toBe(true);
+      expect(isUnadoptedLib(lib('ts-resilience', []))).toBe(true);
+      // a service with no usedBy is not an unadopted lib
+      expect(isUnadoptedLib(makeRepo({ usedBy: [] }))).toBe(false);
+      expect(isAdoptedLib(makeRepo({ usedBy: ['x'] }))).toBe(false);
+    });
+
+    it('summarizes contract coverage and lists the orphan libs', () => {
+      const repos = [
+        lib('mcp-go', ['flexdeck', 'loom']),
+        lib('fi-accel', ['flexdeck']),
+        lib('ts-resilience', []),
+        lib('observability', []),
+        makeRepo({ name: 'flexdeck' }), // a service — ignored
+      ];
+      const s = summarizeAdoption(repos);
+      expect(s).toMatchObject({ libs: 4, adopted: 2, unadopted: 2, coveragePct: 50 });
+      expect(s.unadoptedNames).toEqual(['observability', 'ts-resilience']);
+    });
+
+    it('reports 0% / no orphans when there are no libraries', () => {
+      expect(summarizeAdoption([makeRepo()])).toMatchObject({
+        libs: 0,
+        adopted: 0,
+        unadopted: 0,
+        coveragePct: 0,
+        unadoptedNames: [],
+      });
+    });
+
+    it('applies the adoption filter scoped to libraries', () => {
+      const adopted = lib('mcp-go', ['flexdeck']);
+      const orphan = lib('ts-resilience', []);
+      const service = makeRepo();
+      expect(matchesAdoptionFilter(orphan, 'unadopted')).toBe(true);
+      expect(matchesAdoptionFilter(adopted, 'unadopted')).toBe(false);
+      expect(matchesAdoptionFilter(adopted, 'adopted')).toBe(true);
+      expect(matchesAdoptionFilter(service, 'unadopted')).toBe(false);
+      expect(matchesAdoptionFilter(service, 'all')).toBe(true);
     });
   });
 });
