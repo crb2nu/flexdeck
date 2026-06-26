@@ -111,6 +111,72 @@ func hasManifestFile(r Repository, file string) bool {
 	return false
 }
 
+func TestScanGitLabComputesAdoption(t *testing.T) {
+	// A service whose go.mod requires a workspace lib's module path must be
+	// linked to that lib — proving adoption works from the GitLab API source
+	// (no local checkout), the prod-default path.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v4/projects", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"id":1,"path":"loom","path_with_namespace":"services/loom","default_branch":"main","web_url":"https://gl/services/loom"},
+			{"id":2,"path":"mcp-go","path_with_namespace":"libs/mcp-go","default_branch":"main","web_url":"https://gl/libs/mcp-go"},
+			{"id":3,"path":"ts-resilience","path_with_namespace":"libs/ts-resilience","default_branch":"main","web_url":"https://gl/libs/ts-resilience"}
+		]`))
+	})
+	// Both buckets carry go.mod in their tree.
+	for _, id := range []string{"1", "2", "3"} {
+		mux.HandleFunc("/api/v4/projects/"+id+"/repository/tree", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`[{"name":"go.mod","type":"blob"}]`))
+		})
+		mux.HandleFunc("/api/v4/projects/"+id+"/languages", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"Go":100.0}`))
+		})
+	}
+	// Raw manifest contents: the service requires mcp-go's module path; the libs
+	// declare their module paths. ts-resilience is required by no one (orphan).
+	mux.HandleFunc("/api/v4/projects/1/repository/files/go.mod/raw", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("module gitlab.flexinfer.ai/services/loom\n\nrequire gitlab.flexinfer.ai/libs/mcp-go v0.1.0\n"))
+	})
+	mux.HandleFunc("/api/v4/projects/2/repository/files/go.mod/raw", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("module gitlab.flexinfer.ai/libs/mcp-go\n"))
+	})
+	mux.HandleFunc("/api/v4/projects/3/repository/files/go.mod/raw", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("module gitlab.flexinfer.ai/libs/ts-resilience\n"))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	inv, err := ScanGitLab(context.Background(), GitLabScanOptions{
+		BaseURL: ts.URL,
+		Token:   "test-token",
+		Buckets: []string{"services", "libs"},
+	})
+	if err != nil {
+		t.Fatalf("ScanGitLab: %v", err)
+	}
+
+	byName := map[string]Repository{}
+	for _, r := range inv.Repositories {
+		byName[r.Name] = r
+	}
+
+	loom := byName["loom"]
+	if len(loom.DependsOn) != 1 || loom.DependsOn[0] != "mcp-go" {
+		t.Errorf("loom.DependsOn = %v, want [mcp-go]", loom.DependsOn)
+	}
+	mcpGo := byName["mcp-go"]
+	if len(mcpGo.UsedBy) != 1 || mcpGo.UsedBy[0] != "loom" {
+		t.Errorf("mcp-go.UsedBy = %v, want [loom]", mcpGo.UsedBy)
+	}
+	if orphan := byName["ts-resilience"]; len(orphan.UsedBy) != 0 {
+		t.Errorf("ts-resilience.UsedBy = %v, want none (orphan lib)", orphan.UsedBy)
+	}
+}
+
 func TestScanGitLabRejectsDeadlineExhaustedPartialScan(t *testing.T) {
 	// Regression: when per-repo calls outlive the context, the scan used to
 	// return a partial inventory (repos with errors, no manifests) that the
