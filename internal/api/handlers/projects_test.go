@@ -97,14 +97,15 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 			},
 			qdrantPlansCollection: {
 				// gitlab_issue_iid is float64 to mirror JSON decoding of Qdrant numbers.
-				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}, "kill_test_status": "passed", "gitlab_issue_iid": float64(17)}},
+				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}, "kill_test_status": "passed", "riskiest_assumption": "the store is reachable cross-process", "gitlab_issue_iid": float64(17)}},
 			},
-			// Slice progress for plan-x-1: 4 slices, 3 landed (merged/integrated).
+			// Slice detail for plan-x-1, deliberately out of order to test sorting:
+			// 4 slices, 3 landed (merged/integrated). order is float64 (JSON numbers).
 			qdrantPlanSlicesCollection: {
-				{Payload: map[string]any{"id": "s1", "plan_id": "plan-x-1", "status": "merged"}},
-				{Payload: map[string]any{"id": "s2", "plan_id": "plan-x-1", "status": "merged"}},
-				{Payload: map[string]any{"id": "s3", "plan_id": "plan-x-1", "status": "integrated"}},
-				{Payload: map[string]any{"id": "s4", "plan_id": "plan-x-1", "status": "implementing"}},
+				{Payload: map[string]any{"id": "s2", "plan_id": "plan-x-1", "status": "merged", "order": float64(2), "name": "slice two", "mr_ref": "!11"}},
+				{Payload: map[string]any{"id": "s4", "plan_id": "plan-x-1", "status": "implementing", "order": float64(4), "name": "slice four"}},
+				{Payload: map[string]any{"id": "s1", "plan_id": "plan-x-1", "status": "merged", "order": float64(1), "name": "slice one", "mr_ref": "!10"}},
+				{Payload: map[string]any{"id": "s3", "plan_id": "plan-x-1", "status": "integrated", "order": float64(3), "name": "slice three", "mr_ref": "!13"}},
 			},
 		},
 	}
@@ -167,6 +168,20 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 	// Slice progress: 4 total, 3 landed (2 merged + 1 integrated).
 	if d.Plans[0].SliceTotal != 4 || d.Plans[0].SliceDone != 3 {
 		t.Errorf("plan slices = %d/%d, want 3/4 done", d.Plans[0].SliceDone, d.Plans[0].SliceTotal)
+	}
+	// Riskiest assumption surfaced from the plan payload for the drill-in.
+	if d.Plans[0].RiskiestAssumption != "the store is reachable cross-process" {
+		t.Errorf("plan riskiest_assumption = %q", d.Plans[0].RiskiestAssumption)
+	}
+	// Slice detail must be returned and sorted by order, regardless of scroll order.
+	if len(d.Plans[0].Slices) != 4 {
+		t.Fatalf("plan slices detail len = %d, want 4", len(d.Plans[0].Slices))
+	}
+	if d.Plans[0].Slices[0].Order != 1 || d.Plans[0].Slices[0].Name != "slice one" || d.Plans[0].Slices[0].MRRef != "!10" {
+		t.Errorf("slice[0] = %+v, want order 1 'slice one' !10", d.Plans[0].Slices[0])
+	}
+	if d.Plans[0].Slices[3].Order != 4 || d.Plans[0].Slices[3].Phase != "implementing" {
+		t.Errorf("slice[3] = %+v, want order 4 implementing", d.Plans[0].Slices[3])
 	}
 	// The slice scroll must target the plan_id keyword.
 	gotSliceFilter := fq.filterFor(qdrantPlanSlicesCollection)

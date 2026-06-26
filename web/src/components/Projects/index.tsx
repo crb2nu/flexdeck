@@ -24,6 +24,7 @@ import {
   killTestSummary,
   planPhaseTone,
   planSignature,
+  slicePhaseTone,
   issueSignature,
   milestoneSignature,
   priorityTone,
@@ -107,6 +108,11 @@ const Projects: Component = () => {
 
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
 
+  // Plan drill-in expansion state, keyed by plan id (survives polls).
+  const [expandedPlans, setExpandedPlans] = createSignal<Record<string, boolean>>({});
+  const togglePlan = (id: string) =>
+    setExpandedPlans((e) => ({ ...e, [id]: !e[id] }));
+
   // Detail (right) for the selected project.
   const [detail, setDetail] = createStore<{ value: ProjectDetail | null }>({ value: null });
   const [detailLoading, setDetailLoading] = createSignal(false);
@@ -169,6 +175,7 @@ const Projects: Component = () => {
     on(selectedId, (id) => {
       if (id) {
         setDetail('value', null);
+        setExpandedPlans({});
         loadDetail(id, false);
       }
     }, { defer: true }),
@@ -389,37 +396,95 @@ const Projects: Component = () => {
                         <For each={stablePlans()}>
                           {(plan) => {
                             const kt = killTestSummary(plan.kill_test_status);
+                            const hasDetail = () =>
+                              !!plan.riskiest_assumption || plan.slices.length > 0;
+                            const expanded = () => !!expandedPlans()[plan.id];
                             return (
-                            <li class="flex items-center gap-3 py-2">
-                              <span class="min-w-0 flex-1 truncate text-sm text-text-main">{plan.title}</span>
-                              <Show when={plan.issue_iid > 0}>
-                                <a
-                                  href={plan.issue_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  class="font-mono text-xs text-text-dim hover:text-status-ok hover:underline"
-                                  title="Born-linked GitLab issue"
+                            <li class="flex flex-col gap-1.5 py-2">
+                              <div class="flex items-center gap-3">
+                                <Show
+                                  when={hasDetail()}
+                                  fallback={
+                                    <span class="min-w-0 flex-1 truncate text-sm text-text-main">
+                                      {plan.title}
+                                    </span>
+                                  }
                                 >
-                                  #{plan.issue_iid}
-                                </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePlan(plan.id)}
+                                    aria-expanded={expanded()}
+                                    class="group flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                                  >
+                                    <span class="w-2 text-[10px] text-text-dim">
+                                      {expanded() ? '▾' : '▸'}
+                                    </span>
+                                    <span class="truncate text-sm text-text-main group-hover:text-status-ok">
+                                      {plan.title}
+                                    </span>
+                                  </button>
+                                </Show>
+                                <Show when={plan.issue_iid > 0}>
+                                  <a
+                                    href={plan.issue_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="font-mono text-xs text-text-dim hover:text-status-ok hover:underline"
+                                    title="Born-linked GitLab issue"
+                                  >
+                                    #{plan.issue_iid}
+                                  </a>
+                                </Show>
+                                <Show when={plan.slice_total > 0}>
+                                  <span
+                                    class="font-mono text-xs text-text-dim tabular-nums"
+                                    title="Slices landed (integrated/merged)"
+                                  >
+                                    {plan.slice_done}/{plan.slice_total} slices
+                                  </span>
+                                </Show>
+                                <Show when={plan.mr_refs > 0}>
+                                  <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
+                                </Show>
+                                <Show when={kt.label}>
+                                  <Badge tone={kt.tone} title={plan.kill_test_status}>
+                                    kill-test: {kt.label}
+                                  </Badge>
+                                </Show>
+                                <Badge tone={planPhaseTone(plan.phase)}>{plan.phase}</Badge>
+                              </div>
+
+                              {/* Drill-in: riskiest assumption + slice list. */}
+                              <Show when={expanded()}>
+                                <div class="ml-4 flex flex-col gap-2 border-l border-white/10 pl-3">
+                                  <Show when={plan.riskiest_assumption}>
+                                    <p class="text-xs leading-relaxed text-text-dim">
+                                      <span class="font-medium text-text-main">Riskiest assumption: </span>
+                                      {plan.riskiest_assumption}
+                                    </p>
+                                  </Show>
+                                  <Show when={plan.slices.length > 0}>
+                                    <ul class="flex flex-col gap-1">
+                                      <For each={plan.slices}>
+                                        {(slice) => (
+                                          <li class="flex items-center gap-2 text-xs">
+                                            <span class="w-4 font-mono text-text-dim/60 tabular-nums">
+                                              {slice.order}
+                                            </span>
+                                            <span class="min-w-0 flex-1 truncate text-text-main">
+                                              {slice.name}
+                                            </span>
+                                            <Show when={slice.mr_ref}>
+                                              <span class="font-mono text-text-dim">{slice.mr_ref}</span>
+                                            </Show>
+                                            <Badge tone={slicePhaseTone(slice.phase)}>{slice.phase}</Badge>
+                                          </li>
+                                        )}
+                                      </For>
+                                    </ul>
+                                  </Show>
+                                </div>
                               </Show>
-                              <Show when={plan.slice_total > 0}>
-                                <span
-                                  class="font-mono text-xs text-text-dim tabular-nums"
-                                  title="Slices landed (integrated/merged)"
-                                >
-                                  {plan.slice_done}/{plan.slice_total} slices
-                                </span>
-                              </Show>
-                              <Show when={plan.mr_refs > 0}>
-                                <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
-                              </Show>
-                              <Show when={kt.label}>
-                                <Badge tone={kt.tone} title={plan.kill_test_status}>
-                                  kill-test: {kt.label}
-                                </Badge>
-                              </Show>
-                              <Badge tone={planPhaseTone(plan.phase)}>{plan.phase}</Badge>
                             </li>
                             );
                           }}

@@ -170,6 +170,24 @@ export function killTestSummary(status: string): { label: string; tone: BadgeTon
   return { label: 'recorded', tone: 'default' };
 }
 
+// Slice lifecycle phase -> badge tone. landed (integrated/merged) positive,
+// implemented/in_review warm, claimed/implementing in-flight, pending neutral.
+export function slicePhaseTone(phase: string): BadgeTone {
+  switch (phase.toLowerCase()) {
+    case 'merged':
+    case 'integrated':
+      return 'ok';
+    case 'implemented':
+    case 'in_review':
+      return 'warn';
+    case 'claimed':
+    case 'implementing':
+      return 'info';
+    default:
+      return 'default';
+  }
+}
+
 export function planSignature(plan: ProjectPlan): string {
   return [
     plan.id,
@@ -177,7 +195,9 @@ export function planSignature(plan: ProjectPlan): string {
     plan.phase,
     String(plan.mr_refs),
     plan.kill_test_status,
+    plan.riskiest_assumption,
     String(plan.issue_iid),
     `${plan.slice_done}/${plan.slice_total}`,
+    plan.slices.map((s) => `${s.order}:${s.phase}`).join(','),
   ].join('|');
 }
