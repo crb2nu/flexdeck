@@ -160,4 +160,29 @@ describe('Projects page', () => {
     // Plan slice progress: landed/total slices.
     expect(document.body.textContent).toContain('3/4 slices');
   });
+
+  it('expands a plan to reveal the riskiest assumption and slice list', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Unified project tracking');
+    });
+
+    // Drill-in detail is hidden until the plan row is expanded.
+    expect(document.body.textContent).not.toContain('Riskiest assumption:');
+    expect(document.body.textContent).not.toContain('Plan entity MVP + kill-test');
+
+    const planToggle = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Unified project tracking'),
+    );
+    expect(planToggle).toBeTruthy();
+    planToggle!.click();
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Riskiest assumption:');
+      // Slice rows render with name + mr ref.
+      expect(document.body.textContent).toContain('Plan entity MVP + kill-test');
+      expect(document.body.textContent).toContain('!747');
+    });
+  });
 });

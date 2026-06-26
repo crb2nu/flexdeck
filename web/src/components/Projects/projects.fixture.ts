@@ -93,10 +93,18 @@ export const projectDetailFixture: ProjectDetail = {
       phase: 'in_progress',
       mr_refs: 2,
       kill_test_status: 'passed 2026-06-21 (live proxy + cross-process integration test)',
+      riskiest_assumption:
+        'A Qdrant-backed plan entity is reachable byte-identical from a fresh agent in another worktree.',
       issue_iid: 17,
       issue_url: 'https://gitlab.example.com/services/flexdeck/-/issues/17',
       slice_total: 4,
       slice_done: 3,
+      slices: [
+        { order: 1, name: 'Plan entity MVP + kill-test', phase: 'merged', mr_ref: '!747' },
+        { order: 2, name: 'Full schema, slices, lifecycle', phase: 'merged', mr_ref: '!748' },
+        { order: 3, name: 'Markdown mirror + store-first skill', phase: 'integrated', mr_ref: '!750' },
+        { order: 4, name: 'Enforced slice claims', phase: 'implementing', mr_ref: '' },
+      ],
     },
   ],
 };

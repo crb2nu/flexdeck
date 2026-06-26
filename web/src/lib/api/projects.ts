@@ -74,11 +74,21 @@ export interface ProjectPlan {
   phase: string;
   mr_refs: number;
   kill_test_status: string;
+  riskiest_assumption: string;
   issue_iid: number;
   issue_url: string;
   // Slice progress: total slices and how many have landed (integrated/merged).
   slice_total: number;
   slice_done: number;
+  // Per-slice detail for the drill-in, ordered by slice order.
+  slices: ProjectPlanSlice[];
+}
+
+export interface ProjectPlanSlice {
+  order: number;
+  name: string;
+  phase: string;
+  mr_ref: string;
 }
 
 export interface ProjectDetail {

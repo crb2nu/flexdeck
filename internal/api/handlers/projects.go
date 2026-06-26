@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -87,24 +88,37 @@ type projectDecision struct {
 	DecidedAt string `json:"decided_at"`
 }
 
+// projectPlanSlice is one slice of a plan, for the drill-in. Phase is stored
+// under the "status" payload key (same convention as plans).
+type projectPlanSlice struct {
+	Order int    `json:"order"`
+	Name  string `json:"name"`
+	Phase string `json:"phase"`
+	MRRef string `json:"mr_ref"`
+}
+
 // projectPlan is one plan from the agent_plans_v1 store, scoped to a project.
 // Phase is stored under the "status" payload key (shared keyword index).
 // KillTestStatus and the born-linked GitLab issue (IssueIID/IssueURL) surface
 // loom-core's S7b planning contract — a plan's riskiest-assumption gate and the
-// issue it was imported from / mirrored to.
+// issue it was imported from / mirrored to. RiskiestAssumption + Slices back the
+// drill-in.
 type projectPlan struct {
-	ID             string `json:"id"`
-	Slug           string `json:"slug"`
-	Title          string `json:"title"`
-	Phase          string `json:"phase"`
-	MRRefs         int    `json:"mr_refs"`
-	KillTestStatus string `json:"kill_test_status"`
-	IssueIID       int    `json:"issue_iid"`
-	IssueURL       string `json:"issue_url"`
+	ID                 string `json:"id"`
+	Slug               string `json:"slug"`
+	Title              string `json:"title"`
+	Phase              string `json:"phase"`
+	MRRefs             int    `json:"mr_refs"`
+	KillTestStatus     string `json:"kill_test_status"`
+	RiskiestAssumption string `json:"riskiest_assumption"`
+	IssueIID           int    `json:"issue_iid"`
+	IssueURL           string `json:"issue_url"`
 	// Slice progress from the plan-slices collection: total slices and how many
 	// have landed (integrated/merged). Both 0 when a plan has no slices.
 	SliceTotal int `json:"slice_total"`
 	SliceDone  int `json:"slice_done"`
+	// Slices is the per-slice detail for the drill-in, ordered by slice order.
+	Slices []projectPlanSlice `json:"slices"`
 }
 
 // projectDetail is the GET /api/projects/{id} response.
@@ -581,30 +595,33 @@ func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]proj
 		pl := p.Payload
 		iid := payloadInt(pl, "gitlab_issue_iid")
 		plans[i] = projectPlan{
-			ID:             payloadString(pl, "id"),
-			Slug:           payloadString(pl, "slug"),
-			Title:          payloadString(pl, "title"),
-			Phase:          payloadString(pl, "status"),
-			MRRefs:         payloadSliceLen(pl, "mr_refs"),
-			KillTestStatus: payloadString(pl, "kill_test_status"),
-			IssueIID:       iid,
-			IssueURL:       h.planIssueURL(project, iid),
+			ID:                 payloadString(pl, "id"),
+			Slug:               payloadString(pl, "slug"),
+			Title:              payloadString(pl, "title"),
+			Phase:              payloadString(pl, "status"),
+			MRRefs:             payloadSliceLen(pl, "mr_refs"),
+			KillTestStatus:     payloadString(pl, "kill_test_status"),
+			RiskiestAssumption: payloadString(pl, "riskiest_assumption"),
+			IssueIID:           iid,
+			IssueURL:           h.planIssueURL(project, iid),
+			Slices:             []projectPlanSlice{},
 		}
 	}
 
-	// Enrich each plan with slice progress. Slices live in their own collection
-	// keyed by plan_id (no project index), so this is a bounded per-plan fan-out.
-	h.attachPlanSliceCounts(ctx, plans)
+	// Enrich each plan with its slices. Slices live in their own collection keyed
+	// by plan_id (no project index), so this is a bounded per-plan fan-out.
+	h.attachPlanSlices(ctx, plans)
 
 	return plans, nil
 }
 
-// attachPlanSliceCounts fills SliceTotal/SliceDone for each plan by scrolling
-// the plan-slices collection (keyed by plan_id). Per-plan scrolls run
-// concurrently, bounded by the number of plans in the project. Slice progress is
-// an enrichment, so a scroll failure leaves a plan at 0/0 rather than failing
-// the plans lane (a flaky slices collection must not trip the partial banner).
-func (h *Handler) attachPlanSliceCounts(ctx context.Context, plans []projectPlan) {
+// attachPlanSlices fills Slices (and the derived SliceTotal/SliceDone) for each
+// plan by scrolling the plan-slices collection (keyed by plan_id). Per-plan
+// scrolls run concurrently, bounded by the number of plans in the project.
+// Slices are an enrichment, so a scroll failure leaves a plan with no slices
+// rather than failing the plans lane (a flaky slices collection must not trip
+// the partial banner).
+func (h *Handler) attachPlanSlices(ctx context.Context, plans []projectPlan) {
 	if h.qdrant == nil || len(plans) == 0 {
 		return
 	}
@@ -618,16 +635,26 @@ func (h *Handler) attachPlanSliceCounts(ctx context.Context, plans []projectPlan
 		g.Go(func() error {
 			pts, err := h.qdrant.Scroll(gctx, qdrantPlanSlicesCollection, qdrant.MatchKeyword("plan_id", planID), qdrantScrollLimit)
 			if err != nil {
-				slog.Debug("projects: plan slice counts failed", "plan_id", planID, "error", err)
+				slog.Debug("projects: plan slices failed", "plan_id", planID, "error", err)
 				return nil
 			}
+			slices := make([]projectPlanSlice, 0, len(pts))
 			done := 0
 			for _, p := range pts {
-				if isDoneSlicePhase(payloadString(p.Payload, "status")) {
+				phase := payloadString(p.Payload, "status")
+				if isDoneSlicePhase(phase) {
 					done++
 				}
+				slices = append(slices, projectPlanSlice{
+					Order: payloadInt(p.Payload, "order"),
+					Name:  payloadString(p.Payload, "name"),
+					Phase: phase,
+					MRRef: payloadString(p.Payload, "mr_ref"),
+				})
 			}
-			plans[i].SliceTotal = len(pts)
+			sort.Slice(slices, func(a, b int) bool { return slices[a].Order < slices[b].Order })
+			plans[i].Slices = slices
+			plans[i].SliceTotal = len(slices)
 			plans[i].SliceDone = done
 			return nil
 		})
