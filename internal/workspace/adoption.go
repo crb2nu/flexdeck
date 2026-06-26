@@ -51,13 +51,35 @@ func computeAdoption(inv *Inventory) {
 		return
 	}
 
+	serviceText := map[string]string{}
+	for i := range inv.Repositories {
+		repo := &inv.Repositories[i]
+		if repo.Bucket == BucketServices {
+			serviceText[repo.Name] = serviceManifestText(repo)
+		}
+	}
+
+	matchAdoption(inv, identifierToLib, serviceText)
+}
+
+// matchAdoption populates DependsOn/UsedBy from resolved library identifiers and
+// per-service dependency-manifest text. It is pure (no file/network IO) so the
+// filesystem and GitLab-API scanners share one matching implementation:
+// identifierToLib maps each library identifier (module path, package name,
+// `libs/<dir>`) to the library's repo name; serviceText maps a service repo name
+// to its concatenated manifest text.
+func matchAdoption(inv *Inventory, identifierToLib map[string]string, serviceText map[string]string) {
+	if inv == nil || len(identifierToLib) == 0 {
+		return
+	}
+
 	usedBy := map[string]map[string]bool{}
 	for i := range inv.Repositories {
 		repo := &inv.Repositories[i]
 		if repo.Bucket != BucketServices {
 			continue
 		}
-		manifestText := serviceManifestText(repo)
+		manifestText := serviceText[repo.Name]
 		if manifestText == "" {
 			continue
 		}
@@ -126,7 +148,15 @@ func serviceManifestText(repo *Repository) string {
 }
 
 func goModulePath(path string) string {
-	content := readManifest(path)
+	return moduleFromGoMod(readManifest(path))
+}
+
+func manifestName(path string) string {
+	return nameFromManifestContent(readManifest(path))
+}
+
+// moduleFromGoMod extracts the module path from go.mod content (pure, no IO).
+func moduleFromGoMod(content string) string {
 	if content == "" {
 		return ""
 	}
@@ -136,8 +166,9 @@ func goModulePath(path string) string {
 	return ""
 }
 
-func manifestName(path string) string {
-	content := readManifest(path)
+// nameFromManifestContent extracts a package name from package.json or
+// pyproject.toml content (pure, no IO).
+func nameFromManifestContent(content string) string {
 	if content == "" {
 		return ""
 	}
@@ -148,6 +179,23 @@ func manifestName(path string) string {
 		return match[1]
 	}
 	return ""
+}
+
+// libraryIdentifiersFromSources resolves a library's identifiers from already-
+// fetched manifest contents (the GitLab-API path), mirroring libraryIdentifiers
+// which reads them from disk.
+func libraryIdentifiersFromSources(name string, sources map[string]string) []string {
+	identifiers := []string{"libs/" + name}
+	if module := moduleFromGoMod(sources["go.mod"]); module != "" {
+		identifiers = append(identifiers, module)
+	}
+	if n := nameFromManifestContent(sources["package.json"]); n != "" {
+		identifiers = append(identifiers, n)
+	}
+	if n := nameFromManifestContent(sources["pyproject.toml"]); n != "" {
+		identifiers = append(identifiers, n)
+	}
+	return identifiers
 }
 
 func readManifest(path string) string {

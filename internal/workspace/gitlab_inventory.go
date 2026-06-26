@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -87,6 +88,9 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 	}
 
 	repos := make([]Repository, len(targets))
+	// sources[idx] holds each repo's adoption-relevant manifest contents, fetched
+	// via the raw-file API so adoption can be computed without a local checkout.
+	sources := make([]map[string]string, len(targets))
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for i := range targets {
@@ -95,10 +99,17 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			repos[idx] = gl.buildRepository(ctx, targets[idx].project, targets[idx].bucket)
+			repos[idx], sources[idx] = gl.buildRepository(ctx, targets[idx].project, targets[idx].bucket)
 		}(i)
 	}
 	wg.Wait()
+
+	// Key the fetched manifest sources by repo name now, while sources[] is still
+	// aligned with repos[] (the slice is sorted below, breaking index alignment).
+	srcByName := make(map[string]map[string]string, len(repos))
+	for idx := range repos {
+		srcByName[repos[idx].Name] = sources[idx]
+	}
 
 	// A scan that outlived its context produced a partial inventory: cancelled
 	// tree/languages calls leave repos with scanner errors and no manifests.
@@ -133,6 +144,27 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 			inv.Totals.ByLanguage[r.PrimaryLanguage]++
 		}
 	}
+
+	// Library adoption from the fetched manifests (srcByName, keyed above): the
+	// shared matcher resolves identifiers from libs and scans service dependency
+	// text — no local checkout required.
+	identifierToLib := map[string]string{}
+	serviceText := map[string]string{}
+	for i := range inv.Repositories {
+		repo := &inv.Repositories[i]
+		switch repo.Bucket {
+		case BucketLibs:
+			for _, identifier := range libraryIdentifiersFromSources(repo.Name, srcByName[repo.Name]) {
+				if identifier != "" {
+					identifierToLib[identifier] = repo.Name
+				}
+			}
+		case BucketServices:
+			serviceText[repo.Name] = concatManifestSources(srcByName[repo.Name])
+		}
+	}
+	matchAdoption(inv, identifierToLib, serviceText)
+
 	return inv, nil
 }
 
@@ -177,7 +209,10 @@ func (g *gitlabAPI) listProjects(ctx context.Context) ([]glProject, error) {
 	return all, nil
 }
 
-func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket string) Repository {
+// buildRepository returns the repo metadata plus its adoption-relevant manifest
+// contents (go.mod / package.json / pyproject.toml / web/package.json), fetched
+// via the raw-file API for the files the tree confirms exist.
+func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket string) (Repository, map[string]string) {
 	repo := Repository{
 		Name:   p.Path,
 		Bucket: bucket,
@@ -191,6 +226,8 @@ func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket str
 		DiscoveryReasons: []string{"gitlab"},
 	}
 
+	var sources map[string]string
+
 	// Repository root tree -> manifests + docs + package managers.
 	if p.DefaultBranch != "" {
 		var tree []glTreeEntry
@@ -201,7 +238,8 @@ func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket str
 		if err := g.get(ctx, treePath, &tree); err != nil {
 			repo.Errors = append(repo.Errors, fmt.Sprintf("tree: %v", err))
 		} else {
-			applyTreeMetadata(&repo, tree)
+			names := applyTreeMetadata(&repo, tree)
+			sources = g.fetchAdoptionManifests(ctx, p.ID, p.DefaultBranch, names)
 		}
 	}
 
@@ -215,10 +253,73 @@ func (g *gitlabAPI) buildRepository(ctx context.Context, p glProject, bucket str
 
 	repo.Binding = deriveBinding(repo)
 
-	return repo
+	return repo, sources
 }
 
-func applyTreeMetadata(repo *Repository, tree []glTreeEntry) {
+// adoptionManifestFiles are the dependency manifests scanned for library
+// adoption. web/package.json is fetched only when a web/ tree entry is present.
+var adoptionManifestFiles = []string{"go.mod", "package.json", "pyproject.toml"}
+
+// fetchAdoptionManifests pulls the raw contents of the adoption manifests that
+// the tree confirms exist, so no fetch wastes a call on a missing file.
+func (g *gitlabAPI) fetchAdoptionManifests(ctx context.Context, projectID int, branch string, names map[string]bool) map[string]string {
+	sources := map[string]string{}
+	for _, file := range adoptionManifestFiles {
+		if !names[file] {
+			continue
+		}
+		if content, err := g.getRaw(ctx, projectID, branch, file); err == nil && content != "" {
+			sources[file] = content
+		}
+	}
+	// A frontend lives under web/; its package.json carries npm lib adoption.
+	if names["web"] {
+		if content, err := g.getRaw(ctx, projectID, branch, "web/package.json"); err == nil && content != "" {
+			sources["web/package.json"] = content
+		}
+	}
+	return sources
+}
+
+// getRaw fetches a repository file's raw bytes (capped) via the GitLab files API.
+func (g *gitlabAPI) getRaw(ctx context.Context, projectID int, branch, file string) (string, error) {
+	path := fmt.Sprintf("/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
+		projectID, url.PathEscape(file), url.QueryEscape(branch))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.base+path, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("PRIVATE-TOKEN", g.token)
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes))
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// concatManifestSources joins a repo's fetched manifest contents into one blob
+// for substring identifier matching.
+func concatManifestSources(sources map[string]string) string {
+	if len(sources) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	for _, content := range sources {
+		builder.WriteString(content)
+		builder.WriteByte('\n')
+	}
+	return builder.String()
+}
+
+func applyTreeMetadata(repo *Repository, tree []glTreeEntry) map[string]bool {
 	names := make(map[string]bool, len(tree))
 	for _, e := range tree {
 		names[e.Name] = true
@@ -242,6 +343,7 @@ func applyTreeMetadata(repo *Repository, tree []glTreeEntry) {
 		Roadmap: names["ROADMAP.md"],
 		Loom:    names[".loom"] || names["LOOM.md"] || names["loom.md"],
 	}
+	return names
 }
 
 func topLanguage(langs map[string]float64) string {
