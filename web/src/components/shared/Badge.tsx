@@ -7,6 +7,8 @@ export interface BadgeProps {
   tone?: BadgeTone;
   size?: BadgeSize;
   class?: string;
+  /** Native tooltip — use to carry full detail when the label is a summary. */
+  title?: string;
   children: JSX.Element;
 }
 
@@ -32,6 +34,7 @@ const Badge: Component<BadgeProps> = (props) => {
 
   return (
     <span
+      title={props.title}
       class={`inline-flex items-center rounded-md border font-medium transition-all duration-150 ${sizeClasses[size()]} ${toneClasses[tone()]} ${props.class || ''}`}
     >
       {props.children}
