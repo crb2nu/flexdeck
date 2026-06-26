@@ -64,13 +64,18 @@ export interface ProjectDecision {
 
 // ProjectPlan mirrors a plan from the agent-context Plan store. Phase is the
 // lifecycle stage; management (create/advance) lives in the loom-hud, so this
-// lane is read-only with a deep link out.
+// lane is read-only with a deep link out. kill_test_status and the born-linked
+// issue (issue_iid/issue_url) carry loom-core's S7b planning contract;
+// issue_url is "" when the plan has no linked GitLab issue.
 export interface ProjectPlan {
   id: string;
   slug: string;
   title: string;
   phase: string;
   mr_refs: number;
+  kill_test_status: string;
+  issue_iid: number;
+  issue_url: string;
 }
 
 export interface ProjectDetail {

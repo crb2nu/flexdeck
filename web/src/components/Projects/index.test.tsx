@@ -142,5 +142,12 @@ describe('Projects page', () => {
       a.getAttribute('href') === projectDetailFixture.issues[0].web_url,
     );
     expect(issueLink).toBeTruthy();
+
+    // Plan planning-contract: kill-test status badge + born-linked issue link.
+    expect(document.body.textContent).toContain('kill-test: passed');
+    const planIssueLink = Array.from(document.querySelectorAll('a')).find((a) =>
+      a.getAttribute('href') === projectDetailFixture.plans[0].issue_url,
+    );
+    expect(planIssueLink).toBeTruthy();
   });
 });

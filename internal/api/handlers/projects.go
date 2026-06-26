@@ -86,12 +86,18 @@ type projectDecision struct {
 
 // projectPlan is one plan from the agent_plans_v1 store, scoped to a project.
 // Phase is stored under the "status" payload key (shared keyword index).
+// KillTestStatus and the born-linked GitLab issue (IssueIID/IssueURL) surface
+// loom-core's S7b planning contract — a plan's riskiest-assumption gate and the
+// issue it was imported from / mirrored to.
 type projectPlan struct {
-	ID     string `json:"id"`
-	Slug   string `json:"slug"`
-	Title  string `json:"title"`
-	Phase  string `json:"phase"`
-	MRRefs int    `json:"mr_refs"`
+	ID             string `json:"id"`
+	Slug           string `json:"slug"`
+	Title          string `json:"title"`
+	Phase          string `json:"phase"`
+	MRRefs         int    `json:"mr_refs"`
+	KillTestStatus string `json:"kill_test_status"`
+	IssueIID       int    `json:"issue_iid"`
+	IssueURL       string `json:"issue_url"`
 }
 
 // projectDetail is the GET /api/projects/{id} response.
@@ -551,7 +557,9 @@ func (h *Handler) fetchProjectDecisions(ctx context.Context, project string) ([]
 
 // fetchProjectPlans scrolls agent_plans_v1 for plans scoped to the project.
 // Phase is stored under the "status" payload key. mr_refs is a string array;
-// we surface its length (mr count) for a compact lane.
+// we surface its length (mr count) for a compact lane. kill_test_status and the
+// born-linked gitlab_issue_iid come straight off the plan payload (no extra
+// query) — the issue URL is derived from the GitLab base + canonical project.
 func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]projectPlan, error) {
 	if h.qdrant == nil {
 		return []projectPlan{}, nil
@@ -564,15 +572,33 @@ func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]proj
 	plans := make([]projectPlan, 0, len(points))
 	for _, p := range points {
 		pl := p.Payload
+		iid := payloadInt(pl, "gitlab_issue_iid")
 		plans = append(plans, projectPlan{
-			ID:     payloadString(pl, "id"),
-			Slug:   payloadString(pl, "slug"),
-			Title:  payloadString(pl, "title"),
-			Phase:  payloadString(pl, "status"),
-			MRRefs: payloadSliceLen(pl, "mr_refs"),
+			ID:             payloadString(pl, "id"),
+			Slug:           payloadString(pl, "slug"),
+			Title:          payloadString(pl, "title"),
+			Phase:          payloadString(pl, "status"),
+			MRRefs:         payloadSliceLen(pl, "mr_refs"),
+			KillTestStatus: payloadString(pl, "kill_test_status"),
+			IssueIID:       iid,
+			IssueURL:       h.planIssueURL(project, iid),
 		})
 	}
 	return plans, nil
+}
+
+// planIssueURL builds the GitLab issue web URL for a plan's born-linked issue
+// (gitlab_issue_iid). Returns "" when there is no link or no configured GitLab
+// base URL, so the frontend can skip rendering a dead link.
+func (h *Handler) planIssueURL(project string, iid int) string {
+	if iid <= 0 || h.cfg == nil {
+		return ""
+	}
+	base := strings.TrimRight(strings.TrimSpace(h.cfg.GitLab.URL), "/")
+	if base == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s/-/issues/%d", base, project, iid)
 }
 
 // --- rollup helpers ---
@@ -637,6 +663,28 @@ func payloadSliceLen(payload map[string]any, key string) int {
 	}
 	if arr, ok := payload[key].([]any); ok {
 		return len(arr)
+	}
+	return 0
+}
+
+// payloadInt coerces a numeric payload field to int. JSON decoding yields
+// float64 for numbers; int/int64/json.Number are accepted too for test fakes
+// and decoders configured with UseNumber.
+func payloadInt(payload map[string]any, key string) int {
+	if payload == nil {
+		return 0
+	}
+	switch v := payload[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return int(n)
+		}
 	}
 	return 0
 }

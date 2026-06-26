@@ -21,6 +21,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
 import {
   decisionSignature,
+  killTestTone,
   planPhaseTone,
   planSignature,
   issueSignature,
@@ -389,8 +390,24 @@ const Projects: Component = () => {
                           {(plan) => (
                             <li class="flex items-center gap-3 py-2">
                               <span class="min-w-0 flex-1 truncate text-sm text-text-main">{plan.title}</span>
+                              <Show when={plan.issue_iid > 0}>
+                                <a
+                                  href={plan.issue_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="font-mono text-xs text-text-dim hover:text-status-ok hover:underline"
+                                  title="Born-linked GitLab issue"
+                                >
+                                  #{plan.issue_iid}
+                                </a>
+                              </Show>
                               <Show when={plan.mr_refs > 0}>
                                 <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
+                              </Show>
+                              <Show when={plan.kill_test_status}>
+                                <Badge tone={killTestTone(plan.kill_test_status)}>
+                                  kill-test: {plan.kill_test_status}
+                                </Badge>
                               </Show>
                               <Badge tone={planPhaseTone(plan.phase)}>{plan.phase}</Badge>
                             </li>

@@ -96,7 +96,8 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 				{Payload: map[string]any{"id": "d1", "title": "chose Qdrant for risks", "timestamp": "2026-06-19T22:00:00Z", "entry_type": "decision"}},
 			},
 			qdrantPlansCollection: {
-				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}}},
+				// gitlab_issue_iid is float64 to mirror JSON decoding of Qdrant numbers.
+				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}, "kill_test_status": "passed", "gitlab_issue_iid": float64(17)}},
 			},
 		},
 	}
@@ -144,6 +145,17 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 	}
 	if d.Plans[0].Phase != "in_progress" || d.Plans[0].MRRefs != 2 {
 		t.Errorf("plan phase/mr_refs = %q/%d, want in_progress/2", d.Plans[0].Phase, d.Plans[0].MRRefs)
+	}
+	// Planning contract: kill-test status + born-linked GitLab issue URL.
+	if d.Plans[0].KillTestStatus != "passed" {
+		t.Errorf("plan kill_test_status = %q, want passed", d.Plans[0].KillTestStatus)
+	}
+	if d.Plans[0].IssueIID != 17 {
+		t.Errorf("plan issue_iid = %d, want 17", d.Plans[0].IssueIID)
+	}
+	wantIssueURL := ts.URL + "/services/flexdeck/-/issues/17"
+	if d.Plans[0].IssueURL != wantIssueURL {
+		t.Errorf("plan issue_url = %q, want %q", d.Plans[0].IssueURL, wantIssueURL)
 	}
 	gotPlanFilter := fq.filterFor(qdrantPlansCollection)
 	if fmt.Sprintf("%v", gotPlanFilter) != fmt.Sprintf("%v", qdrant.MatchProject("services/flexdeck")) {
