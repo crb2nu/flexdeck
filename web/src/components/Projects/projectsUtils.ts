@@ -148,22 +148,26 @@ export function planPhaseTone(phase: string): BadgeTone {
   }
 }
 
-// Kill-test status -> badge tone. passed=positive, failed=alarm, in-flight
-// warm, anything else (not run / unknown) muted.
-export function killTestTone(status: string): BadgeTone {
-  switch (status.toLowerCase()) {
-    case 'passed':
-    case 'pass':
-      return 'ok';
-    case 'failed':
-    case 'fail':
-      return 'error';
-    case 'running':
-    case 'in_progress':
-      return 'warn';
-    default:
-      return 'default';
+// Kill-test status is free-form prose in practice — e.g.
+// "passed 2026-06-21 (live proxy + cross-process integration test)" or
+// "legs 0+a+b+c ALL PASS (...). Follow-ups: ...". Rendering it raw blows up the
+// compact lane, so derive a one-word verdict + tone for the badge and keep the
+// full text as a tooltip. Detection anchors on the leading verdict (the
+// riskiest-assumption template writes "passed …" / "FAILED …" / "not run") with
+// a substring fallback for "ALL PASS"-style summaries.
+export function killTestSummary(status: string): { label: string; tone: BadgeTone } {
+  const s = status.trim().toLowerCase();
+  if (!s) return { label: '', tone: 'default' };
+  if (/^(not[\s-]?run|pending|todo|n\/a)/.test(s)) {
+    return { label: 'not run', tone: 'default' };
   }
+  const passed = /\bpass(ed)?\b/.test(s) || /all[\s-]*pass/.test(s);
+  const failed = /\bfail(ed|s)?\b/.test(s) || /^killed/.test(s);
+  if (failed && passed) return { label: 'mixed', tone: 'warn' };
+  if (failed) return { label: 'failed', tone: 'error' };
+  if (passed) return { label: 'passed', tone: 'ok' };
+  if (/\b(running|in[\s_]?progress)\b/.test(s)) return { label: 'running', tone: 'warn' };
+  return { label: 'recorded', tone: 'default' };
 }
 
 export function planSignature(plan: ProjectPlan): string {

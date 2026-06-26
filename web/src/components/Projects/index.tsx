@@ -21,7 +21,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
 import {
   decisionSignature,
-  killTestTone,
+  killTestSummary,
   planPhaseTone,
   planSignature,
   issueSignature,
@@ -387,7 +387,9 @@ const Projects: Component = () => {
                     <SectionShell title="Plans" count={stablePlans().length} empty="No plans tracked.">
                       <ul class="flex flex-col divide-y divide-white/5">
                         <For each={stablePlans()}>
-                          {(plan) => (
+                          {(plan) => {
+                            const kt = killTestSummary(plan.kill_test_status);
+                            return (
                             <li class="flex items-center gap-3 py-2">
                               <span class="min-w-0 flex-1 truncate text-sm text-text-main">{plan.title}</span>
                               <Show when={plan.issue_iid > 0}>
@@ -412,14 +414,15 @@ const Projects: Component = () => {
                               <Show when={plan.mr_refs > 0}>
                                 <span class="font-mono text-xs text-text-dim">{plan.mr_refs} MR</span>
                               </Show>
-                              <Show when={plan.kill_test_status}>
-                                <Badge tone={killTestTone(plan.kill_test_status)}>
-                                  kill-test: {plan.kill_test_status}
+                              <Show when={kt.label}>
+                                <Badge tone={kt.tone} title={plan.kill_test_status}>
+                                  kill-test: {kt.label}
                                 </Badge>
                               </Show>
                               <Badge tone={planPhaseTone(plan.phase)}>{plan.phase}</Badge>
                             </li>
-                          )}
+                            );
+                          }}
                         </For>
                       </ul>
                     </SectionShell>

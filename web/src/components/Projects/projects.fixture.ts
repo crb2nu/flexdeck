@@ -92,7 +92,7 @@ export const projectDetailFixture: ProjectDetail = {
       title: 'Unified project tracking',
       phase: 'in_progress',
       mr_refs: 2,
-      kill_test_status: 'passed',
+      kill_test_status: 'passed 2026-06-21 (live proxy + cross-process integration test)',
       issue_iid: 17,
       issue_url: 'https://gitlab.example.com/services/flexdeck/-/issues/17',
       slice_total: 4,

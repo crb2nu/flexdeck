@@ -143,8 +143,15 @@ describe('Projects page', () => {
     );
     expect(issueLink).toBeTruthy();
 
-    // Plan planning-contract: kill-test status badge + born-linked issue link.
+    // Plan planning-contract: kill-test badge collapses free-form prose to a
+    // one-word verdict; the full prose lives in the tooltip, not visible text.
     expect(document.body.textContent).toContain('kill-test: passed');
+    expect(document.body.textContent).not.toContain('live proxy');
+    const ktBadge = Array.from(document.querySelectorAll('span')).find((s) =>
+      s.textContent === `kill-test: passed`,
+    );
+    expect(ktBadge?.getAttribute('title')).toBe(projectDetailFixture.plans[0].kill_test_status);
+
     const planIssueLink = Array.from(document.querySelectorAll('a')).find((a) =>
       a.getAttribute('href') === projectDetailFixture.plans[0].issue_url,
     );
