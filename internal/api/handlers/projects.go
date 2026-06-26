@@ -28,6 +28,9 @@ const (
 	qdrantRisksCollection   = "pm_risks"
 	qdrantContextCollection = "agent_context_v1"
 	qdrantPlansCollection   = "agent_plans_v1"
+	// Plan slices live in their own collection, keyed by plan_id (no project
+	// index) — fetched per-plan to surface slice progress.
+	qdrantPlanSlicesCollection = "agent_plan_slices_v1"
 
 	// projectsRollupMaxProjects caps how many GitLab projects the rollup walks,
 	// keeping the fan-out bounded against a fragile GitLab API.
@@ -98,6 +101,10 @@ type projectPlan struct {
 	KillTestStatus string `json:"kill_test_status"`
 	IssueIID       int    `json:"issue_iid"`
 	IssueURL       string `json:"issue_url"`
+	// Slice progress from the plan-slices collection: total slices and how many
+	// have landed (integrated/merged). Both 0 when a plan has no slices.
+	SliceTotal int `json:"slice_total"`
+	SliceDone  int `json:"slice_done"`
 }
 
 // projectDetail is the GET /api/projects/{id} response.
@@ -569,11 +576,11 @@ func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]proj
 		return nil, err
 	}
 
-	plans := make([]projectPlan, 0, len(points))
-	for _, p := range points {
+	plans := make([]projectPlan, len(points))
+	for i, p := range points {
 		pl := p.Payload
 		iid := payloadInt(pl, "gitlab_issue_iid")
-		plans = append(plans, projectPlan{
+		plans[i] = projectPlan{
 			ID:             payloadString(pl, "id"),
 			Slug:           payloadString(pl, "slug"),
 			Title:          payloadString(pl, "title"),
@@ -582,9 +589,61 @@ func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]proj
 			KillTestStatus: payloadString(pl, "kill_test_status"),
 			IssueIID:       iid,
 			IssueURL:       h.planIssueURL(project, iid),
+		}
+	}
+
+	// Enrich each plan with slice progress. Slices live in their own collection
+	// keyed by plan_id (no project index), so this is a bounded per-plan fan-out.
+	h.attachPlanSliceCounts(ctx, plans)
+
+	return plans, nil
+}
+
+// attachPlanSliceCounts fills SliceTotal/SliceDone for each plan by scrolling
+// the plan-slices collection (keyed by plan_id). Per-plan scrolls run
+// concurrently, bounded by the number of plans in the project. Slice progress is
+// an enrichment, so a scroll failure leaves a plan at 0/0 rather than failing
+// the plans lane (a flaky slices collection must not trip the partial banner).
+func (h *Handler) attachPlanSliceCounts(ctx context.Context, plans []projectPlan) {
+	if h.qdrant == nil || len(plans) == 0 {
+		return
+	}
+	g, gctx := errgroup.WithContext(ctx)
+	for i := range plans {
+		i := i
+		planID := plans[i].ID
+		if planID == "" {
+			continue
+		}
+		g.Go(func() error {
+			pts, err := h.qdrant.Scroll(gctx, qdrantPlanSlicesCollection, qdrant.MatchKeyword("plan_id", planID), qdrantScrollLimit)
+			if err != nil {
+				slog.Debug("projects: plan slice counts failed", "plan_id", planID, "error", err)
+				return nil
+			}
+			done := 0
+			for _, p := range pts {
+				if isDoneSlicePhase(payloadString(p.Payload, "status")) {
+					done++
+				}
+			}
+			plans[i].SliceTotal = len(pts)
+			plans[i].SliceDone = done
+			return nil
 		})
 	}
-	return plans, nil
+	_ = g.Wait()
+}
+
+// isDoneSlicePhase reports whether a plan-slice has landed (integrated into the
+// umbrella branch or merged), for the slice-progress "done" tally.
+func isDoneSlicePhase(phase string) bool {
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "integrated", "merged":
+		return true
+	default:
+		return false
+	}
 }
 
 // planIssueURL builds the GitLab issue web URL for a plan's born-linked issue

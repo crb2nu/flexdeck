@@ -99,6 +99,13 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 				// gitlab_issue_iid is float64 to mirror JSON decoding of Qdrant numbers.
 				{Payload: map[string]any{"id": "plan-x-1", "slug": "x", "title": "Plan one", "status": "in_progress", "mr_refs": []any{"!10", "!11"}, "kill_test_status": "passed", "gitlab_issue_iid": float64(17)}},
 			},
+			// Slice progress for plan-x-1: 4 slices, 3 landed (merged/integrated).
+			qdrantPlanSlicesCollection: {
+				{Payload: map[string]any{"id": "s1", "plan_id": "plan-x-1", "status": "merged"}},
+				{Payload: map[string]any{"id": "s2", "plan_id": "plan-x-1", "status": "merged"}},
+				{Payload: map[string]any{"id": "s3", "plan_id": "plan-x-1", "status": "integrated"}},
+				{Payload: map[string]any{"id": "s4", "plan_id": "plan-x-1", "status": "implementing"}},
+			},
 		},
 	}
 
@@ -156,6 +163,15 @@ func TestGetProject_MergesAllSources(t *testing.T) {
 	wantIssueURL := ts.URL + "/services/flexdeck/-/issues/17"
 	if d.Plans[0].IssueURL != wantIssueURL {
 		t.Errorf("plan issue_url = %q, want %q", d.Plans[0].IssueURL, wantIssueURL)
+	}
+	// Slice progress: 4 total, 3 landed (2 merged + 1 integrated).
+	if d.Plans[0].SliceTotal != 4 || d.Plans[0].SliceDone != 3 {
+		t.Errorf("plan slices = %d/%d, want 3/4 done", d.Plans[0].SliceDone, d.Plans[0].SliceTotal)
+	}
+	// The slice scroll must target the plan_id keyword.
+	gotSliceFilter := fq.filterFor(qdrantPlanSlicesCollection)
+	if fmt.Sprintf("%v", gotSliceFilter) != fmt.Sprintf("%v", qdrant.MatchKeyword("plan_id", "plan-x-1")) {
+		t.Errorf("slice filter = %v, want plan_id match", gotSliceFilter)
 	}
 	gotPlanFilter := fq.filterFor(qdrantPlansCollection)
 	if fmt.Sprintf("%v", gotPlanFilter) != fmt.Sprintf("%v", qdrant.MatchProject("services/flexdeck")) {

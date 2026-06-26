@@ -76,6 +76,9 @@ export interface ProjectPlan {
   kill_test_status: string;
   issue_iid: number;
   issue_url: string;
+  // Slice progress: total slices and how many have landed (integrated/merged).
+  slice_total: number;
+  slice_done: number;
 }
 
 export interface ProjectDetail {

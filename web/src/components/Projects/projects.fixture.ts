@@ -95,6 +95,8 @@ export const projectDetailFixture: ProjectDetail = {
       kill_test_status: 'passed',
       issue_iid: 17,
       issue_url: 'https://gitlab.example.com/services/flexdeck/-/issues/17',
+      slice_total: 4,
+      slice_done: 3,
     },
   ],
 };

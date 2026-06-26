@@ -149,5 +149,8 @@ describe('Projects page', () => {
       a.getAttribute('href') === projectDetailFixture.plans[0].issue_url,
     );
     expect(planIssueLink).toBeTruthy();
+
+    // Plan slice progress: landed/total slices.
+    expect(document.body.textContent).toContain('3/4 slices');
   });
 });
