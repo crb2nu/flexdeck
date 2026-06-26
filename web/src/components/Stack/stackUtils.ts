@@ -3,6 +3,7 @@ import type { WorkspaceRepository, WorkspaceWorkloadStatus } from '../../lib/api
 export type StackBucketFilter = 'all' | 'services' | 'libs';
 export type StackReadinessFilter = 'all' | 'ready' | 'attention';
 export type StackBindingFilter = 'all' | 'verified' | 'degraded' | 'inferred';
+export type StackAdoptionFilter = 'all' | 'adopted' | 'unadopted';
 export type RepoReadinessLevel = 'ready' | 'attention';
 
 export interface RepoReadiness {
@@ -75,6 +76,62 @@ export function libAdoptionLabel(repo: WorkspaceRepository): string {
   const users = repo.usedBy ?? [];
   if (users.length === 0) return 'No service adopters yet';
   return `${users.length} ${users.length === 1 ? 'service' : 'services'}: ${users.join(', ')}`;
+}
+
+// --- library adoption coverage ---
+
+export function isLibrary(repo: WorkspaceRepository): boolean {
+  return repo.bucket === 'libs';
+}
+
+// isAdoptedLib / isUnadoptedLib partition libraries by whether any service
+// depends on them. Unadopted libs are the cross-cutting contract libs nobody
+// has wired in yet — the coverage gap.
+export function isAdoptedLib(repo: WorkspaceRepository): boolean {
+  return isLibrary(repo) && (repo.usedBy?.length ?? 0) > 0;
+}
+
+export function isUnadoptedLib(repo: WorkspaceRepository): boolean {
+  return isLibrary(repo) && (repo.usedBy?.length ?? 0) === 0;
+}
+
+export interface AdoptionSummary {
+  libs: number;
+  adopted: number;
+  unadopted: number;
+  coveragePct: number;
+  unadoptedNames: string[];
+}
+
+// summarizeAdoption tallies library contract coverage: how many workspace libs
+// have at least one service adopter vs none.
+export function summarizeAdoption(repos: WorkspaceRepository[]): AdoptionSummary {
+  const libs = repos.filter(isLibrary);
+  const adopted = libs.filter((repo) => (repo.usedBy?.length ?? 0) > 0);
+  return {
+    libs: libs.length,
+    adopted: adopted.length,
+    unadopted: libs.length - adopted.length,
+    coveragePct: libs.length > 0 ? Math.round((adopted.length / libs.length) * 100) : 0,
+    unadoptedNames: libs
+      .filter((repo) => (repo.usedBy?.length ?? 0) === 0)
+      .map((repo) => repo.name)
+      .sort(),
+  };
+}
+
+// matchesAdoptionFilter applies the Stack "Adoption" filter, scoped to libs:
+// 'adopted' shows libs with >=1 service adopter, 'unadopted' shows the
+// zero-adopter contract libs, 'all' is a no-op.
+export function matchesAdoptionFilter(repo: WorkspaceRepository, filter: StackAdoptionFilter): boolean {
+  switch (filter) {
+    case 'adopted':
+      return isAdoptedLib(repo);
+    case 'unadopted':
+      return isUnadoptedLib(repo);
+    default:
+      return true;
+  }
 }
 
 export function hasManifest(repo: WorkspaceRepository, manifestType: string): boolean {
