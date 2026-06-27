@@ -187,6 +187,7 @@ func registerPublicRoutes(r chi.Router, h *handlers.Handler) {
 		r.Get("/ci/status", h.PublicCIStatus)
 		r.Get("/metrics/summary", h.PublicMetricsSummary)
 		r.Get("/models/status", h.PublicModelsStatus)
+		r.Get("/benchmarks", h.PublicBenchmarks)
 	})
 }
 

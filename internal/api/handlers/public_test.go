@@ -426,3 +426,47 @@ func TestModelHandlerParsingHelpers(t *testing.T) {
 		t.Fatalf("expected parseHoursParam default, got %d", got)
 	}
 }
+
+func TestParsePublicBenchmarks(t *testing.T) {
+	now := "2026-06-27T00:00:00Z"
+
+	t.Run("valid payload -> live", func(t *testing.T) {
+		raw := `{"updatedAt":"2026-06-27T15:55:26Z","benchmarks":[` +
+			`{"model":"gemma4-26b-a4b-gptq","backend":"vllm","gpuVendor":"AMD","gpuArch":"gfx1100","tokensPerSecond":67,"completionTokens":256,"durationSeconds":3.82,"samples":3,"timestamp":"2026-06-27T15:55:26Z"},` +
+			`{"model":"qwen3-1.7b-tools","backend":"llamacpp","tokensPerSecond":19.8,"timestamp":"2026-06-27T15:55:26Z"}]}`
+		resp, ok := parsePublicBenchmarks(raw, now)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if resp.Source != "live" {
+			t.Errorf("source = %q, want live", resp.Source)
+		}
+		if resp.UpdatedAt != "2026-06-27T15:55:26Z" {
+			t.Errorf("updatedAt = %q", resp.UpdatedAt)
+		}
+		if len(resp.Benchmarks) != 2 || resp.Benchmarks[0].TokensPerSecond != 67 {
+			t.Fatalf("benchmarks = %+v", resp.Benchmarks)
+		}
+		// Marshalled tokensPerSecond must be a JSON number for the site's zod schema.
+		b, _ := json.Marshal(resp.Benchmarks[0])
+		if !strings.Contains(string(b), `"tokensPerSecond":67`) {
+			t.Errorf("tokensPerSecond should serialize as a number: %s", b)
+		}
+	})
+
+	t.Run("missing updatedAt falls back to now", func(t *testing.T) {
+		raw := `{"benchmarks":[{"model":"m","backend":"vllm","tokensPerSecond":1,"timestamp":"t"}]}`
+		resp, ok := parsePublicBenchmarks(raw, now)
+		if !ok || resp.UpdatedAt != now {
+			t.Fatalf("ok=%v updatedAt=%q want now", ok, resp.UpdatedAt)
+		}
+	})
+
+	t.Run("empty/invalid -> not ok (site keeps demo)", func(t *testing.T) {
+		for _, raw := range []string{"", "not json", `{"benchmarks":[]}`, `{}`} {
+			if _, ok := parsePublicBenchmarks(raw, now); ok {
+				t.Errorf("raw %q: expected ok=false", raw)
+			}
+		}
+	})
+}
