@@ -1004,6 +1004,86 @@ type PublicModelsResponse struct {
 	Source    string            `json:"source"` // "live" | "demo"
 }
 
+// BenchmarkRun mirrors the FlexInfer benchmark contract consumed by the public
+// portfolio site (components/benchmarks/BenchmarkShowcase.tsx). Field names are
+// the camelCase keys enforced by the site's sanitizeBenchmarks zod schema.
+type BenchmarkRun struct {
+	Model            string  `json:"model"`
+	Backend          string  `json:"backend"`
+	GPUVendor        string  `json:"gpuVendor,omitempty"`
+	GPUArch          string  `json:"gpuArch,omitempty"`
+	TokensPerSecond  float64 `json:"tokensPerSecond"`
+	CompletionTokens int     `json:"completionTokens,omitempty"`
+	DurationSeconds  float64 `json:"durationSeconds,omitempty"`
+	Samples          int     `json:"samples,omitempty"`
+	BatchSize        int     `json:"batchSize,omitempty"`
+	Timestamp        string  `json:"timestamp"`
+}
+
+// PublicBenchmarksResponse is the envelope returned to the site (and proxied
+// through the site's /api/public/benchmarks route + sanitizeBenchmarks).
+type PublicBenchmarksResponse struct {
+	Source     string         `json:"source"` // "live" | "demo"
+	Benchmarks []BenchmarkRun `json:"benchmarks"`
+	UpdatedAt  string         `json:"updatedAt"`
+}
+
+const (
+	benchmarksConfigMapNamespace = "flexinfer-system"
+	benchmarksConfigMapName      = "flexinfer-public-benchmarks"
+	benchmarksConfigMapKey       = "benchmarks.json"
+)
+
+// parsePublicBenchmarks decodes the benchmarks.json payload written by the
+// in-cluster benchmarker CronJob. Returns ok=false when the payload is
+// missing/invalid/empty so the caller falls back to the site's built-in sample
+// data instead of surfacing a hard error.
+func parsePublicBenchmarks(raw, now string) (PublicBenchmarksResponse, bool) {
+	var parsed struct {
+		Benchmarks []BenchmarkRun `json:"benchmarks"`
+		UpdatedAt  string         `json:"updatedAt"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil || len(parsed.Benchmarks) == 0 {
+		return PublicBenchmarksResponse{}, false
+	}
+	updatedAt := parsed.UpdatedAt
+	if updatedAt == "" {
+		updatedAt = now
+	}
+	return PublicBenchmarksResponse{
+		Source:     "live",
+		Benchmarks: parsed.Benchmarks,
+		UpdatedAt:  updatedAt,
+	}, true
+}
+
+// PublicBenchmarks serves the latest FlexInfer benchmark runs for the public
+// portfolio site. It reads the flexinfer-public-benchmarks ConfigMap (refreshed
+// by the benchmarker CronJob). When the data is absent or invalid it returns an
+// empty "demo" envelope (HTTP 200) so the site keeps its built-in sample runs
+// rather than showing an error.
+func (h *Handler) PublicBenchmarks(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	empty := PublicBenchmarksResponse{Source: "demo", Benchmarks: []BenchmarkRun{}, UpdatedAt: now}
+
+	kc := h.k8sForRequest(r)
+	if kc == nil {
+		respondJSON(w, http.StatusOK, empty)
+		return
+	}
+	cm, err := kc.GetConfigMap(r.Context(), benchmarksConfigMapNamespace, benchmarksConfigMapName)
+	if err != nil {
+		respondJSON(w, http.StatusOK, empty)
+		return
+	}
+	resp, ok := parsePublicBenchmarks(cm.Data[benchmarksConfigMapKey], now)
+	if !ok {
+		respondJSON(w, http.StatusOK, empty)
+		return
+	}
+	respondJSON(w, http.StatusOK, resp)
+}
+
 func (h *Handler) PublicModelsStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
