@@ -1008,16 +1008,21 @@ type PublicModelsResponse struct {
 // portfolio site (components/benchmarks/BenchmarkShowcase.tsx). Field names are
 // the camelCase keys enforced by the site's sanitizeBenchmarks zod schema.
 type BenchmarkRun struct {
-	Model            string  `json:"model"`
-	Backend          string  `json:"backend"`
-	GPUVendor        string  `json:"gpuVendor,omitempty"`
-	GPUArch          string  `json:"gpuArch,omitempty"`
-	TokensPerSecond  float64 `json:"tokensPerSecond"`
-	CompletionTokens int     `json:"completionTokens,omitempty"`
-	DurationSeconds  float64 `json:"durationSeconds,omitempty"`
-	Samples          int     `json:"samples,omitempty"`
-	BatchSize        int     `json:"batchSize,omitempty"`
-	Timestamp        string  `json:"timestamp"`
+	Model     string `json:"model"`
+	Backend   string `json:"backend"`
+	GPUVendor string `json:"gpuVendor,omitempty"`
+	GPUArch   string `json:"gpuArch,omitempty"`
+	// TokensPerSecond is the LLM lane metric. Non-LLM lanes (embeddings, rerank,
+	// image) report a generic Value + Unit instead, so both are pointers/omitempty
+	// and a row carries one or the other.
+	TokensPerSecond  *float64 `json:"tokensPerSecond,omitempty"`
+	Value            *float64 `json:"value,omitempty"`
+	Unit             string   `json:"unit,omitempty"`
+	CompletionTokens int      `json:"completionTokens,omitempty"`
+	DurationSeconds  float64  `json:"durationSeconds,omitempty"`
+	Samples          int      `json:"samples,omitempty"`
+	BatchSize        int      `json:"batchSize,omitempty"`
+	Timestamp        string   `json:"timestamp"`
 }
 
 // PublicBenchmarksResponse is the envelope returned to the site (and proxied

@@ -444,13 +444,35 @@ func TestParsePublicBenchmarks(t *testing.T) {
 		if resp.UpdatedAt != "2026-06-27T15:55:26Z" {
 			t.Errorf("updatedAt = %q", resp.UpdatedAt)
 		}
-		if len(resp.Benchmarks) != 2 || resp.Benchmarks[0].TokensPerSecond != 67 {
+		if len(resp.Benchmarks) != 2 || resp.Benchmarks[0].TokensPerSecond == nil ||
+			*resp.Benchmarks[0].TokensPerSecond != 67 {
 			t.Fatalf("benchmarks = %+v", resp.Benchmarks)
 		}
 		// Marshalled tokensPerSecond must be a JSON number for the site's zod schema.
 		b, _ := json.Marshal(resp.Benchmarks[0])
 		if !strings.Contains(string(b), `"tokensPerSecond":67`) {
 			t.Errorf("tokensPerSecond should serialize as a number: %s", b)
+		}
+	})
+
+	t.Run("non-LLM lane carries value+unit, omits tokensPerSecond", func(t *testing.T) {
+		raw := `{"updatedAt":"t","benchmarks":[` +
+			`{"model":"bge-large-radeonvii","backend":"llamacpp","gpuArch":"gfx906","value":66.6,"unit":"emb/s","timestamp":"t"}]}`
+		resp, ok := parsePublicBenchmarks(raw, now)
+		if !ok || len(resp.Benchmarks) != 1 {
+			t.Fatalf("ok=%v benchmarks=%+v", ok, resp.Benchmarks)
+		}
+		run := resp.Benchmarks[0]
+		if run.TokensPerSecond != nil {
+			t.Errorf("tokensPerSecond should be nil for a non-LLM lane")
+		}
+		if run.Value == nil || *run.Value != 66.6 || run.Unit != "emb/s" {
+			t.Fatalf("value/unit = %+v", run)
+		}
+		// tokensPerSecond must be omitted entirely so the site reads value+unit.
+		b, _ := json.Marshal(run)
+		if strings.Contains(string(b), "tokensPerSecond") {
+			t.Errorf("tokensPerSecond should be omitted: %s", b)
 		}
 	})
 
