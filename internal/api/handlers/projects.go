@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -43,7 +44,19 @@ const (
 	// qdrantRollupScrollLimit caps the single grouped scroll the rollup does per
 	// collection (all tasks/risks across all projects, tallied by project).
 	qdrantRollupScrollLimit = 2000
+
+	// projectFetchTimeout bounds one federated fetch (rollup or detail). The fetch
+	// is detached from the client request (see GetProject/ListProjects), so this
+	// is the only ceiling on a cold, all-sources fan-out.
+	projectFetchTimeout = 12 * time.Second
 )
+
+// errProjectDetailAllSourcesFailed marks a detail fetch where every federated
+// source failed — a transient upstream outage or a cancelled request — as
+// opposed to a project that genuinely has nothing. Returning it from the cache
+// fill keeps the all-empty result OUT of the cache so it is not served for the
+// full TTL (stale-while-revalidate serves the last good value instead).
+var errProjectDetailAllSourcesFailed = errors.New("project detail: all sources unavailable")
 
 // projectTask is one agent-context task scoped to a project.
 type projectTask struct {
@@ -133,6 +146,16 @@ type projectDetail struct {
 	Plans      []projectPlan      `json:"plans"`
 }
 
+// fullyUnavailable reports that every source failed: the result is partial and
+// carries no data in any lane. This is the cache-poisoning shape we must not
+// store — a brief upstream blip (or a cancelled request) would otherwise pin an
+// empty view for the whole TTL.
+func (d projectDetail) fullyUnavailable() bool {
+	return d.Partial &&
+		len(d.Tasks) == 0 && len(d.Issues) == 0 && len(d.Milestones) == 0 &&
+		len(d.Risks) == 0 && len(d.Decisions) == 0 && len(d.Plans) == 0
+}
+
 // projectRollup is one row of the GET /api/projects response.
 type projectRollup struct {
 	Project          string `json:"project"`
@@ -146,7 +169,12 @@ type projectRollup struct {
 // ListProjects returns a tracking rollup across known GitLab projects.
 // GET /api/projects
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// Detach from the client request so an aborted/superseded poll cannot cancel
+	// the upstream fan-out mid-flight (which previously surfaced as a stream of
+	// "context canceled" background-refresh errors and stalled the rollup).
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), projectFetchTimeout)
+	defer cancel()
+
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(ctx, "projects:rollup", 30*time.Second, func() (any, error) {
 			return h.fetchProjectsRollup(ctx)
@@ -181,11 +209,26 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	// Detach the federated fetch from the client request. A browser that aborts
+	// or supersedes its poll mid-fetch would otherwise cancel every upstream call
+	// (all sources fail with "context canceled"), yield an all-empty "partial"
+	// detail, and — because the cache fill returned no error — pin that empty
+	// result for the full TTL. WithoutCancel keeps the fan-out alive to
+	// completion; the timeout bounds a genuinely stuck source.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), projectFetchTimeout)
+	defer cancel()
+
 	cacheKey := "projects:detail:" + id
 	if h.cache != nil {
 		cached, cacheErr := h.cache.GetOrFetchSmooth(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchProjectDetail(ctx, id), nil
+			detail := h.fetchProjectDetail(ctx, id)
+			if detail.fullyUnavailable() {
+				// Every source failed — don't cache emptiness. Returning an error
+				// makes the cache serve the last good (stale) value and retry,
+				// instead of storing the empty detail for the TTL.
+				return nil, errProjectDetailAllSourcesFailed
+			}
+			return detail, nil
 		})
 		if cacheErr == nil {
 			w.Header().Set("Content-Type", "application/json")

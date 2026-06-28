@@ -482,6 +482,82 @@ func TestListProjects_GitLabUnconfiguredEmpty(t *testing.T) {
 
 // serveProject invokes GetProject with a chi route context carrying the
 // url-encoded id, mirroring how the router delivers the param.
+// TestGetProject_ClientCancellationStillFetches reproduces the production bug
+// where a browser aborting/superseding its poll cancelled the request context,
+// every federated source failed with "context canceled", and the handler
+// returned (and cached) an all-empty "partial" detail. The fix detaches the
+// fetch from the request via context.WithoutCancel, so an already-cancelled
+// request context must NOT empty the result.
+func TestGetProject_ClientCancellationStillFetches(t *testing.T) {
+	ts := newGitLabStub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/issues"):
+			_, _ = fmt.Fprint(w, `[{"iid":1,"title":"bug","state":"opened","labels":[],"web_url":"http://gl/issues/1"}]`)
+		default:
+			_, _ = fmt.Fprint(w, `[]`)
+		}
+	})
+	defer ts.Close()
+
+	fq := &fakeQdrant{byCollection: map[string][]qdrant.Point{
+		qdrantTasksCollection: {
+			{Payload: map[string]any{"id": "t1", "title": "task one", "status": "in_progress"}},
+		},
+	}}
+
+	cfg := &config.Config{}
+	cfg.GitLab.URL = ts.URL
+	cfg.GitLab.Token = "tok"
+	h := &Handler{cfg: cfg, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	// An already-cancelled request context: pre-fix this cancels the GitLab calls.
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	encoded := url.PathEscape("services/flexdeck")
+	req := httptest.NewRequest(http.MethodGet, "/api/projects/"+encoded, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", encoded)
+	req = req.WithContext(context.WithValue(parent, chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	h.GetProject(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	d := decodeDetail(t, rr.Body.Bytes())
+	if d.Partial {
+		t.Errorf("partial=true: a cancelled request still emptied the detail (fetch not detached)")
+	}
+	if len(d.Issues) != 1 {
+		t.Errorf("issues = %+v, want 1 (GitLab call must survive client cancellation)", d.Issues)
+	}
+	if len(d.Tasks) != 1 {
+		t.Errorf("tasks = %+v, want 1", d.Tasks)
+	}
+}
+
+func TestProjectDetail_FullyUnavailable(t *testing.T) {
+	t.Parallel()
+
+	// Every source failed: partial + no data anywhere -> must not be cached.
+	allFailed := projectDetail{Partial: true}
+	if !allFailed.fullyUnavailable() {
+		t.Error("all-empty partial detail should be fullyUnavailable")
+	}
+	// Partial but some data came through -> cacheable (the banner explains the gap).
+	withData := projectDetail{Partial: true, Issues: []projectIssue{{IID: 1}}}
+	if withData.fullyUnavailable() {
+		t.Error("partial detail with data should NOT be fullyUnavailable")
+	}
+	// Genuinely empty project, all sources OK (not partial) -> cacheable.
+	emptyOK := projectDetail{Partial: false}
+	if emptyOK.fullyUnavailable() {
+		t.Error("non-partial empty detail should NOT be fullyUnavailable")
+	}
+}
+
 func serveProject(h *Handler, project string) *httptest.ResponseRecorder {
 	encoded := url.PathEscape(project)
 	req := httptest.NewRequest(http.MethodGet, "/api/projects/"+encoded, nil)
