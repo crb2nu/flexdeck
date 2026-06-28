@@ -51,35 +51,44 @@ func computeAdoption(inv *Inventory) {
 		return
 	}
 
-	serviceText := map[string]string{}
+	// Both services and libs can consume a library: libs depend on other libs
+	// (lib→lib adoption), so each contributes its dependency-manifest text.
+	consumerText := map[string]string{}
 	for i := range inv.Repositories {
 		repo := &inv.Repositories[i]
-		if repo.Bucket == BucketServices {
-			serviceText[repo.Name] = serviceManifestText(repo)
+		if repo.Bucket == BucketServices || repo.Bucket == BucketLibs {
+			consumerText[repo.Name] = consumerManifestText(repo)
 		}
 	}
 
-	matchAdoption(inv, identifierToLib, serviceText)
+	matchAdoption(inv, identifierToLib, consumerText)
 }
 
-// matchAdoption populates DependsOn/UsedBy from resolved library identifiers and
-// per-service dependency-manifest text. It is pure (no file/network IO) so the
-// filesystem and GitLab-API scanners share one matching implementation:
-// identifierToLib maps each library identifier (module path, package name,
-// `libs/<dir>`) to the library's repo name; serviceText maps a service repo name
-// to its concatenated manifest text.
-func matchAdoption(inv *Inventory, identifierToLib map[string]string, serviceText map[string]string) {
+// matchAdoption populates DependsOn/UsedBy/UsedByLibs from resolved library
+// identifiers and per-consumer dependency-manifest text. It is pure (no
+// file/network IO) so the filesystem and GitLab-API scanners share one matching
+// implementation: identifierToLib maps each library identifier (module path,
+// package name, `libs/<dir>`) to the library's repo name; consumerText maps a
+// consuming repo name (service or lib) to its concatenated manifest text.
+//
+// Both services and libs are consumers: a service depending on a lib records the
+// service under the lib's UsedBy (service-only, so the contract-coverage metric
+// keeps meaning "wired into a running service"), while a lib depending on another
+// lib records the consumer under UsedByLibs. Either way the consumer's own
+// DependsOn lists the libs it uses.
+func matchAdoption(inv *Inventory, identifierToLib map[string]string, consumerText map[string]string) {
 	if inv == nil || len(identifierToLib) == 0 {
 		return
 	}
 
-	usedBy := map[string]map[string]bool{}
+	usedByServices := map[string]map[string]bool{}
+	usedByLibs := map[string]map[string]bool{}
 	for i := range inv.Repositories {
 		repo := &inv.Repositories[i]
-		if repo.Bucket != BucketServices {
+		if repo.Bucket != BucketServices && repo.Bucket != BucketLibs {
 			continue
 		}
-		manifestText := serviceText[repo.Name]
+		manifestText := consumerText[repo.Name]
 		if manifestText == "" {
 			continue
 		}
@@ -97,11 +106,16 @@ func matchAdoption(inv *Inventory, identifierToLib map[string]string, serviceTex
 			continue
 		}
 		repo.DependsOn = sortedKeysOfSet(depends)
+
+		consumers := usedByServices
+		if repo.Bucket == BucketLibs {
+			consumers = usedByLibs
+		}
 		for libName := range depends {
-			if usedBy[libName] == nil {
-				usedBy[libName] = map[string]bool{}
+			if consumers[libName] == nil {
+				consumers[libName] = map[string]bool{}
 			}
-			usedBy[libName][repo.Name] = true
+			consumers[libName][repo.Name] = true
 		}
 	}
 
@@ -110,8 +124,11 @@ func matchAdoption(inv *Inventory, identifierToLib map[string]string, serviceTex
 		if repo.Bucket != BucketLibs {
 			continue
 		}
-		if services := usedBy[repo.Name]; len(services) > 0 {
+		if services := usedByServices[repo.Name]; len(services) > 0 {
 			repo.UsedBy = sortedKeysOfSet(services)
+		}
+		if libs := usedByLibs[repo.Name]; len(libs) > 0 {
+			repo.UsedByLibs = sortedKeysOfSet(libs)
 		}
 	}
 }
@@ -134,9 +151,10 @@ func libraryIdentifiers(repo *Repository) []string {
 	return identifiers
 }
 
-// serviceManifestText concatenates the contents of a service's dependency
-// manifests so identifiers can be matched regardless of ecosystem.
-func serviceManifestText(repo *Repository) string {
+// consumerManifestText concatenates the contents of a consuming repo's dependency
+// manifests (a service or a lib) so identifiers can be matched regardless of
+// ecosystem.
+func consumerManifestText(repo *Repository) string {
 	var builder strings.Builder
 	for _, rel := range []string{"go.mod", "pyproject.toml", "package.json", filepath.Join("web", "package.json")} {
 		if content := readManifest(filepath.Join(repo.Path, rel)); content != "" {

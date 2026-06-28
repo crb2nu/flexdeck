@@ -56,6 +56,43 @@ func TestComputeAdoptionAcrossEcosystems(t *testing.T) {
 	}
 }
 
+func TestComputeAdoptionLibToLib(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	// A shared lib consumed by BOTH a service and another lib. The service lands
+	// in UsedBy; the consuming lib lands in UsedByLibs — they must not bleed into
+	// each other (UsedBy stays the contract-coverage / service-adoption metric).
+	writeFile(t, filepath.Join(root, "libs", "mcp-go", "go.mod"), "module gitlab.flexinfer.ai/libs/mcp-go\n")
+	writeFile(t, filepath.Join(root, "services", "loom-core", "go.mod"),
+		"module example.com/loom-core\n\nrequire gitlab.flexinfer.ai/libs/mcp-go v0.2.0\n")
+	writeFile(t, filepath.Join(root, "libs", "fi-accel", "go.mod"),
+		"module gitlab.flexinfer.ai/libs/fi-accel\n\nrequire gitlab.flexinfer.ai/libs/mcp-go v0.2.0\n")
+
+	inv, err := Scan(context.Background(), root, ScanOptions{})
+	if err != nil {
+		t.Fatalf("Scan returned error: %v", err)
+	}
+
+	mcpGo := findRepo(t, inv, "libs", "mcp-go")
+	if !equalStrings(mcpGo.UsedBy, []string{"loom-core"}) {
+		t.Errorf("mcp-go usedBy = %#v, want [loom-core] (service adopters only)", mcpGo.UsedBy)
+	}
+	if !equalStrings(mcpGo.UsedByLibs, []string{"fi-accel"}) {
+		t.Errorf("mcp-go usedByLibs = %#v, want [fi-accel]", mcpGo.UsedByLibs)
+	}
+
+	fiAccel := findRepo(t, inv, "libs", "fi-accel")
+	if !equalStrings(fiAccel.DependsOn, []string{"mcp-go"}) {
+		t.Errorf("fi-accel dependsOn = %#v, want [mcp-go]", fiAccel.DependsOn)
+	}
+	// fi-accel is consumed by no one — both adopter lists stay empty.
+	if len(fiAccel.UsedBy) != 0 || len(fiAccel.UsedByLibs) != 0 {
+		t.Errorf("fi-accel usedBy=%#v usedByLibs=%#v, want both empty", fiAccel.UsedBy, fiAccel.UsedByLibs)
+	}
+}
+
 func TestLibraryIdentifiersResolvesPackageNames(t *testing.T) {
 	t.Parallel()
 

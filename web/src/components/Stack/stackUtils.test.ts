@@ -235,6 +235,17 @@ describe('stackUtils', () => {
       expect(libAdoptionLabel(makeRepo({ bucket: 'libs' }))).toBe('No service adopters yet');
     });
 
+    it('reveals lib→lib consumers so transitively-used libs are not dead orphans', () => {
+      // No service adopters but used by other libs: not an orphan.
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs', usedBy: [], usedByLibs: ['fi-accel', 'mcp-go'] }))).toBe(
+        'No service adopters · used by 2 libs: fi-accel, mcp-go',
+      );
+      // Both service and lib adopters are surfaced together.
+      expect(libAdoptionLabel(makeRepo({ bucket: 'libs', usedBy: ['loom-core'], usedByLibs: ['fi-accel'] }))).toBe(
+        '1 service: loom-core · used by 1 lib: fi-accel',
+      );
+    });
+
     it('matches search across adoption fields', () => {
       const service = makeRepo({ name: 'diff-surgeon', dependsOn: ['mcp-go', 'fi-accel'] });
       expect(repositoryMatches(service, 'mcp-go')).toBe(true);
@@ -242,6 +253,10 @@ describe('stackUtils', () => {
 
       const lib = makeRepo({ name: 'mcp-go', bucket: 'libs', usedBy: ['diff-surgeon', 'loom-core'] });
       expect(repositoryMatches(lib, 'loom-core')).toBe(true);
+
+      // lib→lib consumers are searchable too.
+      const sharedLib = makeRepo({ name: 'observability', bucket: 'libs', usedByLibs: ['fi-accel'] });
+      expect(repositoryMatches(sharedLib, 'fi-accel')).toBe(true);
     });
   });
 

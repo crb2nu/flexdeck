@@ -64,18 +64,29 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     binding?.matchKey ?? '',
     ...(repo.dependsOn ?? []),
     ...(repo.usedBy ?? []),
+    ...(repo.usedByLibs ?? []),
   ];
 
   return searchable.some((value) => value.toLowerCase().includes(normalizedQuery));
 }
 
-// libAdoptionLabel describes how widely a library is adopted across services.
-// A library with no service adopters is surfaced explicitly — that gap is the
-// point of the contract-coverage view.
+// libAdoptionLabel describes how widely a library is adopted. Service adoption
+// (the contract-coverage signal) leads; lib→lib consumers are appended so a lib
+// used only by other libs reads as transitively used, not a dead orphan. A lib
+// with no adopters of either kind is surfaced explicitly — that gap is the point
+// of the contract-coverage view.
 export function libAdoptionLabel(repo: WorkspaceRepository): string {
-  const users = repo.usedBy ?? [];
-  if (users.length === 0) return 'No service adopters yet';
-  return `${users.length} ${users.length === 1 ? 'service' : 'services'}: ${users.join(', ')}`;
+  const services = repo.usedBy ?? [];
+  const libs = repo.usedByLibs ?? [];
+  const serviceLabel =
+    services.length > 0
+      ? `${services.length} ${services.length === 1 ? 'service' : 'services'}: ${services.join(', ')}`
+      : 'No service adopters yet';
+  if (libs.length === 0) return serviceLabel;
+
+  const libLabel = `${libs.length} ${libs.length === 1 ? 'lib' : 'libs'}: ${libs.join(', ')}`;
+  const head = services.length > 0 ? serviceLabel : 'No service adopters';
+  return `${head} · used by ${libLabel}`;
 }
 
 // --- library adoption coverage ---

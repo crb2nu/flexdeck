@@ -53,8 +53,9 @@ type Repository struct {
 	WorktreeCount    int          `json:"worktreeCount,omitempty"`
 	Git              GitState     `json:"git"`
 	Binding          *RepoBinding `json:"binding,omitempty"`
-	DependsOn        []string     `json:"dependsOn,omitempty"` // workspace libs this service depends on (by lib dir name)
-	UsedBy           []string     `json:"usedBy,omitempty"`    // services that depend on this lib (by service name)
+	DependsOn        []string     `json:"dependsOn,omitempty"`  // workspace libs this repo depends on (by lib dir name)
+	UsedBy           []string     `json:"usedBy,omitempty"`     // services that depend on this lib (by service name)
+	UsedByLibs       []string     `json:"usedByLibs,omitempty"` // libs that depend on this lib (by lib dir name)
 	DiscoveryReasons []string     `json:"discoveryReasons,omitempty"`
 	Errors           []string     `json:"errors,omitempty"`
 }

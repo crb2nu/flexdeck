@@ -565,7 +565,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
             {manifestLabels().length > 0 ? manifestLabels().join(', ') : 'None'}
           </span>
         </div>
-        <Show when={!isLib() && dependsOn().length > 0}>
+        <Show when={dependsOn().length > 0}>
           <div class="flex min-w-0 items-center gap-2">
             <span class="heading-label min-w-[58px]">Uses libs</span>
             <span class="truncate font-mono text-text-muted" title={dependsOn().join(', ')}>{dependsOn().join(', ')}</span>
@@ -575,7 +575,11 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
           <div class="flex min-w-0 items-center gap-2">
             <span class="heading-label min-w-[58px]">Adoption</span>
             <span
-              class={`truncate ${(props.repo.usedBy?.length ?? 0) > 0 ? 'text-text-muted' : 'text-text-dim/60'}`}
+              class={`truncate ${
+                (props.repo.usedBy?.length ?? 0) + (props.repo.usedByLibs?.length ?? 0) > 0
+                  ? 'text-text-muted'
+                  : 'text-text-dim/60'
+              }`}
               title={libAdoptionLabel(props.repo)}
             >
               {libAdoptionLabel(props.repo)}
