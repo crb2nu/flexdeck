@@ -146,24 +146,25 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 	}
 
 	// Library adoption from the fetched manifests (srcByName, keyed above): the
-	// shared matcher resolves identifiers from libs and scans service dependency
-	// text — no local checkout required.
+	// shared matcher resolves identifiers from libs and scans consumer dependency
+	// text — no local checkout required. A lib is both a depended-on identifier
+	// and a consumer (it can depend on other libs), so it feeds both maps.
 	identifierToLib := map[string]string{}
-	serviceText := map[string]string{}
+	consumerText := map[string]string{}
 	for i := range inv.Repositories {
 		repo := &inv.Repositories[i]
-		switch repo.Bucket {
-		case BucketLibs:
+		if repo.Bucket == BucketLibs {
 			for _, identifier := range libraryIdentifiersFromSources(repo.Name, srcByName[repo.Name]) {
 				if identifier != "" {
 					identifierToLib[identifier] = repo.Name
 				}
 			}
-		case BucketServices:
-			serviceText[repo.Name] = concatManifestSources(srcByName[repo.Name])
+		}
+		if repo.Bucket == BucketServices || repo.Bucket == BucketLibs {
+			consumerText[repo.Name] = concatManifestSources(srcByName[repo.Name])
 		}
 	}
-	matchAdoption(inv, identifierToLib, serviceText)
+	matchAdoption(inv, identifierToLib, consumerText)
 
 	return inv, nil
 }

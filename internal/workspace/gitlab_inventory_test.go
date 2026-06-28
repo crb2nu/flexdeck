@@ -124,11 +124,12 @@ func TestScanGitLabComputesAdoption(t *testing.T) {
 		_, _ = w.Write([]byte(`[
 			{"id":1,"path":"loom","path_with_namespace":"services/loom","default_branch":"main","web_url":"https://gl/services/loom"},
 			{"id":2,"path":"mcp-go","path_with_namespace":"libs/mcp-go","default_branch":"main","web_url":"https://gl/libs/mcp-go"},
-			{"id":3,"path":"ts-resilience","path_with_namespace":"libs/ts-resilience","default_branch":"main","web_url":"https://gl/libs/ts-resilience"}
+			{"id":3,"path":"ts-resilience","path_with_namespace":"libs/ts-resilience","default_branch":"main","web_url":"https://gl/libs/ts-resilience"},
+			{"id":4,"path":"fi-accel","path_with_namespace":"libs/fi-accel","default_branch":"main","web_url":"https://gl/libs/fi-accel"}
 		]`))
 	})
 	// Both buckets carry go.mod in their tree.
-	for _, id := range []string{"1", "2", "3"} {
+	for _, id := range []string{"1", "2", "3", "4"} {
 		mux.HandleFunc("/api/v4/projects/"+id+"/repository/tree", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`[{"name":"go.mod","type":"blob"}]`))
 		})
@@ -146,6 +147,10 @@ func TestScanGitLabComputesAdoption(t *testing.T) {
 	})
 	mux.HandleFunc("/api/v4/projects/3/repository/files/go.mod/raw", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("module gitlab.flexinfer.ai/libs/ts-resilience\n"))
+	})
+	// fi-accel is a lib that requires another lib (mcp-go) — lib→lib adoption.
+	mux.HandleFunc("/api/v4/projects/4/repository/files/go.mod/raw", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("module gitlab.flexinfer.ai/libs/fi-accel\n\nrequire gitlab.flexinfer.ai/libs/mcp-go v0.1.0\n"))
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
@@ -170,10 +175,18 @@ func TestScanGitLabComputesAdoption(t *testing.T) {
 	}
 	mcpGo := byName["mcp-go"]
 	if len(mcpGo.UsedBy) != 1 || mcpGo.UsedBy[0] != "loom" {
-		t.Errorf("mcp-go.UsedBy = %v, want [loom]", mcpGo.UsedBy)
+		t.Errorf("mcp-go.UsedBy = %v, want [loom] (service adopters only)", mcpGo.UsedBy)
 	}
-	if orphan := byName["ts-resilience"]; len(orphan.UsedBy) != 0 {
-		t.Errorf("ts-resilience.UsedBy = %v, want none (orphan lib)", orphan.UsedBy)
+	// mcp-go is also required by the fi-accel lib — lib→lib adoption lands in
+	// UsedByLibs, kept separate from the service-adoption UsedBy.
+	if len(mcpGo.UsedByLibs) != 1 || mcpGo.UsedByLibs[0] != "fi-accel" {
+		t.Errorf("mcp-go.UsedByLibs = %v, want [fi-accel]", mcpGo.UsedByLibs)
+	}
+	if fiAccel := byName["fi-accel"]; len(fiAccel.DependsOn) != 1 || fiAccel.DependsOn[0] != "mcp-go" {
+		t.Errorf("fi-accel.DependsOn = %v, want [mcp-go]", fiAccel.DependsOn)
+	}
+	if orphan := byName["ts-resilience"]; len(orphan.UsedBy) != 0 || len(orphan.UsedByLibs) != 0 {
+		t.Errorf("ts-resilience usedBy=%v usedByLibs=%v, want none (orphan lib)", orphan.UsedBy, orphan.UsedByLibs)
 	}
 }
 

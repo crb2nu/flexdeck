@@ -322,3 +322,16 @@ Record decisions as they are made, with date, rationale, and sources.
   - [S1] `internal/workspace/adoption.go` (`computeAdoption`, `libraryIdentifiers`)
   - [S2] `web/src/components/Stack/{stackUtils.ts,index.tsx}` (`libAdoptionLabel`, card rows)
   - [S3] `.loom/31-iteration-plan-lib-adoption-2026-06-08.md`
+
+### 2026-06-28: Lib→lib adoption via the shared matcher; UsedBy stays service-only
+
+- Decision: Extend `matchAdoption` to treat **libs as consumers** alongside services. A lib that requires another workspace lib records that lib in its own `DependsOn` and lands in the depended-on lib's new `UsedByLibs` field. `UsedBy` is kept **service-only** so the contract-coverage metric and "unadopted" filter keep meaning "wired into a running service." Both scan paths (`computeAdoption` filesystem, `ScanGitLab` GitLab-API) feed lib consumer text through the one pure matcher.
+- Rationale: The just-shipped coverage tile flagged cross-cutting libs (observability/resilience/UI-token) as "0 adopters," which is misleading when they are consumed by *other libs* rather than services. Surfacing `usedByLibs` makes a transitively-used lib read as used, not dead — without diluting the deliberate service-adoption coverage signal. The matcher was already pure and shared, so the change is centralized; libs use the same manifest formats as services, so the kill-test (a lib→lib `require` in the temp workspace) validated the assumption end-to-end.
+- Alternatives considered:
+  - Fold lib consumers into `UsedBy` (one union list) — simplest, but it would silently inflate the coverage % and hide the real "no service has adopted this contract" gap. Rejected: coverage must stay service-scoped.
+  - Defer to a graph/CRD model — overkill; the existing substring-on-identifier match already produces the relation cheaply.
+- Consequences: Additive JSON (`usedByLibs,omitempty`); no change to existing consumers or coverage semantics. `dependsOn` now also populates for lib repos (lib cards gain a "Uses libs" row). Contract version-drift is the last remaining Library-Adoption sub-item.
+- Sources:
+  - [S1] `internal/workspace/adoption.go` (`matchAdoption`, `computeAdoption`)
+  - [S2] `internal/workspace/gitlab_inventory.go` (GitLab-path consumer text)
+  - [S3] `web/src/components/Stack/stackUtils.ts` (`libAdoptionLabel`) + `.loom/31-iteration-plan-lib-to-lib-adoption-2026-06-28.md`
