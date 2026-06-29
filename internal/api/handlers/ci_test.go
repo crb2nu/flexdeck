@@ -217,11 +217,11 @@ func TestGetRepoConfigFetchesDefaultBranchConfig(t *testing.T) {
 			return
 		}
 
-		switch {
-		case r.URL.Path == "/api/v4/projects/42":
+		switch r.URL.Path {
+		case "/api/v4/projects/42":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{"default_branch":"trunk"}`)
-		case r.URL.Path == "/api/v4/projects/42/repository/files/.gitlab-ci.yml/raw":
+		case "/api/v4/projects/42/repository/files/.gitlab-ci.yml/raw":
 			if r.URL.Query().Get("ref") != "trunk" {
 				t.Errorf("expected ref=trunk, got %q", r.URL.Query().Get("ref"))
 				http.Error(w, "bad ref", http.StatusBadRequest)
@@ -262,11 +262,11 @@ func TestGetRepoConfigFetchesDefaultBranchConfig(t *testing.T) {
 
 func TestGetRepoConfigMissingFileReturnsNoConfig(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/v4/projects/77":
+		switch r.URL.Path {
+		case "/api/v4/projects/77":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{"default_branch":"main"}`)
-		case r.URL.Path == "/api/v4/projects/77/repository/files/.gitlab-ci.yml/raw":
+		case "/api/v4/projects/77/repository/files/.gitlab-ci.yml/raw":
 			http.NotFound(w, r)
 		default:
 			http.NotFound(w, r)
@@ -301,15 +301,15 @@ func TestGetRepoConfigMissingFileReturnsNoConfig(t *testing.T) {
 func TestBatchPipelinesFiltersIDsAndReturnsPerProjectResults(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/api/v4/projects/1/pipelines":
+		switch r.URL.Path {
+		case "/api/v4/projects/1/pipelines":
 			_, _ = fmt.Fprint(w, `[{"id":100,"status":"success","ref":"main","created_at":"2026-01-01T00:00:00Z"}]`)
-		case r.URL.Path == "/api/v4/projects/1/pipelines/100/jobs":
+		case "/api/v4/projects/1/pipelines/100/jobs":
 			_, _ = fmt.Fprint(w, `[{"id":200,"name":"unit","stage":"test","status":"success","duration":12.5}]`)
-		case r.URL.Path == "/api/v4/projects/1/repository/files/.gitlab-ci.yml/raw":
+		case "/api/v4/projects/1/repository/files/.gitlab-ci.yml/raw":
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = fmt.Fprint(w, "stages:\n  - test\n")
-		case r.URL.Path == "/api/v4/projects/2/pipelines":
+		case "/api/v4/projects/2/pipelines":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = fmt.Fprint(w, `{"message":"boom"}`)
 		default:

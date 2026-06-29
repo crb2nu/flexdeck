@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/flexinfer/flexdeck/internal/qdrant"
@@ -21,7 +22,10 @@ import (
 // qdrantScroller is the minimal Qdrant surface the project federation needs.
 // Implemented by *qdrant.Client and by test fakes.
 type qdrantScroller interface {
+	EnsureCollection(ctx context.Context, collection string, vectorSize int, distance string) error
+	EnsureKeywordIndex(ctx context.Context, collection, field string) error
 	Scroll(ctx context.Context, collection string, filter map[string]any, limit int) ([]qdrant.Point, error)
+	Upsert(ctx context.Context, collection string, points []qdrant.Point, wait bool) error
 }
 
 const (
@@ -49,6 +53,11 @@ const (
 	// is detached from the client request (see GetProject/ListProjects), so this
 	// is the only ceiling on a cold, all-sources fan-out.
 	projectFetchTimeout = 12 * time.Second
+
+	// pm_risks is owned by loom-core mcp-pm. FlexDeck mirrors its persistence
+	// contract so risk capture can populate the existing Projects risk lane.
+	qdrantRiskVectorSize = 1536
+	qdrantRiskDistance   = "Cosine"
 )
 
 // errProjectDetailAllSourcesFailed marks a detail fetch where every federated
@@ -91,6 +100,15 @@ type projectRisk struct {
 	Title      string `json:"title"`
 	Likelihood string `json:"likelihood"`
 	Impact     string `json:"impact"`
+	Status     string `json:"status"`
+}
+
+type createProjectRiskRequest struct {
+	Title      string `json:"title"`
+	Likelihood string `json:"likelihood"`
+	Impact     string `json:"impact"`
+	Mitigation string `json:"mitigation"`
+	Owner      string `json:"owner"`
 	Status     string `json:"status"`
 }
 
@@ -239,6 +257,152 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, h.fetchProjectDetail(ctx, id))
+}
+
+// CreateProjectRisk captures a new risk for a project in the pm_risks store.
+// POST /api/projects/{id}/risks where id is the url-encoded path_with_namespace.
+func (h *Handler) CreateProjectRisk(w http.ResponseWriter, r *http.Request) {
+	project, ok := projectIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	if h.qdrant == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "qdrant not configured"})
+		return
+	}
+
+	var input createProjectRiskRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return
+	}
+
+	risk, payload, err := buildProjectRisk(project, input)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	ctx := r.Context()
+	if err := h.ensureProjectRiskStore(ctx); err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := h.qdrant.Upsert(ctx, qdrantRisksCollection, []qdrant.Point{{
+		ID:      risk.ID,
+		Vector:  zeroVector(qdrantRiskVectorSize),
+		Payload: payload,
+	}}, true); err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if h.cache != nil {
+		h.cache.Invalidate(ctx, "projects:detail:"+project)
+		h.cache.Invalidate(ctx, "projects:rollup")
+	}
+
+	respondJSON(w, http.StatusCreated, risk)
+}
+
+func projectIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	raw := chi.URLParam(r, "id")
+	id, err := url.PathUnescape(raw)
+	if err != nil {
+		id = raw
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "project id required"})
+		return "", false
+	}
+	return id, true
+}
+
+func (h *Handler) ensureProjectRiskStore(ctx context.Context) error {
+	if err := h.qdrant.EnsureCollection(ctx, qdrantRisksCollection, qdrantRiskVectorSize, qdrantRiskDistance); err != nil {
+		return fmt.Errorf("ensure risks collection: %w", err)
+	}
+	for _, field := range []string{"project", "status"} {
+		if err := h.qdrant.EnsureKeywordIndex(ctx, qdrantRisksCollection, field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func buildProjectRisk(project string, input createProjectRiskRequest) (projectRisk, map[string]any, error) {
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return projectRisk{}, nil, fmt.Errorf("title is required")
+	}
+
+	likelihood := normalizeRiskLevel(input.Likelihood, "medium")
+	if !isValidRiskLevel(likelihood) {
+		return projectRisk{}, nil, fmt.Errorf("likelihood must be one of low|medium|high")
+	}
+	impact := normalizeRiskLevel(input.Impact, "medium")
+	if !isValidRiskLevel(impact) {
+		return projectRisk{}, nil, fmt.Errorf("impact must be one of low|medium|high")
+	}
+	status := normalizeRiskLevel(input.Status, "identified")
+	if !isValidRiskStatus(status) {
+		return projectRisk{}, nil, fmt.Errorf("status must be one of identified|mitigating|accepted|closed")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	risk := projectRisk{
+		ID:         uuid.New().String(),
+		Title:      title,
+		Likelihood: likelihood,
+		Impact:     impact,
+		Status:     status,
+	}
+	payload := map[string]any{
+		"id":         risk.ID,
+		"project":    project,
+		"title":      risk.Title,
+		"likelihood": risk.Likelihood,
+		"impact":     risk.Impact,
+		"mitigation": strings.TrimSpace(input.Mitigation),
+		"owner":      strings.TrimSpace(input.Owner),
+		"status":     risk.Status,
+		"links":      []string{},
+		"created_at": now,
+		"updated_at": now,
+	}
+	return risk, payload, nil
+}
+
+func normalizeRiskLevel(value, fallback string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return fallback
+	}
+	return normalized
+}
+
+func isValidRiskLevel(value string) bool {
+	switch value {
+	case "low", "medium", "high":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidRiskStatus(value string) bool {
+	switch value {
+	case "identified", "mitigating", "accepted", "closed":
+		return true
+	default:
+		return false
+	}
+}
+
+func zeroVector(size int) []float64 {
+	vector := make([]float64, size)
+	return vector
 }
 
 // fetchProjectDetail federates all sources for a single project. Each source is

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,10 +26,23 @@ type fakeQdrant struct {
 	byCollection map[string][]qdrant.Point
 	// errCollections forces an error for the named collections.
 	errCollections map[string]bool
+	ensureErr      error
+	indexErr       error
+	upsertErr      error
 
 	mu sync.Mutex
 	// lastFilters records the filter passed per collection (for assertions).
 	lastFilters map[string]map[string]any
+	// upserts records points written per collection.
+	upserts map[string][]qdrant.Point
+}
+
+func (f *fakeQdrant) EnsureCollection(_ context.Context, _ string, _ int, _ string) error {
+	return f.ensureErr
+}
+
+func (f *fakeQdrant) EnsureKeywordIndex(_ context.Context, _, _ string) error {
+	return f.indexErr
 }
 
 func (f *fakeQdrant) Scroll(_ context.Context, collection string, filter map[string]any, _ int) ([]qdrant.Point, error) {
@@ -45,11 +59,30 @@ func (f *fakeQdrant) Scroll(_ context.Context, collection string, filter map[str
 	return f.byCollection[collection], nil
 }
 
+func (f *fakeQdrant) Upsert(_ context.Context, collection string, points []qdrant.Point, _ bool) error {
+	if f.upsertErr != nil {
+		return f.upsertErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.upserts == nil {
+		f.upserts = map[string][]qdrant.Point{}
+	}
+	f.upserts[collection] = append(f.upserts[collection], points...)
+	return nil
+}
+
 // filterFor returns the recorded filter for a collection under the lock.
 func (f *fakeQdrant) filterFor(collection string) map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.lastFilters[collection]
+}
+
+func (f *fakeQdrant) upsertsFor(collection string) []qdrant.Point {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]qdrant.Point(nil), f.upserts[collection]...)
 }
 
 // newGitLabStub returns an httptest server emulating the GitLab REST endpoints
@@ -456,6 +489,80 @@ func TestGetProject_EmptyIDIsBadRequest(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty id, got %d", rr.Code)
+	}
+}
+
+func TestCreateProjectRisk_WritesRiskPayload(t *testing.T) {
+	fq := &fakeQdrant{}
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	body := []byte(`{"title":"Kill-test coverage gap","likelihood":"HIGH","impact":"medium","mitigation":"add coverage","owner":"codex"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/services%2Fflexdeck/risks", bytes.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "services%2Fflexdeck")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+
+	h.CreateProjectRisk(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var risk projectRisk
+	if err := json.Unmarshal(rr.Body.Bytes(), &risk); err != nil {
+		t.Fatalf("decode risk: %v", err)
+	}
+	if risk.ID == "" || risk.Title != "Kill-test coverage gap" || risk.Likelihood != "high" || risk.Impact != "medium" || risk.Status != "identified" {
+		t.Fatalf("risk response = %+v", risk)
+	}
+
+	points := fq.upsertsFor(qdrantRisksCollection)
+	if len(points) != 1 {
+		t.Fatalf("upserts = %d, want 1", len(points))
+	}
+	p := points[0]
+	if p.ID != risk.ID {
+		t.Errorf("point id = %v, want %s", p.ID, risk.ID)
+	}
+	if len(p.Vector) != qdrantRiskVectorSize {
+		t.Errorf("vector size = %d, want %d", len(p.Vector), qdrantRiskVectorSize)
+	}
+	if p.Payload["project"] != "services/flexdeck" || p.Payload["title"] != "Kill-test coverage gap" {
+		t.Errorf("payload = %+v", p.Payload)
+	}
+	if p.Payload["mitigation"] != "add coverage" || p.Payload["owner"] != "codex" {
+		t.Errorf("payload mitigation/owner = %+v", p.Payload)
+	}
+	if _, ok := p.Payload["created_at"].(string); !ok {
+		t.Errorf("created_at missing from payload: %+v", p.Payload)
+	}
+}
+
+func TestCreateProjectRisk_Validation(t *testing.T) {
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "missing title", body: `{"impact":"high"}`},
+		{name: "bad likelihood", body: `{"title":"x","likelihood":"certain"}`},
+		{name: "bad impact", body: `{"title":"x","impact":"huge"}`},
+		{name: "bad status", body: `{"title":"x","status":"open"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/projects/services%2Fflexdeck/risks", strings.NewReader(tc.body))
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("id", "services%2Fflexdeck")
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+			rr := httptest.NewRecorder()
+
+			h.CreateProjectRisk(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
 

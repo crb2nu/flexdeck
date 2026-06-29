@@ -15,6 +15,22 @@ Record decisions as they are made, with date, rationale, and sources.
 
 ---
 
+### 2026-06-29: Capture Project risks directly into the shared `pm_risks` store
+
+- Decision: Add an authenticated FlexDeck `POST /api/projects/{id}/risks` endpoint that writes Qdrant points to the shared `pm_risks` collection using the loom-core `mcp-pm` payload contract.
+- Rationale: Phase 6 already federates risks from `pm_risks`, but no FlexDeck workflow populated the store. The `pm_risk_create` MCP tool is not available as a stable in-repo HTTP dependency, while the storage contract is explicit: `pm_risks`, 1536-dimension Cosine vectors, canonical `project`, risk status, likelihood/impact, mitigation, owner, links, and timestamps. Mirroring that contract gives FlexDeck an immediate backend capture path without adding a new source of truth.
+- Alternatives considered:
+  - Proxy a loom-core HTTP route for `pm_risk_create` (preferred boundary, but no such route exists in the current integration surface).
+  - Leave risk capture to external MCP workflows only (keeps the Projects lane dormant from FlexDeck).
+  - Add an inline UI form first (better operator UX, but it still needs a backend write path).
+- Consequences: FlexDeck now performs a narrow write into a previously read-only Qdrant integration. The write is protected by the existing authenticated route group, audit-logged, validates the same enums as loom-core, invalidates Projects caches, and uses a deterministic zero-vector fallback rather than calling an embedding provider.
+- Sources:
+  - [S1] `ROADMAP.md` Phase 6 Risk Capture Wiring
+  - [S2] `internal/api/handlers/projects.go`
+  - [S3] `internal/qdrant/qdrant.go`
+  - [S4] `/Users/cblevins/workspace/services/loom-core/pkg/pm/risk.go`
+  - [S5] `/Users/cblevins/workspace/services/loom-core/pkg/pm/config.go`
+
 ### 2026-02-16: Phase 3 scope — Full integration (FlexInfer + Loom)
 
 - Decision: Implement both FlexInfer inference metrics (Track 1) and Loom Agent HUD (Track 2) in Phase 3, rather than splitting across phases.

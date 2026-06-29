@@ -132,7 +132,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		r.Get("/api/traffic/report", h.TrafficReport)
 
 		registerCIRoutes(r, h, logFunc)
-		registerProjectsRoutes(r, h)
+		registerProjectsRoutes(r, h, logFunc)
 		registerWorkspaceRoutes(r, h)
 		registerInfrastructureRoutes(r, h, logFunc, cfg)
 		registerDomainRoutes(r, h, logFunc, cfg)
@@ -221,10 +221,12 @@ func registerWorkspaceRoutes(r chi.Router, h *handlers.Handler) {
 }
 
 // registerProjectsRoutes wires the unified project-tracking federation
-// endpoints. Read-only; they inherit the authenticated group's RBAC PermRead.
-func registerProjectsRoutes(r chi.Router, h *handlers.Handler) {
+// endpoints. Reads inherit the authenticated group's RBAC PermRead; writes are
+// audit-logged through the shared middleware.
+func registerProjectsRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler) {
 	r.Get("/api/projects", h.ListProjects)
 	r.Get("/api/projects/{id}", h.GetProject)
+	r.With(logFunc("project.risk.create")).Post("/api/projects/{id}/risks", h.CreateProjectRisk)
 }
 
 func registerInfrastructureRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler, cfg *config.Config) {
