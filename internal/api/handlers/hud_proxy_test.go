@@ -723,20 +723,20 @@ func TestNormalizeHUDSessionsResponse(t *testing.T) {
 // drill-in keep working in degraded mode.
 func TestHUDMobileFleetPopulatesSessions(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
+		switch r.URL.Path {
 		// Primary fleet is unavailable -> force the mobile fallback path.
-		case r.URL.Path == "/api/fleet":
+		case "/api/fleet":
 			http.NotFound(w, r)
-		case r.URL.Path == "/api/mobile/v1/presence":
+		case "/api/mobile/v1/presence":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true,"data":{"agents":[],"claims":[]}}`))
-		case r.URL.Path == "/api/mobile/v1/tasks":
+		case "/api/mobile/v1/tasks":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true,"data":{"tasks":[]}}`))
-		case r.URL.Path == "/api/mobile/v1/workflows":
+		case "/api/mobile/v1/workflows":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true,"data":{"workflows":[]}}`))
-		case r.URL.Path == "/api/mobile/v1/sessions":
+		case "/api/mobile/v1/sessions":
 			// status=all is forwarded as a query string; assert parity intent.
 			if r.URL.Query().Get("status") != "all" {
 				t.Errorf("expected ?status=all for primary-fleet parity, got %q", r.URL.RawQuery)

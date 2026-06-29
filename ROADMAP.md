@@ -145,7 +145,7 @@ the Devoted/ICC deployment. Live-verified end-to-end against production data.
 - [x] **Projects UI**: SolidJS `/projects` page with a concern-sorted project picker and per-project lanes for each source; poll-stable lists.
 - [x] **Risks Store (loom-core `mcp-pm`)**: A dedicated Qdrant-backed risks store (`pm_risk_create/list/update/link`) — the one planning entity nothing else owned — with write decoupled from embed. Currently dormant (no risks created yet).
 - [x] **Plans Lane (loom-core Plan store)**: Read-only visibility of the loom-core Plan store per project — lifecycle phase, a compact kill-test verdict (free-form status collapsed to passed/failed/mixed with full text on hover), born-linked GitLab issue, MR count, slice landing progress (`M/N`), and an expandable drill-in revealing the riskiest assumption and the ordered slice list (name/phase/MR).
-- ☐ **Risk Capture Wiring**: Nothing populates the risks store yet; the lane stays dormant until a workflow (e.g. riskiest-assumption kill-tests) calls `pm_risk_create`.
+- [x] **Risk Capture Wiring**: Authenticated FlexDeck risk capture now writes to the shared `pm_risks` store via `POST /api/projects/{id}/risks`, using the same project-keyed payload contract as loom-core `mcp-pm`; project detail/rollup caches are invalidated so the existing risk lane populates immediately. Remaining enhancement: inline Projects UI form / workflow shortcuts for non-API operators.
 
 ## References
 
