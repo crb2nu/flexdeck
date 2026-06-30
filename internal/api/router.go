@@ -351,6 +351,12 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.With(logFunc("hud.handoff.reject")).Post("/handoffs/{id}/reject", h.HUDHandoffReject)
 	})
 
+	// Loom control plane — unified federation of fleet/projects/plans/mills/
+	// flightdeck. Slice 1 lands the health aggregator; per-surface routes follow.
+	r.Route("/api/loom", func(r chi.Router) {
+		r.Get("/health", h.LoomHealth)
+	})
+
 	r.Route("/api/langfuse", func(r chi.Router) {
 		r.Get("/health", h.LangfuseHealth)
 		r.Get("/metrics", h.LangfuseMetrics)

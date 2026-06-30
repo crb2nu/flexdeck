@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/agents"
+	"github.com/flexinfer/flexdeck/internal/api/handlers/apiutil"
 	"github.com/flexinfer/flexdeck/internal/audit"
 	"github.com/flexinfer/flexdeck/internal/cache"
 	"github.com/flexinfer/flexdeck/internal/cluster"
@@ -14,6 +15,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/infra"
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/litellm"
+	"github.com/flexinfer/flexdeck/internal/loomupstream"
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/models"
 	"github.com/flexinfer/flexdeck/internal/qdrant"
@@ -48,6 +50,7 @@ type Handler struct {
 	cache                  *cache.Cache
 	gitlabClient           *http.Client
 	qdrant                 qdrantScroller
+	millsClient            *loomupstream.MillsClient
 	dynamicClientForConfig func(*rest.Config) (dynamic.Interface, error)
 
 	// Infrastructure cache worker
@@ -111,6 +114,7 @@ func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Clien
 		metricsStore: metricsStore,
 		gitlabClient: newGitLabClient(),
 		qdrant:       newQdrantClient(cfg),
+		millsClient:  newMillsClient(cfg),
 	}
 	if metricsStore != nil {
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
@@ -124,6 +128,13 @@ func newQdrantClient(cfg *config.Config) qdrantScroller {
 	return qdrant.New(cfg.Qdrant.URL, qdrant.WithAPIKey(cfg.Qdrant.APIKey))
 }
 
+// newMillsClient builds the read-mostly loom-mills-operator client from config.
+// It always returns a non-nil client; an unconfigured/unreachable operator
+// degrades to "unavailable" at the call site (see loomMillsEnabled).
+func newMillsClient(cfg *config.Config) *loomupstream.MillsClient {
+	return loomupstream.NewMillsClient(cfg.Mills.URL, cfg.Mills.AdminToken, apiutil.DefaultClient)
+}
+
 // NewWithDeps creates a handler with all dependencies
 func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store, deps *HandlerDeps) *Handler {
 	h := &Handler{
@@ -133,6 +144,7 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 		metricsStore: metricsStore,
 		gitlabClient: newGitLabClient(),
 		qdrant:       newQdrantClient(cfg),
+		millsClient:  newMillsClient(cfg),
 	}
 
 	if deps != nil && deps.Cache != nil {

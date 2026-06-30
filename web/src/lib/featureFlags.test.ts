@@ -70,6 +70,16 @@ describe('featureFlags', () => {
     ).toBe(true);
   });
 
+  it('dark-launches the Loom control plane nav item (hidden until explicitly enabled)', () => {
+    expect(buildNavItems({}).some((item) => item.path === '/loom')).toBe(false);
+    expect(
+      buildNavItems({ loom_control_plane: { enabled: false } }).some((item) => item.path === '/loom'),
+    ).toBe(false);
+    expect(
+      buildNavItems({ loom_control_plane: { enabled: true } }).some((item) => item.path === '/loom'),
+    ).toBe(true);
+  });
+
   it('exposes Stack as the local workspace inventory nav item', () => {
     const items = buildNavItems({});
     const stack = items.find((item) => item.path === '/stack');
