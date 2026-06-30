@@ -799,18 +799,19 @@ func (h *Handler) fetchProjectPlans(ctx context.Context, project string) ([]proj
 
 	plans := make([]projectPlan, len(points))
 	for i, p := range points {
-		pl := p.Payload
-		iid := payloadInt(pl, "gitlab_issue_iid")
+		// Shared parse with the standalone Plans surface (loom_plans.go) so plans
+		// are mapped one way; the per-project lane keeps its compact projection.
+		sc := planScalarsFromPayload(p.Payload)
 		plans[i] = projectPlan{
-			ID:                 payloadString(pl, "id"),
-			Slug:               payloadString(pl, "slug"),
-			Title:              payloadString(pl, "title"),
-			Phase:              payloadString(pl, "status"),
-			MRRefs:             payloadSliceLen(pl, "mr_refs"),
-			KillTestStatus:     payloadString(pl, "kill_test_status"),
-			RiskiestAssumption: payloadString(pl, "riskiest_assumption"),
-			IssueIID:           iid,
-			IssueURL:           h.planIssueURL(project, iid),
+			ID:                 sc.ID,
+			Slug:               sc.Slug,
+			Title:              sc.Title,
+			Phase:              sc.Phase,
+			MRRefs:             sc.MRCount,
+			KillTestStatus:     sc.KillTestStatus,
+			RiskiestAssumption: sc.RiskiestAssumption,
+			IssueIID:           sc.IssueIID,
+			IssueURL:           h.planIssueURL(project, sc.IssueIID),
 			Slices:             []projectPlanSlice{},
 		}
 	}
