@@ -355,6 +355,8 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 	// flightdeck. Slice 1 lands the health aggregator; per-surface routes follow.
 	r.Route("/api/loom", func(r chi.Router) {
 		r.Get("/health", h.LoomHealth)
+		r.Get("/plans", h.LoomPlans)
+		r.Get("/plans/{id}", h.LoomPlanDetail)
 	})
 
 	r.Route("/api/langfuse", func(r chi.Router) {

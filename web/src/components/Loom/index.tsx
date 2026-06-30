@@ -3,6 +3,7 @@ import HUDConsoleScaffold, { type HUDConsoleMetric } from '../LoomHUD/HUDConsole
 import TabBar, { type TabDef } from '../shared/TabBar';
 import { createPolling } from '../../hooks/createPolling';
 import { loomApi, type LoomHealth, type LoomSourceHealth } from '../../lib/api/loom';
+import Plans from './Plans';
 
 // The unified Loom control plane. Slice 1 lands the section shell + the
 // /api/loom/health source-availability header; each sub-surface is filled by a
@@ -99,7 +100,12 @@ const Loom: Component = () => {
           <For each={TABS}>
             {(tab) => (
               <Show when={active() === tab.id}>
-                <LoomPlaceholder source={source(TAB_SOURCE[tab.id])} note={TAB_NOTE[tab.id]} />
+                <Show
+                  when={tab.id === 'plans'}
+                  fallback={<LoomPlaceholder source={source(TAB_SOURCE[tab.id])} note={TAB_NOTE[tab.id]} />}
+                >
+                  <Plans />
+                </Show>
               </Show>
             )}
           </For>
