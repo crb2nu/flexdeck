@@ -66,12 +66,23 @@ export function isProjectsEnabled(features: FeatureMap): boolean {
   return enabledByDefault(features, 'projects');
 }
 
+// Loom control plane (unified fleet/projects/plans/mills/flightdeck) nav is
+// gated by `loom_control_plane.enabled`, defaulting OFF (dark launch) while the
+// section is built out across slices. Set `loom_control_plane: { enabled: true }`
+// to surface it (per environment) before the public flip in a later slice.
+export function isLoomControlPlaneEnabled(features: FeatureMap): boolean {
+  return enabled(features, 'loom_control_plane');
+}
+
 export function isAdminEnabled(features: FeatureMap): boolean {
   return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
 }
 
 export function buildNavItems(features: FeatureMap): NavItem[] {
   const items = [...baseNavItems];
+  if (isLoomControlPlaneEnabled(features)) {
+    items.push({ label: 'Loom', path: '/loom' });
+  }
   if (isProjectsEnabled(features)) {
     items.push({ label: 'Projects', path: '/projects' });
   }

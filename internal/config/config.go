@@ -79,6 +79,12 @@ type Config struct {
 
 	// Qdrant (vector store, read-only — project-tracking federation)
 	Qdrant QdrantConfig
+
+	// Mills (loom-mills-operator REST — autonomy control plane, read-mostly)
+	Mills MillsConfig
+
+	// Flightdeck (loom-flightdeck — agent flight recorder: stalls + context ledger)
+	Flightdeck FlightdeckConfig
 }
 
 type K8sConfig struct {
@@ -210,6 +216,24 @@ type QdrantConfig struct {
 	APIKey string // env: QDRANT_API_KEY (optional; sent as api-key header when set)
 }
 
+// MillsConfig points at the loom-mills-operator REST API (/api/mills/*). flexdeck
+// federates mills DIRECTLY because the in-cluster HUD upstream (mobile-hud) does
+// not expose /api/mills/* — only the workstation daemon does. Read endpoints are
+// open; AdminToken is required only for mutating endpoints (slice 6).
+type MillsConfig struct {
+	Disabled   bool
+	URL        string // env: MILLS_OPERATOR_URL
+	AdminToken string // env: LOOM_MILLS_ADMIN_TOKEN — bearer for mutating /api/mills endpoints
+}
+
+// FlightdeckConfig points at the loom-flightdeck JSON API (stalls + context
+// ledger). Token is the IngestAuth bearer used by the board JSON endpoints.
+type FlightdeckConfig struct {
+	Disabled bool
+	URL      string // env: FLIGHTDECK_URL
+	Token    string // env: FLIGHTDECK_TOKEN — bearer for the flightdeck JSON API
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:     getEnv("PORT", "8080"),
@@ -300,6 +324,21 @@ func Load() (*Config, error) {
 			URL:       getEnvAllowEmpty("LOOM_HUD_URL", "http://localhost:3333"),
 			DirectURL: getEnvAllowEmpty("LOOM_HUD_DIRECT_URL", ""),
 			PushToken: getEnv("LOOM_HUD_PUSH_TOKEN", ""),
+		},
+
+		// Defaults are the in-cluster service DNS confirmed by the slice-1
+		// kill-test, so the Loom control plane works without a manifest change;
+		// override via env. Mills port is 8090 (not 3333).
+		Mills: MillsConfig{
+			Disabled:   parseBool(getEnv("MILLS_DISABLED", "false")),
+			URL:        getEnvAllowEmpty("MILLS_OPERATOR_URL", "http://loom-mills-operator.loom-mills.svc.cluster.local:8090"),
+			AdminToken: getEnv("LOOM_MILLS_ADMIN_TOKEN", ""),
+		},
+
+		Flightdeck: FlightdeckConfig{
+			Disabled: parseBool(getEnv("FLIGHTDECK_DISABLED", "false")),
+			URL:      getEnvAllowEmpty("FLIGHTDECK_URL", "http://loom-flightdeck.loom-flightdeck.svc.cluster.local"),
+			Token:    getEnv("FLIGHTDECK_TOKEN", ""),
 		},
 
 		Langfuse: LangfuseConfig{
