@@ -357,6 +357,26 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/health", h.LoomHealth)
 		r.Get("/plans", h.LoomPlans)
 		r.Get("/plans/{id}", h.LoomPlanDetail)
+
+		// Mills surface — read-only proxy to loom-mills-operator (/api/mills/*).
+		r.Route("/mills", func(r chi.Router) {
+			r.Get("/status", h.LoomMillsStatus)
+			r.Get("/kpis", h.LoomMillsKPIs)
+			r.Get("/policy", h.LoomMillsPolicy)
+			r.Get("/backlog", h.LoomMillsBacklog)
+			r.Get("/backlog/{id}", h.LoomMillsBacklogItem)
+			r.Get("/pipeline/runs", h.LoomMillsPipelineRuns)
+			r.Get("/pipeline/runs/{id}", h.LoomMillsPipelineRun)
+			r.Get("/council/runs", h.LoomMillsCouncilRuns)
+			r.Get("/council/runs/{id}", h.LoomMillsCouncilRun)
+			r.Get("/council/runs/{id}/debate", h.LoomMillsCouncilDebate)
+			r.Get("/eval/scores", h.LoomMillsEvalScores)
+			r.Get("/squads", h.LoomMillsSquads)
+			r.Get("/squads/{name}", h.LoomMillsSquad)
+			r.Get("/audit/findings", h.LoomMillsAuditFindings)
+			r.Get("/audit/findings/{id}", h.LoomMillsAuditFinding)
+			r.Get("/policy/proposals", h.LoomMillsPolicyProposals)
+		})
 	})
 
 	r.Route("/api/langfuse", func(r chi.Router) {
