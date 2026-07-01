@@ -21,16 +21,26 @@ func TestCollectLoomHealthAllUp(t *testing.T) {
 	}))
 	defer mills.Close()
 
+	fd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/board/summary" {
+			_, _ = w.Write([]byte(`{"wait_minutes_today":0,"blocked_now_count":0}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer fd.Close()
+
 	h := &Handler{
 		cfg: &config.Config{
 			LoomHUD:    config.LoomHUDConfig{URL: "http://hud.example"},
 			Mills:      config.MillsConfig{URL: mills.URL},
-			Flightdeck: config.FlightdeckConfig{URL: "http://fd.example"},
+			Flightdeck: config.FlightdeckConfig{URL: fd.URL},
 		},
 		qdrant: &fakeQdrant{byCollection: map[string][]qdrant.Point{
 			qdrantPlansCollection: make([]qdrant.Point, 1),
 		}},
-		millsClient: loomupstream.NewMillsClient(mills.URL, "", mills.Client()),
+		millsClient:      loomupstream.NewMillsClient(mills.URL, "", mills.Client()),
+		flightdeckClient: loomupstream.NewFlightdeckClient(fd.URL, "", fd.Client()),
 	}
 
 	res := h.collectLoomHealth(context.Background())
@@ -39,14 +49,10 @@ func TestCollectLoomHealthAllUp(t *testing.T) {
 		t.Fatalf("sources missing or wrong type: %#v", res["sources"])
 	}
 
-	for _, name := range []string{"hud", "plans", "mills"} {
+	for _, name := range []string{"hud", "plans", "mills", "flightdeck"} {
 		if !sources[name].Enabled || !sources[name].Available {
 			t.Errorf("%s expected enabled+available, got %+v", name, sources[name])
 		}
-	}
-	// Flightdeck is configured but the board JSON API is not live until slice 5.
-	if !sources["flightdeck"].Enabled || sources["flightdeck"].Available {
-		t.Errorf("flightdeck expected enabled+unavailable, got %+v", sources["flightdeck"])
 	}
 }
 

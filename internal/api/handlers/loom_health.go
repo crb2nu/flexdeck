@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -79,12 +78,21 @@ func (h *Handler) collectLoomHealth(ctx context.Context) map[string]any {
 		set("mills", s)
 	}()
 
-	// Flightdeck — config-only for now; the board JSON API arrives in slice 5.
-	set("flightdeck", loomSourceHealth{
-		Enabled:   h.loomFlightdeckEnabled(),
-		Available: false,
-		Detail:    "board JSON API pending (slice 5)",
-	})
+	// Flightdeck — live /api/v2/board/summary reachability (proves API + auth).
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		enabled := h.loomFlightdeckEnabled()
+		s := loomSourceHealth{Enabled: enabled}
+		if enabled {
+			if err := h.flightdeckClient.Healthy(probeCtx); err == nil {
+				s.Available = true
+			} else {
+				s.Detail = err.Error()
+			}
+		}
+		set("flightdeck", s)
+	}()
 
 	wg.Wait()
 	return map[string]any{
@@ -101,5 +109,5 @@ func (h *Handler) loomMillsEnabled() bool {
 
 // loomFlightdeckEnabled reports whether flightdeck federation is configured.
 func (h *Handler) loomFlightdeckEnabled() bool {
-	return h != nil && h.cfg != nil && !h.cfg.Flightdeck.Disabled && strings.TrimSpace(h.cfg.Flightdeck.URL) != ""
+	return h != nil && h.cfg != nil && !h.cfg.Flightdeck.Disabled && h.flightdeckClient.Enabled()
 }

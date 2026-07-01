@@ -6,6 +6,7 @@ import { loomApi, type LoomHealth, type LoomSourceHealth } from '../../lib/api/l
 import Plans from './Plans';
 import Mills from './Mills';
 import Fleet from './Fleet';
+import Flightdeck from './Flightdeck';
 import Projects from '../Projects';
 
 // The unified Loom control plane: one section over fleet, projects, plans, mills,
@@ -39,12 +40,6 @@ function chipValue(s: LoomSourceHealth | undefined): string {
   if (!s || !s.enabled) return 'off';
   return s.available ? 'live' : 'down';
 }
-
-const FlightdeckPlaceholder: Component = () => (
-  <div class="surface px-4 py-8 text-center text-sm text-text-dim">
-    Stall Board and Context Ledger — arriving in slice 5.
-  </div>
-);
 
 const Loom: Component = () => {
   const [active, setActive] = createSignal<LoomTab>('fleet');
@@ -97,7 +92,7 @@ const Loom: Component = () => {
             <Mills />
           </Match>
           <Match when={active() === 'flightdeck'}>
-            <FlightdeckPlaceholder />
+            <Flightdeck />
           </Match>
         </Switch>
       </div>
