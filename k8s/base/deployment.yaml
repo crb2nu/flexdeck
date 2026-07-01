@@ -155,6 +155,16 @@ spec:
                   name: flexdeck-secrets
                   key: hud-push-token
                   optional: true
+            # loom-flightdeck board API (Stall Board + Context Ledger), reached
+            # in-cluster; the bearer token matches flightdeck's ingest token.
+            - name: FLIGHTDECK_URL
+              value: "http://loom-flightdeck.loom-flightdeck.svc.cluster.local"
+            - name: FLIGHTDECK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: flexdeck-secrets
+                  key: flightdeck-token
+                  optional: true
             # Stack Explorer reads its inventory from the GitLab API
             # (GITLAB_TOKEN above), which runs in-cluster and is independent
             # of the NAS. We deliberately do NOT mount the workspace NFS

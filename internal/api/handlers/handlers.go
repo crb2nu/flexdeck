@@ -51,6 +51,7 @@ type Handler struct {
 	gitlabClient           *http.Client
 	qdrant                 qdrantScroller
 	millsClient            *loomupstream.MillsClient
+	flightdeckClient       *loomupstream.FlightdeckClient
 	dynamicClientForConfig func(*rest.Config) (dynamic.Interface, error)
 
 	// Infrastructure cache worker
@@ -108,13 +109,14 @@ type HandlerDeps struct {
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
 	h := &Handler{
-		cfg:          cfg,
-		k8s:          k8sClient,
-		litellm:      litellmClient,
-		metricsStore: metricsStore,
-		gitlabClient: newGitLabClient(),
-		qdrant:       newQdrantClient(cfg),
-		millsClient:  newMillsClient(cfg),
+		cfg:              cfg,
+		k8s:              k8sClient,
+		litellm:          litellmClient,
+		metricsStore:     metricsStore,
+		gitlabClient:     newGitLabClient(),
+		qdrant:           newQdrantClient(cfg),
+		millsClient:      newMillsClient(cfg),
+		flightdeckClient: newFlightdeckClient(cfg),
 	}
 	if metricsStore != nil {
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
@@ -135,16 +137,24 @@ func newMillsClient(cfg *config.Config) *loomupstream.MillsClient {
 	return loomupstream.NewMillsClient(cfg.Mills.URL, cfg.Mills.AdminToken, apiutil.DefaultClient)
 }
 
+// newFlightdeckClient builds the read-only loom-flightdeck board-API client from
+// config. Always non-nil; an unconfigured/unreachable flightdeck degrades to
+// "unavailable" at the call site (see loomFlightdeckEnabled).
+func newFlightdeckClient(cfg *config.Config) *loomupstream.FlightdeckClient {
+	return loomupstream.NewFlightdeckClient(cfg.Flightdeck.URL, cfg.Flightdeck.Token, apiutil.DefaultClient)
+}
+
 // NewWithDeps creates a handler with all dependencies
 func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store, deps *HandlerDeps) *Handler {
 	h := &Handler{
-		cfg:          cfg,
-		k8s:          k8sClient,
-		litellm:      litellmClient,
-		metricsStore: metricsStore,
-		gitlabClient: newGitLabClient(),
-		qdrant:       newQdrantClient(cfg),
-		millsClient:  newMillsClient(cfg),
+		cfg:              cfg,
+		k8s:              k8sClient,
+		litellm:          litellmClient,
+		metricsStore:     metricsStore,
+		gitlabClient:     newGitLabClient(),
+		qdrant:           newQdrantClient(cfg),
+		millsClient:      newMillsClient(cfg),
+		flightdeckClient: newFlightdeckClient(cfg),
 	}
 
 	if deps != nil && deps.Cache != nil {

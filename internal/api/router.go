@@ -377,6 +377,17 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 			r.Get("/audit/findings/{id}", h.LoomMillsAuditFinding)
 			r.Get("/policy/proposals", h.LoomMillsPolicyProposals)
 		})
+
+		// Flightdeck surface — read-only proxy to the loom-flightdeck board API
+		// (Stall Board + Context Ledger), bearer token injected server-side.
+		r.Route("/flightdeck", func(r chi.Router) {
+			r.Get("/board/summary", h.LoomFlightdeckBoardSummary)
+			r.Get("/board/stalls", h.LoomFlightdeckBoardStalls)
+			r.Get("/board/session/{id}", h.LoomFlightdeckBoardSession)
+			r.Get("/context/summary", h.LoomFlightdeckContextSummary)
+			r.Get("/context/catalog", h.LoomFlightdeckContextCatalog)
+			r.Get("/context/rules", h.LoomFlightdeckContextRules)
+		})
 	})
 
 	r.Route("/api/langfuse", func(r chi.Router) {
