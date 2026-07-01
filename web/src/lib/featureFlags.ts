@@ -75,6 +75,16 @@ export function isLoomControlPlaneEnabled(features: FeatureMap): boolean {
   return enabledByDefault(features, 'loom_control_plane');
 }
 
+// Loom control-plane mutations (slice 6) are dark-launched: the backend
+// publishes `loom_control_plane_mutations` and only sets it enabled when the
+// LOOM_MILLS_MUTATIONS_ENABLED flag is on AND an admin token is configured.
+// Defaults OFF (undefined -> false), so the Mills control buttons stay hidden
+// until the operator flips the flag. Visibility ALSO requires an admin role;
+// the backend enforces both independently (503 + 403).
+export function isLoomMutationsEnabled(features: FeatureMap): boolean {
+  return enabled(features, 'loom_control_plane_mutations');
+}
+
 export function isAdminEnabled(features: FeatureMap): boolean {
   return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
 }

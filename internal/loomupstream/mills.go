@@ -6,6 +6,7 @@
 package loomupstream
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -77,4 +78,45 @@ func (c *MillsClient) Get(ctx context.Context, path string) (json.RawMessage, er
 func (c *MillsClient) Healthy(ctx context.Context) error {
 	_, err := c.Get(ctx, "/api/mills/status")
 	return err
+}
+
+// CanMutate reports whether mutating calls are possible: both a base URL and an
+// admin bearer token must be configured. The operator gates every mutating
+// route behind requireAdmin, so without the token a POST is always rejected.
+func (c *MillsClient) CanMutate() bool {
+	return c.Enabled() && c.adminToken != ""
+}
+
+// Post performs a POST against a mills-operator path with the admin bearer
+// token, forwarding the optional JSON body. It returns the raw response body
+// and the operator's HTTP status for any completed response so the caller can
+// pass the status through; a non-nil error signals missing configuration or a
+// transport failure (no HTTP response).
+func (c *MillsClient) Post(ctx context.Context, path string, body []byte) (json.RawMessage, int, error) {
+	if !c.CanMutate() {
+		return nil, 0, fmt.Errorf("mills operator not configured for mutations")
+	}
+	var rdr io.Reader
+	if len(body) > 0 {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, rdr)
+	if err != nil {
+		return nil, 0, fmt.Errorf("create mills request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.adminToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("mills request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, millsMaxResponseBytes))
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("read mills response: %w", err)
+	}
+	return json.RawMessage(respBody), resp.StatusCode, nil
 }

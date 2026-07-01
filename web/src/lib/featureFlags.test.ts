@@ -7,6 +7,7 @@ import {
   getDefaultAdminTab,
   getHudModeState,
   isAdminEnabled,
+  isLoomMutationsEnabled,
   isNavItemActive,
   type FeatureMap,
 } from './featureFlags';
@@ -21,6 +22,13 @@ describe('featureFlags', () => {
 
     expect(isAdminEnabled(features)).toBe(false);
     expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(false);
+  });
+
+  it('dark-launches loom mutations: off by default, on only when the backend publishes it', () => {
+    // Undefined (backend hasn't published it) counts as OFF — the safe default.
+    expect(isLoomMutationsEnabled({})).toBe(false);
+    expect(isLoomMutationsEnabled({ loom_control_plane_mutations: { enabled: false } })).toBe(false);
+    expect(isLoomMutationsEnabled({ loom_control_plane_mutations: { enabled: true } })).toBe(true);
   });
 
   it('shows Admin nav item when at least one admin feature is enabled', () => {

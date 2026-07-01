@@ -20,11 +20,18 @@ const mocks = vi.hoisted(() => ({
   councilRuns: vi.fn(async () => []),
   councilDebate: vi.fn(),
   raw: vi.fn(async () => []),
+  pausePipelineRun: vi.fn(async () => ({})),
+  resumePipelineRun: vi.fn(async () => ({})),
+  escalatePipelineRun: vi.fn(async () => ({})),
+  killSwitch: vi.fn(async () => ({})),
   createPolling: vi.fn((_id: string, task: () => Promise<void> | void) => {
     queueMicrotask(() => {
       void task();
     });
   }),
+  // Mutable gating state read by the mocked health/auth stores below.
+  mutationsEnabled: false,
+  role: null as string | null,
 }));
 
 vi.mock('../../../lib/api/loomMills', () => ({
@@ -36,11 +43,27 @@ vi.mock('../../../lib/api/loomMills', () => ({
     councilRuns: mocks.councilRuns,
     councilDebate: mocks.councilDebate,
     raw: mocks.raw,
+    pausePipelineRun: mocks.pausePipelineRun,
+    resumePipelineRun: mocks.resumePipelineRun,
+    escalatePipelineRun: mocks.escalatePipelineRun,
+    killSwitch: mocks.killSwitch,
   },
 }));
 
 vi.mock('../../../hooks/createPolling', () => ({
   createPolling: mocks.createPolling,
+}));
+
+vi.mock('../../../stores/health', () => ({
+  healthStore: {
+    get features() {
+      return { loom_control_plane_mutations: { enabled: mocks.mutationsEnabled } };
+    },
+  },
+}));
+
+vi.mock('../../../stores/auth', () => ({
+  currentUser: () => (mocks.role ? { role: mocks.role } : null),
 }));
 
 import Mills from './index';
@@ -60,9 +83,22 @@ function mount(factory: () => JSX.Element) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+function clickButton(container: HTMLElement, label: string): void {
+  const btn = Array.from(container.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === label,
+  );
+  if (!btn) throw new Error(`button "${label}" not found`);
+  (btn as HTMLButtonElement).click();
+}
+
 describe('Loom Mills surface', () => {
   let cleanup = () => {};
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    mocks.mutationsEnabled = false;
+    mocks.role = null;
+    mocks.killSwitch.mockClear();
+  });
 
   it('renders the Overview panel from mills status (autonomy + capabilities)', async () => {
     const m = mount(() => <Mills />);
@@ -78,5 +114,56 @@ describe('Loom Mills surface', () => {
     // Only the active (Overview) panel mounts — backlog/pipelines aren't fetched.
     expect(mocks.backlog).not.toHaveBeenCalled();
     expect(mocks.pipelineRuns).not.toHaveBeenCalled();
+  });
+
+  it('hides the Policy kill-switch when mutations are disabled (even for an admin)', async () => {
+    mocks.mutationsEnabled = false;
+    mocks.role = 'admin';
+    const m = mount(() => <Mills />);
+    cleanup = m.cleanup;
+    await flush();
+
+    clickButton(m.container, 'Policy');
+    await flush();
+
+    expect(m.container.textContent ?? '').not.toContain('kill-switch');
+    expect(mocks.raw).toHaveBeenCalled(); // policy proposals still render
+  });
+
+  it('shows and two-step-confirms the kill-switch for an admin when mutations are enabled', async () => {
+    mocks.mutationsEnabled = true;
+    mocks.role = 'admin';
+    const m = mount(() => <Mills />);
+    cleanup = m.cleanup;
+    await flush();
+
+    clickButton(m.container, 'Policy');
+    await flush();
+    const text = () => m.container.textContent ?? '';
+    expect(text()).toContain('kill-switch'); // "Autonomy kill-switch"
+
+    // First click arms the confirm without calling the API.
+    clickButton(m.container, 'Trip kill-switch');
+    await flush();
+    expect(mocks.killSwitch).not.toHaveBeenCalled();
+    expect(text()).toContain('Confirm halt');
+
+    // Second click executes.
+    clickButton(m.container, 'Confirm halt');
+    await flush();
+    expect(mocks.killSwitch).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides mutation controls for a non-admin even when the flag is on', async () => {
+    mocks.mutationsEnabled = true;
+    mocks.role = 'viewer';
+    const m = mount(() => <Mills />);
+    cleanup = m.cleanup;
+    await flush();
+
+    clickButton(m.container, 'Policy');
+    await flush();
+
+    expect(m.container.textContent ?? '').not.toContain('kill-switch');
   });
 });
