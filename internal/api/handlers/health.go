@@ -99,6 +99,12 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"multi_cluster": {
 				Enabled: h.multiClusterAvailable(),
 			},
+			// loom_control_plane_mutations dark-launches the slice-6 control
+			// layer. Default off: the Mills view only reveals its admin control
+			// buttons (pause/resume/escalate/kill-switch) when this is true.
+			"loom_control_plane_mutations": {
+				Enabled: h.loomMillsMutationsEnabled(),
+			},
 			"modelcache": {
 				Enabled: !h.cfg.K8s.Disabled,
 			},

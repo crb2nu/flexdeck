@@ -3,6 +3,9 @@ import Badge, { type BadgeTone } from '../../shared/Badge';
 import DetailPanel from '../../shared/DetailPanel';
 import TabBar, { type TabDef } from '../../shared/TabBar';
 import { createPolling } from '../../../hooks/createPolling';
+import { isLoomMutationsEnabled } from '../../../lib/featureFlags';
+import { healthStore } from '../../../stores/health';
+import { currentUser } from '../../../stores/auth';
 import {
   loomMillsApi,
   type MillsBacklogItem,
@@ -12,6 +15,14 @@ import {
   type MillsPipelineRun,
   type MillsStatus,
 } from '../../../lib/api/loomMills';
+
+// canMutate gates the slice-6 control buttons: both the dark-launch flag
+// (loom_control_plane_mutations, backend default off) and an admin role are
+// required. The backend enforces both independently (503 + 403); this only
+// decides whether to render the controls at all.
+function canMutate(): boolean {
+  return isLoomMutationsEnabled(healthStore.features) && currentUser()?.role === 'admin';
+}
 
 type MillsTab = 'overview' | 'backlog' | 'pipelines' | 'council' | 'eval' | 'squads' | 'audit' | 'policy';
 
@@ -168,6 +179,72 @@ const BacklogPanel: Component = () => {
   );
 };
 
+// ControlButton runs a mills mutation with pending + inline error state. Set
+// `confirmLabel` for destructive actions (the kill-switch): the first click
+// arms a confirm, the second executes. Non-confirm actions run on first click.
+const ControlButton: Component<{
+  label: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  run: () => Promise<unknown>;
+  onDone?: () => void;
+}> = (props) => {
+  const [pending, setPending] = createSignal(false);
+  const [armed, setArmed] = createSignal(false);
+  const [err, setErr] = createSignal<string | null>(null);
+
+  const exec = async () => {
+    setPending(true);
+    setErr(null);
+    try {
+      await props.run();
+      setArmed(false);
+      props.onDone?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'action failed');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const onClick = () => {
+    if (props.confirmLabel && !armed()) {
+      setArmed(true);
+      return;
+    }
+    void exec();
+  };
+
+  return (
+    <span class="inline-flex items-center gap-1">
+      <button
+        type="button"
+        disabled={pending()}
+        onClick={onClick}
+        class={`rounded px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+          props.danger
+            ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25'
+            : 'surface text-text-main hover:bg-white/[0.06]'
+        }`}
+      >
+        {pending() ? '…' : armed() ? (props.confirmLabel as string) : props.label}
+      </button>
+      <Show when={armed() && !pending()}>
+        <button
+          type="button"
+          class="text-[10px] text-text-muted hover:text-text-main"
+          onClick={() => setArmed(false)}
+        >
+          cancel
+        </button>
+      </Show>
+      <Show when={err()}>
+        <span class="text-[10px] text-red-400" role="alert">{err()}</span>
+      </Show>
+    </span>
+  );
+};
+
 const PipelinesPanel: Component = () => {
   const { data, error, loaded } = pollResource<MillsPipelineRun[]>('mills-pipelines', loomMillsApi.pipelineRuns, 10000);
   const [detail, setDetail] = createSignal<MillsPipelineDetail | null>(null);
@@ -216,6 +293,14 @@ const PipelinesPanel: Component = () => {
             onClose={() => setDetail(null)}
           >
             <div class="space-y-2 px-4 py-4 sm:px-6">
+              <Show when={canMutate()}>
+                <div class="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-3">
+                  <span class="heading-label">Controls</span>
+                  <ControlButton label="Pause" run={() => loomMillsApi.pausePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
+                  <ControlButton label="Resume" run={() => loomMillsApi.resumePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
+                  <ControlButton label="Escalate" run={() => loomMillsApi.escalatePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
+                </div>
+              </Show>
               <div class="heading-label">Stages ({d().stages?.length ?? 0})</div>
               <Show when={(d().stages?.length ?? 0) > 0} fallback={<p class="text-sm text-text-muted">No stage attempts recorded.</p>}>
                 <For each={d().stages!}>
@@ -330,6 +415,36 @@ const RawPanel: Component<{ id: string; path: string; empty: string }> = (props)
   );
 };
 
+// PolicyPanel shows policy proposals plus the slice-6 autonomy kill-switch
+// (admin + flag gated). Tripping it halts ALL mills pipelines, so it requires
+// an explicit confirm.
+const PolicyPanel: Component = () => {
+  const [tripped, setTripped] = createSignal(false);
+  return (
+    <div class="space-y-3">
+      <Show when={canMutate()}>
+        <div class="surface flex flex-wrap items-center justify-between gap-2 border border-red-500/20 px-3 py-2">
+          <div>
+            <div class="text-sm font-medium text-text-main">Autonomy kill-switch</div>
+            <div class="text-[11px] text-text-muted">Halts all mills pipelines. Admin-only.</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <Show when={tripped()}><span class="text-[11px] text-red-300">kill-switch tripped</span></Show>
+            <ControlButton
+              label="Trip kill-switch"
+              confirmLabel="Confirm halt"
+              danger
+              run={() => loomMillsApi.killSwitch()}
+              onDone={() => setTripped(true)}
+            />
+          </div>
+        </div>
+      </Show>
+      <RawPanel id="policy" path="policy/proposals" empty="No policy proposals." />
+    </div>
+  );
+};
+
 const Mills: Component = () => {
   const [active, setActive] = createSignal<MillsTab>('overview');
 
@@ -345,7 +460,7 @@ const Mills: Component = () => {
         <Match when={active() === 'eval'}><RawPanel id="eval" path="eval/scores" empty="No eval scores." /></Match>
         <Match when={active() === 'squads'}><RawPanel id="squads" path="squads" empty="No squads." /></Match>
         <Match when={active() === 'audit'}><RawPanel id="audit" path="audit/findings" empty="No audit findings." /></Match>
-        <Match when={active() === 'policy'}><RawPanel id="policy" path="policy/proposals" empty="No policy proposals." /></Match>
+        <Match when={active() === 'policy'}><PolicyPanel /></Match>
       </Switch>
     </div>
   );

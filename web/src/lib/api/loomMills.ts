@@ -95,4 +95,16 @@ export const loomMillsApi = {
   councilDebate: (id: string) => api<MillsDebateRound[]>(`/loom/mills/council/runs/${encodeURIComponent(id)}/debate`),
   // Eval / squads / audit / policy proposals are proxied but rendered generically.
   raw: (path: string) => api<unknown>(`/loom/mills/${path}`),
+
+  // --- Mutations (slice 6) ------------------------------------------------
+  // Admin-only, dark-launched controls. The backend returns 503 unless the
+  // LOOM_MILLS_MUTATIONS_ENABLED flag is on, and 403 for non-admins; callers
+  // gate the UI on `loom_control_plane_mutations` + role before invoking.
+  pausePipelineRun: (id: string) =>
+    api<unknown>(`/loom/mills/pipeline/runs/${encodeURIComponent(id)}/pause`, { method: 'POST' }),
+  resumePipelineRun: (id: string) =>
+    api<unknown>(`/loom/mills/pipeline/runs/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
+  escalatePipelineRun: (id: string) =>
+    api<unknown>(`/loom/mills/pipeline/runs/${encodeURIComponent(id)}/escalate`, { method: 'POST' }),
+  killSwitch: () => api<unknown>('/loom/mills/policy/kill-switch', { method: 'POST' }),
 };

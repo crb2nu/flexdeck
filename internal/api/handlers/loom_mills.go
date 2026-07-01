@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,6 +9,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+// maxMillsMutationBody caps a mutation request body. Mills control payloads are
+// tiny (a kill-switch reason, an escalation note), so 64KB is generous.
+const maxMillsMutationBody = 64 << 10
 
 // The Mills surface is a thin, read-only proxy to the loom-mills-operator REST
 // API (/api/mills/*). flexdeck talks to the operator directly (internal/
@@ -122,4 +127,88 @@ func (h *Handler) LoomMillsAuditFinding(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) LoomMillsPolicyProposals(w http.ResponseWriter, r *http.Request) {
 	h.proxyMillsJSON(w, r, "loom:mills:policy:proposals", 20*time.Second, "/api/mills/policy/proposals")
+}
+
+// --- Mutations (slice 6, dark-launched) ---
+//
+// The operational control layer: pause / resume / escalate a pipeline run and
+// the policy kill-switch. Each is gated by three independent checks so the
+// dark-launch is fail-safe:
+//
+//  1. The route is mounted under RBAC PermAdmin (router.go) and audit-logged.
+//  2. loomMillsMutationsEnabled requires the LOOM_MILLS_MUTATIONS_ENABLED flag
+//     (default off) AND an admin token — even an admin gets 503 until flipped.
+//  3. The operator itself enforces requireAdmin on every mutating route.
+
+// loomMillsMutationsEnabled reports whether mills mutations are live: the mills
+// surface is enabled, the mutations flag is flipped, and an admin token is
+// configured for the upstream bearer.
+func (h *Handler) loomMillsMutationsEnabled() bool {
+	return h.loomMillsEnabled() && h.cfg.Mills.MutationsEnabled && h.millsClient.CanMutate()
+}
+
+// proxyMillsMutation forwards a POST to the mills operator with the admin
+// bearer, passing the operator's status and body straight through. It returns
+// 503 when mutations are disabled (the dark-launch default) and 502 on a
+// transport failure, so the UI can distinguish "not available" from "upstream
+// error". Affected read caches are invalidated so the next poll reflects the
+// change.
+func (h *Handler) proxyMillsMutation(w http.ResponseWriter, r *http.Request, millsPath string) {
+	if !h.loomMillsMutationsEnabled() {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "mills mutations disabled"})
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMillsMutationBody))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read request body"})
+		return
+	}
+
+	raw, status, err := h.millsClient.Post(r.Context(), millsPath, body)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
+	// A 401/403 from the operator means flexdeck's mills admin token is missing
+	// or rejected — a server-side misconfiguration, not the browser user's
+	// session. Surface it as a gateway error so the frontend's RBAC login gate
+	// (which reacts to 401) does not spuriously log the user out.
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": "mills operator rejected the admin token"})
+		return
+	}
+
+	if h.cache != nil {
+		h.cache.Invalidate(r.Context(), "loom:mills:status")
+		h.cache.Invalidate(r.Context(), "loom:mills:pipeline:runs")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(raw)
+}
+
+// LoomMillsPipelinePause pauses a running pipeline.
+func (h *Handler) LoomMillsPipelinePause(w http.ResponseWriter, r *http.Request) {
+	id := millsPathParam(r, "id")
+	h.proxyMillsMutation(w, r, "/api/mills/pipeline/runs/"+id+"/pause")
+}
+
+// LoomMillsPipelineResume resumes a paused pipeline.
+func (h *Handler) LoomMillsPipelineResume(w http.ResponseWriter, r *http.Request) {
+	id := millsPathParam(r, "id")
+	h.proxyMillsMutation(w, r, "/api/mills/pipeline/runs/"+id+"/resume")
+}
+
+// LoomMillsPipelineEscalate escalates a pipeline run to human review.
+func (h *Handler) LoomMillsPipelineEscalate(w http.ResponseWriter, r *http.Request) {
+	id := millsPathParam(r, "id")
+	h.proxyMillsMutation(w, r, "/api/mills/pipeline/runs/"+id+"/escalate")
+}
+
+// LoomMillsKillSwitch trips the autonomy kill-switch (halts all mills work).
+func (h *Handler) LoomMillsKillSwitch(w http.ResponseWriter, r *http.Request) {
+	h.proxyMillsMutation(w, r, "/api/mills/policy/kill-switch")
 }

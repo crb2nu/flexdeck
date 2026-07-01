@@ -224,6 +224,11 @@ type MillsConfig struct {
 	Disabled   bool
 	URL        string // env: MILLS_OPERATOR_URL
 	AdminToken string // env: LOOM_MILLS_ADMIN_TOKEN — bearer for mutating /api/mills endpoints
+	// MutationsEnabled dark-launches the slice-6 control layer (pause/resume/
+	// escalate/kill-switch). Default false: even an RBAC admin cannot mutate
+	// until this flag is flipped AND an AdminToken is configured. env:
+	// LOOM_MILLS_MUTATIONS_ENABLED.
+	MutationsEnabled bool
 }
 
 // FlightdeckConfig points at the loom-flightdeck JSON API (stalls + context
@@ -330,9 +335,10 @@ func Load() (*Config, error) {
 		// kill-test, so the Loom control plane works without a manifest change;
 		// override via env. Mills port is 8090 (not 3333).
 		Mills: MillsConfig{
-			Disabled:   parseBool(getEnv("MILLS_DISABLED", "false")),
-			URL:        getEnvAllowEmpty("MILLS_OPERATOR_URL", "http://loom-mills-operator.loom-mills.svc.cluster.local:8090"),
-			AdminToken: getEnv("LOOM_MILLS_ADMIN_TOKEN", ""),
+			Disabled:         parseBool(getEnv("MILLS_DISABLED", "false")),
+			URL:              getEnvAllowEmpty("MILLS_OPERATOR_URL", "http://loom-mills-operator.loom-mills.svc.cluster.local:8090"),
+			AdminToken:       getEnv("LOOM_MILLS_ADMIN_TOKEN", ""),
+			MutationsEnabled: parseBool(getEnv("LOOM_MILLS_MUTATIONS_ENABLED", "false")),
 		},
 
 		Flightdeck: FlightdeckConfig{

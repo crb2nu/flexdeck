@@ -376,6 +376,19 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 			r.Get("/audit/findings", h.LoomMillsAuditFindings)
 			r.Get("/audit/findings/{id}", h.LoomMillsAuditFinding)
 			r.Get("/policy/proposals", h.LoomMillsPolicyProposals)
+
+			// Mutations (slice 6) — the operational control layer. Admin-gated
+			// and audit-logged here; dark-launched behind LOOM_MILLS_MUTATIONS_
+			// ENABLED (handlers return 503 until flipped). RequirePermission
+			// fails closed (403) when RBAC is unavailable, so mutations are
+			// never reachable without an authenticated admin.
+			r.Group(func(r chi.Router) {
+				r.Use(rbac.RequirePermission(rbac.PermAdmin))
+				r.With(logFunc("loom.mills.pipeline.pause")).Post("/pipeline/runs/{id}/pause", h.LoomMillsPipelinePause)
+				r.With(logFunc("loom.mills.pipeline.resume")).Post("/pipeline/runs/{id}/resume", h.LoomMillsPipelineResume)
+				r.With(logFunc("loom.mills.pipeline.escalate")).Post("/pipeline/runs/{id}/escalate", h.LoomMillsPipelineEscalate)
+				r.With(logFunc("loom.mills.kill_switch")).Post("/policy/kill-switch", h.LoomMillsKillSwitch)
+			})
 		})
 
 		// Flightdeck surface — read-only proxy to the loom-flightdeck board API
