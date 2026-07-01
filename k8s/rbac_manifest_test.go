@@ -95,6 +95,41 @@ func TestFlexdeckClusterRoleIncludesModelCacheReadAccess(t *testing.T) {
 	t.Fatal("expected flexdeck ClusterRole to grant get/list/watch on ai.flexinfer modelcaches")
 }
 
+// TestFlexdeckClusterRoleIncludesGamingSessionReadAccess guards the RBAC grant
+// that lets the fleet view read GamingSession CRDs. Without it, the gaming
+// endpoint 403s and the node-mode surface is silently empty.
+func TestFlexdeckClusterRoleIncludesGamingSessionReadAccess(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "serviceaccount.yaml"))
+	if err != nil {
+		t.Fatalf("read serviceaccount manifest: %v", err)
+	}
+
+	decoder := yaml.NewDecoder(strings.NewReader(string(content)))
+	for {
+		var doc rbacManifest
+		err := decoder.Decode(&doc)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("decode serviceaccount manifest: %v", err)
+		}
+		if doc.Kind != "ClusterRole" {
+			continue
+		}
+		for _, rule := range doc.Rules {
+			if !contains(rule.APIGroups, "ai.flexinfer") && !contains(rule.APIGroups, "flexinfer.ai") {
+				continue
+			}
+			if contains(rule.Resources, "gamingsessions") && contains(rule.Verbs, "get") && contains(rule.Verbs, "list") && contains(rule.Verbs, "watch") {
+				return
+			}
+		}
+	}
+
+	t.Fatal("expected flexdeck ClusterRole to grant get/list/watch on ai.flexinfer gamingsessions")
+}
+
 func TestPublicReaderClusterRoleIsReadOnlyAndNonSensitive(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join("base", "public-serviceaccount.yaml"))
 	if err != nil {

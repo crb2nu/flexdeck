@@ -74,13 +74,16 @@ import ModelTelemetryPanel from './ModelTelemetryPanel';
 import ModelTelemetryDrawer from './ModelTelemetryDrawer';
 import { stableListByKey } from '../../lib/stableList';
 import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput, type SeverityTier } from './severity';
+import GpuFleet from './GpuFleet';
+import { useGpuFleet } from './GpuFleet/useGpuFleet';
 
 type Surface = 'models' | 'admin';
-type WorkbenchSectionId = 'overview' | 'control-plane' | 'telemetry' | 'supply-chain' | 'intake';
+type WorkbenchSectionId = 'overview' | 'control-plane' | 'gpu-fleet' | 'telemetry' | 'supply-chain' | 'intake';
 
 const workbenchSectionIds: WorkbenchSectionId[] = [
   'overview',
   'control-plane',
+  'gpu-fleet',
   'telemetry',
   'supply-chain',
   'intake',
@@ -107,6 +110,19 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     includeThroughputMetrics: false,
   });
   const [controllerUpdatedAt, setControllerUpdatedAt] = createSignal(0);
+  const gpuFleet = useGpuFleet(controller.crdModels);
+  const gpuFleetSummary = () => gpuFleet.summary();
+  const gpuFleetNote = () => {
+    const s = gpuFleetSummary();
+    if (s.total === 0) return 'no GPU nodes';
+    const parts: string[] = [];
+    if (s.serving) parts.push(`${s.serving} serving`);
+    if (s.gaming) parts.push(`${s.gaming} gaming`);
+    if (s.switching) parts.push(`${s.switching} switching`);
+    if (s.standby) parts.push(`${s.standby} standby`);
+    if (s.idle) parts.push(`${s.idle} idle`);
+    return parts.join(' · ') || `${s.total} nodes`;
+  };
   const proxyMetrics = flexinferProxyMetrics;
   const proxyHealth = flexinferProxyHealth;
   const proxyLoading = flexinferProxyLoading;
@@ -517,6 +533,16 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       group: 'Operations',
     },
     {
+      id: 'gpu-fleet' as const,
+      label: 'GPU Fleet',
+      href: buildWorkbenchSectionHref(location.pathname, location.query, 'gpu-fleet'),
+      replace: true,
+      eyebrow: 'Nodes + mode',
+      value: `${gpuFleetSummary().total}`,
+      detail: gpuFleetNote(),
+      group: 'Operations',
+    },
+    {
       id: 'telemetry' as const,
       label: 'Telemetry',
       href: buildWorkbenchSectionHref(location.pathname, location.query, 'telemetry'),
@@ -818,6 +844,19 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             </For>
           </div>
         </Show>
+          </section>
+
+          <section id="gpu-fleet" class={activeSection() === 'gpu-fleet' ? 'scroll-mt-6 space-y-4 xl:scroll-mt-8' : 'hidden'}>
+            <WorkbenchSectionHeader
+              kicker="Nodes + mode"
+              title="GPU fleet"
+              subtitle="Every GPU node — serving inference or streaming a game."
+              updatedAt={controllerUpdatedAt()}
+              state={gpuFleet.error() ? 'offline' : gpuFleet.loaded() ? 'ready' : 'connecting'}
+              stateDetail={gpuFleetNote()}
+              loading={!gpuFleet.loaded()}
+            />
+            <GpuFleet state={gpuFleet} />
           </section>
 
           <section id="telemetry" class={activeSection() === 'telemetry' ? 'scroll-mt-6 space-y-4 xl:scroll-mt-8' : 'hidden'}>
