@@ -34,20 +34,26 @@ describe('featureFlags', () => {
     expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(true);
   });
 
-  it('exposes FlexInfer and Loom HUD as the primary nav labels with legacy aliases', () => {
+  it('exposes FlexInfer and the Loom section as primary nav labels; Loom subsumes HUD/Projects', () => {
     const items = buildNavItems({});
     const flexInfer = items.find((item) => item.path === '/flexinfer');
-    const loomHud = items.find((item) => item.path === '/loom-hud');
+    const loom = items.find((item) => item.path === '/loom');
 
     expect(flexInfer?.label).toBe('FlexInfer');
     expect(flexInfer?.aliases).toEqual(['/models']);
     expect(isNavItemActive('/models', flexInfer!)).toBe(true);
     expect(isNavItemActive('/flexinfer', flexInfer!)).toBe(true);
 
-    expect(loomHud?.label).toBe('Loom HUD');
-    expect(loomHud?.aliases).toEqual(['/agents']);
-    expect(isNavItemActive('/agents', loomHud!)).toBe(true);
-    expect(isNavItemActive('/loom-hud', loomHud!)).toBe(true);
+    expect(loom?.label).toBe('Loom');
+    expect(isNavItemActive('/loom', loom!)).toBe(true);
+    // Old HUD/Projects routes highlight the Loom section (deep-link continuity).
+    expect(isNavItemActive('/loom-hud', loom!)).toBe(true);
+    expect(isNavItemActive('/agents', loom!)).toBe(true);
+    expect(isNavItemActive('/projects', loom!)).toBe(true);
+
+    // The standalone Loom HUD and Projects nav entries are retired by default.
+    expect(items.some((item) => item.path === '/loom-hud')).toBe(false);
+    expect(items.some((item) => item.path === '/projects')).toBe(false);
   });
 
   it('exposes website metrics as a primary nav item with a traffic alias', () => {
@@ -60,24 +66,29 @@ describe('featureFlags', () => {
     expect(isNavItemActive('/website-metrics', website!)).toBe(true);
   });
 
-  it('shows Projects nav item by default and hides it when explicitly disabled', () => {
-    expect(buildNavItems({}).some((item) => item.path === '/projects')).toBe(true);
+  it('folds Projects into the Loom section by default and restores the legacy item when the control plane is off', () => {
+    // Default: Projects is a Loom sub-view, not a standalone nav item.
+    expect(buildNavItems({}).some((item) => item.path === '/projects')).toBe(false);
+
+    // Control plane off -> legacy Loom HUD + Projects nav items return.
+    const legacy = buildNavItems({ loom_control_plane: { enabled: false } });
+    expect(legacy.some((item) => item.path === '/loom-hud')).toBe(true);
+    expect(legacy.some((item) => item.path === '/projects')).toBe(true);
+
+    // Control plane off + projects disabled -> Projects hidden.
     expect(
-      buildNavItems({ projects: { enabled: false } }).some((item) => item.path === '/projects'),
+      buildNavItems({ loom_control_plane: { enabled: false }, projects: { enabled: false } }).some(
+        (item) => item.path === '/projects',
+      ),
     ).toBe(false);
-    expect(
-      buildNavItems({ projects: { enabled: true } }).some((item) => item.path === '/projects'),
-    ).toBe(true);
   });
 
-  it('dark-launches the Loom control plane nav item (hidden until explicitly enabled)', () => {
-    expect(buildNavItems({}).some((item) => item.path === '/loom')).toBe(false);
-    expect(
-      buildNavItems({ loom_control_plane: { enabled: false } }).some((item) => item.path === '/loom'),
-    ).toBe(false);
-    expect(
-      buildNavItems({ loom_control_plane: { enabled: true } }).some((item) => item.path === '/loom'),
-    ).toBe(true);
+  it('shows the Loom control plane nav item by default and falls back to legacy items when disabled', () => {
+    expect(buildNavItems({}).some((item) => item.path === '/loom')).toBe(true);
+
+    const off = buildNavItems({ loom_control_plane: { enabled: false } });
+    expect(off.some((item) => item.path === '/loom')).toBe(false);
+    expect(off.some((item) => item.path === '/loom-hud')).toBe(true);
   });
 
   it('exposes Stack as the local workspace inventory nav item', () => {
