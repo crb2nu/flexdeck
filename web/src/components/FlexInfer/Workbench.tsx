@@ -76,6 +76,7 @@ import { stableListByKey } from '../../lib/stableList';
 import { classifySeverity, SEVERITY_TIER_RANK, type SeverityInput, type SeverityTier } from './severity';
 import GpuFleet from './GpuFleet';
 import { useGpuFleet } from './GpuFleet/useGpuFleet';
+import { formatUptime } from './GpuFleet/fleet';
 
 type Surface = 'models' | 'admin';
 type WorkbenchSectionId = 'overview' | 'control-plane' | 'gpu-fleet' | 'telemetry' | 'supply-chain' | 'intake';
@@ -123,6 +124,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
     if (s.idle) parts.push(`${s.idle} idle`);
     return parts.join(' · ') || `${s.total} nodes`;
   };
+  const gamingNodes = createMemo(() => gpuFleet.fleet().filter((n) => n.mode === 'gaming'));
   const proxyMetrics = flexinferProxyMetrics;
   const proxyHealth = flexinferProxyHealth;
   const proxyLoading = flexinferProxyLoading;
@@ -587,6 +589,16 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           <span class="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-medium text-text-muted">
             {managementMode()}
           </span>
+          <Show when={gpuFleetSummary().gaming > 0}>
+            <button
+              type="button"
+              onClick={() => changeSection('gpu-fleet')}
+              class="rounded-md bg-semantic-violet/15 px-2 py-0.5 text-[10px] font-medium text-semantic-violet"
+              title="A GPU node is in gaming mode — view the fleet"
+            >
+              Gaming · {gpuFleetSummary().gaming}
+            </button>
+          </Show>
         </div>
         <div class="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => void refreshWorkbench()}>
@@ -651,6 +663,28 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           />
         </div>
 
+        <Show when={gamingNodes().length > 0}>
+          <button
+            type="button"
+            onClick={() => changeSection('gpu-fleet')}
+            class="surface-hover flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md border-l-2 p-3 text-left"
+            style={{ 'border-left-color': 'var(--color-violet)' }}
+          >
+            <span class="text-sm font-semibold text-semantic-violet">Gaming mode active</span>
+            <For each={gamingNodes()}>
+              {(node) => (
+                <span class="text-xs text-text-dim">
+                  <span class="font-mono text-text-main">{node.name}</span> streaming
+                  <Show when={formatUptime(node.session?.status?.activatedAt, gpuFleet.now())}>
+                    {(up) => <span class="text-text-muted"> · {up()}</span>}
+                  </Show>
+                </span>
+              )}
+            </For>
+            <span class="ml-auto text-xs text-text-muted">out of the inference pool — view fleet &rsaquo;</span>
+          </button>
+        </Show>
+
         <div class="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
           <OverviewFocusCard
             title="Control plane"
@@ -675,6 +709,12 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
             stat={`${searchResults().length} staged`}
             tone="text-text-main"
             onClick={() => changeSection('intake')}
+          />
+          <OverviewFocusCard
+            title="GPU Fleet"
+            stat={gpuFleetNote()}
+            tone={gpuFleetSummary().gaming > 0 ? 'text-semantic-violet' : 'text-text-muted'}
+            onClick={() => changeSection('gpu-fleet')}
           />
         </div>
           </section>
