@@ -209,6 +209,34 @@ export interface FlexInferModelListResponse {
   count: number;
 }
 
+// GamingSession CRD (ai.flexinfer/v1alpha2). Claims a GPU node for game
+// streaming (Sunshine/Moonlight) instead of LLM inference. Read-only in
+// FlexDeck — the lifecycle is driven declaratively via GitOps CRs + Flux.
+export interface GamingSession {
+  name: string;
+  namespace: string;
+  creationTimestamp: string;
+  spec: {
+    mode?: string; // e.g. "gaming"
+    nodeName?: string;
+  };
+  status: {
+    phase?: string; // Pending | Active | Terminating | ...
+    observedMode?: string;
+    runtimePod?: string;
+    activatedAt?: string; // RFC3339
+    message?: string;
+  };
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+}
+
+export interface GamingSessionListResponse {
+  sessions: GamingSession[];
+  namespace: string;
+  count: number;
+}
+
 // GPU Swap History types (Phase 3: GPU Sharing State / group contention)
 export interface GPUSwapEvent {
   ts: string;

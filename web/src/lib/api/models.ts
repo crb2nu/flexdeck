@@ -9,6 +9,7 @@ import type {
   ModelCatalogEntry,
   ModelEvent,
   FlexInferModelListResponse,
+  GamingSessionListResponse,
   ModelSearchResult,
   SwapHistoryResponse,
 } from "../types";
@@ -83,6 +84,12 @@ export const modelsApi = {
     const apiBase = getApiBasePath();
     return `${apiBase}/models/crd/watch-sse${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`;
   },
+  // Read-only: ai.flexinfer/v1alpha2 GamingSession CRDs. Surfaces which GPU
+  // nodes are in gaming mode (streaming instead of serving inference).
+  gamingSessions: (namespace?: string) =>
+    api<GamingSessionListResponse>(
+      `/models/gaming-sessions${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
+    ),
   crdEvents: (ns: string, name: string) =>
     api<{ events: ModelEvent[]; model: string; namespace: string }>(
       `/models/crd/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/events`

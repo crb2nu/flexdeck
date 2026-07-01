@@ -421,6 +421,7 @@ func registerDomainRoutes(r chi.Router, h *handlers.Handler, logFunc func(string
 		r.Get("/crd/{namespace}/{name}/swap-history", h.ModelSwapHistory)
 		r.Get("/crd/{namespace}/{name}/inference", h.ModelsInferenceMetrics)
 		r.Get("/crd/groups/{group}/swap-history", h.GroupSwapHistory)
+		r.Get("/gaming-sessions", h.GamingSessions) // ai.flexinfer/v1alpha2 GamingSession CRDs (node gaming mode)
 		r.Get("/lora/{namespace}/{name}", h.ModelsLoRA)
 		r.Get("/catalogs", h.ModelsCatalog)
 		r.Get("/cache", h.ModelCacheList)

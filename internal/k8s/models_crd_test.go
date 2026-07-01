@@ -401,9 +401,10 @@ func TestListLoRAAdaptersAndCatalogsUseDefaultsAndSkipMalformedEntries(t *testin
 func newDynamicFlexInferClient(objects ...runtime.Object) *Client {
 	scheme := runtime.NewScheme()
 	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
-		modelGVR:        "ModelList",
-		loraAdapterGVR:  "LoRAAdapterList",
-		modelCatalogGVR: "ModelCatalogList",
+		modelGVR:         "ModelList",
+		loraAdapterGVR:   "LoRAAdapterList",
+		modelCatalogGVR:  "ModelCatalogList",
+		gamingSessionGVR: "GamingSessionList",
 	}, objects...)
 	return &Client{dynClient: dynClient}
 }
