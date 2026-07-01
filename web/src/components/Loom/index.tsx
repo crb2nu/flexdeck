@@ -1,9 +1,10 @@
-import { Component, createSignal, For, Show } from 'solid-js';
+import { Component, createSignal, For, Match, Show, Switch } from 'solid-js';
 import HUDConsoleScaffold, { type HUDConsoleMetric } from '../LoomHUD/HUDConsoleScaffold';
 import TabBar, { type TabDef } from '../shared/TabBar';
 import { createPolling } from '../../hooks/createPolling';
 import { loomApi, type LoomHealth, type LoomSourceHealth } from '../../lib/api/loom';
 import Plans from './Plans';
+import Mills from './Mills';
 
 // The unified Loom control plane. Slice 1 lands the section shell + the
 // /api/loom/health source-availability header; each sub-surface is filled by a
@@ -100,12 +101,14 @@ const Loom: Component = () => {
           <For each={TABS}>
             {(tab) => (
               <Show when={active() === tab.id}>
-                <Show
-                  when={tab.id === 'plans'}
-                  fallback={<LoomPlaceholder source={source(TAB_SOURCE[tab.id])} note={TAB_NOTE[tab.id]} />}
-                >
-                  <Plans />
-                </Show>
+                <Switch fallback={<LoomPlaceholder source={source(TAB_SOURCE[tab.id])} note={TAB_NOTE[tab.id]} />}>
+                  <Match when={tab.id === 'plans'}>
+                    <Plans />
+                  </Match>
+                  <Match when={tab.id === 'mills'}>
+                    <Mills />
+                  </Match>
+                </Switch>
               </Show>
             )}
           </For>
