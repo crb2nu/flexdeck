@@ -46,7 +46,6 @@ const baseNavItems: NavItem[] = [
   { label: 'Website', path: '/website-metrics', aliases: ['/traffic'] },
   { label: 'Metrics', path: '/metrics' },
   { label: 'FlexInfer', path: '/flexinfer', aliases: ['/models'] },
-  { label: 'Loom HUD', path: '/loom-hud', aliases: ['/agents'] },
 ];
 
 function enabled(features: FeatureMap, key: string): boolean {
@@ -66,12 +65,14 @@ export function isProjectsEnabled(features: FeatureMap): boolean {
   return enabledByDefault(features, 'projects');
 }
 
-// Loom control plane (unified fleet/projects/plans/mills/flightdeck) nav is
-// gated by `loom_control_plane.enabled`, defaulting OFF (dark launch) while the
-// section is built out across slices. Set `loom_control_plane: { enabled: true }`
-// to surface it (per environment) before the public flip in a later slice.
+// Loom control plane (unified fleet/projects/plans/mills/flightdeck) is now the
+// primary surface: Fleet re-homes the HUD and Projects re-homes the Projects
+// page (slice 4), so the standalone "Loom HUD" and "Projects" nav items are
+// retired in favour of this section. Defaults ON; set
+// `loom_control_plane: { enabled: false }` to fall back to the legacy routes
+// (/loom-hud, /projects still resolve for deep links).
 export function isLoomControlPlaneEnabled(features: FeatureMap): boolean {
-  return enabled(features, 'loom_control_plane');
+  return enabledByDefault(features, 'loom_control_plane');
 }
 
 export function isAdminEnabled(features: FeatureMap): boolean {
@@ -81,10 +82,15 @@ export function isAdminEnabled(features: FeatureMap): boolean {
 export function buildNavItems(features: FeatureMap): NavItem[] {
   const items = [...baseNavItems];
   if (isLoomControlPlaneEnabled(features)) {
-    items.push({ label: 'Loom', path: '/loom' });
-  }
-  if (isProjectsEnabled(features)) {
-    items.push({ label: 'Projects', path: '/projects' });
+    // The Loom section subsumes the Fleet/HUD and Projects surfaces; its
+    // /loom-hud and /agents aliases keep old links landing on the section.
+    items.push({ label: 'Loom', path: '/loom', aliases: ['/loom-hud', '/agents', '/projects'] });
+  } else {
+    // Legacy fallback nav when the control plane is disabled.
+    items.push({ label: 'Loom HUD', path: '/loom-hud', aliases: ['/agents'] });
+    if (isProjectsEnabled(features)) {
+      items.push({ label: 'Projects', path: '/projects' });
+    }
   }
   if (isAdminEnabled(features)) {
     items.push({ label: 'Admin', path: '/admin' });
