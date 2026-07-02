@@ -69,6 +69,11 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
         <EmptyState size="sm" icon={props.emptyIcon} title={props.emptyTitle ?? 'No data'} />
       }
     >
+      {/* Mobile-only x-scroll: below md the wrapper scrolls horizontally so
+          wide K8s tables stay usable; at md+ it stays overflow-visible so the
+          sticky thead keeps sticking to the page scroll container (a scroll
+          wrapper would become the sticky containing block and break it). */}
+      <div class="max-md:overflow-x-auto">
       <table class="w-full text-sm">
         <thead
           class="border-b border-white/[0.08] text-left text-xs uppercase text-text-dim"
@@ -127,6 +132,7 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
           </For>
         </tbody>
       </table>
+      </div>
     </Show>
   );
 }

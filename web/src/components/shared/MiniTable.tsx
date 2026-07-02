@@ -36,8 +36,11 @@ function MiniTable<T>(props: MiniTableProps<T>): JSX.Element {
   };
 
   return (
+    // Inner x-scroll keeps wide tables (long IDs, many columns) usable on
+    // narrow viewports instead of blowing out the page layout.
     <div class={`surface overflow-hidden ${props.class ?? ''}`}>
-      <table class="w-full text-sm">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-white/8 text-left text-[11px] uppercase tracking-wide text-text-muted">
             <For each={props.columns}>
@@ -67,7 +70,8 @@ function MiniTable<T>(props: MiniTableProps<T>): JSX.Element {
             )}
           </For>
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

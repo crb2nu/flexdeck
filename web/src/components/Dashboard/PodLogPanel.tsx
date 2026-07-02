@@ -185,7 +185,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
   });
 
   return (
-    <div class="fixed inset-y-0 right-0 w-[480px] z-50 animate-slide-in-right flex flex-col"
+    <div class="fixed inset-y-0 right-0 w-full sm:w-[480px] z-50 animate-slide-in-right flex flex-col"
          style={{
            background: 'linear-gradient(180deg, rgba(10, 16, 32, 0.98) 0%, rgba(5, 10, 20, 0.99) 100%)',
            'border-left': '1px solid rgba(0, 240, 255, 0.2)',
