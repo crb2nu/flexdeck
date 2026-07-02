@@ -1,7 +1,7 @@
 import { Component, createSignal, For, Match, Switch } from 'solid-js';
 import Badge, { type BadgeTone } from '../shared/Badge';
 import TabBar, { type TabDef } from '../shared/TabBar';
-import { createPolling } from '../../hooks/createPolling';
+import { createPolledResource } from '../../hooks/createPolledResource';
 import { loomApi, type LoomHealth, type LoomSourceHealth } from '../../lib/api/loom';
 import Plans from './Plans';
 import Mills from './Mills';
@@ -43,18 +43,12 @@ function chipValue(s: LoomSourceHealth | undefined): string {
 
 const Loom: Component = () => {
   const [active, setActive] = createSignal<LoomTab>('fleet');
-  const [health, setHealth] = createSignal<LoomHealth | null>(null);
 
-  const fetchHealth = async () => {
-    try {
-      setHealth(await loomApi.health());
-    } catch {
-      /* the health strip is best-effort; the surfaces report their own errors */
-    }
-  };
-  createPolling('loom-health', fetchHealth, 15000);
+  // Best-effort health strip: errors are ignored (each surface reports its
+  // own), and reconcile keeps the chips from re-rendering on identical polls.
+  const health = createPolledResource<LoomHealth>('loom-health', loomApi.health);
 
-  const source = (name: string): LoomSourceHealth | undefined => health()?.sources?.[name];
+  const source = (name: string): LoomSourceHealth | undefined => health.data()?.sources?.[name];
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-2">
