@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  formatClockTime,
   formatCompact,
   formatMs,
   formatSeconds,
   formatShortDate,
   formatShortDateTime,
+  formatTimeAgo,
   formatUSD,
 } from './format';
 
@@ -60,6 +62,34 @@ describe('formatUSD', () => {
     expect(formatUSD(0)).toBe('$0');
     expect(formatUSD(undefined)).toBe('$0');
     expect(formatUSD(null)).toBe('$0');
+  });
+});
+
+describe('formatTimeAgo', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('scales through s / m / h / d without a suffix', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-01T12:00:00Z'));
+    expect(formatTimeAgo('2026-07-01T11:59:15Z')).toBe('45s');
+    expect(formatTimeAgo('2026-07-01T11:55:00Z')).toBe('5m');
+    expect(formatTimeAgo('2026-07-01T09:00:00Z')).toBe('3h');
+    expect(formatTimeAgo('2026-06-29T12:00:00Z')).toBe('2d');
+  });
+
+  it('returns empty for missing or invalid input', () => {
+    expect(formatTimeAgo()).toBe('');
+    expect(formatTimeAgo('')).toBe('');
+    expect(formatTimeAgo('garbage')).toBe('');
+  });
+});
+
+describe('formatClockTime', () => {
+  it('renders 24h HH:MM:SS and echoes invalid input', () => {
+    expect(formatClockTime('2026-07-01T00:03:27Z')).toMatch(/^\d{2}:\d{2}:27$/);
+    expect(formatClockTime('nope')).toBe('nope');
   });
 });
 

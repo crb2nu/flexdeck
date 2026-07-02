@@ -1,5 +1,6 @@
 import { Component, createEffect, createMemo, For, Show } from 'solid-js';
 import LogStream from './LogStream';
+import { formatClockTime } from '../../lib/format';
 import QueryBuilder from './QueryBuilder';
 import LogStats from './LogStats';
 import {
@@ -72,15 +73,6 @@ const Logs: Component = () => {
     }
   });
 
-  const formatTimestamp = (ts: string) => {
-    const date = new Date(ts);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  };
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
@@ -384,7 +376,7 @@ const Logs: Component = () => {
                             onClick={() => handleLogClick(entry)}
                           >
                             <td class="whitespace-nowrap px-3 py-1.5 text-text-dim w-24 align-top">
-                              {formatTimestamp(entry.timestamp)}
+                              {formatClockTime(entry.timestamp)}
                             </td>
                             <td class="whitespace-nowrap px-3 py-1.5 text-text-muted w-32 align-top opacity-70 group-hover:opacity-100 truncate max-w-[8rem]" title={entry.labels.pod || entry.labels.container || '-'}>
                               {entry.labels.pod || entry.labels.container || '-'}

@@ -1,5 +1,6 @@
 import { Component, createSignal, Show, For } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
+import { formatBytes } from '../../lib/format';
 import { prom } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
 
@@ -188,11 +189,6 @@ const GPUMetricsPanel: Component<{ node: string; vendor?: string }> = (props) =>
       return (m.vramUsed / m.vramTotal) * 100;
     }
     return null;
-  };
-
-  const formatBytes = (bytes: number) => {
-    const gb = bytes / (1024 * 1024 * 1024);
-    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   };
 
   const multiGPU = () => devices().length > 1;

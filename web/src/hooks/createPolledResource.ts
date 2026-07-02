@@ -18,6 +18,8 @@ export interface PolledResource<T> {
   data: () => T | null;
   error: () => string | null;
   loaded: () => boolean;
+  /** Epoch ms of the last successful fetch (0 until one lands) — feeds freshness/staleness chips. */
+  updatedAt: () => number;
   /** Fetch immediately, outside the poll schedule (e.g. after a filter change or mutation). */
   refresh: () => Promise<void>;
 }
@@ -40,6 +42,7 @@ export function createPolledResource<T>(
   const [state, setState] = createStore<{ value: T | null }>({ value: null });
   const [error, setError] = createSignal<string | null>(null);
   const [loaded, setLoaded] = createSignal(false);
+  const [updatedAt, setUpdatedAt] = createSignal(0);
 
   const run = async () => {
     try {
@@ -50,6 +53,7 @@ export function createPolledResource<T>(
         setState('value', () => next);
       }
       setError(null);
+      setUpdatedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load');
     } finally {
@@ -63,6 +67,7 @@ export function createPolledResource<T>(
     data: () => state.value,
     error,
     loaded,
+    updatedAt,
     refresh: run,
   };
 }

@@ -1,5 +1,6 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
 import { loki } from '../../lib/api';
+import { formatClockTime } from '../../lib/format';
 
 interface LogEntry {
   timestamp: string;
@@ -162,15 +163,6 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
     return { text: 'INF', class: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' };
   };
 
-  const formatTimestamp = (ts: string): string => {
-    const date = new Date(ts);
-    return date.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
 
   onMount(() => {
     fetchInitialLogs();
@@ -310,7 +302,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
             return (
               <div class="flex gap-2 py-0.5 px-1 hover:bg-white/5 rounded group">
                 <span class="text-text-dim shrink-0 w-16">
-                  {formatTimestamp(log.timestamp)}
+                  {formatClockTime(log.timestamp)}
                 </span>
                 <Show when={badge}>
                   <span class={`px-1 rounded text-[9px] border shrink-0 ${badge!.class}`}>

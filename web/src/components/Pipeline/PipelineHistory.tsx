@@ -1,5 +1,6 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
+import { formatDuration as formatDurationMs, formatShortDateTime } from '../../lib/format';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import {
   operatorStateBadgeClass,
@@ -67,24 +68,11 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
     return `${history().length} recent run${history().length === 1 ? '' : 's'}`;
   };
 
-  const formatDuration = (secs: number): string => {
-    if (!secs || secs <= 0) return '-';
-    if (secs < 60) return `${Math.round(secs)}s`;
-    const mins = Math.floor(secs / 60);
-    const remaining = Math.round(secs % 60);
-    return `${mins}m ${remaining}s`;
-  };
+  // Thin guards over lib/format: table cells show '-' for missing values.
+  const formatDuration = (secs: number): string =>
+    !secs || secs <= 0 ? '-' : formatDurationMs(secs * 1000);
 
-  const formatTime = (ts: string): string => {
-    if (!ts) return '-';
-    const d = new Date(ts);
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatTime = (ts: string): string => (ts ? formatShortDateTime(ts) : '-');
 
   const getStatusColor = (status: string) => {
     switch (status) {

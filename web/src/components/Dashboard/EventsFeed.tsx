@@ -1,6 +1,7 @@
 import { Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
+import { formatTimeAgo } from '../../lib/format';
 import { k8s } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
@@ -49,14 +50,6 @@ const EventsFeed: Component = () => {
   const typeDot = (type: string) =>
     type === 'Warning' ? 'bg-yellow-500' : 'bg-white/30';
 
-  const timeAgo = (ts?: string) => {
-    if (!ts) return '';
-    const diff = Date.now() - new Date(ts).getTime();
-    if (diff < 60_000) return `${Math.floor(diff / 1000)}s`;
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-    return `${Math.floor(diff / 86_400_000)}d`;
-  };
 
   return (
     <div class="surface flex flex-col overflow-hidden" style={{ 'max-height': '280px' }}>
@@ -125,7 +118,7 @@ const EventsFeed: Component = () => {
                         </p>
                       </div>
                       <span class="text-[9px] text-text-dim ml-1 flex-shrink-0 whitespace-nowrap">
-                        {timeAgo(evt.lastTimestamp || evt.metadata?.creationTimestamp)}
+                        {formatTimeAgo(evt.lastTimestamp || evt.metadata?.creationTimestamp)}
                       </span>
                     </div>
                   </div>

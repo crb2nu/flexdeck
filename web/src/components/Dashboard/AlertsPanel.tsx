@@ -1,6 +1,7 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
+import { formatTimeAgo } from '../../lib/format';
 import { prom } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
@@ -59,15 +60,6 @@ const AlertsPanel: Component = () => {
       case 'info': return { bg: 'bg-blue-500/20', text: 'text-blue-400', dot: 'bg-blue-500', border: 'border-blue-500/30' };
       default: return { bg: 'bg-orange-500/20', text: 'text-orange-400', dot: 'bg-orange-500', border: 'border-orange-500/30' };
     }
-  };
-
-  const timeAgo = (ts?: string) => {
-    if (!ts) return '';
-    const diff = Date.now() - new Date(ts).getTime();
-    if (diff < 60_000) return `${Math.floor(diff / 1000)}s`;
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-    return `${Math.floor(diff / 86_400_000)}d`;
   };
 
   const allActiveAlerts = createMemo(() => [
@@ -202,7 +194,7 @@ const AlertsPanel: Component = () => {
                             </div>
                           </div>
                           <span class="text-[9px] text-text-dim ml-1 flex-shrink-0 whitespace-nowrap">
-                            {timeAgo(alert.activeAt)}
+                            {formatTimeAgo(alert.activeAt)}
                           </span>
                         </div>
                       </div>
