@@ -31,7 +31,7 @@ test-frontend:
 	cd web && npm run test
 
 lint:
-	@which golangci-lint > /dev/null || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@which golangci-lint > /dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
 	golangci-lint run ./...
 
 lint-frontend:
