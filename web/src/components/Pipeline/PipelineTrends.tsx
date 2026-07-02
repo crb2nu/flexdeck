@@ -1,7 +1,8 @@
-import { Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { Component, For, Show, createMemo } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { ciApi } from '../../lib/api';
-import { createPolling } from '../../hooks/createPolling';
+import { createPolledResource } from '../../hooks/createPolledResource';
+import { formatDuration } from '../../lib/format';
 import {
   operatorStateBadgeClass,
   operatorStateLabel,
@@ -21,48 +22,31 @@ interface TrendData {
 }
 
 const PipelineTrends: Component = () => {
-  const [trends, setTrends] = createSignal<TrendData[]>([]);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [lastUpdated, setLastUpdated] = createSignal(0);
+  // Keyed reconcile keeps unchanged trend cards (and their sparklines) from
+  // being torn down on every 60s poll.
+  const res = createPolledResource<TrendData[]>('pipeline-trends', () => ciApi.getTrends(), {
+    interval: 60_000,
+    key: 'project_id',
+  });
+  const trends = () => res.data() ?? [];
+  const loading = () => !res.loaded();
+  const error = () => res.error() ?? '';
 
   const state = createMemo<OperatorState>(() =>
     resolveOperatorState({
       loading: loading(),
       error: error(),
-      lastUpdateMs: lastUpdated(),
+      lastUpdateMs: res.updatedAt(),
       staleAfterMs: 60_000 * 3,
     }),
   );
 
   const stateDetail = () => {
     if (error()) return 'trend feed issue';
-    if (loading()) return lastUpdated() ? 'background refresh' : 'initial sync';
+    if (loading()) return res.updatedAt() ? 'background refresh' : 'initial sync';
     if (state() === 'stale') return 'refresh overdue';
     if (trends().length === 0) return 'awaiting samples';
     return `${trends().length} project${trends().length === 1 ? '' : 's'}`;
-  };
-
-  const fetchTrends = async () => {
-    try {
-      const data = await ciApi.getTrends();
-      setTrends(data || []);
-      setError('');
-      setLastUpdated(Date.now());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load trends');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  createPolling('pipeline-trends', fetchTrends, 60_000);
-
-  const formatDuration = (secs: number): string => {
-    if (secs < 60) return `${Math.round(secs)}s`;
-    const mins = Math.floor(secs / 60);
-    const remaining = Math.round(secs % 60);
-    return `${mins}m ${remaining}s`;
   };
 
   const getTrendIcon = (trend: string) => {
@@ -102,7 +86,7 @@ const PipelineTrends: Component = () => {
               {operatorStateLabel(state(), stateDetail())}
             </span>
             <span class="rounded-full bg-white/5 px-2.5 py-1">
-              Updated {lastUpdated() ? new Date(lastUpdated()).toLocaleTimeString() : '—'}
+              Updated {res.updatedAt() ? new Date(res.updatedAt()).toLocaleTimeString() : '—'}
             </span>
           </div>
         </div>
@@ -151,7 +135,7 @@ const PipelineTrends: Component = () => {
                     Avg Duration
                   </div>
                   <div class="text-lg font-bold text-text-main font-mono">
-                    {formatDuration(trend.avg_duration_s)}
+                    {formatDuration(trend.avg_duration_s * 1000)}
                   </div>
                 </div>
                 <div>
@@ -159,7 +143,7 @@ const PipelineTrends: Component = () => {
                     P95 Duration
                   </div>
                   <div class="text-lg font-bold text-text-muted font-mono">
-                    {formatDuration(trend.p95_duration_s)}
+                    {formatDuration(trend.p95_duration_s * 1000)}
                   </div>
                 </div>
                 <div>

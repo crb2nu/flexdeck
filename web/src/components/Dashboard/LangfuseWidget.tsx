@@ -1,6 +1,7 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
+import { formatCompact, formatTimeAgo } from '../../lib/format';
 import { langfuse } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
@@ -200,20 +201,6 @@ const LangfuseWidget: Component = () => {
     return `$${cost.toFixed(2)}`;
   };
 
-  const formatTokens = (tokens: number) => {
-    if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-    if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
-    return String(tokens);
-  };
-
-  const timeAgo = (ts?: string) => {
-    if (!ts) return '';
-    const diff = Date.now() - new Date(ts).getTime();
-    if (diff < 60_000) return `${Math.floor(diff / 1000)}s`;
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-    return `${Math.floor(diff / 86_400_000)}d`;
-  };
 
   // Mini sparkline for daily metrics (last 7 days)
   const Sparkline: Component<{ data: number[]; color: string }> = (props) => {
@@ -309,7 +296,7 @@ const LangfuseWidget: Component = () => {
                 </div>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">Tokens</div>
-                  <div class="text-sm font-mono text-text-main font-semibold">{formatTokens(totalTokens())}</div>
+                  <div class="text-sm font-mono text-text-main font-semibold">{formatCompact(totalTokens())}</div>
                 </div>
                 <div class="bg-black/30 rounded-lg p-2 border border-white/5">
                   <div class="text-[9px] text-text-dim uppercase mb-1">API Calls</div>
@@ -402,8 +389,8 @@ const LangfuseWidget: Component = () => {
                       </div>
                       <div class="flex items-center gap-3 text-[9px] text-text-dim">
                         <span>{model.totalCalls} calls</span>
-                        <span>↑{formatTokens(model.inputTokens)}</span>
-                        <span>↓{formatTokens(model.outputTokens)}</span>
+                        <span>↑{formatCompact(model.inputTokens)}</span>
+                        <span>↓{formatCompact(model.outputTokens)}</span>
                         <Show when={model.errors > 0}>
                           <span class="text-red-400">{model.errors} err</span>
                         </Show>
@@ -455,7 +442,7 @@ const LangfuseWidget: Component = () => {
                           </div>
                         </div>
                         <span class="text-[9px] text-text-dim ml-1 flex-shrink-0 whitespace-nowrap">
-                          {timeAgo(trace.timestamp)}
+                          {formatTimeAgo(trace.timestamp)}
                         </span>
                       </div>
                     </div>

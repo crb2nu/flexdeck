@@ -56,6 +56,20 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 /**
+ * Compact age since a timestamp: '45s' / '5m' / '3h' / '2d' (no suffix).
+ * Empty/missing input → ''.
+ */
+export function formatTimeAgo(ts?: string): string {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  if (Number.isNaN(diff)) return '';
+  if (diff < 60_000) return `${Math.max(0, Math.floor(diff / 1000))}s`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
+  return `${Math.floor(diff / 86_400_000)}d`;
+}
+
+/**
  * Compact count: 850 → '850', 1234 → '1.2k', 2500000 → '2.5M'. Nullish → '—'.
  */
 export function formatCompact(n: number | null | undefined): string {
@@ -89,6 +103,15 @@ export function formatSeconds(seconds: number): string {
 export function formatUSD(usd: number | null | undefined): string {
   if (!usd) return '$0';
   return `$${usd.toFixed(2)}`;
+}
+
+/**
+ * 24h clock time for log lines: '14:03:27'. Invalid input echoes back.
+ */
+export function formatClockTime(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 /**

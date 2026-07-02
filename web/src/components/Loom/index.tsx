@@ -1,5 +1,6 @@
 import { Component, createSignal, For, Match, Switch } from 'solid-js';
 import Badge, { type BadgeTone } from '../shared/Badge';
+import PageScrollBody from '../shared/PageScrollBody';
 import TabBar, { type TabDef } from '../shared/TabBar';
 import { createPolledResource } from '../../hooks/createPolledResource';
 import { loomApi, type LoomHealth, type LoomSourceHealth } from '../../lib/api/loom';
@@ -68,10 +69,10 @@ const Loom: Component = () => {
         <TabBar tabs={TABS} active={active()} onChange={setActive} variant="underline" />
       </div>
 
-      {/* Definite-height, scrollable content area: embedded page surfaces
-          (Fleet=Agents, Projects) fill it with their own PageScrollBody; the
-          native Plans/Mills surfaces scroll within it. */}
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      {/* Definite-height content area. Exactly ONE scroll container per tab:
+          embedded page surfaces (Fleet=Agents, Projects) bring their own
+          PageScrollBody; native surfaces get one here — no nested scrollers. */}
+      <div class="min-h-0 flex-1">
         <Switch>
           <Match when={active() === 'fleet'}>
             <Fleet />
@@ -80,13 +81,13 @@ const Loom: Component = () => {
             <Projects />
           </Match>
           <Match when={active() === 'plans'}>
-            <Plans />
+            <PageScrollBody><Plans /></PageScrollBody>
           </Match>
           <Match when={active() === 'mills'}>
-            <Mills />
+            <PageScrollBody><Mills /></PageScrollBody>
           </Match>
           <Match when={active() === 'flightdeck'}>
-            <Flightdeck />
+            <PageScrollBody><Flightdeck /></PageScrollBody>
           </Match>
         </Switch>
       </div>

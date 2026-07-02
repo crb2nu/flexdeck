@@ -306,7 +306,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in-scale">
-      <div class="flex h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-white/15 bg-[#060a14]">
+      <div class="flex h-[90dvh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-white/15 bg-[#060a14]">
         
         {/* Header */}
         <div class="flex items-center justify-between border-b border-white/15 bg-[#030508]/95 px-6 py-4">

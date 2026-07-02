@@ -50,7 +50,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
       role="dialog"
       aria-modal="true"
       aria-label={props.title}
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85dvh] lg:max-h-[60dvh]"
     >
       {/* Header */}
       <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">

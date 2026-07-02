@@ -2,6 +2,7 @@ import { Component, createMemo, createSignal, createEffect, Index, Show } from '
 import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from '../../stores/dashboardSummary';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
+import { formatBytes } from '../../lib/format';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
 interface NodeGPU {
@@ -112,11 +113,6 @@ const NodeResourcePanel: Component = () => {
       return next;
     });
   });
-
-  const formatBytes = (bytes: number) => {
-    const gb = bytes / (1024 * 1024 * 1024);
-    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  };
 
   const barColor = (pct: number) =>
     pct > 90 ? 'bg-status-error' : pct > 70 ? 'bg-status-warn' : 'bg-status-ok';

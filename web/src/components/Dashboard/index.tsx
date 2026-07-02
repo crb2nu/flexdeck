@@ -681,7 +681,7 @@ const Dashboard: Component = () => {
         />
         
         {/* Sidebar Content */}
-        <div class="relative mt-auto lg:mt-0 h-[85vh] lg:h-full w-full bg-bg-dark lg:bg-transparent border-t border-white/[0.08] lg:border-t-0 flex flex-col gap-3 p-4 lg:p-0 overflow-y-auto lg:overflow-hidden shadow-2xl lg:shadow-none">
+        <div class="relative mt-auto lg:mt-0 h-[85dvh] lg:h-full w-full bg-bg-dark lg:bg-transparent border-t border-white/[0.08] lg:border-t-0 flex flex-col gap-3 p-4 lg:p-0 overflow-y-auto lg:overflow-hidden shadow-2xl lg:shadow-none">
           {/* Mobile Header */}
           <div class="flex lg:hidden items-center justify-between mb-2 pb-2 border-b border-white/5">
             <div class="flex items-center gap-2">
