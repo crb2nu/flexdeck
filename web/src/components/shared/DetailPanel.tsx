@@ -1,4 +1,4 @@
-import { Component, For, Show, createSignal, JSX } from 'solid-js';
+import { Component, For, Show, createSignal, onCleanup, onMount, JSX } from 'solid-js';
 
 export interface DetailPanelTab {
   id: string;
@@ -37,8 +37,19 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
   const statusStyle = () => props.status ? statusColors[props.status] : null;
 
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+  });
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={props.title}
       class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85vh] lg:max-h-[60vh]"
     >
       {/* Header */}
@@ -88,6 +99,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
         {/* Close button */}
         <button
           onClick={props.onClose}
+          aria-label="Close panel"
           class="w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-white/10 border border-white/10 text-text-muted hover:text-white"
         >
           <span class="text-2xl sm:text-lg">×</span>

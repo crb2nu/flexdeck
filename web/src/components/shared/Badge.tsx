@@ -28,6 +28,21 @@ const sizeClasses: Record<BadgeSize, string> = {
   md: 'px-2 py-0.5 text-xs',
 };
 
+// Plain-text color for a tone, for non-badge surfaces (metric values, inline
+// status text) so tone→color stays consistent app-wide.
+export const toneTextClass: Record<BadgeTone, string> = {
+  default: 'text-white',
+  ok: 'text-status-ok',
+  warn: 'text-status-warn',
+  error: 'text-status-error',
+  info: 'text-semantic-violet',
+};
+
+/** Map a BadgeTone to a DetailPanel status ('info'/'default' read as in-flight). */
+export function toneToPanelStatus(tone: BadgeTone): 'ok' | 'warn' | 'error' | 'running' {
+  return tone === 'ok' || tone === 'warn' || tone === 'error' ? tone : 'running';
+}
+
 const Badge: Component<BadgeProps> = (props) => {
   const tone = () => props.tone || 'default';
   const size = () => props.size || 'sm';

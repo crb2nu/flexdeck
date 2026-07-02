@@ -30,12 +30,14 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
     <Show
       when={variant() === 'underline'}
       fallback={
-        <div class={`flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-0.5 no-scrollbar ${props.class ?? ''}`}>
+        <div role="tablist" class={`flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-0.5 no-scrollbar ${props.class ?? ''}`}>
           <For each={props.tabs}>
             {(tab) => {
               const isActive = () => props.active === tab.id;
               return (
                 <button
+                  role="tab"
+                  aria-selected={isActive()}
                   onClick={() => props.onChange(tab.id)}
                   class={`rounded px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                     isActive()
@@ -59,12 +61,14 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
         </div>
       }
     >
-      <div class={`flex gap-1 border-b border-white/5 pb-px ${props.class ?? ''}`}>
+      <div role="tablist" class={`flex gap-1 border-b border-white/5 pb-px ${props.class ?? ''}`}>
         <For each={props.tabs}>
           {(tab) => {
             const isActive = () => props.active === tab.id;
             return (
               <button
+                role="tab"
+                aria-selected={isActive()}
                 onClick={() => props.onChange(tab.id)}
                 class={`flex items-center gap-1.5 rounded-t px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                   isActive()

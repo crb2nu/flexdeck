@@ -1,10 +1,12 @@
 import { Component, createSignal, For, Show } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
-import Badge from '../../shared/Badge';
+import Badge, { toneToPanelStatus } from '../../shared/Badge';
 import DetailPanel from '../../shared/DetailPanel';
-import { createPolling } from '../../../hooks/createPolling';
+import MiniTable, { type MiniColumn } from '../../shared/MiniTable';
+import PanelState from '../../shared/PanelState';
+import { createPolledResource } from '../../../hooks/createPolledResource';
+import { formatShortDate } from '../../../lib/format';
 import { planPhaseTone, killTestSummary, slicePhaseTone, projectShortName } from '../../Projects/projectsUtils';
-import { loomPlansApi, type LoomPlanSummary, type LoomPlanDetail } from '../../../lib/api/loomPlans';
+import { loomPlansApi, type LoomPlansList, type LoomPlanSummary, type LoomPlanDetail } from '../../../lib/api/loomPlans';
 
 // Phase filter chips. '' = all phases.
 const PHASE_FILTERS: { id: string; label: string }[] = [
@@ -17,13 +19,6 @@ const PHASE_FILTERS: { id: string; label: string }[] = [
   { id: 'done', label: 'Done' },
   { id: 'draft', label: 'Draft' },
 ];
-
-function fmtDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 const SliceBar: Component<{ done: number; total: number }> = (props) => {
   const pct = () => (props.total > 0 ? Math.round((props.done / props.total) * 100) : 0);
@@ -109,7 +104,7 @@ const PlanDetailBody: Component<{ plan: LoomPlanDetail }> = (props) => {
             <For each={p().phase_history}>
               {(t) => (
                 <li>
-                  <span class="text-text-muted">{fmtDate(t.at)}</span> {t.from} → <span class="text-text-main">{t.to}</span>
+                  <span class="text-text-muted">{formatShortDate(t.at)}</span> {t.from} → <span class="text-text-main">{t.to}</span>
                   <Show when={t.note}> · {t.note}</Show>
                 </li>
               )}
@@ -130,48 +125,73 @@ const PlanDetailBody: Component<{ plan: LoomPlanDetail }> = (props) => {
   );
 };
 
+const PLAN_COLUMNS: MiniColumn<LoomPlanSummary>[] = [
+  {
+    header: 'Plan',
+    cell: (plan) => (
+      <>
+        <div class="font-medium text-text-main">{plan.title}</div>
+        <div class="text-[11px] text-text-muted">{plan.mr_refs > 0 ? `${plan.mr_refs} MR${plan.mr_refs === 1 ? '' : 's'}` : ''}</div>
+      </>
+    ),
+  },
+  { header: 'Project', class: 'text-text-dim', cell: (plan) => projectShortName(plan.project) },
+  { header: 'Phase', cell: (plan) => <Badge tone={planPhaseTone(plan.phase)} size="sm">{plan.phase || '—'}</Badge> },
+  {
+    header: 'Kill test',
+    cell: (plan) => {
+      const kt = killTestSummary(plan.kill_test_status);
+      return (
+        <Show when={kt.label} fallback={<span class="text-text-muted">—</span>}>
+          <Badge tone={kt.tone} size="sm">{kt.label}</Badge>
+        </Show>
+      );
+    },
+  },
+  { header: 'Slices', cell: (plan) => <SliceBar done={plan.slice_done} total={plan.slice_total} /> },
+  {
+    header: 'Updated',
+    align: 'right',
+    class: 'text-xs text-text-muted tabular-nums',
+    cell: (plan) => formatShortDate(plan.updated_at),
+  },
+];
+
 const Plans: Component = () => {
-  const [store, setStore] = createStore<{ items: LoomPlanSummary[] }>({ items: [] });
-  const [error, setError] = createSignal<string | null>(null);
   const [phase, setPhase] = createSignal('');
   const [selected, setSelected] = createSignal<LoomPlanDetail | null>(null);
-  const [loaded, setLoaded] = createSignal(false);
+  const [openErr, setOpenErr] = createSignal<string | null>(null);
 
-  const fetchPlans = async () => {
-    try {
-      const res = await loomPlansApi.list(phase() ? { phase: phase() } : undefined);
-      // reconcile by id keeps rows stable across polls (no flicker).
-      setStore('items', reconcile(res.plans ?? [], { key: 'id' }));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to load plans');
-    } finally {
-      setLoaded(true);
-    }
-  };
-
-  createPolling('loom-plans', fetchPlans, 15000);
+  // Keyed reconcile keeps rows stable across polls (no flicker); the fetcher
+  // reads phase() so refresh() after a filter change reloads immediately.
+  const plans = createPolledResource<LoomPlansList>(
+    'loom-plans',
+    () => loomPlansApi.list(phase() ? { phase: phase() } : undefined),
+  );
+  const items = () => plans.data()?.plans ?? [];
 
   const selectPhase = (id: string) => {
     setPhase(id);
-    void fetchPlans();
+    void plans.refresh();
   };
 
   const openDetail = async (id: string) => {
     try {
       setSelected(await loomPlansApi.get(id));
+      setOpenErr(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to load plan');
+      setOpenErr(e instanceof Error ? e.message : 'failed to load plan');
     }
   };
 
   return (
     <div class="space-y-3">
-      <div class="flex flex-wrap items-center gap-1">
+      <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Filter plans by phase">
         <For each={PHASE_FILTERS}>
           {(f) => (
             <button
               onClick={() => selectPhase(f.id)}
+              aria-pressed={phase() === f.id}
               class={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 phase() === f.id ? 'bg-white/10 text-white' : 'text-text-dim hover:bg-white/5 hover:text-text-main'
               }`}
@@ -182,59 +202,15 @@ const Plans: Component = () => {
         </For>
       </div>
 
-      <Show when={error()}>
-        <div class="rounded-md border border-status-error/30 bg-status-error/10 px-3 py-2 text-xs text-status-error">{error()}</div>
+      <Show when={openErr()}>
+        <div class="rounded-md border border-status-error/30 bg-status-error/10 px-3 py-2 text-xs text-status-error" role="alert">{openErr()}</div>
       </Show>
 
       <Show
-        when={store.items.length > 0}
-        fallback={
-          <div class="surface px-4 py-8 text-center text-sm text-text-dim">
-            {loaded() ? 'No plans match this filter.' : 'Loading plans…'}
-          </div>
-        }
+        when={items().length > 0}
+        fallback={<PanelState error={plans.error()} loaded={plans.loaded()} empty="No plans match this filter." />}
       >
-        <div class="surface overflow-hidden">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-white/8 text-left text-[11px] uppercase tracking-wide text-text-muted">
-                <th class="px-3 py-2 font-medium">Plan</th>
-                <th class="px-3 py-2 font-medium">Project</th>
-                <th class="px-3 py-2 font-medium">Phase</th>
-                <th class="px-3 py-2 font-medium">Kill test</th>
-                <th class="px-3 py-2 font-medium">Slices</th>
-                <th class="px-3 py-2 font-medium text-right">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={store.items}>
-                {(plan) => {
-                  const kt = () => killTestSummary(plan.kill_test_status);
-                  return (
-                    <tr
-                      class="cursor-pointer border-b border-white/5 last:border-0 hover:bg-white/[0.03]"
-                      onClick={() => openDetail(plan.id)}
-                    >
-                      <td class="px-3 py-2">
-                        <div class="font-medium text-text-main">{plan.title}</div>
-                        <div class="text-[11px] text-text-muted">{plan.mr_refs > 0 ? `${plan.mr_refs} MR${plan.mr_refs === 1 ? '' : 's'}` : ''}</div>
-                      </td>
-                      <td class="px-3 py-2 text-text-dim">{projectShortName(plan.project)}</td>
-                      <td class="px-3 py-2"><Badge tone={planPhaseTone(plan.phase)} size="sm">{plan.phase || '—'}</Badge></td>
-                      <td class="px-3 py-2">
-                        <Show when={kt().label} fallback={<span class="text-text-muted">—</span>}>
-                          <Badge tone={kt().tone} size="sm">{kt().label}</Badge>
-                        </Show>
-                      </td>
-                      <td class="px-3 py-2"><SliceBar done={plan.slice_done} total={plan.slice_total} /></td>
-                      <td class="px-3 py-2 text-right text-xs text-text-muted tabular-nums">{fmtDate(plan.updated_at)}</td>
-                    </tr>
-                  );
-                }}
-              </For>
-            </tbody>
-          </table>
-        </div>
+        <MiniTable columns={PLAN_COLUMNS} each={items()} onRowClick={(plan) => void openDetail(plan.id)} />
       </Show>
 
       <Show when={selected()}>
@@ -242,7 +218,7 @@ const Plans: Component = () => {
           <DetailPanel
             title={plan().title}
             subtitle={`${plan().project} · ${plan().phase}`}
-            status={planPhaseTone(plan().phase) === 'ok' ? 'ok' : planPhaseTone(plan().phase) === 'warn' ? 'warn' : 'running'}
+            status={toneToPanelStatus(planPhaseTone(plan().phase))}
             onClose={() => setSelected(null)}
           >
             <PlanDetailBody plan={plan()} />

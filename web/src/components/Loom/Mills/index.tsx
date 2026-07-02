@@ -1,8 +1,12 @@
 import { Component, createSignal, For, Match, Show, Switch } from 'solid-js';
-import Badge, { type BadgeTone } from '../../shared/Badge';
+import Badge, { toneToPanelStatus, type BadgeTone } from '../../shared/Badge';
 import DetailPanel from '../../shared/DetailPanel';
+import ListRow from '../../shared/ListRow';
+import MetricTile from '../../shared/MetricTile';
+import PanelState from '../../shared/PanelState';
 import TabBar, { type TabDef } from '../../shared/TabBar';
-import { createPolling } from '../../../hooks/createPolling';
+import { createPolledResource } from '../../../hooks/createPolledResource';
+import { formatShortDateTime, formatUSD } from '../../../lib/format';
 import { isLoomMutationsEnabled } from '../../../lib/featureFlags';
 import { healthStore } from '../../../stores/health';
 import { currentUser } from '../../../stores/auth';
@@ -37,6 +41,8 @@ const MILLS_TABS: TabDef<MillsTab>[] = [
   { id: 'policy', label: 'Policy' },
 ];
 
+const MILLS_OFFLINE = 'Mills operator unavailable.';
+
 function millsStateTone(state: string): BadgeTone {
   const s = (state || '').toLowerCase();
   if (['done', 'merged', 'success', 'green', 'pass'].includes(s)) return 'ok';
@@ -44,18 +50,6 @@ function millsStateTone(state: string): BadgeTone {
   if (['escalated', 'paused', 'partial', 'conflict', 'amber', 'yellow'].includes(s)) return 'warn';
   if (['queued', 'planning', 'slicing', 'implementing', 'testing', 'reviewing', 'mr', 'ci', 'merging', 'running'].includes(s)) return 'info';
   return 'default';
-}
-
-function fmtCost(usd: number | undefined): string {
-  if (!usd) return '$0';
-  return `$${usd.toFixed(2)}`;
-}
-
-function fmtTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function pick(o: unknown, keys: string[]): string {
@@ -70,61 +64,16 @@ function pick(o: unknown, keys: string[]): string {
   return '';
 }
 
-// pollResource wires a poll-on-interval fetch into the calling component's
-// reactive scope; unregisters automatically when the panel unmounts.
-function pollResource<T>(id: string, fetcher: () => Promise<T>, intervalMs = 15000) {
-  const [data, setData] = createSignal<T | null>(null);
-  const [error, setError] = createSignal<string | null>(null);
-  const [loaded, setLoaded] = createSignal(false);
-  const run = async () => {
-    try {
-      const v = await fetcher();
-      setData(() => v);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to load');
-    } finally {
-      setLoaded(true);
-    }
-  };
-  createPolling(id, run, intervalMs);
-  return { data, error, loaded };
-}
-
-const PanelState: Component<{ error: string | null; loaded: boolean; empty: string }> = (props) => (
-  <div class="surface px-4 py-6 text-center text-sm">
-    <Show
-      when={props.error}
-      fallback={<span class="text-text-dim">{props.loaded ? props.empty : 'Loading…'}</span>}
-    >
-      <span class="text-status-error">{props.error?.includes('disabled') ? 'Mills operator unavailable.' : props.error}</span>
-    </Show>
-  </div>
-);
-
-const Metric: Component<{ label: string; value: string; tone?: BadgeTone }> = (props) => (
-  <div class="surface px-3 py-2">
-    <div class="heading-label">{props.label}</div>
-    <div
-      class={`mt-1 text-lg font-semibold tabular-nums ${
-        props.tone === 'ok' ? 'text-status-ok' : props.tone === 'warn' ? 'text-status-warn' : props.tone === 'error' ? 'text-status-error' : 'text-white'
-      }`}
-    >
-      {props.value}
-    </div>
-  </div>
-);
-
 const OverviewPanel: Component = () => {
-  const { data, error, loaded } = pollResource<MillsStatus>('mills-status', loomMillsApi.status, 10000);
+  const status = createPolledResource<MillsStatus>('mills-status', loomMillsApi.status, { interval: 10000 });
   return (
-    <Show when={data()} fallback={<PanelState error={error()} loaded={loaded()} empty="No status." />}>
+    <Show when={status.data()} fallback={<PanelState error={status.error()} loaded={status.loaded()} empty="No status." offlineLabel={MILLS_OFFLINE} />}>
       {(s) => (
         <div class="space-y-3">
           <div class="grid gap-2 sm:grid-cols-3">
-            <Metric label="Autonomy" value={s().autonomy_ready ? 'ready' : 'blocked'} tone={s().autonomy_ready ? 'ok' : 'warn'} />
-            <Metric label="Active pipelines" value={String(s().active_pipeline_runs ?? 0)} />
-            <Metric label="Blockers" value={String(s().autonomy_blockers?.length ?? 0)} tone={(s().autonomy_blockers?.length ?? 0) > 0 ? 'warn' : 'ok'} />
+            <MetricTile label="Autonomy" value={s().autonomy_ready ? 'ready' : 'blocked'} tone={s().autonomy_ready ? 'ok' : 'warn'} />
+            <MetricTile label="Active pipelines" value={String(s().active_pipeline_runs ?? 0)} />
+            <MetricTile label="Blockers" value={String(s().autonomy_blockers?.length ?? 0)} tone={(s().autonomy_blockers?.length ?? 0) > 0 ? 'warn' : 'ok'} />
           </div>
           <Show when={s().capabilities?.length}>
             <div>
@@ -132,13 +81,18 @@ const OverviewPanel: Component = () => {
               <div class="space-y-1">
                 <For each={s().capabilities}>
                   {(c) => (
-                    <div class="flex items-center justify-between gap-2 surface px-3 py-1.5 text-xs">
+                    <ListRow
+                      dense
+                      class="text-xs"
+                      trailing={
+                        <>
+                          <Show when={c.message}><span class="hidden text-text-muted sm:inline">{c.message}</span></Show>
+                          <Badge tone={millsStateTone(c.status)} size="sm">{c.status}</Badge>
+                        </>
+                      }
+                    >
                       <span class="text-text-main">{c.id}</span>
-                      <div class="flex items-center gap-2">
-                        <Show when={c.message}><span class="hidden text-text-muted sm:inline">{c.message}</span></Show>
-                        <Badge tone={millsStateTone(c.status)} size="sm">{c.status}</Badge>
-                      </div>
-                    </div>
+                    </ListRow>
                   )}
                 </For>
               </div>
@@ -151,27 +105,28 @@ const OverviewPanel: Component = () => {
 };
 
 const BacklogPanel: Component = () => {
-  const { data, error, loaded } = pollResource<MillsBacklogItem[]>('mills-backlog', loomMillsApi.backlog, 15000);
-  const items = () => data() ?? [];
+  const backlog = createPolledResource<MillsBacklogItem[]>('mills-backlog', loomMillsApi.backlog, { key: 'ID' });
+  const items = () => backlog.data() ?? [];
   return (
-    <Show when={items().length > 0} fallback={<PanelState error={error()} loaded={loaded()} empty="Backlog is empty." />}>
+    <Show when={items().length > 0} fallback={<PanelState error={backlog.error()} loaded={backlog.loaded()} empty="Backlog is empty." offlineLabel={MILLS_OFFLINE} />}>
       <div class="space-y-1">
         <For each={items()}>
           {(it) => (
-            <div class="surface flex items-center justify-between gap-3 px-3 py-2">
-              <div class="min-w-0">
-                <div class="truncate text-sm text-text-main">{it.Title || it.ID}</div>
-                <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-text-muted">
-                  <span class="font-mono">{it.ID}</span>
-                  <Show when={it.PlanID}><span>plan {it.PlanID}</span></Show>
-                  <Show when={it.Labels?.length}><span>{it.Labels!.join(', ')}</span></Show>
-                </div>
+            <ListRow
+              trailing={
+                <>
+                  <Show when={it.Priority}><span class="text-[11px] text-text-dim">{it.Priority}</span></Show>
+                  <Badge tone={millsStateTone(it.State)} size="sm">{it.State}</Badge>
+                </>
+              }
+            >
+              <div class="truncate text-sm text-text-main">{it.Title || it.ID}</div>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-text-muted">
+                <span class="font-mono">{it.ID}</span>
+                <Show when={it.PlanID}><span>plan {it.PlanID}</span></Show>
+                <Show when={it.Labels?.length}><span>{it.Labels!.join(', ')}</span></Show>
               </div>
-              <div class="flex flex-shrink-0 items-center gap-2">
-                <Show when={it.Priority}><span class="text-[11px] text-text-dim">{it.Priority}</span></Show>
-                <Badge tone={millsStateTone(it.State)} size="sm">{it.State}</Badge>
-              </div>
-            </div>
+            </ListRow>
           )}
         </For>
       </div>
@@ -246,39 +201,46 @@ const ControlButton: Component<{
 };
 
 const PipelinesPanel: Component = () => {
-  const { data, error, loaded } = pollResource<MillsPipelineRun[]>('mills-pipelines', loomMillsApi.pipelineRuns, 10000);
+  const runs = createPolledResource<MillsPipelineRun[]>('mills-pipelines', loomMillsApi.pipelineRuns, { interval: 10000, key: 'ID' });
   const [detail, setDetail] = createSignal<MillsPipelineDetail | null>(null);
-  const items = () => data() ?? [];
+  const [openErr, setOpenErr] = createSignal<string | null>(null);
+  const items = () => runs.data() ?? [];
 
   const open = async (id: string) => {
     try {
       setDetail(await loomMillsApi.pipelineRun(id));
+      setOpenErr(null);
     } catch {
-      /* surfaced by the list poll */
+      setOpenErr(`Could not load pipeline ${id}.`);
     }
   };
 
   return (
     <>
-      <Show when={items().length > 0} fallback={<PanelState error={error()} loaded={loaded()} empty="No pipeline runs." />}>
+      <Show when={openErr()}>
+        <div class="mb-1 text-xs text-status-error" role="alert">{openErr()}</div>
+      </Show>
+      <Show when={items().length > 0} fallback={<PanelState error={runs.error()} loaded={runs.loaded()} empty="No pipeline runs." offlineLabel={MILLS_OFFLINE} />}>
         <div class="space-y-1">
           <For each={items()}>
             {(run) => (
-              <button class="surface flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-white/[0.03]" onClick={() => open(run.ID)}>
-                <div class="min-w-0">
-                  <div class="truncate text-sm text-text-main">{run.BacklogID || run.ID}</div>
-                  <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-text-muted">
-                    <span class="font-mono">{run.ID}</span>
-                    <Show when={run.CurrentStage}><span>@ {run.CurrentStage}</span></Show>
-                    <Show when={run.Attempts}><span>attempt {run.Attempts}</span></Show>
-                    <Show when={run.Depth > 0}><span>depth {run.Depth}</span></Show>
-                  </div>
+              <ListRow
+                onClick={() => void open(run.ID)}
+                trailing={
+                  <>
+                    <span class="text-[11px] tabular-nums text-text-dim">{formatUSD(run.CostUSD)}</span>
+                    <Badge tone={millsStateTone(run.State)} size="sm">{run.State}</Badge>
+                  </>
+                }
+              >
+                <div class="truncate text-sm text-text-main">{run.BacklogID || run.ID}</div>
+                <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-text-muted">
+                  <span class="font-mono">{run.ID}</span>
+                  <Show when={run.CurrentStage}><span>@ {run.CurrentStage}</span></Show>
+                  <Show when={run.Attempts}><span>attempt {run.Attempts}</span></Show>
+                  <Show when={run.Depth > 0}><span>depth {run.Depth}</span></Show>
                 </div>
-                <div class="flex flex-shrink-0 items-center gap-2">
-                  <span class="text-[11px] tabular-nums text-text-dim">{fmtCost(run.CostUSD)}</span>
-                  <Badge tone={millsStateTone(run.State)} size="sm">{run.State}</Badge>
-                </div>
-              </button>
+              </ListRow>
             )}
           </For>
         </div>
@@ -288,17 +250,17 @@ const PipelinesPanel: Component = () => {
         {(d) => (
           <DetailPanel
             title={`Pipeline ${d().run.ID}`}
-            subtitle={`${d().run.BacklogID} · ${d().run.State} · ${fmtCost(d().run.CostUSD)}`}
-            status={millsStateTone(d().run.State) === 'ok' ? 'ok' : millsStateTone(d().run.State) === 'error' ? 'error' : 'running'}
+            subtitle={`${d().run.BacklogID} · ${d().run.State} · ${formatUSD(d().run.CostUSD)}`}
+            status={toneToPanelStatus(millsStateTone(d().run.State))}
             onClose={() => setDetail(null)}
           >
             <div class="space-y-2 px-4 py-4 sm:px-6">
               <Show when={canMutate()}>
                 <div class="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-3">
                   <span class="heading-label">Controls</span>
-                  <ControlButton label="Pause" run={() => loomMillsApi.pausePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
-                  <ControlButton label="Resume" run={() => loomMillsApi.resumePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
-                  <ControlButton label="Escalate" run={() => loomMillsApi.escalatePipelineRun(d().run.ID)} onDone={() => open(d().run.ID)} />
+                  <ControlButton label="Pause" run={() => loomMillsApi.pausePipelineRun(d().run.ID)} onDone={() => void open(d().run.ID)} />
+                  <ControlButton label="Resume" run={() => loomMillsApi.resumePipelineRun(d().run.ID)} onDone={() => void open(d().run.ID)} />
+                  <ControlButton label="Escalate" run={() => loomMillsApi.escalatePipelineRun(d().run.ID)} onDone={() => void open(d().run.ID)} />
                 </div>
               </Show>
               <div class="heading-label">Stages ({d().stages?.length ?? 0})</div>
@@ -309,7 +271,7 @@ const PipelinesPanel: Component = () => {
                       <div class="flex items-center justify-between gap-2">
                         <span class="text-sm text-text-main">{st.Stage} <span class="text-text-muted">· attempt {st.Attempt}</span></span>
                         <div class="flex items-center gap-2">
-                          <span class="text-[11px] tabular-nums text-text-dim">{fmtCost(st.CostUSD)}</span>
+                          <span class="text-[11px] tabular-nums text-text-dim">{formatUSD(st.CostUSD)}</span>
                           <Badge tone={millsStateTone(st.Outcome || '')} size="sm">{st.Outcome || 'running'}</Badge>
                         </div>
                       </div>
@@ -329,31 +291,36 @@ const PipelinesPanel: Component = () => {
 };
 
 const CouncilPanel: Component = () => {
-  const { data, error, loaded } = pollResource<MillsCouncilRun[]>('mills-council', loomMillsApi.councilRuns, 15000);
+  const runs = createPolledResource<MillsCouncilRun[]>('mills-council', loomMillsApi.councilRuns, { key: 'ID' });
   const [debate, setDebate] = createSignal<{ run: MillsCouncilRun; rounds: MillsDebateRound[] } | null>(null);
-  const items = () => data() ?? [];
+  const [openErr, setOpenErr] = createSignal<string | null>(null);
+  const items = () => runs.data() ?? [];
 
   const open = async (run: MillsCouncilRun) => {
     try {
       setDebate({ run, rounds: (await loomMillsApi.councilDebate(run.ID)) ?? [] });
+      setOpenErr(null);
     } catch {
-      /* surfaced by the list poll */
+      setOpenErr(`Could not load debate for ${run.ID}.`);
     }
   };
 
   return (
     <>
-      <Show when={items().length > 0} fallback={<PanelState error={error()} loaded={loaded()} empty="No council runs." />}>
+      <Show when={openErr()}>
+        <div class="mb-1 text-xs text-status-error" role="alert">{openErr()}</div>
+      </Show>
+      <Show when={items().length > 0} fallback={<PanelState error={runs.error()} loaded={runs.loaded()} empty="No council runs." offlineLabel={MILLS_OFFLINE} />}>
         <div class="space-y-1">
           <For each={items()}>
             {(run) => (
-              <button class="surface flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-white/[0.03]" onClick={() => open(run)}>
-                <div class="min-w-0">
-                  <div class="truncate text-sm text-text-main">{run.Trigger || 'council'} <span class="font-mono text-[11px] text-text-muted">{run.ID}</span></div>
-                  <div class="mt-0.5 text-[11px] text-text-muted">{fmtTime(run.StartedAt)} · {fmtCost(run.CostFrontierUSD + run.CostLocalUSD)}</div>
-                </div>
-                <Badge tone={millsStateTone(run.Outcome)} size="sm">{run.Outcome}</Badge>
-              </button>
+              <ListRow
+                onClick={() => void open(run)}
+                trailing={<Badge tone={millsStateTone(run.Outcome)} size="sm">{run.Outcome}</Badge>}
+              >
+                <div class="truncate text-sm text-text-main">{run.Trigger || 'council'} <span class="font-mono text-[11px] text-text-muted">{run.ID}</span></div>
+                <div class="mt-0.5 text-[11px] text-text-muted">{formatShortDateTime(run.StartedAt)} · {formatUSD(run.CostFrontierUSD + run.CostLocalUSD)}</div>
+              </ListRow>
             )}
           </For>
         </div>
@@ -364,7 +331,7 @@ const CouncilPanel: Component = () => {
           <DetailPanel
             title={`Council ${d().run.ID}`}
             subtitle={`${d().run.Trigger} · ${d().run.Outcome}`}
-            status={millsStateTone(d().run.Outcome) === 'ok' ? 'ok' : millsStateTone(d().run.Outcome) === 'error' ? 'error' : 'running'}
+            status={toneToPanelStatus(millsStateTone(d().run.Outcome))}
             onClose={() => setDebate(null)}
           >
             <div class="space-y-2 px-4 py-4 sm:px-6">
@@ -375,7 +342,7 @@ const CouncilPanel: Component = () => {
                     <div class="surface px-3 py-2">
                       <div class="flex items-center justify-between gap-2">
                         <span class="text-sm text-text-main">#{rd.RoundIndex} · {rd.Role}</span>
-                        <span class="text-[11px] tabular-nums text-text-dim">{fmtCost(rd.CostUSD)}</span>
+                        <span class="text-[11px] tabular-nums text-text-dim">{formatUSD(rd.CostUSD)}</span>
                       </div>
                       <Show when={rd.Summary}><p class="mt-1 whitespace-pre-wrap text-xs text-text-dim">{rd.Summary}</p></Show>
                     </div>
@@ -393,20 +360,19 @@ const CouncilPanel: Component = () => {
 // RawPanel renders the eval/squads/audit/policy endpoints generically (the
 // operator returns Go-struct JSON; a dedicated panel per surface lands later).
 const RawPanel: Component<{ id: string; path: string; empty: string }> = (props) => {
-  const { data, error, loaded } = pollResource<unknown>(`mills-raw-${props.id}`, () => loomMillsApi.raw(props.path), 30000);
-  const items = () => (Array.isArray(data()) ? (data() as unknown[]) : []);
+  const raw = createPolledResource<unknown>(`mills-raw-${props.id}`, () => loomMillsApi.raw(props.path), { interval: 30000, key: 'ID' });
+  const items = () => (Array.isArray(raw.data()) ? (raw.data() as unknown[]) : []);
   return (
-    <Show when={items().length > 0} fallback={<PanelState error={error()} loaded={loaded()} empty={props.empty} />}>
+    <Show when={items().length > 0} fallback={<PanelState error={raw.error()} loaded={raw.loaded()} empty={props.empty} offlineLabel={MILLS_OFFLINE} />}>
       <div class="space-y-1">
         <For each={items()}>
           {(it) => {
             const label = () => pick(it, ['ID', 'id', 'Name', 'name', 'Title', 'title', 'Model', 'model']) || '—';
             const state = () => pick(it, ['State', 'state', 'Outcome', 'outcome', 'Kind', 'kind', 'Status', 'status', 'Severity', 'severity']);
             return (
-              <div class="surface flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <ListRow class="text-sm" trailing={<Show when={state()}><Badge tone={millsStateTone(state())} size="sm">{state()}</Badge></Show>}>
                 <span class="truncate text-text-main">{label()}</span>
-                <Show when={state()}><Badge tone={millsStateTone(state())} size="sm">{state()}</Badge></Show>
-              </div>
+              </ListRow>
             );
           }}
         </For>

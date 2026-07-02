@@ -54,3 +54,60 @@ export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength - 3) + '...';
 }
+
+/**
+ * Compact count: 850 → '850', 1234 → '1.2k', 2500000 → '2.5M'. Nullish → '—'.
+ */
+export function formatCompact(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(Math.round(n));
+}
+
+/**
+ * Milliseconds → '850ms' / '1.2s'. Nullish → '—'.
+ */
+export function formatMs(ms: number | null | undefined): string {
+  if (ms == null) return '—';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * Seconds → '45s' / '3m' / '1.5h'.
+ */
+export function formatSeconds(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+/**
+ * USD cost with cents: '$1.24'. Zero/nullish → '$0'.
+ */
+export function formatUSD(usd: number | null | undefined): string {
+  if (!usd) return '$0';
+  return `$${usd.toFixed(2)}`;
+}
+
+/**
+ * ISO timestamp → locale short date ('Jun 30'). Invalid/empty input echoes back.
+ */
+export function formatShortDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * ISO timestamp → locale short date-time ('Jun 30, 10:42 AM'). Invalid/empty
+ * input echoes back.
+ */
+export function formatShortDateTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
