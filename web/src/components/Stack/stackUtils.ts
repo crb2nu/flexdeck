@@ -186,6 +186,8 @@ function describeWorkloadKinds(
   add(workload.deployments, 'deployment');
   add(workload.statefulSets, 'statefulset');
   add(workload.daemonSets, 'daemonset');
+  add(workload.jobs, 'job');
+  add(workload.cronJobs, 'cronjob');
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 

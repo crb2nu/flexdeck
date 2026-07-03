@@ -45,6 +45,8 @@ export interface WorkspaceWorkload {
   deployments?: number;
   statefulSets?: number;
   daemonSets?: number;
+  jobs?: number;
+  cronJobs?: number;
   ready: number;
   desired: number;
   status?: WorkspaceWorkloadStatus;

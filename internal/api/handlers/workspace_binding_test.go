@@ -5,6 +5,7 @@ import (
 
 	"github.com/flexinfer/flexdeck/internal/workspace"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -77,6 +78,18 @@ func podObj(name, namespace string, podLabels map[string]string, waitingReason s
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: podLabels},
 		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{State: state}}},
 	}
+}
+
+func jobObj(name, namespace, ksName, ksNamespace string, failed bool) batchv1.Job {
+	job := batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)}}
+	if failed {
+		job.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}
+	}
+	return job
+}
+
+func cronJobObj(name, namespace, ksName, ksNamespace string) batchv1.CronJob {
+	return batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: fluxLabels(ksName, ksNamespace)}}
 }
 
 // Shapes mirror the live cluster: internal git host, sources in flux-system,
@@ -342,5 +355,88 @@ func TestBuildFluxTargetsClearsReasonWhenHealthy(t *testing.T) {
 	}
 	if workload.Reason != "" {
 		t.Errorf("reason = %q, want empty on healthy workload", workload.Reason)
+	}
+}
+
+func TestBatchWorkloadUnits(t *testing.T) {
+	t.Parallel()
+
+	jobs := []batchv1.Job{
+		jobObj("migrate", "flexdeck", "flexdeck", "flux-system", false),
+		jobObj("seed-failed", "flexdeck", "flexdeck", "flux-system", true),
+		// No Flux label (e.g. a CronJob-spawned Job) -> dropped.
+		{ObjectMeta: metav1.ObjectMeta{Name: "orphan", Namespace: "flexdeck"}},
+	}
+	cronJobs := []batchv1.CronJob{cronJobObj("backup", "flexdeck", "flexdeck", "flux-system")}
+
+	units := batchWorkloadUnits(jobs, cronJobs, nil)
+	if len(units) != 3 {
+		t.Fatalf("got %d units, want 3 (orphan dropped): %#v", len(units), units)
+	}
+	degraded, healthy, cronCount := 0, 0, 0
+	for _, u := range units {
+		switch u.kind {
+		case workloadKindJob:
+			if u.desired != 0 || u.ready != 0 {
+				t.Errorf("job unit carries replica counts %d/%d, want 0/0", u.ready, u.desired)
+			}
+			switch u.status {
+			case workspace.WorkloadDegraded:
+				degraded++
+			case workspace.WorkloadHealthy:
+				healthy++
+			}
+		case workloadKindCronJob:
+			cronCount++
+		}
+	}
+	if degraded != 1 || healthy != 1 {
+		t.Errorf("job statuses degraded=%d healthy=%d, want 1/1", degraded, healthy)
+	}
+	if cronCount != 1 {
+		t.Errorf("cronjob count = %d, want 1", cronCount)
+	}
+}
+
+func TestBuildFluxTargetsIncludesBatchWorkloads(t *testing.T) {
+	t.Parallel()
+
+	gitRepos := []unstructured.Unstructured{
+		gitRepoObj("flexdeck", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/flexdeck.git"),
+		gitRepoObj("backups", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/backups.git"),
+	}
+	kustomizations := []unstructured.Unstructured{
+		ksObj("flexdeck", "flux-system", "flexdeck", "", ""),
+		ksObj("backups", "flux-system", "backups", "", ""),
+	}
+
+	// flexdeck: a healthy Deployment + a failed migration Job -> degraded aggregate,
+	// but the Job must not add to the replica ready/desired counts.
+	deployments := []appsv1.Deployment{deployObj("flexdeck", "flexdeck", "flexdeck", "flux-system", 1, 1)}
+	jobs := []batchv1.Job{jobObj("migrate", "flexdeck", "flexdeck", "flux-system", true)}
+	// backups: a CronJob-only service becomes visible and stays healthy (count-only).
+	cronJobs := []batchv1.CronJob{cronJobObj("nightly", "backups", "backups", "flux-system")}
+
+	units := appsWorkloadUnits(deployments, nil, nil, nil)
+	units = append(units, batchWorkloadUnits(jobs, cronJobs, nil)...)
+	targets := buildFluxTargets(gitRepos, kustomizations, units)
+
+	flexdeck := targets["services/flexdeck"].Workload
+	if flexdeck == nil || flexdeck.Deployments != 1 || flexdeck.Jobs != 1 {
+		t.Fatalf("flexdeck workload = %#v, want 1 deployment + 1 job", flexdeck)
+	}
+	if flexdeck.Status != workspace.WorkloadDegraded {
+		t.Errorf("flexdeck status = %q, want degraded (failed job)", flexdeck.Status)
+	}
+	if flexdeck.Ready != 1 || flexdeck.Desired != 1 {
+		t.Errorf("flexdeck ready/desired = %d/%d, want 1/1 (jobs add no replicas)", flexdeck.Ready, flexdeck.Desired)
+	}
+
+	backups := targets["services/backups"].Workload
+	if backups == nil || backups.CronJobs != 1 {
+		t.Fatalf("backups workload = %#v, want 1 cronjob", backups)
+	}
+	if backups.Status != workspace.WorkloadHealthy {
+		t.Errorf("backups status = %q, want healthy (cronjob count-only)", backups.Status)
 	}
 }

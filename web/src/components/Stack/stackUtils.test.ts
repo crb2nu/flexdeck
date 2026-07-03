@@ -196,6 +196,20 @@ describe('stackUtils', () => {
     expect(fallback).toMatchObject({ workloadStatus: 'healthy', workloadHealthy: true });
   });
 
+  it('counts Job and CronJob workload kinds', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        workload: { namespaces: ['flexdeck'], deployments: 1, jobs: 1, cronJobs: 2, ready: 1, desired: 1, status: 'healthy' },
+      },
+    }));
+
+    expect(summary?.workloadKinds).toBe('1 deployment · 1 job · 2 cronjobs');
+  });
+
   it('surfaces the pod failure reason on a degraded workload', () => {
     const summary = summarizeBinding(makeRepo({
       binding: {

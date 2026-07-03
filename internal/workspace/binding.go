@@ -50,15 +50,19 @@ type RepoBinding struct {
 }
 
 // Workload summarizes the live Kubernetes workloads that a service's Flux source
-// manages (Deployments, StatefulSets, DaemonSets): which namespaces they run in,
-// per-kind counts, and aggregate replica health across all kinds.
+// manages (Deployments, StatefulSets, DaemonSets, Jobs, CronJobs): which
+// namespaces they run in, per-kind counts, and aggregate replica health. Jobs
+// and CronJobs have no replica model, so they add presence + counts but not to
+// Ready/Desired; a failed Job still folds into Status.
 type Workload struct {
 	Namespaces   []string `json:"namespaces,omitempty"`   // namespaces the workloads run in
 	Deployments  int      `json:"deployments,omitempty"`  // number of Deployments
 	StatefulSets int      `json:"statefulSets,omitempty"` // number of StatefulSets
 	DaemonSets   int      `json:"daemonSets,omitempty"`   // number of DaemonSets
-	Ready        int      `json:"ready"`                  // sum of ready replicas across all kinds
-	Desired      int      `json:"desired"`                // sum of desired replicas across all kinds
+	Jobs         int      `json:"jobs,omitempty"`         // number of Flux-managed Jobs
+	CronJobs     int      `json:"cronJobs,omitempty"`     // number of Flux-managed CronJobs
+	Ready        int      `json:"ready"`                  // sum of ready replicas across replica-backed kinds
+	Desired      int      `json:"desired"`                // sum of desired replicas across replica-backed kinds
 	Status       string   `json:"status,omitempty"`       // rollout health: healthy | progressing | degraded
 	Reason       string   `json:"reason,omitempty"`       // pod container reason explaining a non-healthy status (e.g. CrashLoopBackOff, ImagePullBackOff)
 }
