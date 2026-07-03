@@ -60,6 +60,7 @@ type Workload struct {
 	Ready        int      `json:"ready"`                  // sum of ready replicas across all kinds
 	Desired      int      `json:"desired"`                // sum of desired replicas across all kinds
 	Status       string   `json:"status,omitempty"`       // rollout health: healthy | progressing | degraded
+	Reason       string   `json:"reason,omitempty"`       // pod container reason explaining a non-healthy status (e.g. CrashLoopBackOff, ImagePullBackOff)
 }
 
 // Rollout health states for Workload.Status, ordered by severity.

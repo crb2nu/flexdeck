@@ -172,6 +172,7 @@ export interface BindingSummary {
   workloadHealthy?: boolean;
   workloadStatus?: WorkspaceWorkloadStatus;
   workloadKinds?: string;
+  workloadReason?: string; // pod failure reason behind a non-healthy workload (e.g. CrashLoopBackOff)
 }
 
 function describeWorkloadKinds(
@@ -218,6 +219,7 @@ export function summarizeBinding(repo: WorkspaceRepository): BindingSummary | nu
       workloadHealthy: status ? status === 'healthy' : undefined,
       workloadStatus: status,
       workloadKinds: describeWorkloadKinds(workload),
+      workloadReason: status && status !== 'healthy' ? workload?.reason || undefined : undefined,
     };
   }
 

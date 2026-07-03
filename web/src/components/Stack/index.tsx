@@ -551,7 +551,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
                         ? 'border-status-warn/20 bg-status-warn/10 text-status-warn'
                         : 'border-status-ok/20 bg-status-ok/10 text-status-ok'
                   }`}
-                  title={`Live workloads${summary().workloadKinds ? ` — ${summary().workloadKinds}` : ''} · ${summary().workloadStatus ?? 'ready'} (ready/desired)`}
+                  title={`Live workloads${summary().workloadKinds ? ` — ${summary().workloadKinds}` : ''} · ${summary().workloadStatus ?? 'ready'} (ready/desired)${summary().workloadReason ? ` · ${summary().workloadReason}` : ''}`}
                 >
                   {summary().workload}
                 </span>
