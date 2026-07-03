@@ -8,6 +8,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/k8s"
 	"github.com/flexinfer/flexdeck/internal/workspace"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -71,14 +72,28 @@ func (h *Handler) fluxBindingTargets(ctx context.Context, kc *k8s.Client) map[st
 	if list, err := kc.GetPods(ctx, ""); err == nil {
 		pods = list.Items
 	}
+	// Jobs/CronJobs make batch-backed services visible (a failed Job also reads
+	// as degraded); both dimensions are best-effort.
+	var jobs []batchv1.Job
+	if list, err := kc.GetJobs(ctx, ""); err == nil {
+		jobs = list.Items
+	}
+	var cronJobs []batchv1.CronJob
+	if list, err := kc.GetCronJobs(ctx, ""); err == nil {
+		cronJobs = list.Items
+	}
 
-	return buildFluxTargets(gitRepos.Items, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets, pods))
+	units := appsWorkloadUnits(deployments, statefulSets, daemonSets, pods)
+	units = append(units, batchWorkloadUnits(jobs, cronJobs, pods)...)
+	return buildFluxTargets(gitRepos.Items, kustomizations, units)
 }
 
 const (
 	workloadKindDeployment  = "Deployment"
 	workloadKindStatefulSet = "StatefulSet"
 	workloadKindDaemonSet   = "DaemonSet"
+	workloadKindJob         = "Job"
+	workloadKindCronJob     = "CronJob"
 )
 
 // workloadUnit is a kind-agnostic view of a single Flux-managed workload, with
@@ -127,6 +142,44 @@ func appsWorkloadUnits(deployments []appsv1.Deployment, statefulSets []appsv1.St
 		}
 	}
 	return units
+}
+
+// batchWorkloadUnits flattens Flux-managed batch/v1 Jobs and CronJobs into
+// workloadUnits. Neither has a replica model, so they contribute presence and
+// kind counts (desired/ready stay 0) rather than a ready ratio — this makes a
+// Job/CronJob-backed service visible without inflating replica health. A Job
+// with a Failed condition folds into the aggregate as degraded and still
+// surfaces its crashing pods' reason via its selector; CronJobs are count-only
+// (their run-history health is out of scope for this slice). Ephemeral Jobs
+// spawned by a CronJob carry no Flux label and are dropped by workloadUnitFromMeta.
+func batchWorkloadUnits(jobs []batchv1.Job, cronJobs []batchv1.CronJob, pods []corev1.Pod) []workloadUnit {
+	unhealthy := indexUnhealthyPods(pods)
+	units := make([]workloadUnit, 0, len(jobs)+len(cronJobs))
+	for i := range jobs {
+		job := &jobs[i]
+		reason := workloadPodReason(unhealthy, job.Namespace, job.Spec.Selector)
+		if unit, ok := workloadUnitFromMeta(job.Labels, job.Namespace, workloadKindJob, 0, 0, jobStatus(job), reason); ok {
+			units = append(units, unit)
+		}
+	}
+	for i := range cronJobs {
+		cronJob := &cronJobs[i]
+		if unit, ok := workloadUnitFromMeta(cronJob.Labels, cronJob.Namespace, workloadKindCronJob, 0, 0, workspace.WorkloadHealthy, ""); ok {
+			units = append(units, unit)
+		}
+	}
+	return units
+}
+
+// jobStatus classifies a Job: an explicit Failed condition (backoff/deadline
+// exceeded) is degraded; a running or completed Job is not "degraded".
+func jobStatus(job *batchv1.Job) string {
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
+			return workspace.WorkloadDegraded
+		}
+	}
+	return workspace.WorkloadHealthy
 }
 
 func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int, status, reason string) (workloadUnit, bool) {
@@ -406,6 +459,10 @@ func aggregateWorkloads(workloads []workloadUnit, ksKeyToPath map[string]string)
 			workload.StatefulSets++
 		case workloadKindDaemonSet:
 			workload.DaemonSets++
+		case workloadKindJob:
+			workload.Jobs++
+		case workloadKindCronJob:
+			workload.CronJobs++
 		default:
 			workload.Deployments++
 		}
