@@ -21,6 +21,23 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// httpGetWithContext issues a GET bound to ctx and returns the response body.
+// The read error is intentionally ignored to preserve the prior best-effort
+// behavior of the Prometheus metric fetches that use it.
+func httpGetWithContext(ctx context.Context, client *http.Client, targetURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return body, nil
+}
+
 func (h *Handler) K8sServices(w http.ResponseWriter, r *http.Request) {
 	kc := h.k8sForRequest(r)
 	if kc == nil {
@@ -444,24 +461,20 @@ func (h *Handler) K8sNodeMetrics(w http.ResponseWriter, r *http.Request) {
 	memChan := make(chan promResult, 1)
 
 	go func() {
-		resp, err := client.Get(cpuURL)
+		body, err := httpGetWithContext(r.Context(), client, cpuURL)
 		if err != nil {
 			cpuChan <- promResult{Err: err}
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
 		cpuChan <- promResult{Data: body}
 	}()
 
 	go func() {
-		resp, err := client.Get(memURL)
+		body, err := httpGetWithContext(r.Context(), client, memURL)
 		if err != nil {
 			memChan <- promResult{Err: err}
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
 		memChan <- promResult{Data: body}
 	}()
 
@@ -518,24 +531,20 @@ func (h *Handler) K8sPodMetrics(w http.ResponseWriter, r *http.Request) {
 	memChan := make(chan promResult, 1)
 
 	go func() {
-		resp, err := client.Get(cpuURL)
+		body, err := httpGetWithContext(r.Context(), client, cpuURL)
 		if err != nil {
 			cpuChan <- promResult{Err: err}
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
 		cpuChan <- promResult{Data: body}
 	}()
 
 	go func() {
-		resp, err := client.Get(memURL)
+		body, err := httpGetWithContext(r.Context(), client, memURL)
 		if err != nil {
 			memChan <- promResult{Err: err}
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
 		memChan <- promResult{Data: body}
 	}()
 
@@ -659,12 +668,10 @@ func (h *Handler) fetchGPUByModel(ctx context.Context, kc *k8s.Client, namespace
 
 	queryProm := func(query string) (*float64, error) {
 		u := fmt.Sprintf("%s/api/v1/query?query=%s", h.cfg.Prom.URL, url.QueryEscape(query))
-		resp, err := client.Get(u)
+		body, err := httpGetWithContext(ctx, client, u)
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
 
 		var promResp struct {
 			Data struct {

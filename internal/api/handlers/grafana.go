@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(ctx, "grafana:dashboards", 60*time.Second, func() (any, error) {
-			return h.fetchGrafanaAPI("/api/search?type=dash-db")
+			return h.fetchGrafanaAPI(ctx, "/api/search?type=dash-db")
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -33,7 +34,7 @@ func (h *Handler) GrafanaDashboards(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("grafana dashboards cache error", "error", err)
 	}
 
-	data, err := h.fetchGrafanaAPI("/api/search?type=dash-db")
+	data, err := h.fetchGrafanaAPI(ctx, "/api/search?type=dash-db")
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -53,7 +54,7 @@ func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request)
 	cacheKey := fmt.Sprintf("grafana:dashboard:%s", uid)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(ctx, cacheKey, 30*time.Second, func() (any, error) {
-			return h.fetchGrafanaAPI(fmt.Sprintf("/api/dashboards/uid/%s", uid))
+			return h.fetchGrafanaAPI(ctx, fmt.Sprintf("/api/dashboards/uid/%s", uid))
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -63,7 +64,7 @@ func (h *Handler) GrafanaDashboardDetail(w http.ResponseWriter, r *http.Request)
 		slog.Warn("grafana dashboard detail cache error", "error", err)
 	}
 
-	data, err := h.fetchGrafanaAPI(fmt.Sprintf("/api/dashboards/uid/%s", uid))
+	data, err := h.fetchGrafanaAPI(ctx, fmt.Sprintf("/api/dashboards/uid/%s", uid))
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -81,7 +82,7 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(ctx, "grafana:datasources", 5*time.Minute, func() (any, error) {
-			return h.fetchGrafanaAPI("/api/datasources")
+			return h.fetchGrafanaAPI(ctx, "/api/datasources")
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -91,7 +92,7 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("grafana datasources cache error", "error", err)
 	}
 
-	data, err := h.fetchGrafanaAPI("/api/datasources")
+	data, err := h.fetchGrafanaAPI(ctx, "/api/datasources")
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -102,7 +103,7 @@ func (h *Handler) GrafanaDatasources(w http.ResponseWriter, r *http.Request) {
 // fetchGrafanaAPI makes an authenticated request to the Grafana HTTP API and
 // returns the raw JSON response body as a json.RawMessage so it can be cached
 // and forwarded without re-encoding.
-func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
+func (h *Handler) fetchGrafanaAPI(ctx context.Context, path string) (any, error) {
 	url := strings.TrimSuffix(h.cfg.Grafana.URL, "/") + path
 	token := strings.TrimSpace(h.cfg.Grafana.Token)
 
@@ -110,7 +111,7 @@ func (h *Handler) fetchGrafanaAPI(path string) (any, error) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	doRequest := func(authToken string) (*http.Response, error) {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("create grafana request: %w", err)
 		}
