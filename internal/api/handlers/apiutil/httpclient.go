@@ -1,6 +1,7 @@
 package apiutil
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"time"
@@ -39,8 +40,16 @@ var (
 )
 
 // ProxyRequest proxies a GET request to the target URL and writes the response.
-func ProxyRequest(w http.ResponseWriter, targetURL string) {
-	resp, err := DefaultClient.Get(targetURL)
+// The outbound request is bound to ctx so it is canceled if the caller
+// disconnects.
+func ProxyRequest(ctx context.Context, w http.ResponseWriter, targetURL string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		RespondError(w, http.StatusBadGateway, "PROXY_ERROR", err.Error())
+		return
+	}
+
+	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		RespondError(w, http.StatusBadGateway, "PROXY_ERROR", err.Error())
 		return

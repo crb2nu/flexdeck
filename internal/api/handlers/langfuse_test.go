@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,7 +36,7 @@ func TestLangfuseDataRequestsUseSeparateClientFromHealthChecks(t *testing.T) {
 		},
 	}
 
-	if _, _, err := handler.langfuseRequest("/api/public/metrics/daily"); err != nil {
+	if _, _, err := handler.langfuseRequest(context.Background(), "/api/public/metrics/daily"); err != nil {
 		t.Fatalf("expected langfuseRequest to succeed with the data client, got %v", err)
 	}
 

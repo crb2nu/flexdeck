@@ -41,7 +41,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	// Try cache first (5 minute TTL for repo list)
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(ctx, "ci:repos", 5*time.Minute, func() (any, error) {
-			return h.fetchRepositories()
+			return h.fetchRepositories(ctx)
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -51,7 +51,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("ci cache miss with error, falling through", "error", err)
 	}
 
-	repos, err := h.fetchRepositories()
+	repos, err := h.fetchRepositories(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -61,7 +61,7 @@ func (h *Handler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(repos)
 }
 
-func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
+func (h *Handler) fetchRepositories(ctx context.Context) ([]RepoInfo, error) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 
@@ -81,7 +81,7 @@ func (h *Handler) fetchRepositories() ([]RepoInfo, error) {
 	for page := 1; len(projects) < gitlabMaxProjects; page++ {
 		apiURL := fmt.Sprintf("%s/api/v4/projects?simple=true&per_page=%d&page=%d&order_by=last_activity_at&sort=desc",
 			gitlabURL, gitlabPerPageDefault, page)
-		req, err := http.NewRequest("GET", apiURL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
@@ -164,7 +164,7 @@ func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		cached, cacheErr := h.cache.GetOrFetchSmooth(ctx, cacheKey, 5*time.Minute, func() (any, error) {
-			return h.fetchRepoConfig(id)
+			return h.fetchRepoConfig(ctx, id)
 		})
 		if cacheErr == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -174,7 +174,7 @@ func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("ci config cache miss with error, falling through", "error", cacheErr, "project", id)
 	}
 
-	data, fetchErr := h.fetchRepoConfig(id)
+	data, fetchErr := h.fetchRepoConfig(ctx, id)
 	if fetchErr != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": fetchErr.Error()})
 		return
@@ -182,7 +182,7 @@ func (h *Handler) GetRepoConfig(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, data)
 }
 
-func (h *Handler) fetchRepoConfig(projectID int) (map[string]any, error) {
+func (h *Handler) fetchRepoConfig(ctx context.Context, projectID int) (map[string]any, error) {
 	gitlabURL := h.cfg.GitLab.URL
 	token := h.cfg.GitLab.Token
 	if token == "" {
@@ -191,7 +191,7 @@ func (h *Handler) fetchRepoConfig(projectID int) (map[string]any, error) {
 
 	// Fetch the project's default branch first.
 	projURL := fmt.Sprintf("%s/api/v4/projects/%d?simple=true", gitlabURL, projectID)
-	projReq, err := http.NewRequest("GET", projURL, nil)
+	projReq, err := http.NewRequestWithContext(ctx, "GET", projURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project request: %w", err)
 	}
@@ -216,7 +216,7 @@ func (h *Handler) fetchRepoConfig(projectID int) (map[string]any, error) {
 	// Fetch .gitlab-ci.yml from the repository.
 	fileURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s/raw?ref=%s",
 		gitlabURL, projectID, ".gitlab-ci.yml", ref)
-	fileReq, err := http.NewRequest("GET", fileURL, nil)
+	fileReq, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file request: %w", err)
 	}
@@ -340,7 +340,7 @@ func (h *Handler) fetchRepoPipeline(ctx context.Context, idStr string) (any, err
 	// Step 2: Fetch stage order from .gitlab-ci.yml
 	g.Go(func() error {
 		var fetchErr error
-		stageOrder, fetchErr = fetchGitLabStageOrder(client, gitlabURL, token, idStr, latest.Ref)
+		stageOrder, fetchErr = fetchGitLabStageOrder(gctx, client, gitlabURL, token, idStr, latest.Ref)
 		if fetchErr != nil {
 			slog.Debug("failed to fetch pipeline stage order from gitlab-ci",
 				"project_id", idStr, "ref", latest.Ref, "error", fetchErr)
@@ -576,7 +576,7 @@ func (h *Handler) pipelineRunToResponse(run metrics.PipelineRun) any {
 	}
 }
 
-func fetchGitLabStageOrder(client *http.Client, gitlabURL, token, projectID, ref string) ([]string, error) {
+func fetchGitLabStageOrder(ctx context.Context, client *http.Client, gitlabURL, token, projectID, ref string) ([]string, error) {
 	if ref == "" {
 		ref = "main"
 	}
@@ -588,7 +588,7 @@ func fetchGitLabStageOrder(client *http.Client, gitlabURL, token, projectID, ref
 		url.QueryEscape(ref),
 	)
 
-	req, err := http.NewRequest("GET", fileURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gitlab-ci request: %w", err)
 	}
@@ -659,7 +659,7 @@ func (h *Handler) GetJobTrace(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch job trace from GitLab
 	traceURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/trace", gitlabURL, projectID, jobID)
-	req, err := http.NewRequest("GET", traceURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", traceURL, nil)
 	if err != nil {
 		slog.Error("Failed to create trace request", "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -721,7 +721,7 @@ func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
 
 	// POST to GitLab job retry endpoint
 	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/retry", gitlabURL, projectID, jobID)
-	req, err := http.NewRequest("POST", retryURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", retryURL, nil)
 	if err != nil {
 		slog.Error("Failed to create retry request", "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -783,7 +783,7 @@ func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
 
 	// POST to GitLab job cancel endpoint
 	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/cancel", gitlabURL, projectID, jobID)
-	req, err := http.NewRequest("POST", cancelURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", cancelURL, nil)
 	if err != nil {
 		slog.Error("Failed to create cancel request", "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -845,7 +845,7 @@ func (h *Handler) PlayJob(w http.ResponseWriter, r *http.Request) {
 
 	// POST to GitLab job play endpoint
 	playURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s/play", gitlabURL, projectID, jobID)
-	req, err := http.NewRequest("POST", playURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", playURL, nil)
 	if err != nil {
 		slog.Error("Failed to create play request", "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -907,7 +907,7 @@ func (h *Handler) GetJobInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch job details from GitLab
 	jobURL := fmt.Sprintf("%s/api/v4/projects/%s/jobs/%s", gitlabURL, projectID, jobID)
-	req, err := http.NewRequest("GET", jobURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", jobURL, nil)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": "Failed to create request",
@@ -1153,7 +1153,7 @@ func (h *Handler) RetryPipeline(w http.ResponseWriter, r *http.Request) {
 
 	client := h.gitlabClient
 	retryURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/retry", gitlabURL, projectID, pipelineID)
-	req, err := http.NewRequest("POST", retryURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", retryURL, nil)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
 		return
@@ -1201,7 +1201,7 @@ func (h *Handler) CancelPipeline(w http.ResponseWriter, r *http.Request) {
 
 	client := h.gitlabClient
 	cancelURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%s/cancel", gitlabURL, projectID, pipelineID)
-	req, err := http.NewRequest("POST", cancelURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", cancelURL, nil)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
 		return
@@ -1256,7 +1256,7 @@ func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
 
 	client := h.gitlabClient
 	triggerURL := fmt.Sprintf("%s/api/v4/projects/%s/pipeline?ref=%s", gitlabURL, projectID, body.Ref)
-	req, err := http.NewRequest("POST", triggerURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "POST", triggerURL, nil)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
 		return
@@ -1334,7 +1334,7 @@ func (h *Handler) ListProjectPipelines(w http.ResponseWriter, r *http.Request) {
 
 		pipelinesURL := fmt.Sprintf("%s/api/v4/projects/%s/pipelines?per_page=%d&page=%d",
 			gitlabURL, projectID, perPage, page)
-		req, err := http.NewRequest("GET", pipelinesURL, nil)
+		req, err := http.NewRequestWithContext(r.Context(), "GET", pipelinesURL, nil)
 		if err != nil {
 			respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create request"})
 			return

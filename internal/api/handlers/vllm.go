@@ -19,7 +19,7 @@ func (h *Handler) VLLMListModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vllmURL := fmt.Sprintf("%s/v1/models", h.cfg.VLLM.URL)
-	proxyRequest(w, vllmURL)
+	proxyRequest(r.Context(), w, vllmURL)
 }
 
 // VLLMGetModel gets a specific model info
@@ -36,7 +36,7 @@ func (h *Handler) VLLMGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vllmURL := fmt.Sprintf("%s/v1/models/%s", h.cfg.VLLM.URL, url.PathEscape(modelID))
-	proxyRequest(w, vllmURL)
+	proxyRequest(r.Context(), w, vllmURL)
 }
 
 // VLLMHealth checks vLLM server health
@@ -52,7 +52,16 @@ func (h *Handler) VLLMHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Try to reach vLLM health endpoint
 	healthURL := fmt.Sprintf("%s/health", h.cfg.VLLM.URL)
-	resp, err := http.Get(healthURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, healthURL, nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"healthy": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{

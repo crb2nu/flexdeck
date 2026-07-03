@@ -22,7 +22,7 @@ func (h *Handler) LokiLabels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lokiURL := apiutil.NewURLBuilder(h.cfg.Loki.URL).RawPath("/loki/api/v1/labels").String()
-	apiutil.ProxyRequest(w, lokiURL)
+	apiutil.ProxyRequest(r.Context(), w, lokiURL)
 }
 
 func (h *Handler) LokiLabelValues(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +42,7 @@ func (h *Handler) LokiLabelValues(w http.ResponseWriter, r *http.Request) {
 		Path(name).
 		RawPath("/values").
 		String()
-	apiutil.ProxyRequest(w, lokiURL)
+	apiutil.ProxyRequest(r.Context(), w, lokiURL)
 }
 
 func (h *Handler) LokiQuery(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func (h *Handler) LokiQuery(w http.ResponseWriter, r *http.Request) {
 		lokiURL += "&direction=" + url.QueryEscape(direction)
 	}
 
-	proxyRequest(w, lokiURL)
+	proxyRequest(r.Context(), w, lokiURL)
 }
 
 func (h *Handler) LokiQueryRange(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +105,7 @@ func (h *Handler) LokiQueryRange(w http.ResponseWriter, r *http.Request) {
 		lokiURL += "&direction=" + url.QueryEscape(direction)
 	}
 
-	proxyRequest(w, lokiURL)
+	proxyRequest(r.Context(), w, lokiURL)
 }
 
 // LokiTailSSE implements Server-Sent Events for real-time log streaming.
@@ -155,7 +155,10 @@ func (h *Handler) LokiTailSSE(w http.ResponseWriter, r *http.Request) {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
-	conn, _, err := dialer.Dial(wsURL, nil)
+	conn, resp, err := dialer.DialContext(r.Context(), wsURL, nil)
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err != nil {
 		log.Printf("Failed to connect to Loki WebSocket: %v", err)
 		// Send error as SSE event
@@ -273,7 +276,13 @@ func (h *Handler) LokiExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch from Loki
-	resp, err := http.Get(lokiURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, lokiURL, nil)
+	if err != nil {
+		log.Printf("Loki export request build failed: %v", err)
+		http.Error(w, "failed to build request", http.StatusInternalServerError)
+		return
+	}
+	resp, err := apiutil.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("Loki export request failed: %v", err)
 		http.Error(w, "failed to fetch logs", http.StatusBadGateway)

@@ -1,6 +1,7 @@
 package apiutil
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -193,7 +194,7 @@ func TestProxyRequest(t *testing.T) {
 	defer ts.Close()
 
 	rr := httptest.NewRecorder()
-	ProxyRequest(rr, ts.URL)
+	ProxyRequest(context.Background(), rr, ts.URL)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
@@ -206,7 +207,7 @@ func TestProxyRequest(t *testing.T) {
 
 func TestProxyRequest_Error(t *testing.T) {
 	rr := httptest.NewRecorder()
-	ProxyRequest(rr, "http://invalid-url-that-does-not-exist")
+	ProxyRequest(context.Background(), rr, "http://invalid-url-that-does-not-exist")
 
 	if rr.Code != http.StatusBadGateway {
 		t.Errorf("expected status 502, got %d", rr.Code)

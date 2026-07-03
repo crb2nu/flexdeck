@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +20,7 @@ func (h *Handler) AlertmanagerAlerts(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:alerts", 15*time.Second, func() (any, error) {
-			return h.fetchAlertmanager("/api/v2/alerts")
+			return h.fetchAlertmanager(r.Context(), "/api/v2/alerts")
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -28,7 +29,7 @@ func (h *Handler) AlertmanagerAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchAlertmanager("/api/v2/alerts")
+	result, err := h.fetchAlertmanager(r.Context(), "/api/v2/alerts")
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -47,7 +48,7 @@ func (h *Handler) AlertmanagerSilences(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:silences", 15*time.Second, func() (any, error) {
-			return h.fetchAlertmanager("/api/v2/silences")
+			return h.fetchAlertmanager(r.Context(), "/api/v2/silences")
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -56,7 +57,7 @@ func (h *Handler) AlertmanagerSilences(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchAlertmanager("/api/v2/silences")
+	result, err := h.fetchAlertmanager(r.Context(), "/api/v2/silences")
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -75,7 +76,7 @@ func (h *Handler) AlertmanagerStatus(w http.ResponseWriter, r *http.Request) {
 
 	if h.cache != nil {
 		cached, err := h.cache.GetOrFetchSmooth(r.Context(), "am:status", 60*time.Second, func() (any, error) {
-			return h.fetchAlertmanager("/api/v2/status")
+			return h.fetchAlertmanager(r.Context(), "/api/v2/status")
 		})
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -84,7 +85,7 @@ func (h *Handler) AlertmanagerStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.fetchAlertmanager("/api/v2/status")
+	result, err := h.fetchAlertmanager(r.Context(), "/api/v2/status")
 	if err != nil {
 		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -168,9 +169,13 @@ func (h *Handler) AlertmanagerDeleteSilence(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (h *Handler) fetchAlertmanager(path string) (json.RawMessage, error) {
+func (h *Handler) fetchAlertmanager(ctx context.Context, path string) (json.RawMessage, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(h.cfg.Alertmanager.URL + path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.cfg.Alertmanager.URL+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create alertmanager request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("alertmanager request failed: %w", err)
 	}

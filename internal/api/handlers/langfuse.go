@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,10 +18,10 @@ var (
 )
 
 // langfuseRequest issues an authenticated GET to the Langfuse public API.
-func (h *Handler) langfuseRequest(endpoint string) ([]byte, int, error) {
+func (h *Handler) langfuseRequest(ctx context.Context, endpoint string) ([]byte, int, error) {
 	u := strings.TrimRight(h.cfg.Langfuse.URL, "/") + endpoint
 
-	req, err := http.NewRequest(http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -55,7 +56,15 @@ func (h *Handler) LangfuseHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Langfuse health endpoint (no auth needed)
 	healthURL := strings.TrimRight(h.cfg.Langfuse.URL, "/") + "/api/public/health"
-	resp, err := langfuseHealthClient.Get(healthURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, healthURL, nil)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]any{
+			"healthy": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	resp, err := langfuseHealthClient.Do(req)
 	if err != nil {
 		respondJSON(w, http.StatusOK, map[string]any{
 			"healthy": false,
@@ -101,7 +110,7 @@ func (h *Handler) LangfuseMetrics(w http.ResponseWriter, r *http.Request) {
 		endpoint += "?" + params.Encode()
 	}
 
-	body, status, err := h.langfuseRequest(endpoint)
+	body, status, err := h.langfuseRequest(r.Context(), endpoint)
 	if err != nil {
 		apiutil.RespondError(w, http.StatusBadGateway, "LANGFUSE_ERROR", err.Error())
 		return
@@ -136,7 +145,7 @@ func (h *Handler) LangfuseTraces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	endpoint := "/api/public/traces?" + params.Encode()
-	body, status, err := h.langfuseRequest(endpoint)
+	body, status, err := h.langfuseRequest(r.Context(), endpoint)
 	if err != nil {
 		apiutil.RespondError(w, http.StatusBadGateway, "LANGFUSE_ERROR", err.Error())
 		return
@@ -169,7 +178,7 @@ func (h *Handler) LangfuseScores(w http.ResponseWriter, r *http.Request) {
 	}
 
 	endpoint := "/api/public/scores?" + params.Encode()
-	body, status, err := h.langfuseRequest(endpoint)
+	body, status, err := h.langfuseRequest(r.Context(), endpoint)
 	if err != nil {
 		apiutil.RespondError(w, http.StatusBadGateway, "LANGFUSE_ERROR", err.Error())
 		return
@@ -203,7 +212,7 @@ func (h *Handler) LangfuseModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	endpoint := "/api/public/observations?" + params.Encode()
-	body, status, err := h.langfuseRequest(endpoint)
+	body, status, err := h.langfuseRequest(r.Context(), endpoint)
 	if err != nil {
 		apiutil.RespondError(w, http.StatusBadGateway, "LANGFUSE_ERROR", err.Error())
 		return

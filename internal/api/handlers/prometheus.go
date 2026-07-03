@@ -28,7 +28,16 @@ func (h *Handler) PromHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := apiutil.ShortClient.Get(h.cfg.Prom.URL + "/-/healthy")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, h.cfg.Prom.URL+"/-/healthy", nil)
+	if err != nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	resp, err := apiutil.ShortClient.Do(req)
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"ok":    false,
@@ -63,7 +72,7 @@ func (h *Handler) PromQuery(w http.ResponseWriter, r *http.Request) {
 			Param("query", query).
 			Param("time", queryTime).
 			String()
-		apiutil.ProxyRequest(w, promURL)
+		apiutil.ProxyRequest(r.Context(), w, promURL)
 		return
 	}
 
@@ -76,7 +85,7 @@ func (h *Handler) PromQuery(w http.ResponseWriter, r *http.Request) {
 				Param("query", query).
 				Param("time", queryTime).
 				String()
-			apiutil.ProxyRequest(w, promURL)
+			apiutil.ProxyRequest(r.Context(), w, promURL)
 			return
 		}
 		effectiveTime = parsedTime
@@ -121,7 +130,7 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 			Param("end", end).
 			Param("step", step).
 			String()
-		apiutil.ProxyRequest(w, promURL)
+		apiutil.ProxyRequest(r.Context(), w, promURL)
 		return
 	}
 
@@ -134,7 +143,7 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 			Param("end", end).
 			Param("step", stepValue).
 			String()
-		apiutil.ProxyRequest(w, promURL)
+		apiutil.ProxyRequest(r.Context(), w, promURL)
 		return
 	}
 	endTime, err := parsePromTimestamp(end)
@@ -146,7 +155,7 @@ func (h *Handler) PromQueryRange(w http.ResponseWriter, r *http.Request) {
 			Param("end", end).
 			Param("step", stepValue).
 			String()
-		apiutil.ProxyRequest(w, promURL)
+		apiutil.ProxyRequest(r.Context(), w, promURL)
 		return
 	}
 
@@ -175,7 +184,7 @@ func (h *Handler) PromAlerts(w http.ResponseWriter, r *http.Request) {
 		RawPath("/api/v1/alerts").
 		String()
 
-	apiutil.ProxyRequest(w, promURL)
+	apiutil.ProxyRequest(r.Context(), w, promURL)
 }
 
 // PromRules returns alert rules from Prometheus
@@ -190,7 +199,7 @@ func (h *Handler) PromRules(w http.ResponseWriter, r *http.Request) {
 		Param("type", r.URL.Query().Get("type")).
 		String()
 
-	apiutil.ProxyRequest(w, promURL)
+	apiutil.ProxyRequest(r.Context(), w, promURL)
 }
 
 // respondJSON is a package-level helper that wraps apiutil.RespondRaw for backward compatibility.
@@ -201,8 +210,8 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 }
 
 // proxyRequest is a package-level helper that wraps apiutil.ProxyRequest.
-func proxyRequest(w http.ResponseWriter, targetURL string) {
-	apiutil.ProxyRequest(w, targetURL)
+func proxyRequest(ctx context.Context, w http.ResponseWriter, targetURL string) {
+	apiutil.ProxyRequest(ctx, w, targetURL)
 }
 
 // Ensure url import is used (for URL building in other handlers that might import this)
@@ -220,7 +229,7 @@ func (e *promProxyError) Error() string {
 
 func (h *Handler) proxyPromCached(w http.ResponseWriter, r *http.Request, cacheKey, promURL string, opts cache.FetchOptions) {
 	if h.cache == nil {
-		apiutil.ProxyRequest(w, promURL)
+		apiutil.ProxyRequest(r.Context(), w, promURL)
 		return
 	}
 

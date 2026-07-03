@@ -19,10 +19,6 @@ linters:
     rules:
       - linters: [govet]
         text: "shadows declaration"
-      # noctx/bodyclose debt in legacy HTTP handlers (pre-context http.Get, WS
-      # handshake body); adoption tracked in services/flexdeck#32.
-      - path: internal/api/handlers/
-        linters: [noctx, bodyclose]
       - path: _test\.go
         linters: [noctx, bodyclose]
 run:
