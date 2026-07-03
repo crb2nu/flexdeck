@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -64,8 +65,14 @@ func (h *Handler) fluxBindingTargets(ctx context.Context, kc *k8s.Client) map[st
 	if list, err := kc.GetDaemonSets(ctx, ""); err == nil {
 		daemonSets = list.Items
 	}
+	// Pods add the "why" behind a degraded workload (CrashLoopBackOff,
+	// ImagePullBackOff, ...); missing pods just leave the reason empty.
+	var pods []corev1.Pod
+	if list, err := kc.GetPods(ctx, ""); err == nil {
+		pods = list.Items
+	}
 
-	return buildFluxTargets(gitRepos.Items, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets))
+	return buildFluxTargets(gitRepos.Items, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets, pods))
 }
 
 const (
@@ -84,38 +91,45 @@ type workloadUnit struct {
 	desired   int
 	ready     int
 	status    string // healthy | progressing | degraded
+	reason    string // notable pod container reason, if any (e.g. CrashLoopBackOff)
 }
 
 // appsWorkloadUnits flattens the three apps/v1 workload kinds into a single
 // slice, normalizing the kind-specific replica fields (DaemonSets report
 // scheduling counts rather than spec replicas) and classifying rollout health.
-// Workloads without a Flux Kustomization name label are dropped.
-func appsWorkloadUnits(deployments []appsv1.Deployment, statefulSets []appsv1.StatefulSet, daemonSets []appsv1.DaemonSet) []workloadUnit {
+// Pods matching a workload's selector supply the failure reason behind a
+// non-healthy rollout. Workloads without a Flux Kustomization name label are
+// dropped.
+func appsWorkloadUnits(deployments []appsv1.Deployment, statefulSets []appsv1.StatefulSet, daemonSets []appsv1.DaemonSet, pods []corev1.Pod) []workloadUnit {
+	unhealthy := indexUnhealthyPods(pods)
 	units := make([]workloadUnit, 0, len(deployments)+len(statefulSets)+len(daemonSets))
 	for i := range deployments {
 		d := &deployments[i]
-		if unit, ok := workloadUnitFromMeta(d.Labels, d.Namespace, workloadKindDeployment, replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas), deploymentRolloutStatus(d)); ok {
+		reason := workloadPodReason(unhealthy, d.Namespace, d.Spec.Selector)
+		if unit, ok := workloadUnitFromMeta(d.Labels, d.Namespace, workloadKindDeployment, replicaInt(d.Spec.Replicas), int(d.Status.ReadyReplicas), deploymentRolloutStatus(d), reason); ok {
 			units = append(units, unit)
 		}
 	}
 	for i := range statefulSets {
 		s := &statefulSets[i]
 		desired := replicaInt(s.Spec.Replicas)
-		if unit, ok := workloadUnitFromMeta(s.Labels, s.Namespace, workloadKindStatefulSet, desired, int(s.Status.ReadyReplicas), rolloutStatus(desired, int(s.Status.ReadyReplicas), int(s.Status.UpdatedReplicas), false)); ok {
+		reason := workloadPodReason(unhealthy, s.Namespace, s.Spec.Selector)
+		if unit, ok := workloadUnitFromMeta(s.Labels, s.Namespace, workloadKindStatefulSet, desired, int(s.Status.ReadyReplicas), rolloutStatus(desired, int(s.Status.ReadyReplicas), int(s.Status.UpdatedReplicas), false), reason); ok {
 			units = append(units, unit)
 		}
 	}
 	for i := range daemonSets {
 		ds := &daemonSets[i]
 		desired := int(ds.Status.DesiredNumberScheduled)
-		if unit, ok := workloadUnitFromMeta(ds.Labels, ds.Namespace, workloadKindDaemonSet, desired, int(ds.Status.NumberReady), rolloutStatus(desired, int(ds.Status.NumberReady), int(ds.Status.UpdatedNumberScheduled), false)); ok {
+		reason := workloadPodReason(unhealthy, ds.Namespace, ds.Spec.Selector)
+		if unit, ok := workloadUnitFromMeta(ds.Labels, ds.Namespace, workloadKindDaemonSet, desired, int(ds.Status.NumberReady), rolloutStatus(desired, int(ds.Status.NumberReady), int(ds.Status.UpdatedNumberScheduled), false), reason); ok {
 			units = append(units, unit)
 		}
 	}
 	return units
 }
 
-func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int, status string) (workloadUnit, bool) {
+func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desired, ready int, status, reason string) (workloadUnit, bool) {
 	ksName := labels[fluxKustomizationNameLabel]
 	if ksName == "" {
 		return workloadUnit{}, false
@@ -127,6 +141,7 @@ func workloadUnitFromMeta(labels map[string]string, namespace, kind string, desi
 		desired:   desired,
 		ready:     ready,
 		status:    status,
+		reason:    reason,
 	}, true
 }
 
@@ -135,6 +150,116 @@ func replicaInt(replicas *int32) int {
 		return 1
 	}
 	return int(*replicas)
+}
+
+// notableContainerReasons ranks the container waiting/terminated reasons worth
+// surfacing on a non-healthy workload, most actionable first. Benign transitional
+// states (ContainerCreating, PodInitializing, Completed) are intentionally absent
+// so a healthy rollout stays quiet.
+var notableContainerReasons = map[string]int{
+	"CrashLoopBackOff":           7,
+	"OOMKilled":                  6,
+	"CreateContainerConfigError": 5,
+	"CreateContainerError":       4,
+	"RunContainerError":          3,
+	"InvalidImageName":           2,
+	"ImagePullBackOff":           1,
+	"ErrImagePull":               1,
+}
+
+// worsePodReason returns the more actionable of two container reasons, with a
+// lexical tiebreak so aggregation is deterministic regardless of pod ordering.
+func worsePodReason(current, next string) string {
+	if next == "" {
+		return current
+	}
+	if current == "" {
+		return next
+	}
+	switch cs, ns := notableContainerReasons[current], notableContainerReasons[next]; {
+	case ns > cs:
+		return next
+	case ns == cs && next < current:
+		return next
+	default:
+		return current
+	}
+}
+
+// notablePodReason keeps a reason only if it is in the surfaced set, so benign
+// transitional states collapse to "".
+func notablePodReason(reason string) string {
+	if _, ok := notableContainerReasons[reason]; ok {
+		return reason
+	}
+	return ""
+}
+
+// podNotableReason returns the most actionable container reason explaining why a
+// pod is not ready, or "" when it looks healthy or is only transiently starting.
+// Init containers are inspected first since they gate the main containers.
+func podNotableReason(pod *corev1.Pod) string {
+	reason := containerStatusesReason(pod.Status.InitContainerStatuses)
+	return worsePodReason(reason, containerStatusesReason(pod.Status.ContainerStatuses))
+}
+
+func containerStatusesReason(statuses []corev1.ContainerStatus) string {
+	reason := ""
+	for i := range statuses {
+		status := &statuses[i]
+		switch {
+		case status.State.Waiting != nil:
+			reason = worsePodReason(reason, notablePodReason(status.State.Waiting.Reason))
+		case status.State.Terminated != nil && !status.Ready:
+			reason = worsePodReason(reason, notablePodReason(status.State.Terminated.Reason))
+		}
+	}
+	return reason
+}
+
+// labeledPodReason pairs a pod's labels with its notable failure reason so a
+// workload can claim only the pods its selector matches.
+type labeledPodReason struct {
+	labels map[string]string
+	reason string
+}
+
+// indexUnhealthyPods buckets pods that carry a notable failure reason by
+// namespace. Healthy pods are dropped, so the index is empty on a healthy fleet.
+func indexUnhealthyPods(pods []corev1.Pod) map[string][]labeledPodReason {
+	if len(pods) == 0 {
+		return nil
+	}
+	index := map[string][]labeledPodReason{}
+	for i := range pods {
+		pod := &pods[i]
+		reason := podNotableReason(pod)
+		if reason == "" {
+			continue
+		}
+		index[pod.Namespace] = append(index[pod.Namespace], labeledPodReason{labels: pod.Labels, reason: reason})
+	}
+	return index
+}
+
+// workloadPodReason returns the worst notable reason among the unhealthy pods in
+// the workload's namespace that match its selector, or "" when none apply.
+func workloadPodReason(index map[string][]labeledPodReason, namespace string, selector *metav1.LabelSelector) string {
+	candidates := index[namespace]
+	if len(candidates) == 0 || selector == nil {
+		return ""
+	}
+	sel, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil || sel.Empty() {
+		return ""
+	}
+	reason := ""
+	for _, candidate := range candidates {
+		if sel.Matches(k8slabels.Set(candidate.labels)) {
+			reason = worsePodReason(reason, candidate.reason)
+		}
+	}
+	return reason
 }
 
 // rolloutStatus classifies a single workload from normalized counts. A workload
@@ -232,6 +357,11 @@ func buildFluxTargets(gitRepos, kustomizations []unstructured.Unstructured, work
 	workloadByPath, namespacesByPath, kustomizationsWithWorkloads := aggregateWorkloads(workloads, ksKeyToPath)
 	for path, workload := range workloadByPath {
 		workload.Namespaces = sortedSetKeys(namespacesByPath[path])
+		// A reason only makes sense alongside a problem; a healthy aggregate
+		// drops any reason carried by a since-recovered pod.
+		if workload.Status == workspace.WorkloadHealthy {
+			workload.Reason = ""
+		}
 	}
 
 	for key, candidates := range byPath {
@@ -282,6 +412,7 @@ func aggregateWorkloads(workloads []workloadUnit, ksKeyToPath map[string]string)
 		workload.Desired += unit.desired
 		workload.Ready += unit.ready
 		workload.Status = worseRolloutStatus(workload.Status, unit.status)
+		workload.Reason = worsePodReason(workload.Reason, unit.reason)
 		namespacesByPath[path][unit.namespace] = true
 		kustomizationsWithWorkloads[unit.ksKey] = true
 	}

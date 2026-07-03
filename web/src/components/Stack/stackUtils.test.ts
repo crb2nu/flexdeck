@@ -196,6 +196,35 @@ describe('stackUtils', () => {
     expect(fallback).toMatchObject({ workloadStatus: 'healthy', workloadHealthy: true });
   });
 
+  it('surfaces the pod failure reason on a degraded workload', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        workload: { namespaces: ['flexdeck'], deployments: 1, ready: 0, desired: 1, status: 'degraded', reason: 'CrashLoopBackOff' },
+      },
+    }));
+
+    expect(summary).toMatchObject({ workloadStatus: 'degraded', workloadReason: 'CrashLoopBackOff' });
+  });
+
+  it('omits the reason when the workload is healthy', () => {
+    const summary = summarizeBinding(makeRepo({
+      binding: {
+        kind: 'service',
+        confidence: 'verified',
+        namespace: 'flexdeck',
+        fluxSource: 'flexdeck',
+        // A stale reason on a healthy workload must not leak into the summary.
+        workload: { namespaces: ['flexdeck'], deployments: 1, ready: 1, desired: 1, status: 'healthy', reason: 'CrashLoopBackOff' },
+      },
+    }));
+
+    expect(summary?.workloadReason).toBeUndefined();
+  });
+
   it('summarizes a library binding as not deployed', () => {
     const summary = summarizeBinding(makeRepo({
       bucket: 'libs',

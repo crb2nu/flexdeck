@@ -66,6 +66,19 @@ func dsObj(name, namespace, ksName, ksNamespace string, desired, ready int32) ap
 	}
 }
 
+// podObj builds a pod whose single container is waiting with the given reason
+// (blank reason => a running/healthy pod).
+func podObj(name, namespace string, podLabels map[string]string, waitingReason string) corev1.Pod {
+	state := corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}
+	if waitingReason != "" {
+		state = corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: waitingReason}}
+	}
+	return corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: podLabels},
+		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{State: state}}},
+	}
+}
+
 // Shapes mirror the live cluster: internal git host, sources in flux-system,
 // one source owning several kustomizations.
 func bindingFixtures() (gitRepos, kustomizations []unstructured.Unstructured) {
@@ -95,7 +108,7 @@ func TestAppsWorkloadUnits(t *testing.T) {
 	// Workloads without the Flux name label are dropped.
 	unlabeled := appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "orphan", Namespace: "n"}}
 
-	units := appsWorkloadUnits(append(deployments, unlabeled), statefulSets, daemonSets)
+	units := appsWorkloadUnits(append(deployments, unlabeled), statefulSets, daemonSets, nil)
 
 	if len(units) != 3 {
 		t.Fatalf("got %d units, want 3 (unlabeled dropped): %#v", len(units), units)
@@ -135,7 +148,7 @@ func TestBuildFluxTargetsWithWorkloads(t *testing.T) {
 		dsObj("node-exporter", "kube-system", "apps", "flux-system", 3, 3),
 	}
 
-	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets))
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits(deployments, statefulSets, daemonSets, nil))
 
 	flexdeck := targets["services/flexdeck"].Workload
 	if flexdeck == nil || flexdeck.Deployments != 3 || flexdeck.StatefulSets != 0 || flexdeck.Ready != 2 || flexdeck.Desired != 3 {
@@ -245,7 +258,7 @@ func TestWorkloadStatusAggregatesWorst(t *testing.T) {
 	progressing := deployObj("worker", "svc", "svc", "flux-system", 3, 2)
 	progressing.Status.UpdatedReplicas = 1 // new revision still rolling out
 
-	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits([]appsv1.Deployment{healthy, progressing}, nil, nil))
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits([]appsv1.Deployment{healthy, progressing}, nil, nil, nil))
 	if got := targets["services/svc"].Workload.Status; got != workspace.WorkloadProgressing {
 		t.Fatalf("aggregate status = %q, want progressing", got)
 	}
@@ -261,5 +274,73 @@ func TestBuildFluxTargetsSkipsUnparseableAndEmpty(t *testing.T) {
 	)
 	if len(targets) != 0 {
 		t.Fatalf("expected no targets for empty url, got %#v", targets)
+	}
+}
+
+func TestWorkloadPodReasonMatchesSelector(t *testing.T) {
+	t.Parallel()
+
+	redis := deployObj("redis", "flexdeck", "flexdeck", "flux-system", 1, 0) // degraded
+	redis.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "redis"}}
+	pods := []corev1.Pod{
+		podObj("redis-abc", "flexdeck", map[string]string{"app": "redis"}, "CrashLoopBackOff"),
+		// Benign transitional state on a matching pod -> ignored.
+		podObj("redis-def", "flexdeck", map[string]string{"app": "redis"}, "ContainerCreating"),
+		// A different app in the same namespace must not leak its reason onto redis.
+		podObj("other", "flexdeck", map[string]string{"app": "other"}, "ImagePullBackOff"),
+	}
+
+	units := appsWorkloadUnits([]appsv1.Deployment{redis}, nil, nil, pods)
+	if len(units) != 1 {
+		t.Fatalf("got %d units, want 1", len(units))
+	}
+	if units[0].reason != "CrashLoopBackOff" {
+		t.Errorf("reason = %q, want CrashLoopBackOff", units[0].reason)
+	}
+}
+
+func TestBuildFluxTargetsSurfacesPodReason(t *testing.T) {
+	t.Parallel()
+
+	gitRepos := []unstructured.Unstructured{
+		gitRepoObj("flexdeck", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/flexdeck.git"),
+	}
+	kustomizations := []unstructured.Unstructured{ksObj("flexdeck", "flux-system", "flexdeck", "", "")}
+
+	redis := deployObj("redis", "flexdeck", "flexdeck", "flux-system", 1, 0) // degraded
+	redis.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "redis"}}
+	pods := []corev1.Pod{podObj("redis-0", "flexdeck", map[string]string{"app": "redis"}, "ImagePullBackOff")}
+
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits([]appsv1.Deployment{redis}, nil, nil, pods))
+	workload := targets["services/flexdeck"].Workload
+	if workload == nil || workload.Status != workspace.WorkloadDegraded {
+		t.Fatalf("workload = %#v, want degraded", workload)
+	}
+	if workload.Reason != "ImagePullBackOff" {
+		t.Errorf("reason = %q, want ImagePullBackOff", workload.Reason)
+	}
+}
+
+func TestBuildFluxTargetsClearsReasonWhenHealthy(t *testing.T) {
+	t.Parallel()
+
+	gitRepos := []unstructured.Unstructured{
+		gitRepoObj("flexdeck", "flux-system", "http://gitlab-vm.gitlab.svc.cluster.local/services/flexdeck.git"),
+	}
+	kustomizations := []unstructured.Unstructured{ksObj("flexdeck", "flux-system", "flexdeck", "", "")}
+
+	// Healthy workload (1/1) with a stray crashing pod that still matches its
+	// selector -> the reason must not surface on a healthy aggregate.
+	redis := deployObj("redis", "flexdeck", "flexdeck", "flux-system", 1, 1)
+	redis.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "redis"}}
+	pods := []corev1.Pod{podObj("redis-old", "flexdeck", map[string]string{"app": "redis"}, "CrashLoopBackOff")}
+
+	targets := buildFluxTargets(gitRepos, kustomizations, appsWorkloadUnits([]appsv1.Deployment{redis}, nil, nil, pods))
+	workload := targets["services/flexdeck"].Workload
+	if workload == nil || workload.Status != workspace.WorkloadHealthy {
+		t.Fatalf("workload = %#v, want healthy", workload)
+	}
+	if workload.Reason != "" {
+		t.Errorf("reason = %q, want empty on healthy workload", workload.Reason)
 	}
 }

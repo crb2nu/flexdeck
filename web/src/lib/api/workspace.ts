@@ -48,6 +48,7 @@ export interface WorkspaceWorkload {
   ready: number;
   desired: number;
   status?: WorkspaceWorkloadStatus;
+  reason?: string; // pod container reason behind a non-healthy status (e.g. CrashLoopBackOff)
 }
 
 export interface WorkspaceRepoBinding {
