@@ -102,9 +102,30 @@ export interface ProjectDetail {
   plans: ProjectPlan[];
 }
 
+// CreateProjectRiskInput is the POST /api/projects/{id}/risks request body.
+// Only `title` is required; the backend defaults likelihood/impact to "medium"
+// and status to "identified", and validates against its allowed ladders
+// (likelihood/impact: low|medium|high; status: identified|mitigating|accepted|closed).
+export interface CreateProjectRiskInput {
+  title: string;
+  likelihood?: string;
+  impact?: string;
+  status?: string;
+  mitigation?: string;
+  owner?: string;
+}
+
 export const projectsApi = {
   list: () => api<ProjectsList>('/projects'),
   // id is the project path_with_namespace (e.g. "services/flexdeck"); it is
   // url-encoded so the slash does not split the route.
   get: (id: string) => api<ProjectDetail>(`/projects/${encodeURIComponent(id)}`),
+  // createRisk captures a new risk for the project in the pm_risks store and
+  // returns the persisted risk (201). Backend invalidates the detail/rollup
+  // caches, so a follow-up detail refresh surfaces the new row.
+  createRisk: (id: string, input: CreateProjectRiskInput) =>
+    api<ProjectRisk>(`/projects/${encodeURIComponent(id)}/risks`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
