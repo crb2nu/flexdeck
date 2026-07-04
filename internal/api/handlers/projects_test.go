@@ -566,6 +566,119 @@ func TestCreateProjectRisk_Validation(t *testing.T) {
 	}
 }
 
+func TestUpdateProjectRisk_TransitionsStatus(t *testing.T) {
+	// An existing risk carrying a legacy status ("open", outside the create
+	// ladder) is transitioned to a canonical "closed".
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantRisksCollection: {
+				{ID: "risk-1", Payload: map[string]any{
+					"id": "risk-1", "project": "services/flexdeck", "title": "drift",
+					"likelihood": "medium", "impact": "high", "status": "open",
+					"created_at": "2026-07-01T00:00:00Z",
+				}},
+			},
+		},
+	}
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	rr := serveRiskUpdate(h, "services/flexdeck", "risk-1", `{"status":"closed"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var risk projectRisk
+	if err := json.Unmarshal(rr.Body.Bytes(), &risk); err != nil {
+		t.Fatalf("decode risk: %v", err)
+	}
+	if risk.ID != "risk-1" || risk.Status != "closed" {
+		t.Fatalf("risk response = %+v, want id risk-1 status closed", risk)
+	}
+	// Untouched fields are preserved from the stored payload.
+	if risk.Title != "drift" || risk.Impact != "high" {
+		t.Errorf("unchanged fields lost: %+v", risk)
+	}
+
+	points := fq.upsertsFor(qdrantRisksCollection)
+	if len(points) != 1 {
+		t.Fatalf("upserts = %d, want 1", len(points))
+	}
+	p := points[0]
+	if p.ID != "risk-1" {
+		t.Errorf("point id = %v, want risk-1 (in-place overwrite)", p.ID)
+	}
+	if p.Payload["status"] != "closed" {
+		t.Errorf("payload status = %v, want closed", p.Payload["status"])
+	}
+	if _, ok := p.Payload["updated_at"].(string); !ok {
+		t.Errorf("updated_at missing/not-string: %+v", p.Payload)
+	}
+	if p.Payload["created_at"] != "2026-07-01T00:00:00Z" {
+		t.Errorf("created_at should be preserved, got %v", p.Payload["created_at"])
+	}
+}
+
+func TestUpdateProjectRisk_NotFound(t *testing.T) {
+	// Project scroll returns a different risk id -> 404, no write.
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantRisksCollection: {
+				{ID: "other", Payload: map[string]any{"id": "other", "project": "services/flexdeck", "status": "open"}},
+			},
+		},
+	}
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	rr := serveRiskUpdate(h, "services/flexdeck", "risk-1", `{"status":"closed"}`)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(fq.upsertsFor(qdrantRisksCollection)) != 0 {
+		t.Errorf("a missing risk must not be written")
+	}
+}
+
+func TestUpdateProjectRisk_Validation(t *testing.T) {
+	newHandler := func() (*Handler, *fakeQdrant) {
+		fq := &fakeQdrant{
+			byCollection: map[string][]qdrant.Point{
+				qdrantRisksCollection: {
+					{ID: "risk-1", Payload: map[string]any{"id": "risk-1", "project": "services/flexdeck", "status": "open"}},
+				},
+			},
+		}
+		return &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}, fq
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "bad status", body: `{"status":"open"}`},
+		{name: "bad likelihood", body: `{"likelihood":"certain"}`},
+		{name: "bad impact", body: `{"impact":"huge"}`},
+		{name: "blank title", body: `{"title":"  "}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, fq := newHandler()
+			rr := serveRiskUpdate(h, "services/flexdeck", "risk-1", tc.body)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+			}
+			if len(fq.upsertsFor(qdrantRisksCollection)) != 0 {
+				t.Errorf("invalid update must not be written")
+			}
+		})
+	}
+}
+
+func TestUpdateProjectRisk_MissingRiskID(t *testing.T) {
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
+	rr := serveRiskUpdate(h, "services/flexdeck", " ", `{"status":"closed"}`)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for blank risk id, got %d", rr.Code)
+	}
+}
+
 func TestListProjects_GitLabUnconfiguredEmpty(t *testing.T) {
 	// No GitLab token => listProjectPaths returns empty, rollup is an empty list.
 	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: &fakeQdrant{}}
@@ -673,5 +786,21 @@ func serveProject(h *Handler, project string) *httptest.ResponseRecorder {
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
 	h.GetProject(rr, req)
+	return rr
+}
+
+// serveRiskUpdate invokes UpdateProjectRisk with a chi route context carrying
+// the url-encoded project id and the raw risk id, mirroring how the router
+// delivers {id} and {riskId}.
+func serveRiskUpdate(h *Handler, project, riskID, body string) *httptest.ResponseRecorder {
+	encoded := url.PathEscape(project)
+	req := httptest.NewRequest(http.MethodPatch, "/api/projects/"+encoded+"/risks/"+url.PathEscape(riskID), strings.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", encoded)
+	// chi delivers the param already url-decoded, so pass the raw riskID.
+	rctx.URLParams.Add("riskId", riskID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	h.UpdateProjectRisk(rr, req)
 	return rr
 }

@@ -112,6 +112,20 @@ type createProjectRiskRequest struct {
 	Status     string `json:"status"`
 }
 
+// updateProjectRiskRequest is the PATCH /api/projects/{id}/risks/{riskId} body.
+// Every field is a pointer so a nil field is left unchanged: an operator can
+// transition just the status (e.g. mitigating -> closed) without resupplying
+// the whole risk. Provided values are validated against the same ladders as
+// creation. Linking a risk to other entities is intentionally out of scope.
+type updateProjectRiskRequest struct {
+	Title      *string `json:"title"`
+	Likelihood *string `json:"likelihood"`
+	Impact     *string `json:"impact"`
+	Mitigation *string `json:"mitigation"`
+	Owner      *string `json:"owner"`
+	Status     *string `json:"status"`
+}
+
 // projectDecision is one decision (best-effort; see note in fetchDecisions).
 type projectDecision struct {
 	ID        string `json:"id"`
@@ -303,6 +317,141 @@ func (h *Handler) CreateProjectRisk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, risk)
+}
+
+// UpdateProjectRisk mutates an existing risk in the pm_risks store — the write
+// half of the Projects risk lifecycle (the read lane + capture form shipped
+// earlier). It locates the current point (scoped by project), applies the
+// provided fields, bumps updated_at, and re-upserts in place.
+// PATCH /api/projects/{id}/risks/{riskId}
+func (h *Handler) UpdateProjectRisk(w http.ResponseWriter, r *http.Request) {
+	project, ok := projectIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	riskID := strings.TrimSpace(chi.URLParam(r, "riskId"))
+	if riskID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "risk id required"})
+		return
+	}
+	if h.qdrant == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "qdrant not configured"})
+		return
+	}
+
+	var input updateProjectRiskRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return
+	}
+
+	ctx := r.Context()
+	point, found, err := h.findProjectRiskPoint(ctx, project, riskID)
+	if err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if !found {
+		respondJSON(w, http.StatusNotFound, map[string]any{"error": "risk not found"})
+		return
+	}
+
+	updated, err := applyProjectRiskUpdate(point.Payload, input)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if err := h.ensureProjectRiskStore(ctx); err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := h.qdrant.Upsert(ctx, qdrantRisksCollection, []qdrant.Point{{
+		ID:      point.ID,
+		Vector:  zeroVector(qdrantRiskVectorSize),
+		Payload: point.Payload,
+	}}, true); err != nil {
+		respondJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if h.cache != nil {
+		h.cache.Invalidate(ctx, "projects:detail:"+project)
+		h.cache.Invalidate(ctx, "projects:rollup")
+	}
+
+	respondJSON(w, http.StatusOK, updated)
+}
+
+// findProjectRiskPoint locates a single risk point within a project's pm_risks
+// by matching the payload `id`. It reuses the project-scoped scroll (bounded by
+// qdrantScrollLimit) rather than a point-id lookup, sharing the read path with
+// the risk lane. found=false with err=nil means the risk simply does not exist.
+func (h *Handler) findProjectRiskPoint(ctx context.Context, project, riskID string) (qdrant.Point, bool, error) {
+	points, err := h.qdrant.Scroll(ctx, qdrantRisksCollection, qdrant.MatchProject(project), qdrantScrollLimit)
+	if err != nil {
+		return qdrant.Point{}, false, err
+	}
+	for _, p := range points {
+		if payloadString(p.Payload, "id") == riskID {
+			return p, true, nil
+		}
+	}
+	return qdrant.Point{}, false, nil
+}
+
+// applyProjectRiskUpdate mutates payload in place with the provided (non-nil)
+// fields, validating each against the risk ladders, bumps updated_at, and
+// returns the resulting risk projection. A provided-but-blank title is rejected
+// (a risk must keep a title); status/likelihood/impact must stay on their
+// canonical ladders even though older stored risks may carry legacy values.
+func applyProjectRiskUpdate(payload map[string]any, input updateProjectRiskRequest) (projectRisk, error) {
+	if payload == nil {
+		return projectRisk{}, fmt.Errorf("risk payload missing")
+	}
+	if input.Title != nil {
+		title := strings.TrimSpace(*input.Title)
+		if title == "" {
+			return projectRisk{}, fmt.Errorf("title cannot be empty")
+		}
+		payload["title"] = title
+	}
+	if input.Likelihood != nil {
+		level := normalizeRiskLevel(*input.Likelihood, "")
+		if !isValidRiskLevel(level) {
+			return projectRisk{}, fmt.Errorf("likelihood must be one of low|medium|high")
+		}
+		payload["likelihood"] = level
+	}
+	if input.Impact != nil {
+		level := normalizeRiskLevel(*input.Impact, "")
+		if !isValidRiskLevel(level) {
+			return projectRisk{}, fmt.Errorf("impact must be one of low|medium|high")
+		}
+		payload["impact"] = level
+	}
+	if input.Status != nil {
+		status := normalizeRiskLevel(*input.Status, "")
+		if !isValidRiskStatus(status) {
+			return projectRisk{}, fmt.Errorf("status must be one of identified|mitigating|accepted|closed")
+		}
+		payload["status"] = status
+	}
+	if input.Mitigation != nil {
+		payload["mitigation"] = strings.TrimSpace(*input.Mitigation)
+	}
+	if input.Owner != nil {
+		payload["owner"] = strings.TrimSpace(*input.Owner)
+	}
+	payload["updated_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+
+	return projectRisk{
+		ID:         payloadString(payload, "id"),
+		Title:      payloadString(payload, "title"),
+		Likelihood: payloadString(payload, "likelihood"),
+		Impact:     payloadString(payload, "impact"),
+		Status:     payloadString(payload, "status"),
+	}, nil
 }
 
 func projectIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {

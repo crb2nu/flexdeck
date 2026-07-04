@@ -50,8 +50,10 @@ behind flags but off by default.
 ## Later
 
 - Library contract version-drift detection in Stack Explorer
-- Projects risk lifecycle from the UI (update/link/close) — the inline
-  risk-capture form for non-API operators shipped 2026-07-04
+- Projects risk lifecycle from the UI: status update/close shipped 2026-07-04
+  (inline per-risk status control over `PATCH /api/projects/{id}/risks/{riskId}`,
+  following the 2026-07-04 inline risk-capture form). Remaining: linking a risk
+  to tasks/issues/decisions.
 
 ## Backlog
 

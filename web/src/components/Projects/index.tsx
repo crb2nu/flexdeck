@@ -3,6 +3,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import {
   projectsApi,
   type ProjectDetail,
+  type ProjectRisk,
   type ProjectSummary,
 } from '../../lib/api/projects';
 import {
@@ -36,7 +37,6 @@ import {
   projectShortName,
   riskLevelTone,
   riskSignature,
-  riskStatusTone,
   summaryConcern,
   summarySignature,
   taskSignature,
@@ -119,6 +119,18 @@ const RISK_STATUS_OPTIONS: SelectOption[] = [
   { value: 'accepted', label: 'Accepted' },
   { value: 'closed', label: 'Closed' },
 ];
+
+// riskStatusOptions returns the canonical status ladder, prepending the current
+// value when it falls outside it. Risks created outside the capture form (e.g.
+// by loom-core's mcp-pm) may carry legacy statuses like "open"; preserving the
+// current value keeps the select showing the true state while still offering the
+// canonical transition targets the backend accepts.
+function riskStatusOptions(current: string): SelectOption[] {
+  if (!current || RISK_STATUS_OPTIONS.some((o) => o.value === current)) {
+    return RISK_STATUS_OPTIONS;
+  }
+  return [{ value: current, label: current }, ...RISK_STATUS_OPTIONS];
+}
 
 // RiskForm is the inline risk-capture form for non-API operators: it POSTs to
 // the project's risks endpoint and calls onCreated so the caller can refresh
@@ -253,6 +265,55 @@ const RiskForm: Component<{ projectId: string; onCreated: () => void }> = (props
         </form>
       </Show>
     </div>
+  );
+};
+
+// RiskRow renders one risk with an inline status control — the write half of
+// the risk lifecycle. Selecting a new status PATCHes the risk and calls
+// onUpdated so the caller can silently refresh the detail lane. Likelihood and
+// impact stay read-only badges; status is the primary operator transition
+// (identify -> mitigate -> accept/close).
+const RiskRow: Component<{
+  projectId: string;
+  risk: ProjectRisk;
+  onUpdated: () => void;
+}> = (props) => {
+  const [saving, setSaving] = createSignal(false);
+  const [error, setError] = createSignal('');
+
+  const changeStatus = async (next: string) => {
+    if (next === props.risk.status) return;
+    setSaving(true);
+    setError('');
+    try {
+      await projectsApi.updateRisk(props.projectId, props.risk.id, { status: next });
+      props.onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update risk.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <li class="flex flex-col gap-1 py-2">
+      <div class="flex items-center gap-3">
+        <span class="min-w-0 flex-1 truncate text-sm text-text-main">{props.risk.title}</span>
+        <Badge tone={riskLevelTone(props.risk.likelihood)}>L: {props.risk.likelihood}</Badge>
+        <Badge tone={riskLevelTone(props.risk.impact)}>I: {props.risk.impact}</Badge>
+        <Select
+          class="w-32 shrink-0"
+          aria-label={`Status for ${props.risk.title}`}
+          options={riskStatusOptions(props.risk.status)}
+          value={props.risk.status}
+          disabled={saving()}
+          onChange={(e) => changeStatus(e.currentTarget.value)}
+        />
+      </div>
+      <Show when={error()}>
+        <p class="text-xs text-status-error" role="alert">{error()}</p>
+      </Show>
+    </li>
   );
 };
 
@@ -536,12 +597,14 @@ const Projects: Component = () => {
                       <ul class="flex flex-col divide-y divide-white/5">
                         <For each={stableRisks()}>
                           {(risk) => (
-                            <li class="flex items-center gap-3 py-2">
-                              <span class="min-w-0 flex-1 truncate text-sm text-text-main">{risk.title}</span>
-                              <Badge tone={riskLevelTone(risk.likelihood)}>L: {risk.likelihood}</Badge>
-                              <Badge tone={riskLevelTone(risk.impact)}>I: {risk.impact}</Badge>
-                              <Badge tone={riskStatusTone(risk.status)}>{risk.status}</Badge>
-                            </li>
+                            <RiskRow
+                              projectId={detailValue()!.project}
+                              risk={risk}
+                              onUpdated={() => {
+                                const id = selectedId();
+                                if (id) loadDetail(id, true);
+                              }}
+                            />
                           )}
                         </For>
                       </ul>

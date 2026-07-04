@@ -26,23 +26,6 @@ export function riskLevelTone(level: string): BadgeTone {
   }
 }
 
-export function riskStatusTone(status: string): BadgeTone {
-  switch (status.toLowerCase()) {
-    case 'open':
-    case 'active':
-      return 'error';
-    case 'mitigating':
-    case 'in_progress':
-      return 'warn';
-    case 'resolved':
-    case 'closed':
-    case 'mitigated':
-      return 'ok';
-    default:
-      return 'default';
-  }
-}
-
 export function taskStatusTone(status: string): BadgeTone {
   switch (status.toLowerCase()) {
     case 'completed':
