@@ -50,7 +50,8 @@ behind flags but off by default.
 ## Later
 
 - Library contract version-drift detection in Stack Explorer
-- Inline Projects UI risk-capture form for non-API operators
+- Projects risk lifecycle from the UI (update/link/close) — the inline
+  risk-capture form for non-API operators shipped 2026-07-04
 
 ## Backlog
 

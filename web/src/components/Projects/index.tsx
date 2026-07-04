@@ -11,10 +11,14 @@ import {
 } from './projects.fixture';
 import {
   Badge,
+  Button,
   EmptyState,
   ErrorState,
+  Input,
   LoadingState,
   PageHeader,
+  Select,
+  type SelectOption,
 } from '../shared';
 import PageScrollBody from '../shared/PageScrollBody';
 import { createPolling } from '../../hooks/createPolling';
@@ -84,6 +88,9 @@ const SectionShell: Component<{
   count: number;
   children: any;
   empty: string;
+  // footer renders below the list regardless of count, so an action (e.g. the
+  // inline risk-capture form) stays reachable even when the lane is empty.
+  footer?: any;
 }> = (props) => (
   <section class="surface flex flex-col gap-3 p-4">
     <div class="flex items-center justify-between">
@@ -96,8 +103,158 @@ const SectionShell: Component<{
     >
       {props.children}
     </Show>
+    <Show when={props.footer}>{props.footer}</Show>
   </section>
 );
+
+const RISK_LEVEL_OPTIONS: SelectOption[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+const RISK_STATUS_OPTIONS: SelectOption[] = [
+  { value: 'identified', label: 'Identified' },
+  { value: 'mitigating', label: 'Mitigating' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'closed', label: 'Closed' },
+];
+
+// RiskForm is the inline risk-capture form for non-API operators: it POSTs to
+// the project's risks endpoint and calls onCreated so the caller can refresh
+// the detail lane. State is component-local and resets when the form closes or
+// the project selection changes (the parent tears this down on reselection).
+const RiskForm: Component<{ projectId: string; onCreated: () => void }> = (props) => {
+  const [open, setOpen] = createSignal(false);
+  const [title, setTitle] = createSignal('');
+  const [likelihood, setLikelihood] = createSignal('medium');
+  const [impact, setImpact] = createSignal('medium');
+  const [status, setStatus] = createSignal('identified');
+  const [owner, setOwner] = createSignal('');
+  const [mitigation, setMitigation] = createSignal('');
+  const [submitting, setSubmitting] = createSignal(false);
+  const [error, setError] = createSignal('');
+
+  const reset = () => {
+    setTitle('');
+    setLikelihood('medium');
+    setImpact('medium');
+    setStatus('identified');
+    setOwner('');
+    setMitigation('');
+    setError('');
+  };
+
+  const close = () => {
+    reset();
+    setOpen(false);
+  };
+
+  const submit = async (event: Event) => {
+    event.preventDefault();
+    const trimmed = title().trim();
+    if (!trimmed) {
+      setError('Title is required.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await projectsApi.createRisk(props.projectId, {
+        title: trimmed,
+        likelihood: likelihood(),
+        impact: impact(),
+        status: status(),
+        owner: owner().trim() || undefined,
+        mitigation: mitigation().trim() || undefined,
+      });
+      reset();
+      setOpen(false);
+      props.onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create risk.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div class="border-t border-white/5 pt-3">
+      <Show
+        when={open()}
+        fallback={
+          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+            + Add risk
+          </Button>
+        }
+      >
+        <form class="flex flex-col gap-3" onSubmit={submit}>
+          <Input
+            aria-label="Risk title"
+            placeholder="Risk title"
+            value={title()}
+            onInput={(e) => setTitle(e.currentTarget.value)}
+            autofocus
+          />
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-text-dim">
+              Likelihood
+              <Select
+                aria-label="Likelihood"
+                options={RISK_LEVEL_OPTIONS}
+                value={likelihood()}
+                onChange={(e) => setLikelihood(e.currentTarget.value)}
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-text-dim">
+              Impact
+              <Select
+                aria-label="Impact"
+                options={RISK_LEVEL_OPTIONS}
+                value={impact()}
+                onChange={(e) => setImpact(e.currentTarget.value)}
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-text-dim">
+              Status
+              <Select
+                aria-label="Status"
+                options={RISK_STATUS_OPTIONS}
+                value={status()}
+                onChange={(e) => setStatus(e.currentTarget.value)}
+              />
+            </label>
+          </div>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              aria-label="Owner"
+              placeholder="Owner (optional)"
+              value={owner()}
+              onInput={(e) => setOwner(e.currentTarget.value)}
+            />
+            <Input
+              aria-label="Mitigation"
+              placeholder="Mitigation (optional)"
+              value={mitigation()}
+              onInput={(e) => setMitigation(e.currentTarget.value)}
+            />
+          </div>
+          <Show when={error()}>
+            <p class="text-xs text-status-error" role="alert">{error()}</p>
+          </Show>
+          <div class="flex items-center gap-2">
+            <Button type="submit" variant="primary" size="sm" loading={submitting()}>
+              Save risk
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={submitting()} onClick={close}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Show>
+    </div>
+  );
+};
 
 const Projects: Component = () => {
   // Picker (left). Snapshot store reconciled each poll so rows don't churn.
@@ -360,8 +517,22 @@ const Projects: Component = () => {
                       </ul>
                     </SectionShell>
 
-                    {/* Risks */}
-                    <SectionShell title="Risks" count={stableRisks().length} empty="No open risks.">
+                    {/* Risks — read lane plus an inline capture form for
+                        non-API operators (POST /api/projects/{id}/risks). */}
+                    <SectionShell
+                      title="Risks"
+                      count={stableRisks().length}
+                      empty="No open risks."
+                      footer={
+                        <RiskForm
+                          projectId={detailValue()!.project}
+                          onCreated={() => {
+                            const id = selectedId();
+                            if (id) loadDetail(id, true);
+                          }}
+                        />
+                      }
+                    >
                       <ul class="flex flex-col divide-y divide-white/5">
                         <For each={stableRisks()}>
                           {(risk) => (

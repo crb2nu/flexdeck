@@ -9,6 +9,7 @@ import { projectsListFixture, projectDetailFixture } from './projects.fixture';
 const projectsMocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
+  createRisk: vi.fn(),
   createPolling: vi.fn(),
 }));
 
@@ -34,6 +35,7 @@ vi.mock('../../lib/api/projects', () => ({
   projectsApi: {
     list: projectsMocks.list,
     get: projectsMocks.get,
+    createRisk: projectsMocks.createRisk,
   },
 }));
 
@@ -55,10 +57,18 @@ describe('Projects page', () => {
   beforeEach(() => {
     projectsMocks.list.mockReset();
     projectsMocks.get.mockReset();
+    projectsMocks.createRisk.mockReset();
     projectsMocks.createPolling.mockReset();
 
     projectsMocks.list.mockResolvedValue(projectsListFixture);
     projectsMocks.get.mockResolvedValue(projectDetailFixture);
+    projectsMocks.createRisk.mockResolvedValue({
+      id: 'risk-new',
+      title: 'DB migration may lock writes',
+      likelihood: 'high',
+      impact: 'high',
+      status: 'identified',
+    });
   });
 
   afterEach(() => {
@@ -184,5 +194,76 @@ describe('Projects page', () => {
       expect(document.body.textContent).toContain('Plan entity MVP + kill-test');
       expect(document.body.textContent).toContain('!747');
     });
+  });
+
+  it('captures a new risk via the inline form', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Risks');
+    });
+
+    // Reveal the inline form (available even when the lane is empty).
+    const addButton = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === '+ Add risk',
+    );
+    expect(addButton).toBeTruthy();
+    addButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const titleInput = document.querySelector(
+      'input[aria-label="Risk title"]',
+    ) as HTMLInputElement | null;
+    expect(titleInput).toBeTruthy();
+    const title = 'DB migration may lock writes';
+    titleInput!.value = title;
+    titleInput!.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: title }),
+    );
+
+    const form = document.querySelector('form');
+    expect(form).toBeTruthy();
+    form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.createRisk).toHaveBeenCalledWith(
+        projectDetailFixture.project,
+        expect.objectContaining({
+          title,
+          likelihood: 'medium',
+          impact: 'medium',
+          status: 'identified',
+        }),
+      );
+    });
+
+    // Successful capture closes the form and refreshes the detail lane
+    // (initial load + post-create refresh).
+    await vi.waitFor(() => {
+      expect(document.querySelector('input[aria-label="Risk title"]')).toBeNull();
+      expect(projectsMocks.get.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('blocks a risk submission with a blank title', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Risks');
+    });
+
+    const addButton = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === '+ Add risk',
+    );
+    expect(addButton).toBeTruthy();
+    addButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const form = document.querySelector('form');
+    expect(form).toBeTruthy();
+    form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Title is required.');
+    });
+    expect(projectsMocks.createRisk).not.toHaveBeenCalled();
   });
 });
