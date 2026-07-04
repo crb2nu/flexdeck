@@ -227,6 +227,7 @@ func registerProjectsRoutes(r chi.Router, h *handlers.Handler, logFunc func(stri
 	r.Get("/api/projects", h.ListProjects)
 	r.Get("/api/projects/{id}", h.GetProject)
 	r.With(logFunc("project.risk.create")).Post("/api/projects/{id}/risks", h.CreateProjectRisk)
+	r.With(logFunc("project.risk.update")).Patch("/api/projects/{id}/risks/{riskId}", h.UpdateProjectRisk)
 }
 
 func registerInfrastructureRoutes(r chi.Router, h *handlers.Handler, logFunc func(string) func(http.Handler) http.Handler, cfg *config.Config) {

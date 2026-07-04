@@ -115,6 +115,19 @@ export interface CreateProjectRiskInput {
   owner?: string;
 }
 
+// UpdateProjectRiskInput is the PATCH /api/projects/{id}/risks/{riskId} body.
+// Every field is optional; the backend leaves omitted fields unchanged, so a
+// status-only transition (e.g. "closed") sends just { status }. Provided values
+// are validated against the same ladders as creation.
+export interface UpdateProjectRiskInput {
+  title?: string;
+  likelihood?: string;
+  impact?: string;
+  status?: string;
+  mitigation?: string;
+  owner?: string;
+}
+
 export const projectsApi = {
   list: () => api<ProjectsList>('/projects'),
   // id is the project path_with_namespace (e.g. "services/flexdeck"); it is
@@ -128,4 +141,15 @@ export const projectsApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  // updateRisk patches an existing risk (status transition or field edit) and
+  // returns the persisted risk (200). Backend invalidates the detail/rollup
+  // caches, so a follow-up detail refresh surfaces the change.
+  updateRisk: (id: string, riskId: string, input: UpdateProjectRiskInput) =>
+    api<ProjectRisk>(
+      `/projects/${encodeURIComponent(id)}/risks/${encodeURIComponent(riskId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+    ),
 };

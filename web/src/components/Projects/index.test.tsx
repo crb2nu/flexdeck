@@ -10,6 +10,7 @@ const projectsMocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   createRisk: vi.fn(),
+  updateRisk: vi.fn(),
   createPolling: vi.fn(),
 }));
 
@@ -36,6 +37,7 @@ vi.mock('../../lib/api/projects', () => ({
     list: projectsMocks.list,
     get: projectsMocks.get,
     createRisk: projectsMocks.createRisk,
+    updateRisk: projectsMocks.updateRisk,
   },
 }));
 
@@ -58,6 +60,7 @@ describe('Projects page', () => {
     projectsMocks.list.mockReset();
     projectsMocks.get.mockReset();
     projectsMocks.createRisk.mockReset();
+    projectsMocks.updateRisk.mockReset();
     projectsMocks.createPolling.mockReset();
 
     projectsMocks.list.mockResolvedValue(projectsListFixture);
@@ -68,6 +71,13 @@ describe('Projects page', () => {
       likelihood: 'high',
       impact: 'high',
       status: 'identified',
+    });
+    projectsMocks.updateRisk.mockResolvedValue({
+      id: 'risk-1',
+      title: 'Backend contract may drift before integration',
+      likelihood: 'medium',
+      impact: 'high',
+      status: 'closed',
     });
   });
 
@@ -265,5 +275,64 @@ describe('Projects page', () => {
       expect(document.body.textContent).toContain('Title is required.');
     });
     expect(projectsMocks.createRisk).not.toHaveBeenCalled();
+  });
+
+  it('transitions a risk status via the inline control', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(
+        'Backend contract may drift before integration',
+      );
+    });
+
+    const statusSelect = document.querySelector(
+      'select[aria-label="Status for Backend contract may drift before integration"]',
+    ) as HTMLSelectElement | null;
+    expect(statusSelect).toBeTruthy();
+    // The legacy "open" status (outside the create ladder) is preserved as the
+    // current selection so the control shows the true state.
+    expect(statusSelect!.value).toBe('open');
+
+    statusSelect!.value = 'closed';
+    statusSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.updateRisk).toHaveBeenCalledWith(
+        projectDetailFixture.project,
+        'risk-1',
+        { status: 'closed' },
+      );
+    });
+
+    // Success triggers a silent detail refresh (initial load + post-update).
+    await vi.waitFor(() => {
+      expect(projectsMocks.get.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('surfaces an inline error when a status update fails', async () => {
+    projectsMocks.updateRisk.mockRejectedValue(new Error('risk store unavailable'));
+
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(
+        'Backend contract may drift before integration',
+      );
+    });
+
+    const statusSelect = document.querySelector(
+      'select[aria-label="Status for Backend contract may drift before integration"]',
+    ) as HTMLSelectElement | null;
+    expect(statusSelect).toBeTruthy();
+
+    statusSelect!.value = 'closed';
+    statusSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.updateRisk).toHaveBeenCalled();
+      expect(document.body.textContent).toContain('risk store unavailable');
+    });
   });
 });
