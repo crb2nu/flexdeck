@@ -235,3 +235,26 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S2] `web/src/components/shared/OperationsSidebarNav.tsx`
   - [S3] `web/src/components/FlexInfer/Workbench.test.tsx`
   - [S4] `web/src/components/shared/OperationsSidebarNav.test.tsx`
+
+### 2026-07-05 (RALPH Slice: Projects Risk Status Lifecycle)
+
+- What changed:
+  - Implemented a narrow local risk status/close lifecycle slice during the RALPH pass.
+  - During ship/rebase, found `origin/main` already contains the broader `feat(projects): link risks to work items` slice (`5c541d3`), including the status lifecycle path, risk links, and editable risk metadata support.
+  - Resolved implementation conflicts to `origin/main` so this branch does not replace the broader merged work with the narrower local variant.
+  - Kept RALPH iteration/handoff notes as a superseded-by-main closeout for future continuity.
+- Why:
+  - The 2026-07-04 risk-capture UI handoff left lifecycle controls as the next operator-visible follow-up. Status transitions/close are the smallest vertical increment that turns captured risks into manageable risks without broad metadata editing.
+- Validation:
+  - Local pre-rebase validation passed: `go test ./internal/qdrant ./internal/api/handlers`
+  - Local pre-rebase validation passed: `npm -C web run test -- --run src/components/Projects/index.test.tsx`
+  - Local pre-rebase validation passed: `npm -C web run typecheck`
+  - Local pre-rebase validation passed: `npm -C web run lint`
+- What’s next:
+  - Consider local mock-mode write fixtures for Projects risk writes.
+  - Smoke the broader risk-linking controls in the deployed Projects lane after the next deploy.
+- Sources:
+  - [S1] `.loom/42-slice-handoff-risk-capture-ui-2026-07-04.md`
+  - [S2] `internal/api/handlers/projects.go`
+  - [S3] `web/src/components/Projects/index.tsx`
+  - [S4] `.loom/42-slice-handoff-risk-linking-2026-07-05.md`
