@@ -99,7 +99,7 @@ lint:backend:
     - if [ -n "$(gofmt -l .)" ]; then echo "Go code is not formatted"; gofmt -d .; exit 1; fi
     - go vet ./...
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'   # any branch — validate feature branches (Mills cross-repo needs a green branch pipeline)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 lint:golangci:
@@ -117,7 +117,7 @@ lint:golangci:
     - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
     - $(go env GOPATH)/bin/golangci-lint run --timeout 5m ./...
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'   # any branch — validate feature branches (Mills cross-repo needs a green branch pipeline)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 lint:frontend:
@@ -134,7 +134,7 @@ lint:frontend:
     - npm ci --prefer-offline
     - npm run lint
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'   # any branch — validate feature branches (Mills cross-repo needs a green branch pipeline)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # ==============================================================================
@@ -163,7 +163,7 @@ test:backend:
       - coverage.out
     expire_in: 2 weeks
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'   # any branch — validate feature branches (Mills cross-repo needs a green branch pipeline)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # Test frontend (typecheck only - fast)
@@ -181,7 +181,7 @@ test:frontend:
     - npm ci --prefer-offline
     - npm run typecheck
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'   # any branch — validate feature branches (Mills cross-repo needs a green branch pipeline)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # ==============================================================================
