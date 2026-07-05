@@ -69,6 +69,13 @@ export const projectDetailFixture: ProjectDetail = {
       likelihood: 'medium',
       impact: 'high',
       status: 'open',
+      links: [
+        {
+          type: 'task',
+          id: 'task-1',
+          label: 'Wire /projects page to backend rollup',
+        },
+      ],
     },
     {
       id: 'risk-2',
@@ -76,6 +83,7 @@ export const projectDetailFixture: ProjectDetail = {
       likelihood: 'low',
       impact: 'medium',
       status: 'mitigating',
+      links: [],
     },
   ],
   decisions: [

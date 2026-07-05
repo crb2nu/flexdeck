@@ -105,7 +105,10 @@ export function milestoneSignature(milestone: ProjectMilestone): string {
 }
 
 export function riskSignature(risk: ProjectRisk): string {
-  return [risk.id, risk.title, risk.likelihood, risk.impact, risk.status].join('|');
+  const links = (risk.links ?? [])
+    .map((link) => [link.type, link.id, link.label ?? '', link.url ?? ''].join(':'))
+    .join(',');
+  return [risk.id, risk.title, risk.likelihood, risk.impact, risk.status, links].join('|');
 }
 
 export function decisionSignature(decision: ProjectDecision): string {
