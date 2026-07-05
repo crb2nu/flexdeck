@@ -48,12 +48,22 @@ export interface ProjectMilestone {
 
 export type RiskLevel = string;
 
+export type ProjectRiskLinkType = 'task' | 'issue' | 'decision';
+
+export interface ProjectRiskLink {
+  type: ProjectRiskLinkType;
+  id: string;
+  label?: string;
+  url?: string;
+}
+
 export interface ProjectRisk {
   id: string;
   title: string;
   likelihood: RiskLevel;
   impact: RiskLevel;
   status: string;
+  links: ProjectRiskLink[];
 }
 
 export interface ProjectDecision {
@@ -126,6 +136,7 @@ export interface UpdateProjectRiskInput {
   status?: string;
   mitigation?: string;
   owner?: string;
+  links?: ProjectRiskLink[];
 }
 
 export const projectsApi = {

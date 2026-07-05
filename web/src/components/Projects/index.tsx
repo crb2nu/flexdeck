@@ -2,9 +2,13 @@ import { Component, For, Show, createEffect, createMemo, createSignal, on } from
 import { createStore, reconcile } from 'solid-js/store';
 import {
   projectsApi,
+  type ProjectDecision,
   type ProjectDetail,
+  type ProjectIssue,
   type ProjectRisk,
+  type ProjectRiskLink,
   type ProjectSummary,
+  type ProjectTask,
 } from '../../lib/api/projects';
 import {
   projectsListFixture,
@@ -130,6 +134,55 @@ function riskStatusOptions(current: string): SelectOption[] {
     return RISK_STATUS_OPTIONS;
   }
   return [{ value: current, label: current }, ...RISK_STATUS_OPTIONS];
+}
+
+type RiskLinkCandidate = ProjectRiskLink & { optionLabel: string };
+
+function riskLinkKey(link: Pick<ProjectRiskLink, 'type' | 'id'>): string {
+  return `${link.type}:${link.id}`;
+}
+
+function riskLinkLabel(link: ProjectRiskLink): string {
+  return link.label?.trim() || link.id;
+}
+
+function riskLinkTypeLabel(link: ProjectRiskLink): string {
+  switch (link.type) {
+    case 'task':
+      return 'Task';
+    case 'issue':
+      return 'Issue';
+    case 'decision':
+      return 'Decision';
+  }
+}
+
+function riskLinkCandidates(
+  tasks: ProjectTask[],
+  issues: ProjectIssue[],
+  decisions: ProjectDecision[],
+): RiskLinkCandidate[] {
+  return [
+    ...tasks.map((task) => ({
+      type: 'task' as const,
+      id: task.id,
+      label: task.title,
+      optionLabel: `Task: ${task.title}`,
+    })),
+    ...issues.map((issue) => ({
+      type: 'issue' as const,
+      id: String(issue.iid),
+      label: `#${issue.iid} ${issue.title}`,
+      url: issue.web_url,
+      optionLabel: `Issue #${issue.iid}: ${issue.title}`,
+    })),
+    ...decisions.map((decision) => ({
+      type: 'decision' as const,
+      id: decision.id,
+      label: decision.title,
+      optionLabel: `Decision: ${decision.title}`,
+    })),
+  ];
 }
 
 // RiskForm is the inline risk-capture form for non-API operators: it POSTs to
@@ -276,10 +329,28 @@ const RiskForm: Component<{ projectId: string; onCreated: () => void }> = (props
 const RiskRow: Component<{
   projectId: string;
   risk: ProjectRisk;
+  tasks: ProjectTask[];
+  issues: ProjectIssue[];
+  decisions: ProjectDecision[];
   onUpdated: () => void;
 }> = (props) => {
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
+  const [selectedLink, setSelectedLink] = createSignal('');
+
+  const links = () => props.risk.links ?? [];
+  const availableLinks = createMemo(() => {
+    const linked = new Set(links().map(riskLinkKey));
+    return riskLinkCandidates(props.tasks, props.issues, props.decisions).filter(
+      (candidate) => !linked.has(riskLinkKey(candidate)),
+    );
+  });
+  const linkOptions = createMemo<SelectOption[]>(() =>
+    availableLinks().map((link) => ({
+      value: riskLinkKey(link),
+      label: link.optionLabel,
+    })),
+  );
 
   const changeStatus = async (next: string) => {
     if (next === props.risk.status) return;
@@ -295,8 +366,37 @@ const RiskRow: Component<{
     }
   };
 
+  const replaceLinks = async (nextLinks: ProjectRiskLink[]) => {
+    setSaving(true);
+    setError('');
+    try {
+      await projectsApi.updateRisk(props.projectId, props.risk.id, { links: nextLinks });
+      setSelectedLink('');
+      props.onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update risk links.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addSelectedLink = () => {
+    const next = availableLinks().find((link) => riskLinkKey(link) === selectedLink());
+    if (!next) return;
+    replaceLinks([...links(), {
+      type: next.type,
+      id: next.id,
+      label: next.label,
+      url: next.url,
+    }]);
+  };
+
+  const removeLink = (target: ProjectRiskLink) => {
+    replaceLinks(links().filter((link) => riskLinkKey(link) !== riskLinkKey(target)));
+  };
+
   return (
-    <li class="flex flex-col gap-1 py-2">
+    <li class="flex flex-col gap-2 py-2">
       <div class="flex items-center gap-3">
         <span class="min-w-0 flex-1 truncate text-sm text-text-main">{props.risk.title}</span>
         <Badge tone={riskLevelTone(props.risk.likelihood)}>L: {props.risk.likelihood}</Badge>
@@ -310,6 +410,59 @@ const RiskRow: Component<{
           onChange={(e) => changeStatus(e.currentTarget.value)}
         />
       </div>
+      <Show when={links().length > 0 || linkOptions().length > 0}>
+        <div class="flex flex-wrap items-center gap-2">
+          <For each={links()}>
+            {(link) => (
+              <span class="inline-flex max-w-full items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-text-dim">
+                <Badge tone="info">{riskLinkTypeLabel(link)}</Badge>
+                <Show
+                  when={link.url}
+                  fallback={<span class="max-w-48 truncate">{riskLinkLabel(link)}</span>}
+                >
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="max-w-48 truncate hover:text-status-ok hover:underline"
+                  >
+                    {riskLinkLabel(link)}
+                  </a>
+                </Show>
+                <button
+                  type="button"
+                  class="rounded px-1 text-text-dim hover:bg-white/10 hover:text-text-main disabled:opacity-40"
+                  aria-label={`Remove ${riskLinkTypeLabel(link).toLowerCase()} link from ${props.risk.title}`}
+                  disabled={saving()}
+                  onClick={() => removeLink(link)}
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </For>
+          <Show when={linkOptions().length > 0}>
+            <Select
+              class="w-56"
+              aria-label={`Link target for ${props.risk.title}`}
+              placeholder="Link task/issue/decision"
+              value={selectedLink()}
+              disabled={saving()}
+              options={linkOptions()}
+              onChange={(e) => setSelectedLink(e.currentTarget.value)}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={saving() || !selectedLink()}
+              onClick={addSelectedLink}
+            >
+              Add link
+            </Button>
+          </Show>
+        </div>
+      </Show>
       <Show when={error()}>
         <p class="text-xs text-status-error" role="alert">{error()}</p>
       </Show>
@@ -600,6 +753,9 @@ const Projects: Component = () => {
                             <RiskRow
                               projectId={detailValue()!.project}
                               risk={risk}
+                              tasks={stableTasks()}
+                              issues={stableIssues()}
+                              decisions={stableDecisions()}
                               onUpdated={() => {
                                 const id = selectedId();
                                 if (id) loadDetail(id, true);

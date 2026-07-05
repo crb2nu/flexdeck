@@ -71,6 +71,7 @@ describe('Projects page', () => {
       likelihood: 'high',
       impact: 'high',
       status: 'identified',
+      links: [],
     });
     projectsMocks.updateRisk.mockResolvedValue({
       id: 'risk-1',
@@ -78,6 +79,7 @@ describe('Projects page', () => {
       likelihood: 'medium',
       impact: 'high',
       status: 'closed',
+      links: projectDetailFixture.risks[0].links,
     });
   });
 
@@ -333,6 +335,71 @@ describe('Projects page', () => {
     await vi.waitFor(() => {
       expect(projectsMocks.updateRisk).toHaveBeenCalled();
       expect(document.body.textContent).toContain('risk store unavailable');
+    });
+  });
+
+  it('links a risk to an existing issue target', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(
+        'Backend contract may drift before integration',
+      );
+    });
+
+    const linkSelect = document.querySelector(
+      'select[aria-label="Link target for Backend contract may drift before integration"]',
+    ) as HTMLSelectElement | null;
+    expect(linkSelect).toBeTruthy();
+    linkSelect!.value = 'issue:42';
+    linkSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const addLink = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Add link',
+    );
+    expect(addLink).toBeTruthy();
+    addLink!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.updateRisk).toHaveBeenCalledWith(
+        projectDetailFixture.project,
+        'risk-1',
+        {
+          links: [
+            projectDetailFixture.risks[0].links[0],
+            {
+              type: 'issue',
+              id: '42',
+              label: '#42 Stack page latency spikes on cold cache',
+              url: projectDetailFixture.issues[0].web_url,
+            },
+          ],
+        },
+      );
+    });
+  });
+
+  it('removes an existing risk link', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(
+        'Backend contract may drift before integration',
+      );
+    });
+
+    const removeLink = document.querySelector(
+      'button[aria-label="Remove task link from Backend contract may drift before integration"]',
+    ) as HTMLButtonElement | null;
+    expect(removeLink).toBeTruthy();
+    removeLink!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.updateRisk).toHaveBeenCalledWith(
+        projectDetailFixture.project,
+        'risk-1',
+        { links: [] },
+      );
     });
   });
 });

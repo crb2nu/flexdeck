@@ -515,6 +515,9 @@ func TestCreateProjectRisk_WritesRiskPayload(t *testing.T) {
 	if risk.ID == "" || risk.Title != "Kill-test coverage gap" || risk.Likelihood != "high" || risk.Impact != "medium" || risk.Status != "identified" {
 		t.Fatalf("risk response = %+v", risk)
 	}
+	if len(risk.Links) != 0 {
+		t.Fatalf("new risk links = %+v, want empty", risk.Links)
+	}
 
 	points := fq.upsertsFor(qdrantRisksCollection)
 	if len(points) != 1 {
@@ -532,6 +535,9 @@ func TestCreateProjectRisk_WritesRiskPayload(t *testing.T) {
 	}
 	if p.Payload["mitigation"] != "add coverage" || p.Payload["owner"] != "codex" {
 		t.Errorf("payload mitigation/owner = %+v", p.Payload)
+	}
+	if links, ok := p.Payload["links"].([]map[string]string); !ok || len(links) != 0 {
+		t.Errorf("payload links = %#v, want empty typed link payload", p.Payload["links"])
 	}
 	if _, ok := p.Payload["created_at"].(string); !ok {
 		t.Errorf("created_at missing from payload: %+v", p.Payload)
@@ -575,6 +581,9 @@ func TestUpdateProjectRisk_TransitionsStatus(t *testing.T) {
 				{ID: "risk-1", Payload: map[string]any{
 					"id": "risk-1", "project": "services/flexdeck", "title": "drift",
 					"likelihood": "medium", "impact": "high", "status": "open",
+					"links": []any{
+						map[string]any{"type": "task", "id": "task-1", "label": "Wire backend"},
+					},
 					"created_at": "2026-07-01T00:00:00Z",
 				}},
 			},
@@ -593,6 +602,9 @@ func TestUpdateProjectRisk_TransitionsStatus(t *testing.T) {
 	if risk.ID != "risk-1" || risk.Status != "closed" {
 		t.Fatalf("risk response = %+v, want id risk-1 status closed", risk)
 	}
+	if len(risk.Links) != 1 || risk.Links[0].ID != "task-1" {
+		t.Fatalf("status-only update lost links: %+v", risk.Links)
+	}
 	// Untouched fields are preserved from the stored payload.
 	if risk.Title != "drift" || risk.Impact != "high" {
 		t.Errorf("unchanged fields lost: %+v", risk)
@@ -609,11 +621,58 @@ func TestUpdateProjectRisk_TransitionsStatus(t *testing.T) {
 	if p.Payload["status"] != "closed" {
 		t.Errorf("payload status = %v, want closed", p.Payload["status"])
 	}
+	if links := projectRiskLinksFromPayload(p.Payload["links"]); len(links) != 1 || links[0].ID != "task-1" {
+		t.Errorf("payload links = %+v, want preserved task link", p.Payload["links"])
+	}
 	if _, ok := p.Payload["updated_at"].(string); !ok {
 		t.Errorf("updated_at missing/not-string: %+v", p.Payload)
 	}
 	if p.Payload["created_at"] != "2026-07-01T00:00:00Z" {
 		t.Errorf("created_at should be preserved, got %v", p.Payload["created_at"])
+	}
+}
+
+func TestUpdateProjectRisk_ReplacesLinks(t *testing.T) {
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantRisksCollection: {
+				{ID: "risk-1", Payload: map[string]any{
+					"id": "risk-1", "project": "services/flexdeck", "title": "drift",
+					"likelihood": "medium", "impact": "high", "status": "mitigating",
+					"links": []any{
+						map[string]any{"type": "task", "id": "old-task", "label": "Old task"},
+					},
+				}},
+			},
+		},
+	}
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	body := `{"links":[{"type":"issue","id":"42","label":"Stack page latency","url":"https://gitlab.example/issues/42"},{"type":"decision","id":"dec-1","label":"Use shared risk store"},{"type":"issue","id":"42","label":"duplicate"}]}`
+	rr := serveRiskUpdate(h, "services/flexdeck", "risk-1", body)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var risk projectRisk
+	if err := json.Unmarshal(rr.Body.Bytes(), &risk); err != nil {
+		t.Fatalf("decode risk: %v", err)
+	}
+	if len(risk.Links) != 2 {
+		t.Fatalf("risk links = %+v, want 2 deduped links", risk.Links)
+	}
+	if risk.Links[0].Type != "issue" || risk.Links[0].ID != "42" || risk.Links[0].URL == "" {
+		t.Errorf("issue link = %+v", risk.Links[0])
+	}
+	if risk.Links[1].Type != "decision" || risk.Links[1].ID != "dec-1" {
+		t.Errorf("decision link = %+v", risk.Links[1])
+	}
+
+	points := fq.upsertsFor(qdrantRisksCollection)
+	if len(points) != 1 {
+		t.Fatalf("upserts = %d, want 1", len(points))
+	}
+	if links := projectRiskLinksFromPayload(points[0].Payload["links"]); len(links) != 2 {
+		t.Errorf("payload links = %+v, want 2", points[0].Payload["links"])
 	}
 }
 
@@ -657,6 +716,8 @@ func TestUpdateProjectRisk_Validation(t *testing.T) {
 		{name: "bad likelihood", body: `{"likelihood":"certain"}`},
 		{name: "bad impact", body: `{"impact":"huge"}`},
 		{name: "blank title", body: `{"title":"  "}`},
+		{name: "bad link type", body: `{"links":[{"type":"plan","id":"plan-1"}]}`},
+		{name: "blank link id", body: `{"links":[{"type":"task","id":"  "}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, fq := newHandler()

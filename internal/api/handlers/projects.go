@@ -96,11 +96,19 @@ type projectMilestone struct {
 
 // projectRisk is one risk from the pm_risks collection.
 type projectRisk struct {
-	ID         string `json:"id"`
-	Title      string `json:"title"`
-	Likelihood string `json:"likelihood"`
-	Impact     string `json:"impact"`
-	Status     string `json:"status"`
+	ID         string            `json:"id"`
+	Title      string            `json:"title"`
+	Likelihood string            `json:"likelihood"`
+	Impact     string            `json:"impact"`
+	Status     string            `json:"status"`
+	Links      []projectRiskLink `json:"links"`
+}
+
+type projectRiskLink struct {
+	Type  string `json:"type"`
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+	URL   string `json:"url,omitempty"`
 }
 
 type createProjectRiskRequest struct {
@@ -116,14 +124,16 @@ type createProjectRiskRequest struct {
 // Every field is a pointer so a nil field is left unchanged: an operator can
 // transition just the status (e.g. mitigating -> closed) without resupplying
 // the whole risk. Provided values are validated against the same ladders as
-// creation. Linking a risk to other entities is intentionally out of scope.
+// creation. Links are replaced as a whole set when provided; omitted links are
+// preserved so status-only updates do not disturb existing references.
 type updateProjectRiskRequest struct {
-	Title      *string `json:"title"`
-	Likelihood *string `json:"likelihood"`
-	Impact     *string `json:"impact"`
-	Mitigation *string `json:"mitigation"`
-	Owner      *string `json:"owner"`
-	Status     *string `json:"status"`
+	Title      *string            `json:"title"`
+	Likelihood *string            `json:"likelihood"`
+	Impact     *string            `json:"impact"`
+	Mitigation *string            `json:"mitigation"`
+	Owner      *string            `json:"owner"`
+	Status     *string            `json:"status"`
+	Links      *[]projectRiskLink `json:"links"`
 }
 
 // projectDecision is one decision (best-effort; see note in fetchDecisions).
@@ -443,6 +453,13 @@ func applyProjectRiskUpdate(payload map[string]any, input updateProjectRiskReque
 	if input.Owner != nil {
 		payload["owner"] = strings.TrimSpace(*input.Owner)
 	}
+	if input.Links != nil {
+		links, err := normalizeProjectRiskLinks(*input.Links)
+		if err != nil {
+			return projectRisk{}, err
+		}
+		payload["links"] = projectRiskLinksPayload(links)
+	}
 	payload["updated_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 
 	return projectRisk{
@@ -451,6 +468,7 @@ func applyProjectRiskUpdate(payload map[string]any, input updateProjectRiskReque
 		Likelihood: payloadString(payload, "likelihood"),
 		Impact:     payloadString(payload, "impact"),
 		Status:     payloadString(payload, "status"),
+		Links:      projectRiskLinksFromPayload(payload["links"]),
 	}, nil
 }
 
@@ -506,6 +524,7 @@ func buildProjectRisk(project string, input createProjectRiskRequest) (projectRi
 		Likelihood: likelihood,
 		Impact:     impact,
 		Status:     status,
+		Links:      []projectRiskLink{},
 	}
 	payload := map[string]any{
 		"id":         risk.ID,
@@ -516,7 +535,7 @@ func buildProjectRisk(project string, input createProjectRiskRequest) (projectRi
 		"mitigation": strings.TrimSpace(input.Mitigation),
 		"owner":      strings.TrimSpace(input.Owner),
 		"status":     risk.Status,
-		"links":      []string{},
+		"links":      projectRiskLinksPayload(risk.Links),
 		"created_at": now,
 		"updated_at": now,
 	}
@@ -546,6 +565,111 @@ func isValidRiskStatus(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizeProjectRiskLinks(input []projectRiskLink) ([]projectRiskLink, error) {
+	if len(input) > 20 {
+		return nil, fmt.Errorf("links cannot contain more than 20 entries")
+	}
+	links := make([]projectRiskLink, 0, len(input))
+	seen := map[string]struct{}{}
+	for _, raw := range input {
+		link := projectRiskLink{
+			Type:  strings.ToLower(strings.TrimSpace(raw.Type)),
+			ID:    strings.TrimSpace(raw.ID),
+			Label: strings.TrimSpace(raw.Label),
+			URL:   strings.TrimSpace(raw.URL),
+		}
+		if !isValidProjectRiskLinkType(link.Type) {
+			return nil, fmt.Errorf("link type must be one of task|issue|decision")
+		}
+		if link.ID == "" {
+			return nil, fmt.Errorf("link id is required")
+		}
+		key := link.Type + ":" + link.ID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+func isValidProjectRiskLinkType(value string) bool {
+	switch value {
+	case "task", "issue", "decision":
+		return true
+	default:
+		return false
+	}
+}
+
+func projectRiskLinksPayload(links []projectRiskLink) []map[string]string {
+	payload := make([]map[string]string, 0, len(links))
+	for _, link := range links {
+		item := map[string]string{
+			"type": link.Type,
+			"id":   link.ID,
+		}
+		if link.Label != "" {
+			item["label"] = link.Label
+		}
+		if link.URL != "" {
+			item["url"] = link.URL
+		}
+		payload = append(payload, item)
+	}
+	return payload
+}
+
+func projectRiskLinksFromPayload(value any) []projectRiskLink {
+	switch items := value.(type) {
+	case []projectRiskLink:
+		links, err := normalizeProjectRiskLinks(items)
+		if err != nil {
+			return []projectRiskLink{}
+		}
+		return links
+	case []map[string]string:
+		links := make([]projectRiskLink, 0, len(items))
+		for _, obj := range items {
+			link := projectRiskLink{
+				Type:  obj["type"],
+				ID:    obj["id"],
+				Label: obj["label"],
+				URL:   obj["url"],
+			}
+			normalized, err := normalizeProjectRiskLinks([]projectRiskLink{link})
+			if err != nil || len(normalized) == 0 {
+				continue
+			}
+			links = append(links, normalized[0])
+		}
+		return links
+	case []any:
+		links := make([]projectRiskLink, 0, len(items))
+		for _, item := range items {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			link := projectRiskLink{
+				Type:  payloadString(obj, "type"),
+				ID:    payloadString(obj, "id"),
+				Label: payloadString(obj, "label"),
+				URL:   payloadString(obj, "url"),
+			}
+			normalized, err := normalizeProjectRiskLinks([]projectRiskLink{link})
+			if err != nil || len(normalized) == 0 {
+				continue
+			}
+			links = append(links, normalized[0])
+		}
+		return links
+	default:
+		return []projectRiskLink{}
 	}
 }
 
@@ -903,6 +1027,7 @@ func (h *Handler) fetchProjectRisks(ctx context.Context, project string) ([]proj
 			Likelihood: payloadString(pl, "likelihood"),
 			Impact:     payloadString(pl, "impact"),
 			Status:     payloadString(pl, "status"),
+			Links:      projectRiskLinksFromPayload(pl["links"]),
 		})
 	}
 	return risks, nil
