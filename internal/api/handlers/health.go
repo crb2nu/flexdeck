@@ -25,6 +25,7 @@ type Feature struct {
 	DirectEntryEnabled bool   `json:"directEntryEnabled,omitempty"`
 	ReadOnly           bool   `json:"readOnly,omitempty"`
 	Mode               string `json:"mode,omitempty"`
+	Reason             string `json:"reason,omitempty"`
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
@@ -102,9 +103,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			// loom_control_plane_mutations dark-launches the slice-6 control
 			// layer. Default off: the Mills view only reveals its admin control
 			// buttons (pause/resume/escalate/kill-switch) when this is true.
-			"loom_control_plane_mutations": {
-				Enabled: h.loomMillsMutationsEnabled(),
-			},
+			"loom_control_plane_mutations": h.loomMillsMutationFeature(),
 			"modelcache": {
 				Enabled: !h.cfg.K8s.Disabled,
 			},
@@ -161,4 +160,37 @@ func (h *Handler) auditAvailable() bool {
 
 func (h *Handler) multiClusterAvailable() bool {
 	return h != nil && h.cfg != nil && !h.cfg.MultiCluster.Disabled && h.clusterRegistry != nil
+}
+
+func (h *Handler) loomMillsMutationFeature() Feature {
+	feature := Feature{
+		Enabled: h.loomMillsMutationsEnabled(),
+		Mode:    "enabled",
+	}
+	if feature.Enabled {
+		return feature
+	}
+	if h == nil || h.cfg == nil {
+		feature.Mode = "unconfigured"
+		feature.Reason = "FlexDeck handler is not configured"
+		return feature
+	}
+	if h.cfg.Mills.Disabled || !h.loomMillsEnabled() {
+		feature.Mode = "operator_disabled"
+		feature.Reason = "Mills operator is disabled or unconfigured"
+		return feature
+	}
+	if !h.cfg.Mills.MutationsEnabled {
+		feature.Mode = "dark_launch"
+		feature.Reason = "LOOM_MILLS_MUTATIONS_ENABLED is false"
+		return feature
+	}
+	if strings.TrimSpace(h.cfg.Mills.AdminToken) == "" || h.millsClient == nil || !h.millsClient.CanMutate() {
+		feature.Mode = "missing_admin_token"
+		feature.Reason = "LOOM_MILLS_ADMIN_TOKEN is not configured"
+		return feature
+	}
+	feature.Mode = "blocked"
+	feature.Reason = "Mills mutations are not ready"
+	return feature
 }

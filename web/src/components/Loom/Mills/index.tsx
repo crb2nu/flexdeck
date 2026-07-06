@@ -20,12 +20,40 @@ import {
   type MillsStatus,
 } from '../../../lib/api/loomMills';
 
+function mutationFeature() {
+  return healthStore.features?.loom_control_plane_mutations;
+}
+
+function isCurrentUserAdmin(): boolean {
+  return currentUser()?.role === 'admin';
+}
+
 // canMutate gates the slice-6 control buttons: both the dark-launch flag
 // (loom_control_plane_mutations, backend default off) and an admin role are
 // required. The backend enforces both independently (503 + 403); this only
 // decides whether to render the controls at all.
 function canMutate(): boolean {
-  return isLoomMutationsEnabled(healthStore.features) && currentUser()?.role === 'admin';
+  return isLoomMutationsEnabled(healthStore.features) && isCurrentUserAdmin();
+}
+
+function mutationReadiness(): { label: string; detail: string; tone: BadgeTone } {
+  const feature = mutationFeature();
+  if (isLoomMutationsEnabled(healthStore.features)) {
+    if (isCurrentUserAdmin()) {
+      return { label: 'Controls enabled', detail: 'Admin controls are available.', tone: 'ok' };
+    }
+    return { label: 'Admin role required', detail: 'Signed-in user is not an admin.', tone: 'warn' };
+  }
+  switch (feature?.mode) {
+    case 'operator_disabled':
+      return { label: 'Operator disabled', detail: feature.reason || 'Mills operator is disabled or unconfigured.', tone: 'default' };
+    case 'missing_admin_token':
+      return { label: 'Admin token missing', detail: feature.reason || 'LOOM_MILLS_ADMIN_TOKEN is not configured.', tone: 'warn' };
+    case 'dark_launch':
+      return { label: 'Dark launch off', detail: feature.reason || 'LOOM_MILLS_MUTATIONS_ENABLED is false.', tone: 'default' };
+    default:
+      return { label: 'Controls unavailable', detail: feature?.reason || 'Mills mutation readiness is unavailable.', tone: 'default' };
+  }
 }
 
 type MillsTab = 'overview' | 'backlog' | 'pipelines' | 'council' | 'eval' | 'squads' | 'audit' | 'policy';
@@ -64,6 +92,19 @@ function pick(o: unknown, keys: string[]): string {
   return '';
 }
 
+const MutationReadiness: Component = () => {
+  const readiness = () => mutationReadiness();
+  return (
+    <div class="surface flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+      <div>
+        <div class="heading-label mb-1">Mutation readiness</div>
+        <div class="text-xs text-text-muted">{readiness().detail}</div>
+      </div>
+      <Badge tone={readiness().tone} size="sm">{readiness().label}</Badge>
+    </div>
+  );
+};
+
 const OverviewPanel: Component = () => {
   const status = createPolledResource<MillsStatus>('mills-status', loomMillsApi.status, { interval: 10000 });
   return (
@@ -75,6 +116,7 @@ const OverviewPanel: Component = () => {
             <MetricTile label="Active pipelines" value={String(s().active_pipeline_runs ?? 0)} />
             <MetricTile label="Blockers" value={String(s().autonomy_blockers?.length ?? 0)} tone={(s().autonomy_blockers?.length ?? 0) > 0 ? 'warn' : 'ok'} />
           </div>
+          <MutationReadiness />
           <Show when={s().capabilities?.length}>
             <div>
               <div class="heading-label mb-1">Capabilities</div>
@@ -388,6 +430,7 @@ const PolicyPanel: Component = () => {
   const [tripped, setTripped] = createSignal(false);
   return (
     <div class="space-y-3">
+      <MutationReadiness />
       <Show when={canMutate()}>
         <div class="surface flex flex-wrap items-center justify-between gap-2 border border-red-500/20 px-3 py-2">
           <div>
