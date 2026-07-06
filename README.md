@@ -295,3 +295,4 @@ flexdeck/
 ## License
 
 MIT
+<!-- mills-s6-demand-killtest: cross-repo demand path proven 2026-07-06 -->
