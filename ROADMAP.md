@@ -28,9 +28,10 @@ Mills read-only operator proxy + view, Fleet/Projects consolidation into the
 Loom section, Flightdeck Stall Board + Context Ledger, and RBAC-gated
 dark-launched Mills operational controls), a shared web-primitives rollout
 across Pipeline/Dashboard/Models/Logs with app-wide scrolling/viewport fixes,
-and the FlexInfer GPU-fleet gaming/node-mode surface. RBAC has been enforcing
-in production since 2026-06-17; Audit Logs and Multi-Cluster are implemented
-behind flags but off by default.
+the FlexInfer GPU-fleet gaming/node-mode surface, and Stack service-to-cluster
+binding health for pod failure reasons plus Jobs/CronJobs. RBAC has been
+enforcing in production since 2026-06-17; Audit Logs and Multi-Cluster are
+implemented behind flags but off by default.
 
 - **Plan store**: `plan-workspace-portfolio-refresh-2026-h2-roadmaps-quality-baselin-f3db23` (active cross-repo plan)
 - **Deployed**: k3s via Flux (flexdeck backend + web frontend)
@@ -43,9 +44,10 @@ behind flags but off by default.
 
 ## Next
 
-- [ ] Enablement decision for the dark-launched, RBAC-gated Mills operational controls (#31)
+- [ ] Enablement decision for the dark-launched, RBAC-gated Mills operational controls (#31):
+  readiness metadata and UI shipped 2026-07-06; remaining decision is whether to
+  configure the admin token and flip `LOOM_MILLS_MUTATIONS_ENABLED`.
 - [ ] Audit Logs / Multi-Cluster enablement decisions (implemented, off by default) (#31)
-- [ ] Pod-level workload health reasons (crashloop/imagepull) + Jobs/CronJobs in service-to-cluster binding (#31)
 
 ## Later
 

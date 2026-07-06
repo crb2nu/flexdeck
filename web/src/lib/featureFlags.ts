@@ -8,6 +8,7 @@ export interface FeatureState {
   directEntryEnabled?: boolean;
   readOnly?: boolean;
   mode?: string;
+  reason?: string;
 }
 
 export type FeatureMap = Record<string, FeatureState | undefined>;

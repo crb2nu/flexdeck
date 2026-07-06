@@ -9,6 +9,7 @@ interface Feature {
   directEntryEnabled?: boolean;
   readOnly?: boolean;
   mode?: string;
+  reason?: string;
 }
 
 interface HealthState {

@@ -15,6 +15,20 @@ Record decisions as they are made, with date, rationale, and sources.
 
 ---
 
+### 2026-07-06: Keep Mills mutations dark-launched while exposing readiness metadata
+
+- Decision: Add non-secret readiness metadata (`mode` and `reason`) to the existing `loom_control_plane_mutations` health feature and surface it in the Mills UI, instead of flipping the mutation flag or adding another endpoint.
+- Rationale: The roadmap's enablement decision needed explicit evidence about which prerequisite is missing (operator disabled, dark-launch flag off, missing admin token, or non-admin browser user). Reusing `/api/health` preserves the existing feature-flag contract while making the decision visible to operators.
+- Alternatives considered:
+  - Enable `LOOM_MILLS_MUTATIONS_ENABLED` during the slice (too risky; this is an operations decision).
+  - Add a dedicated readiness endpoint (more surface area than needed for configuration-only metadata).
+  - Keep controls silently hidden (leaves operators guessing why the dark launch is still inactive).
+- Consequences: Mills controls remain fail-safe and admin-only. The UI now distinguishes backend readiness from the user's RBAC role, but upstream admin-token validity is still only proven when an action is attempted.
+- Sources:
+  - [S1] `internal/api/handlers/health.go`
+  - [S2] `web/src/components/Loom/Mills/index.tsx`
+  - [S3] `.loom/31-iteration-plan-mills-mutation-readiness-2026-07-06.md`
+
 ### 2026-06-29: Capture Project risks directly into the shared `pm_risks` store
 
 - Decision: Add an authenticated FlexDeck `POST /api/projects/{id}/risks` endpoint that writes Qdrant points to the shared `pm_risks` collection using the loom-core `mcp-pm` payload contract.

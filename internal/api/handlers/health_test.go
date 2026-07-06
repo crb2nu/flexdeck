@@ -9,6 +9,7 @@ import (
 
 	"github.com/flexinfer/flexdeck/internal/agents"
 	"github.com/flexinfer/flexdeck/internal/config"
+	"github.com/flexinfer/flexdeck/internal/loomupstream"
 )
 
 func TestHealthLoomHUDDisabledWhenPullURLEmpty(t *testing.T) {
@@ -210,5 +211,88 @@ func TestHealthLoomHUDReportsDirectEntryContract(t *testing.T) {
 	}
 	if loom.DirectURL != "https://hud.flexinfer.ai" {
 		t.Fatalf("expected directUrl to match configured URL, got %q", loom.DirectURL)
+	}
+}
+
+func TestHealthReportsMillsMutationReadiness(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		mills      config.MillsConfig
+		wantOn     bool
+		wantMode   string
+		wantReason string
+	}{
+		{
+			name: "operator disabled",
+			mills: config.MillsConfig{
+				Disabled:         true,
+				URL:              "http://mills.example",
+				AdminToken:       "secret",
+				MutationsEnabled: true,
+			},
+			wantMode:   "operator_disabled",
+			wantReason: "Mills operator is disabled or unconfigured",
+		},
+		{
+			name: "dark launch flag off",
+			mills: config.MillsConfig{
+				URL:        "http://mills.example",
+				AdminToken: "secret",
+			},
+			wantMode:   "dark_launch",
+			wantReason: "LOOM_MILLS_MUTATIONS_ENABLED is false",
+		},
+		{
+			name: "missing admin token",
+			mills: config.MillsConfig{
+				URL:              "http://mills.example",
+				MutationsEnabled: true,
+			},
+			wantMode:   "missing_admin_token",
+			wantReason: "LOOM_MILLS_ADMIN_TOKEN is not configured",
+		},
+		{
+			name: "ready",
+			mills: config.MillsConfig{
+				URL:              "http://mills.example",
+				AdminToken:       "secret",
+				MutationsEnabled: true,
+			},
+			wantOn:   true,
+			wantMode: "enabled",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := &Handler{
+				cfg:         &config.Config{Mills: tt.mills},
+				millsClient: loomupstream.NewMillsClient(tt.mills.URL, tt.mills.AdminToken, nil),
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+			rr := httptest.NewRecorder()
+			h.Health(rr, req)
+
+			var resp HealthResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			got := resp.Features["loom_control_plane_mutations"]
+			if got.Enabled != tt.wantOn {
+				t.Fatalf("enabled = %v, want %v (feature=%+v)", got.Enabled, tt.wantOn, got)
+			}
+			if got.Mode != tt.wantMode {
+				t.Fatalf("mode = %q, want %q (feature=%+v)", got.Mode, tt.wantMode, got)
+			}
+			if got.Reason != tt.wantReason {
+				t.Fatalf("reason = %q, want %q (feature=%+v)", got.Reason, tt.wantReason, got)
+			}
+		})
 	}
 }
