@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/flexinfer/flexdeck/internal/agents"
+	"github.com/flexinfer/flexdeck/internal/audit"
+	"github.com/flexinfer/flexdeck/internal/cluster"
 	"github.com/flexinfer/flexdeck/internal/config"
 	"github.com/flexinfer/flexdeck/internal/loomupstream"
 )
@@ -168,8 +171,14 @@ func TestHealthFeatureFlagsReflectRuntimeAvailability(t *testing.T) {
 	if resp.Features["audit"].Enabled {
 		t.Fatal("expected audit.enabled=false when AUDIT_DISABLED=true")
 	}
+	if resp.Features["audit"].Mode != "disabled" {
+		t.Fatalf("expected audit.mode=disabled, got %q", resp.Features["audit"].Mode)
+	}
 	if resp.Features["multi_cluster"].Enabled {
 		t.Fatal("expected multi_cluster.enabled=false when registry is unavailable")
+	}
+	if resp.Features["multi_cluster"].Mode != "missing_registry" {
+		t.Fatalf("expected multi_cluster.mode=missing_registry, got %q", resp.Features["multi_cluster"].Mode)
 	}
 }
 
@@ -292,6 +301,102 @@ func TestHealthReportsMillsMutationReadiness(t *testing.T) {
 			}
 			if got.Reason != tt.wantReason {
 				t.Fatalf("reason = %q, want %q (feature=%+v)", got.Reason, tt.wantReason, got)
+			}
+		})
+	}
+}
+
+func TestHealthReportsAuditAndMultiClusterReadiness(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	readyClusters, err := cluster.NewRegistry(
+		config.MultiClusterConfig{RegistryPath: filepath.Join(tempDir, "clusters.json")},
+		config.K8sConfig{Disabled: true},
+	)
+	if err != nil {
+		t.Fatalf("create cluster registry: %v", err)
+	}
+
+	tests := []struct {
+		name                   string
+		cfg                    config.Config
+		hasAuditStore          bool
+		hasClusterRegistry     bool
+		wantAuditOn            bool
+		wantAuditMode          string
+		wantAuditReason        string
+		wantMultiClusterOn     bool
+		wantMultiClusterMode   string
+		wantMultiClusterReason string
+	}{
+		{
+			name: "flags disabled",
+			cfg: config.Config{
+				Audit:        config.AuditConfig{Disabled: true},
+				MultiCluster: config.MultiClusterConfig{Disabled: true},
+			},
+			wantAuditMode:          "disabled",
+			wantAuditReason:        "AUDIT_DISABLED is true",
+			wantMultiClusterMode:   "disabled",
+			wantMultiClusterReason: "MULTICLUSTER_DISABLED is true",
+		},
+		{
+			name: "dependencies missing",
+			cfg: config.Config{
+				Audit:        config.AuditConfig{Disabled: false},
+				MultiCluster: config.MultiClusterConfig{Disabled: false},
+			},
+			wantAuditMode:          "missing_store",
+			wantAuditReason:        "Audit store is not configured",
+			wantMultiClusterMode:   "missing_registry",
+			wantMultiClusterReason: "Cluster registry is not configured",
+		},
+		{
+			name: "ready",
+			cfg: config.Config{
+				Audit:        config.AuditConfig{Disabled: false},
+				MultiCluster: config.MultiClusterConfig{Disabled: false},
+			},
+			hasAuditStore:        true,
+			hasClusterRegistry:   true,
+			wantAuditOn:          true,
+			wantAuditMode:        "enabled",
+			wantMultiClusterOn:   true,
+			wantMultiClusterMode: "enabled",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := &Handler{cfg: &tt.cfg}
+			if tt.hasAuditStore {
+				h.auditStore = audit.NewStore(nil, 7)
+			}
+			if tt.hasClusterRegistry {
+				h.clusterRegistry = readyClusters
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+			rr := httptest.NewRecorder()
+			h.Health(rr, req)
+
+			var resp HealthResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			audit := resp.Features["audit"]
+			if audit.Enabled != tt.wantAuditOn || audit.Mode != tt.wantAuditMode || audit.Reason != tt.wantAuditReason {
+				t.Fatalf("audit feature = %+v, want enabled=%v mode=%q reason=%q", audit, tt.wantAuditOn, tt.wantAuditMode, tt.wantAuditReason)
+			}
+
+			multiCluster := resp.Features["multi_cluster"]
+			if multiCluster.Enabled != tt.wantMultiClusterOn || multiCluster.Mode != tt.wantMultiClusterMode || multiCluster.Reason != tt.wantMultiClusterReason {
+				t.Fatalf("multi_cluster feature = %+v, want enabled=%v mode=%q reason=%q", multiCluster, tt.wantMultiClusterOn, tt.wantMultiClusterMode, tt.wantMultiClusterReason)
 			}
 		})
 	}

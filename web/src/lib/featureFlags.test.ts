@@ -24,6 +24,17 @@ describe('featureFlags', () => {
     expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(false);
   });
 
+  it('shows Admin nav item when disabled admin features publish readiness metadata', () => {
+    const features: FeatureMap = {
+      rbac: { enabled: false },
+      audit: { enabled: false, mode: 'disabled', reason: 'AUDIT_DISABLED is true' },
+      multi_cluster: { enabled: false, mode: 'missing_registry', reason: 'Cluster registry is not configured' },
+    };
+
+    expect(isAdminEnabled(features)).toBe(true);
+    expect(buildNavItems(features).some((item) => item.path === '/admin')).toBe(true);
+  });
+
   it('dark-launches loom mutations: off by default, on only when the backend publishes it', () => {
     // Undefined (backend hasn't published it) counts as OFF — the safe default.
     expect(isLoomMutationsEnabled({})).toBe(false);
