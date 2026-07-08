@@ -1,14 +1,44 @@
-import { Component, createEffect, createSignal, Show, lazy, Suspense } from "solid-js";
+import { Component, createEffect, createMemo, createSignal, For, Show, lazy, Suspense } from "solid-js";
 import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
 import ClustersTab from "./ClustersTab";
-import { getAdminTabs, getDefaultAdminTab } from "../../lib/featureFlags";
-import { PageHeader, TabBar, LoadingState } from "../shared";
+import { getAdminTabs, getDefaultAdminTab, type FeatureState } from "../../lib/featureFlags";
+import { Badge, PageHeader, TabBar, LoadingState, type BadgeTone } from "../shared";
 
 const FlexInferTab = lazy(() => import("./FlexInferTab"));
 
 type Tab = "users" | "audit" | "clusters" | "flexinfer";
+
+interface ReadinessItem {
+  key: "audit" | "multi_cluster";
+  label: string;
+  feature?: FeatureState;
+}
+
+function readinessBadge(feature: FeatureState | undefined): { label: string; tone: BadgeTone } {
+  if (feature?.enabled) return { label: "Ready", tone: "ok" };
+  switch (feature?.mode) {
+    case "disabled":
+      return { label: "Flag off", tone: "default" };
+    case "missing_store":
+      return { label: "Store missing", tone: "warn" };
+    case "missing_registry":
+      return { label: "Registry missing", tone: "warn" };
+    case "unconfigured":
+      return { label: "Unconfigured", tone: "warn" };
+    case "blocked":
+      return { label: "Blocked", tone: "warn" };
+    default:
+      return { label: "Unavailable", tone: "default" };
+  }
+}
+
+function readinessDetail(item: ReadinessItem): string {
+  if (item.feature?.reason) return item.feature.reason;
+  if (item.feature?.enabled) return "Ready";
+  return `${item.label} is unavailable`;
+}
 
 const Admin: Component = () => {
   const rbacEnabled = () => healthStore.features?.rbac?.enabled ?? false;
@@ -22,6 +52,13 @@ const Admin: Component = () => {
   const [activeTab, setActiveTab] = createSignal<Tab>(defaultTab());
 
   const tabs = () => getAdminTabs(healthStore.features || {});
+  const readinessItems = createMemo<ReadinessItem[]>(() => {
+    const items: ReadinessItem[] = [
+      { key: "audit", label: "Audit Logs", feature: healthStore.features?.audit },
+      { key: "multi_cluster", label: "Multi-Cluster", feature: healthStore.features?.multi_cluster },
+    ];
+    return items.filter((item) => item.feature && !item.feature.enabled && (item.feature.mode || item.feature.reason));
+  });
 
   createEffect(() => {
     const enabledTabs = tabs();
@@ -37,12 +74,34 @@ const Admin: Component = () => {
       {/* Page header */}
       <PageHeader title="Admin" accent="Panel" />
 
-      {/* Tab bar */}
-      <TabBar
-        tabs={tabs().map(t => ({ id: t.id, label: t.label }))}
-        active={activeTab()}
-        onChange={setActiveTab}
-      />
+      <Show when={readinessItems().length > 0}>
+        <div class="grid gap-2 md:grid-cols-2">
+          <For each={readinessItems()}>
+            {(item) => {
+              const badge = () => readinessBadge(item.feature);
+              return (
+                <div class="surface flex min-h-20 items-center justify-between gap-3 px-4 py-3">
+                  <div class="min-w-0">
+                    <div class="heading-label mb-1">{item.label}</div>
+                    <div class="truncate text-xs text-text-muted" title={readinessDetail(item)}>
+                      {readinessDetail(item)}
+                    </div>
+                  </div>
+                  <Badge tone={badge().tone} size="sm">{badge().label}</Badge>
+                </div>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={tabs().length > 0}>
+        <TabBar
+          tabs={tabs().map(t => ({ id: t.id, label: t.label }))}
+          active={activeTab()}
+          onChange={setActiveTab}
+        />
+      </Show>
 
       {/* Tab content */}
       <div class="min-h-0">

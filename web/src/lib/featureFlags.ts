@@ -53,6 +53,11 @@ function enabled(features: FeatureMap, key: string): boolean {
   return features[key]?.enabled ?? false;
 }
 
+function hasReadiness(features: FeatureMap, key: string): boolean {
+  const feature = features[key];
+  return feature?.enabled === true || Boolean(feature?.mode || feature?.reason);
+}
+
 // Defaults ON: a flag that the backend has not yet published (undefined)
 // counts as enabled. Used for in-flight features that ship the frontend
 // ahead of (or alongside) the backend flag.
@@ -87,7 +92,7 @@ export function isLoomMutationsEnabled(features: FeatureMap): boolean {
 }
 
 export function isAdminEnabled(features: FeatureMap): boolean {
-  return enabled(features, 'rbac') || enabled(features, 'audit') || enabled(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
+  return enabled(features, 'rbac') || hasReadiness(features, 'audit') || hasReadiness(features, 'multi_cluster') || enabled(features, 'flexinfer_proxy');
 }
 
 export function buildNavItems(features: FeatureMap): NavItem[] {

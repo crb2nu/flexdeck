@@ -124,4 +124,22 @@ describe('Admin', () => {
     expect(document.querySelector('[data-testid="audit-tab"]')).toBeFalsy();
     expect(document.querySelector('[data-testid="clusters-tab"]')).toBeFalsy();
   });
+
+  it('surfaces readiness cards when Audit and Multi-Cluster are disabled with reasons', () => {
+    cleanup = mount({
+      rbac: { enabled: false },
+      audit: { enabled: false, mode: 'disabled', reason: 'AUDIT_DISABLED is true' },
+      multi_cluster: { enabled: false, mode: 'missing_registry', reason: 'Cluster registry is not configured' },
+      flexinfer_proxy: { enabled: false },
+    });
+
+    expect(pageText()).toContain('Audit Logs');
+    expect(pageText()).toContain('AUDIT_DISABLED is true');
+    expect(pageText()).toContain('Flag off');
+    expect(pageText()).toContain('Multi-Cluster');
+    expect(pageText()).toContain('Cluster registry is not configured');
+    expect(pageText()).toContain('Registry missing');
+    expect(document.querySelector('[data-testid="audit-tab"]')).toBeFalsy();
+    expect(document.querySelector('[data-testid="clusters-tab"]')).toBeFalsy();
+  });
 });

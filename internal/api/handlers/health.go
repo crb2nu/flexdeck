@@ -94,12 +94,8 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 			"rbac": {
 				Enabled: h.rbacAvailable(),
 			},
-			"audit": {
-				Enabled: h.auditAvailable(),
-			},
-			"multi_cluster": {
-				Enabled: h.multiClusterAvailable(),
-			},
+			"audit":         h.auditFeature(),
+			"multi_cluster": h.multiClusterFeature(),
 			// loom_control_plane_mutations dark-launches the slice-6 control
 			// layer. Default off: the Mills view only reveals its admin control
 			// buttons (pause/resume/escalate/kill-switch) when this is true.
@@ -160,6 +156,62 @@ func (h *Handler) auditAvailable() bool {
 
 func (h *Handler) multiClusterAvailable() bool {
 	return h != nil && h.cfg != nil && !h.cfg.MultiCluster.Disabled && h.clusterRegistry != nil
+}
+
+func (h *Handler) auditFeature() Feature {
+	feature := Feature{
+		Enabled: h.auditAvailable(),
+		Mode:    "enabled",
+	}
+	if feature.Enabled {
+		return feature
+	}
+	if h == nil || h.cfg == nil {
+		feature.Mode = "unconfigured"
+		feature.Reason = "FlexDeck handler is not configured"
+		return feature
+	}
+	if h.cfg.Audit.Disabled {
+		feature.Mode = "disabled"
+		feature.Reason = "AUDIT_DISABLED is true"
+		return feature
+	}
+	if h.auditStore == nil {
+		feature.Mode = "missing_store"
+		feature.Reason = "Audit store is not configured"
+		return feature
+	}
+	feature.Mode = "blocked"
+	feature.Reason = "Audit logs are not ready"
+	return feature
+}
+
+func (h *Handler) multiClusterFeature() Feature {
+	feature := Feature{
+		Enabled: h.multiClusterAvailable(),
+		Mode:    "enabled",
+	}
+	if feature.Enabled {
+		return feature
+	}
+	if h == nil || h.cfg == nil {
+		feature.Mode = "unconfigured"
+		feature.Reason = "FlexDeck handler is not configured"
+		return feature
+	}
+	if h.cfg.MultiCluster.Disabled {
+		feature.Mode = "disabled"
+		feature.Reason = "MULTICLUSTER_DISABLED is true"
+		return feature
+	}
+	if h.clusterRegistry == nil {
+		feature.Mode = "missing_registry"
+		feature.Reason = "Cluster registry is not configured"
+		return feature
+	}
+	feature.Mode = "blocked"
+	feature.Reason = "Multi-cluster is not ready"
+	return feature
 }
 
 func (h *Handler) loomMillsMutationFeature() Feature {
