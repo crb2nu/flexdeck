@@ -4,6 +4,7 @@ import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader,
 import type { SelectOption, TabDef } from '../shared';
 import {
   compareByBindingConcern,
+  contractDriftLabel,
   formatBucketLabel,
   getDocsCount,
   getRepoReadiness,
@@ -15,13 +16,16 @@ import {
   libAdoptionLabel,
   matchesAdoptionFilter,
   matchesBindingFilter,
+  matchesContractFilter,
   repositoryMatches,
   summarizeAdoption,
   summarizeBinding,
+  summarizeContractDrift,
   summarizeRemote,
   type StackAdoptionFilter,
   type StackBindingFilter,
   type StackBucketFilter,
+  type StackContractFilter,
   type StackReadinessFilter,
 } from './stackUtils';
 
@@ -69,6 +73,7 @@ const Stack: Component = () => {
   const [readinessFilter, setReadinessFilter] = createSignal<StackReadinessFilter>('all');
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
   const [adoptionFilter, setAdoptionFilter] = createSignal<StackAdoptionFilter>('all');
+  const [contractFilter, setContractFilter] = createSignal<StackContractFilter>('all');
   const [languageFilter, setLanguageFilter] = createSignal('all');
 
   const loadInventory = async (silent = false) => {
@@ -117,6 +122,7 @@ const Stack: Component = () => {
     const inferred = repos.filter(isInferredBinding).length;
 
     const adoption = summarizeAdoption(repos);
+    const contracts = summarizeContractDrift(repos);
 
     return {
       total,
@@ -135,6 +141,10 @@ const Stack: Component = () => {
       libsUnadopted: adoption.unadopted,
       libCoverage: adoption.coveragePct,
       unadoptedNames: adoption.unadoptedNames,
+      contractChecked: contracts.checked,
+      contractDrifts: contracts.drifted,
+      contractUnknown: contracts.unknown,
+      contractDriftedRepos: contracts.driftedRepos,
     };
   });
 
@@ -161,6 +171,12 @@ const Stack: Component = () => {
     { id: 'all', label: 'Any', count: summary().libs },
     { id: 'adopted', label: 'Adopted', count: summary().libsAdopted },
     { id: 'unadopted', label: 'No adopters', count: summary().libsUnadopted },
+  ]);
+
+  const contractTabs = createMemo((): TabDef<StackContractFilter>[] => [
+    { id: 'all', label: 'Any', count: summary().total },
+    { id: 'drift', label: 'Drift', count: summary().contractDriftedRepos },
+    { id: 'unknown', label: 'Unknown', count: summary().contractUnknown },
   ]);
 
   const languageOptions = createMemo<SelectOption[]>(() => {
@@ -193,6 +209,7 @@ const Stack: Component = () => {
     const selectedReadiness = readinessFilter();
     const selectedBinding = bindingFilter();
     const selectedAdoption = adoptionFilter();
+    const selectedContract = contractFilter();
     const selectedLanguage = languageFilter();
     const search = query();
 
@@ -202,6 +219,7 @@ const Stack: Component = () => {
       .filter((repo) => selectedReadiness === 'all' || getRepoReadiness(repo).level === selectedReadiness)
       .filter((repo) => matchesBindingFilter(repo, selectedBinding))
       .filter((repo) => matchesAdoptionFilter(repo, selectedAdoption))
+      .filter((repo) => matchesContractFilter(repo, selectedContract))
       .filter((repo) => repositoryMatches(repo, search))
       .sort(compareByBindingConcern);
   });
@@ -238,6 +256,7 @@ const Stack: Component = () => {
     readinessFilter() !== 'all' ||
     bindingFilter() !== 'all' ||
     adoptionFilter() !== 'all' ||
+    contractFilter() !== 'all' ||
     languageFilter() !== 'all',
   );
 
@@ -247,6 +266,7 @@ const Stack: Component = () => {
     setReadinessFilter('all');
     setBindingFilter('all');
     setAdoptionFilter('all');
+    setContractFilter('all');
     setLanguageFilter('all');
   };
 
@@ -307,7 +327,7 @@ const Stack: Component = () => {
               </div>
             </Show>
 
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <SummaryTile
                 label="Repositories"
                 value={summary().total}
@@ -327,6 +347,12 @@ const Stack: Component = () => {
                 value={`${summary().libCoverage}%`}
                 sub={summary().libsUnadopted > 0 ? `${summary().libsUnadopted} with no adopters` : 'all libs adopted'}
                 tone={summary().libsUnadopted > 0 ? 'warn' : 'ok'}
+              />
+              <SummaryTile
+                label="Version drift"
+                value={summary().contractDrifts}
+                sub={`${summary().contractChecked} contracts checked`}
+                tone={summary().contractDrifts > 0 ? 'warn' : summary().contractChecked > 0 ? 'ok' : 'default'}
               />
               <SummaryTile label="CI manifests" value={summary().ci} sub="metadata only" />
               <SummaryTile label="Docs coverage" value={`${summary().docsCoverage}%`} sub="AGENTS/README/ROADMAP/LOOM" />
@@ -367,6 +393,10 @@ const Stack: Component = () => {
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="heading-label">Adoption</span>
                   <TabBar tabs={adoptionTabs()} active={adoptionFilter()} onChange={setAdoptionFilter} />
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="heading-label">Contracts</span>
+                  <TabBar tabs={contractTabs()} active={contractFilter()} onChange={setContractFilter} />
                 </div>
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
@@ -429,6 +459,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
   const remote = createMemo(() => summarizeRemote(props.repo));
   const binding = createMemo(() => summarizeBinding(props.repo));
   const dependsOn = createMemo(() => props.repo.dependsOn ?? []);
+  const libraryContracts = createMemo(() => props.repo.libraryContracts ?? []);
   const isLib = createMemo(() => props.repo.bucket === 'libs');
   const manifestLabels = createMemo(() => (props.repo.manifests ?? []).map((manifest) => manifest.path));
   const packageManagers = createMemo(() => props.repo.packageManagers ?? []);
@@ -569,6 +600,36 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
           <div class="flex min-w-0 items-center gap-2">
             <span class="heading-label min-w-[58px]">Uses libs</span>
             <span class="truncate font-mono text-text-muted" title={dependsOn().join(', ')}>{dependsOn().join(', ')}</span>
+          </div>
+        </Show>
+        <Show when={libraryContracts().length > 0}>
+          <div class="flex min-w-0 items-start gap-2">
+            <span class="heading-label mt-1 min-w-[58px]">Contracts</span>
+            <div class="flex min-w-0 flex-1 flex-col gap-1">
+              <For each={libraryContracts().slice(0, 3)}>
+                {(contract) => (
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span
+                      class={`flex-shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                        contract.status === 'drift'
+                          ? 'border-status-warn/30 bg-status-warn/10 text-status-warn'
+                          : contract.status === 'aligned'
+                            ? 'border-status-ok/20 bg-status-ok/10 text-status-ok'
+                            : 'border-white/10 bg-white/5 text-text-dim/70'
+                      }`}
+                    >
+                      {contract.status}
+                    </span>
+                    <span class="truncate font-mono text-text-muted" title={`${contractDriftLabel(contract)} (${contract.manifest})`}>
+                      {contractDriftLabel(contract)}
+                    </span>
+                  </div>
+                )}
+              </For>
+              <Show when={libraryContracts().length > 3}>
+                <span class="text-text-dim/70">+{libraryContracts().length - 3} more</span>
+              </Show>
+            </div>
           </div>
         </Show>
         <Show when={isLib()}>

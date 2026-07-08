@@ -1,9 +1,10 @@
-import type { WorkspaceRepository, WorkspaceWorkloadStatus } from '../../lib/api';
+import type { WorkspaceLibraryContract, WorkspaceRepository, WorkspaceWorkloadStatus } from '../../lib/api';
 
 export type StackBucketFilter = 'all' | 'services' | 'libs';
 export type StackReadinessFilter = 'all' | 'ready' | 'attention';
 export type StackBindingFilter = 'all' | 'verified' | 'degraded' | 'inferred';
 export type StackAdoptionFilter = 'all' | 'adopted' | 'unadopted';
+export type StackContractFilter = 'all' | 'drift' | 'unknown';
 export type RepoReadinessLevel = 'ready' | 'attention';
 
 export interface RepoReadiness {
@@ -65,6 +66,13 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     ...(repo.dependsOn ?? []),
     ...(repo.usedBy ?? []),
     ...(repo.usedByLibs ?? []),
+    ...(repo.libraryContracts ?? []).flatMap((contract) => [
+      contract.library,
+      contract.manifest,
+      contract.requirement ?? '',
+      contract.currentVersion ?? '',
+      contract.status,
+    ]),
   ];
 
   return searchable.some((value) => value.toLowerCase().includes(normalizedQuery));
@@ -143,6 +151,48 @@ export function matchesAdoptionFilter(repo: WorkspaceRepository, filter: StackAd
     default:
       return true;
   }
+}
+
+export interface ContractSummary {
+  checked: number;
+  drifted: number;
+  unknown: number;
+  driftedRepos: number;
+}
+
+export function hasContractDrift(repo: WorkspaceRepository): boolean {
+  return (repo.libraryContracts ?? []).some((contract) => contract.status === 'drift');
+}
+
+export function hasUnknownContract(repo: WorkspaceRepository): boolean {
+  return (repo.libraryContracts ?? []).some((contract) => contract.status === 'unknown');
+}
+
+export function summarizeContractDrift(repos: WorkspaceRepository[]): ContractSummary {
+  const contracts = repos.flatMap((repo) => repo.libraryContracts ?? []);
+  return {
+    checked: contracts.length,
+    drifted: contracts.filter((contract) => contract.status === 'drift').length,
+    unknown: contracts.filter((contract) => contract.status === 'unknown').length,
+    driftedRepos: repos.filter(hasContractDrift).length,
+  };
+}
+
+export function matchesContractFilter(repo: WorkspaceRepository, filter: StackContractFilter): boolean {
+  switch (filter) {
+    case 'drift':
+      return hasContractDrift(repo);
+    case 'unknown':
+      return hasUnknownContract(repo);
+    default:
+      return true;
+  }
+}
+
+export function contractDriftLabel(contract: WorkspaceLibraryContract): string {
+  const requirement = contract.requirement?.trim() || '?';
+  const current = contract.currentVersion?.trim() || '?';
+  return `${contract.library} ${requirement} -> ${current}`;
 }
 
 export function hasManifest(repo: WorkspaceRepository, manifestType: string): boolean {

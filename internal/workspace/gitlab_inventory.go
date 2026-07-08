@@ -150,21 +150,30 @@ func ScanGitLab(ctx context.Context, opts GitLabScanOptions) (*Inventory, error)
 	// text — no local checkout required. A lib is both a depended-on identifier
 	// and a consumer (it can depend on other libs), so it feeds both maps.
 	identifierToLib := map[string]string{}
+	identifierToContract := map[string]libraryContractSource{}
 	consumerText := map[string]string{}
+	consumerSources := map[string]map[string]string{}
 	for i := range inv.Repositories {
 		repo := &inv.Repositories[i]
 		if repo.Bucket == BucketLibs {
+			currentVersion := versionFromManifestSources(srcByName[repo.Name])
 			for _, identifier := range libraryIdentifiersFromSources(repo.Name, srcByName[repo.Name]) {
 				if identifier != "" {
 					identifierToLib[identifier] = repo.Name
+					identifierToContract[identifier] = libraryContractSource{
+						name:           repo.Name,
+						currentVersion: currentVersion,
+					}
 				}
 			}
 		}
 		if repo.Bucket == BucketServices || repo.Bucket == BucketLibs {
+			consumerSources[repo.Name] = srcByName[repo.Name]
 			consumerText[repo.Name] = concatManifestSources(srcByName[repo.Name])
 		}
 	}
 	matchAdoption(inv, identifierToLib, consumerText)
+	matchLibraryContracts(inv, identifierToContract, consumerSources)
 
 	return inv, nil
 }

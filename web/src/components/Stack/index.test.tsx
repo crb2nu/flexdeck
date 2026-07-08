@@ -208,6 +208,67 @@ describe('Stack Explorer', () => {
     });
   });
 
+  it('surfaces library contract drift and filters to drifted consumers', async () => {
+    const inventory: WorkspaceInventory = {
+      root: '/workspace',
+      generatedAt: '2026-07-07T12:00:00Z',
+      totals: { repositories: 3, services: 2, libs: 1 },
+      repositories: [
+        makeRepo({
+          name: 'stale-site',
+          dependsOn: ['visual-kit'],
+          libraryContracts: [
+            {
+              library: 'visual-kit',
+              manifest: 'package.json',
+              requirement: '^1.1.0',
+              currentVersion: '1.2.0',
+              status: 'drift',
+            },
+          ],
+        }),
+        makeRepo({
+          name: 'fresh-site',
+          dependsOn: ['visual-kit'],
+          libraryContracts: [
+            {
+              library: 'visual-kit',
+              manifest: 'package.json',
+              requirement: '^1.2.0',
+              currentVersion: '1.2.0',
+              status: 'aligned',
+            },
+          ],
+        }),
+        makeRepo({
+          name: 'visual-kit',
+          bucket: 'libs',
+          path: '/workspace/libs/visual-kit',
+          usedBy: ['fresh-site', 'stale-site'],
+        }),
+      ],
+    };
+    stackMocks.getRepos.mockResolvedValue(inventory);
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(repoCard('services', 'stale-site')).toBeTruthy();
+      expect(repoCard('services', 'fresh-site')).toBeTruthy();
+    });
+
+    expect(pageText()).toContain('Version drift');
+    expect(pageText()).toContain('2 contracts checked');
+    expect(pageText()).toContain('visual-kit ^1.1.0 -> 1.2.0');
+
+    clickButtonWithText('Drift');
+
+    await vi.waitFor(() => {
+      expect(repoCard('services', 'stale-site')).toBeTruthy();
+      expect(repoCard('services', 'fresh-site')).toBeNull();
+      expect(repoCard('libs', 'visual-kit')).toBeNull();
+    });
+  });
+
   it('shows a blocking error when the workspace inventory is unavailable', async () => {
     stackMocks.getRepos.mockRejectedValue(new Error('workspace root not configured'));
     cleanup = mount();

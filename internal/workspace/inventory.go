@@ -43,21 +43,32 @@ type Totals struct {
 
 // Repository describes one top-level repo-like directory in the workspace.
 type Repository struct {
-	Name             string       `json:"name"`
-	Bucket           string       `json:"bucket"`
-	Path             string       `json:"path"`
-	PrimaryLanguage  string       `json:"primaryLanguage,omitempty"`
-	PackageManagers  []string     `json:"packageManagers,omitempty"`
-	Manifests        []Manifest   `json:"manifests,omitempty"`
-	Docs             Docs         `json:"docs"`
-	WorktreeCount    int          `json:"worktreeCount,omitempty"`
-	Git              GitState     `json:"git"`
-	Binding          *RepoBinding `json:"binding,omitempty"`
-	DependsOn        []string     `json:"dependsOn,omitempty"`  // workspace libs this repo depends on (by lib dir name)
-	UsedBy           []string     `json:"usedBy,omitempty"`     // services that depend on this lib (by service name)
-	UsedByLibs       []string     `json:"usedByLibs,omitempty"` // libs that depend on this lib (by lib dir name)
-	DiscoveryReasons []string     `json:"discoveryReasons,omitempty"`
-	Errors           []string     `json:"errors,omitempty"`
+	Name             string            `json:"name"`
+	Bucket           string            `json:"bucket"`
+	Path             string            `json:"path"`
+	PrimaryLanguage  string            `json:"primaryLanguage,omitempty"`
+	PackageManagers  []string          `json:"packageManagers,omitempty"`
+	Manifests        []Manifest        `json:"manifests,omitempty"`
+	Docs             Docs              `json:"docs"`
+	WorktreeCount    int               `json:"worktreeCount,omitempty"`
+	Git              GitState          `json:"git"`
+	Binding          *RepoBinding      `json:"binding,omitempty"`
+	DependsOn        []string          `json:"dependsOn,omitempty"`  // workspace libs this repo depends on (by lib dir name)
+	UsedBy           []string          `json:"usedBy,omitempty"`     // services that depend on this lib (by service name)
+	UsedByLibs       []string          `json:"usedByLibs,omitempty"` // libs that depend on this lib (by lib dir name)
+	LibraryContracts []LibraryContract `json:"libraryContracts,omitempty"`
+	DiscoveryReasons []string          `json:"discoveryReasons,omitempty"`
+	Errors           []string          `json:"errors,omitempty"`
+}
+
+// LibraryContract captures the version contract between a consuming repository
+// and a workspace library it imports from a dependency manifest.
+type LibraryContract struct {
+	Library        string `json:"library"`
+	Manifest       string `json:"manifest"`
+	Requirement    string `json:"requirement,omitempty"`
+	CurrentVersion string `json:"currentVersion,omitempty"`
+	Status         string `json:"status"` // aligned, drift, or unknown
 }
 
 // Manifest records a known safe-to-read metadata file.
