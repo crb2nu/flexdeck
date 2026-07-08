@@ -93,6 +93,41 @@ func TestComputeAdoptionLibToLib(t *testing.T) {
 	}
 }
 
+func TestComputeLibraryContractVersionDrift(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	writeFile(t, filepath.Join(root, "libs", "visual-kit", "package.json"), `{"name":"@flexinfer/visual-kit","version":"1.2.0"}`)
+	writeFile(t, filepath.Join(root, "libs", "mcp-go", "go.mod"), "module gitlab.flexinfer.ai/libs/mcp-go\n")
+	writeFile(t, filepath.Join(root, "services", "aligned", "package.json"),
+		`{"name":"aligned","dependencies":{"@flexinfer/visual-kit":"^1.2.0"}}`)
+	writeFile(t, filepath.Join(root, "services", "stale", "package.json"),
+		`{"name":"stale","dependencies":{"@flexinfer/visual-kit":"^1.1.0"}}`)
+	writeFile(t, filepath.Join(root, "services", "go-consumer", "go.mod"),
+		"module example.com/go-consumer\n\nrequire gitlab.flexinfer.ai/libs/mcp-go v0.4.0\n")
+
+	inv, err := Scan(context.Background(), root, ScanOptions{})
+	if err != nil {
+		t.Fatalf("Scan returned error: %v", err)
+	}
+
+	aligned := findRepo(t, inv, "services", "aligned")
+	if got := aligned.LibraryContracts; len(got) != 1 || got[0].Library != "visual-kit" || got[0].Requirement != "^1.2.0" || got[0].CurrentVersion != "1.2.0" || got[0].Status != "aligned" {
+		t.Fatalf("aligned libraryContracts = %#v, want visual-kit aligned", got)
+	}
+
+	stale := findRepo(t, inv, "services", "stale")
+	if got := stale.LibraryContracts; len(got) != 1 || got[0].Library != "visual-kit" || got[0].Requirement != "^1.1.0" || got[0].CurrentVersion != "1.2.0" || got[0].Status != "drift" {
+		t.Fatalf("stale libraryContracts = %#v, want visual-kit drift", got)
+	}
+
+	goConsumer := findRepo(t, inv, "services", "go-consumer")
+	if got := goConsumer.LibraryContracts; len(got) != 1 || got[0].Library != "mcp-go" || got[0].Requirement != "v0.4.0" || got[0].CurrentVersion != "" || got[0].Status != "unknown" {
+		t.Fatalf("go-consumer libraryContracts = %#v, want mcp-go unknown", got)
+	}
+}
+
 func TestLibraryIdentifiersResolvesPackageNames(t *testing.T) {
 	t.Parallel()
 

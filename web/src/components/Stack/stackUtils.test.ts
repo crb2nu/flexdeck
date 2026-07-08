@@ -3,7 +3,10 @@ import type { WorkspaceRepository } from '../../lib/api';
 import {
   bindingSeverity,
   compareByBindingConcern,
+  contractDriftLabel,
   getRepoReadiness,
+  hasContractDrift,
+  hasUnknownContract,
   isAdoptedLib,
   isDegradedBinding,
   isInferredBinding,
@@ -12,9 +15,11 @@ import {
   libAdoptionLabel,
   matchesAdoptionFilter,
   matchesBindingFilter,
+  matchesContractFilter,
   repositoryMatches,
   summarizeAdoption,
   summarizeBinding,
+  summarizeContractDrift,
   summarizeRemote,
 } from './stackUtils';
 
@@ -300,6 +305,68 @@ describe('stackUtils', () => {
       // lib→lib consumers are searchable too.
       const sharedLib = makeRepo({ name: 'observability', bucket: 'libs', usedByLibs: ['fi-accel'] });
       expect(repositoryMatches(sharedLib, 'fi-accel')).toBe(true);
+    });
+  });
+
+  describe('library contract drift', () => {
+    const aligned = makeRepo({
+      name: 'site',
+      libraryContracts: [
+        {
+          library: 'visual-kit',
+          manifest: 'package.json',
+          requirement: '^1.2.0',
+          currentVersion: '1.2.0',
+          status: 'aligned',
+        },
+      ],
+    });
+    const drift = makeRepo({
+      name: 'admin',
+      libraryContracts: [
+        {
+          library: 'visual-kit',
+          manifest: 'package.json',
+          requirement: '^1.1.0',
+          currentVersion: '1.2.0',
+          status: 'drift',
+        },
+      ],
+    });
+    const unknown = makeRepo({
+      name: 'worker',
+      libraryContracts: [
+        {
+          library: 'mcp-go',
+          manifest: 'go.mod',
+          requirement: 'v0.4.0',
+          status: 'unknown',
+        },
+      ],
+    });
+
+    it('summarizes and filters drift status', () => {
+      expect(hasContractDrift(drift)).toBe(true);
+      expect(hasContractDrift(aligned)).toBe(false);
+      expect(hasUnknownContract(unknown)).toBe(true);
+      expect(matchesContractFilter(drift, 'drift')).toBe(true);
+      expect(matchesContractFilter(aligned, 'drift')).toBe(false);
+      expect(matchesContractFilter(unknown, 'unknown')).toBe(true);
+      expect(matchesContractFilter(aligned, 'all')).toBe(true);
+
+      expect(summarizeContractDrift([aligned, drift, unknown])).toEqual({
+        checked: 3,
+        drifted: 1,
+        unknown: 1,
+        driftedRepos: 1,
+      });
+    });
+
+    it('labels contract versions and makes them searchable', () => {
+      expect(contractDriftLabel(drift.libraryContracts![0])).toBe('visual-kit ^1.1.0 -> 1.2.0');
+      expect(repositoryMatches(drift, '^1.1.0')).toBe(true);
+      expect(repositoryMatches(drift, 'visual-kit')).toBe(true);
+      expect(repositoryMatches(drift, 'drift')).toBe(true);
     });
   });
 

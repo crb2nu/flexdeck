@@ -31,8 +31,19 @@ export interface WorkspaceRepository {
   dependsOn?: string[]; // workspace libs this repo depends on
   usedBy?: string[]; // services that depend on this lib
   usedByLibs?: string[]; // libs that depend on this lib (lib→lib adoption)
+  libraryContracts?: WorkspaceLibraryContract[];
   discoveryReasons?: string[];
   errors?: string[];
+}
+
+export type WorkspaceLibraryContractStatus = 'aligned' | 'drift' | 'unknown' | string;
+
+export interface WorkspaceLibraryContract {
+  library: string;
+  manifest: string;
+  requirement?: string;
+  currentVersion?: string;
+  status: WorkspaceLibraryContractStatus;
 }
 
 export type WorkspaceBindingKind = 'service' | 'library' | 'unknown';
