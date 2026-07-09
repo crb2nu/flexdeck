@@ -22,6 +22,23 @@ function resolveCount(count: number | (() => number) | undefined): number | unde
   return typeof count === 'function' ? count() : count;
 }
 
+const UNDERLINE_TONE_CLASSES: Record<string, string> = {
+  accent: 'border-accent text-accent',
+  white: 'border-white text-white',
+  'semantic-blue': 'border-semantic-blue text-semantic-blue',
+  'semantic-red': 'border-semantic-red text-semantic-red',
+  'semantic-amber': 'border-semantic-amber text-semantic-amber',
+  'semantic-violet': 'border-semantic-violet text-semantic-violet',
+  'semantic-emerald': 'border-semantic-emerald text-semantic-emerald',
+  'status-ok': 'border-status-ok text-status-ok',
+  'status-warn': 'border-status-warn text-status-warn',
+  'status-error': 'border-status-error text-status-error',
+};
+
+function underlineToneClass(color?: string): string {
+  return UNDERLINE_TONE_CLASSES[color ?? 'white'] ?? UNDERLINE_TONE_CLASSES.white;
+}
+
 function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
   const variant = () => props.variant ?? 'pill';
   const size = () => props.size ?? 'sm';
@@ -36,6 +53,7 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
               const isActive = () => props.active === tab.id;
               return (
                 <button
+                  type="button"
                   role="tab"
                   aria-selected={isActive()}
                   onClick={() => props.onChange(tab.id)}
@@ -67,12 +85,13 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
             const isActive = () => props.active === tab.id;
             return (
               <button
+                type="button"
                 role="tab"
                 aria-selected={isActive()}
                 onClick={() => props.onChange(tab.id)}
                 class={`flex items-center gap-1.5 rounded-t px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                   isActive()
-                    ? `border-b-2 border-${tab.color ?? 'white'} text-${tab.color ?? 'white'}`
+                    ? `border-b-2 ${underlineToneClass(tab.color)}`
                     : 'text-text-dim hover:text-white/60'
                 }`}
               >
