@@ -134,7 +134,6 @@ const SidebarLinkItem: Component<{
   const href = useHref(() => props.item.href!);
 
   const handleClick = (event: MouseEvent) => {
-    props.onSelect?.();
     if (
       event.defaultPrevented ||
       event.button !== 0 ||
@@ -147,6 +146,7 @@ const SidebarLinkItem: Component<{
     }
 
     event.preventDefault();
+    props.onSelect?.();
     void navigate(props.item.href!, {
       replace: props.item.replace,
       scroll: props.item.noScroll === false,
