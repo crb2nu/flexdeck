@@ -91,4 +91,30 @@ describe('OperationsSidebarNav', () => {
 
     cleanup();
   });
+
+  it('preserves browser link gestures without firing local selection handlers', async () => {
+    const onChange = vi.fn();
+    const cleanup = mount({
+      active: 'overview',
+      onChange,
+      items: [
+        { id: 'overview', label: 'Overview', href: '/flexinfer', replace: true },
+        { id: 'telemetry', label: 'Telemetry', href: '/flexinfer?section=telemetry', replace: true },
+      ],
+    });
+
+    const telemetry = findItem('telemetry');
+    telemetry.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      metaKey: true,
+    }));
+
+    await vi.waitFor(() => {
+      expect(window.location.hash).toBe('#/flexinfer');
+    });
+    expect(onChange).not.toHaveBeenCalled();
+
+    cleanup();
+  });
 });
