@@ -42,21 +42,54 @@ function underlineToneClass(color?: string): string {
 function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
   const variant = () => props.variant ?? 'pill';
   const size = () => props.size ?? 'sm';
+  const handleKeyDown = (
+    event: KeyboardEvent & { currentTarget: HTMLButtonElement },
+    currentIndex: number,
+  ) => {
+    const tabCount = props.tabs.length;
+    if (tabCount === 0) return;
+
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowRight':
+        nextIndex = (currentIndex + 1) % tabCount;
+        break;
+      case 'ArrowLeft':
+        nextIndex = (currentIndex - 1 + tabCount) % tabCount;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = tabCount - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    const nextTab = props.tabs[nextIndex];
+    const tabList = event.currentTarget.closest('[role="tablist"]');
+    tabList?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+    props.onChange(nextTab.id);
+  };
 
   return (
     <Show
       when={variant() === 'underline'}
       fallback={
-        <div role="tablist" class={`flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-0.5 no-scrollbar ${props.class ?? ''}`}>
+        <div role="tablist" aria-orientation="horizontal" class={`flex max-w-full gap-1 overflow-x-auto rounded-md bg-white/5 p-0.5 no-scrollbar ${props.class ?? ''}`}>
           <For each={props.tabs}>
-            {(tab) => {
+            {(tab, index) => {
               const isActive = () => props.active === tab.id;
               return (
                 <button
                   type="button"
                   role="tab"
                   aria-selected={isActive()}
+                  tabIndex={isActive() ? 0 : -1}
                   onClick={() => props.onChange(tab.id)}
+                  onKeyDown={(event) => handleKeyDown(event, index())}
                   class={`rounded px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                     isActive()
                       ? 'bg-white/10 text-white shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
@@ -79,16 +112,18 @@ function TabBar<T extends string = string>(props: TabBarProps<T>): JSX.Element {
         </div>
       }
     >
-      <div role="tablist" class={`flex gap-1 border-b border-white/5 pb-px ${props.class ?? ''}`}>
+      <div role="tablist" aria-orientation="horizontal" class={`flex gap-1 border-b border-white/5 pb-px ${props.class ?? ''}`}>
         <For each={props.tabs}>
-          {(tab) => {
+          {(tab, index) => {
             const isActive = () => props.active === tab.id;
             return (
               <button
                 type="button"
                 role="tab"
                 aria-selected={isActive()}
+                tabIndex={isActive() ? 0 : -1}
                 onClick={() => props.onChange(tab.id)}
+                onKeyDown={(event) => handleKeyDown(event, index())}
                 class={`flex items-center gap-1.5 rounded-t px-3 ${size() === 'sm' ? 'py-1.5 text-xs' : 'py-2 text-sm'} font-medium transition-colors whitespace-nowrap ${
                   isActive()
                     ? `border-b-2 ${underlineToneClass(tab.color)}`
