@@ -632,6 +632,55 @@ func TestUpdateProjectRisk_TransitionsStatus(t *testing.T) {
 	}
 }
 
+func TestUpdateProjectRisk_EditsNonStatusFields(t *testing.T) {
+	fq := &fakeQdrant{
+		byCollection: map[string][]qdrant.Point{
+			qdrantRisksCollection: {
+				{ID: "risk-1", Payload: map[string]any{
+					"id": "risk-1", "project": "services/flexdeck", "title": "drift",
+					"likelihood": "medium", "impact": "high", "status": "mitigating",
+					"mitigation": "old mitigation", "owner": "platform",
+					"links": []any{
+						map[string]any{"type": "task", "id": "task-1", "label": "Wire backend"},
+					},
+				}},
+			},
+		},
+	}
+	h := &Handler{cfg: &config.Config{}, gitlabClient: newGitLabClient(), qdrant: fq}
+
+	body := `{"title":"contract drift","likelihood":"low","impact":"medium","mitigation":"add focused coverage","owner":"codex"}`
+	rr := serveRiskUpdate(h, "services/flexdeck", "risk-1", body)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var risk projectRisk
+	if err := json.Unmarshal(rr.Body.Bytes(), &risk); err != nil {
+		t.Fatalf("decode risk: %v", err)
+	}
+	if risk.Title != "contract drift" || risk.Likelihood != "low" || risk.Impact != "medium" {
+		t.Fatalf("risk fields = %+v, want edited title/likelihood/impact", risk)
+	}
+	if risk.Mitigation != "add focused coverage" || risk.Owner != "codex" {
+		t.Fatalf("risk mitigation/owner = %q/%q", risk.Mitigation, risk.Owner)
+	}
+	if risk.Status != "mitigating" {
+		t.Fatalf("status changed unexpectedly: %+v", risk)
+	}
+	if len(risk.Links) != 1 || risk.Links[0].ID != "task-1" {
+		t.Fatalf("field edit lost links: %+v", risk.Links)
+	}
+
+	points := fq.upsertsFor(qdrantRisksCollection)
+	if len(points) != 1 {
+		t.Fatalf("upserts = %d, want 1", len(points))
+	}
+	p := points[0].Payload
+	if p["mitigation"] != "add focused coverage" || p["owner"] != "codex" {
+		t.Fatalf("payload mitigation/owner = %+v", p)
+	}
+}
+
 func TestUpdateProjectRisk_ReplacesLinks(t *testing.T) {
 	fq := &fakeQdrant{
 		byCollection: map[string][]qdrant.Point{

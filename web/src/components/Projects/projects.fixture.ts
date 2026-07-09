@@ -69,6 +69,8 @@ export const projectDetailFixture: ProjectDetail = {
       likelihood: 'medium',
       impact: 'high',
       status: 'open',
+      mitigation: 'Pin the shared contract in focused tests',
+      owner: 'platform',
       links: [
         {
           type: 'task',

@@ -101,6 +101,8 @@ type projectRisk struct {
 	Likelihood string            `json:"likelihood"`
 	Impact     string            `json:"impact"`
 	Status     string            `json:"status"`
+	Mitigation string            `json:"mitigation,omitempty"`
+	Owner      string            `json:"owner,omitempty"`
 	Links      []projectRiskLink `json:"links"`
 }
 
@@ -468,6 +470,8 @@ func applyProjectRiskUpdate(payload map[string]any, input updateProjectRiskReque
 		Likelihood: payloadString(payload, "likelihood"),
 		Impact:     payloadString(payload, "impact"),
 		Status:     payloadString(payload, "status"),
+		Mitigation: payloadString(payload, "mitigation"),
+		Owner:      payloadString(payload, "owner"),
 		Links:      projectRiskLinksFromPayload(payload["links"]),
 	}, nil
 }
@@ -524,6 +528,8 @@ func buildProjectRisk(project string, input createProjectRiskRequest) (projectRi
 		Likelihood: likelihood,
 		Impact:     impact,
 		Status:     status,
+		Mitigation: strings.TrimSpace(input.Mitigation),
+		Owner:      strings.TrimSpace(input.Owner),
 		Links:      []projectRiskLink{},
 	}
 	payload := map[string]any{
@@ -532,8 +538,8 @@ func buildProjectRisk(project string, input createProjectRiskRequest) (projectRi
 		"title":      risk.Title,
 		"likelihood": risk.Likelihood,
 		"impact":     risk.Impact,
-		"mitigation": strings.TrimSpace(input.Mitigation),
-		"owner":      strings.TrimSpace(input.Owner),
+		"mitigation": risk.Mitigation,
+		"owner":      risk.Owner,
 		"status":     risk.Status,
 		"links":      projectRiskLinksPayload(risk.Links),
 		"created_at": now,
@@ -1027,6 +1033,8 @@ func (h *Handler) fetchProjectRisks(ctx context.Context, project string) ([]proj
 			Likelihood: payloadString(pl, "likelihood"),
 			Impact:     payloadString(pl, "impact"),
 			Status:     payloadString(pl, "status"),
+			Mitigation: payloadString(pl, "mitigation"),
+			Owner:      payloadString(pl, "owner"),
 			Links:      projectRiskLinksFromPayload(pl["links"]),
 		})
 	}

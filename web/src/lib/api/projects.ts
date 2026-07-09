@@ -63,6 +63,8 @@ export interface ProjectRisk {
   likelihood: RiskLevel;
   impact: RiskLevel;
   status: string;
+  mitigation?: string;
+  owner?: string;
   links: ProjectRiskLink[];
 }
 
