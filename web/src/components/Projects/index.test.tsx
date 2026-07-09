@@ -79,6 +79,8 @@ describe('Projects page', () => {
       likelihood: 'medium',
       impact: 'high',
       status: 'closed',
+      mitigation: projectDetailFixture.risks[0].mitigation,
+      owner: projectDetailFixture.risks[0].owner,
       links: projectDetailFixture.risks[0].links,
     });
   });
@@ -335,6 +337,78 @@ describe('Projects page', () => {
     await vi.waitFor(() => {
       expect(projectsMocks.updateRisk).toHaveBeenCalled();
       expect(document.body.textContent).toContain('risk store unavailable');
+    });
+  });
+
+  it('edits non-status risk fields inline', async () => {
+    cleanup = mount(() => <Projects />);
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(
+        'Backend contract may drift before integration',
+      );
+    });
+
+    expect(document.body.textContent).toContain('Owner: platform');
+    expect(document.body.textContent).toContain('Mitigation: Pin the shared contract in focused tests');
+
+    const editButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Edit fields',
+    );
+    expect(editButton).toBeTruthy();
+    editButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const titleInput = document.querySelector(
+      'input[aria-label="Edit title for Backend contract may drift before integration"]',
+    ) as HTMLInputElement | null;
+    const likelihoodSelect = document.querySelector(
+      'select[aria-label="Edit likelihood for Backend contract may drift before integration"]',
+    ) as HTMLSelectElement | null;
+    const impactSelect = document.querySelector(
+      'select[aria-label="Edit impact for Backend contract may drift before integration"]',
+    ) as HTMLSelectElement | null;
+    const ownerInput = document.querySelector(
+      'input[aria-label="Edit owner for Backend contract may drift before integration"]',
+    ) as HTMLInputElement | null;
+    const mitigationInput = document.querySelector(
+      'input[aria-label="Edit mitigation for Backend contract may drift before integration"]',
+    ) as HTMLInputElement | null;
+
+    expect(titleInput).toBeTruthy();
+    expect(likelihoodSelect).toBeTruthy();
+    expect(impactSelect).toBeTruthy();
+    expect(ownerInput).toBeTruthy();
+    expect(mitigationInput).toBeTruthy();
+
+    titleInput!.value = 'Backend contract drift is covered';
+    titleInput!.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    likelihoodSelect!.value = 'low';
+    likelihoodSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+    impactSelect!.value = 'medium';
+    impactSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+    ownerInput!.value = 'platform-ops';
+    ownerInput!.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    mitigationInput!.value = 'Run contract smoke tests before rollout';
+    mitigationInput!.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+
+    const saveButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Save fields',
+    );
+    expect(saveButton).toBeTruthy();
+    saveButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(projectsMocks.updateRisk).toHaveBeenCalledWith(
+        projectDetailFixture.project,
+        'risk-1',
+        {
+          title: 'Backend contract drift is covered',
+          likelihood: 'low',
+          impact: 'medium',
+          mitigation: 'Run contract smoke tests before rollout',
+          owner: 'platform-ops',
+        },
+      );
     });
   });
 

@@ -9,6 +9,7 @@ import {
   type ProjectRiskLink,
   type ProjectSummary,
   type ProjectTask,
+  type UpdateProjectRiskInput,
 } from '../../lib/api/projects';
 import {
   projectsListFixture,
@@ -123,6 +124,13 @@ const RISK_STATUS_OPTIONS: SelectOption[] = [
   { value: 'accepted', label: 'Accepted' },
   { value: 'closed', label: 'Closed' },
 ];
+
+function riskLevelOptions(current: string): SelectOption[] {
+  if (!current || RISK_LEVEL_OPTIONS.some((o) => o.value === current)) {
+    return RISK_LEVEL_OPTIONS;
+  }
+  return [{ value: current, label: current }, ...RISK_LEVEL_OPTIONS];
+}
 
 // riskStatusOptions returns the canonical status ladder, prepending the current
 // value when it falls outside it. Risks created outside the capture form (e.g.
@@ -337,8 +345,26 @@ const RiskRow: Component<{
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
   const [selectedLink, setSelectedLink] = createSignal('');
+  const [editing, setEditing] = createSignal(false);
+  const [editTitle, setEditTitle] = createSignal('');
+  const [editLikelihood, setEditLikelihood] = createSignal('');
+  const [editImpact, setEditImpact] = createSignal('');
+  const [editMitigation, setEditMitigation] = createSignal('');
+  const [editOwner, setEditOwner] = createSignal('');
 
   const links = () => props.risk.links ?? [];
+  const resetEditor = () => {
+    setEditTitle(props.risk.title);
+    setEditLikelihood(props.risk.likelihood);
+    setEditImpact(props.risk.impact);
+    setEditMitigation(props.risk.mitigation ?? '');
+    setEditOwner(props.risk.owner ?? '');
+  };
+
+  createEffect(() => {
+    if (!editing()) resetEditor();
+  });
+
   const availableLinks = createMemo(() => {
     const linked = new Set(links().map(riskLinkKey));
     return riskLinkCandidates(props.tasks, props.issues, props.decisions).filter(
@@ -395,6 +421,46 @@ const RiskRow: Component<{
     replaceLinks(links().filter((link) => riskLinkKey(link) !== riskLinkKey(target)));
   };
 
+  const closeEditor = () => {
+    resetEditor();
+    setEditing(false);
+    setError('');
+  };
+
+  const submitEdit = async (event: Event) => {
+    event.preventDefault();
+    const nextTitle = editTitle().trim();
+    if (!nextTitle) {
+      setError('Title is required.');
+      return;
+    }
+
+    const patch: UpdateProjectRiskInput = {};
+    if (nextTitle !== props.risk.title) patch.title = nextTitle;
+    if (editLikelihood() !== props.risk.likelihood) patch.likelihood = editLikelihood();
+    if (editImpact() !== props.risk.impact) patch.impact = editImpact();
+    if (editMitigation().trim() !== (props.risk.mitigation ?? '')) patch.mitigation = editMitigation().trim();
+    if (editOwner().trim() !== (props.risk.owner ?? '')) patch.owner = editOwner().trim();
+
+    if (Object.keys(patch).length === 0) {
+      setEditing(false);
+      setError('');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      await projectsApi.updateRisk(props.projectId, props.risk.id, patch);
+      setEditing(false);
+      props.onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update risk fields.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <li class="flex flex-col gap-2 py-2">
       <div class="flex items-center gap-3">
@@ -409,7 +475,84 @@ const RiskRow: Component<{
           disabled={saving()}
           onChange={(e) => changeStatus(e.currentTarget.value)}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={saving()}
+          onClick={() => {
+            resetEditor();
+            setEditing(true);
+            setError('');
+          }}
+        >
+          Edit fields
+        </Button>
       </div>
+      <Show when={props.risk.owner || props.risk.mitigation}>
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-muted">
+          <Show when={props.risk.owner}>
+            <span class="truncate">Owner: {props.risk.owner}</span>
+          </Show>
+          <Show when={props.risk.mitigation}>
+            <span class="min-w-0 flex-1 truncate">Mitigation: {props.risk.mitigation}</span>
+          </Show>
+        </div>
+      </Show>
+      <Show when={editing()}>
+        <form class="surface flex flex-col gap-3 px-3 py-3" onSubmit={submitEdit}>
+          <Input
+            aria-label={`Edit title for ${props.risk.title}`}
+            value={editTitle()}
+            onInput={(e) => setEditTitle(e.currentTarget.value)}
+            autofocus
+          />
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-text-dim">
+              Likelihood
+              <Select
+                aria-label={`Edit likelihood for ${props.risk.title}`}
+                options={riskLevelOptions(props.risk.likelihood)}
+                value={editLikelihood()}
+                disabled={saving()}
+                onChange={(e) => setEditLikelihood(e.currentTarget.value)}
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-text-dim">
+              Impact
+              <Select
+                aria-label={`Edit impact for ${props.risk.title}`}
+                options={riskLevelOptions(props.risk.impact)}
+                value={editImpact()}
+                disabled={saving()}
+                onChange={(e) => setEditImpact(e.currentTarget.value)}
+              />
+            </label>
+            <Input
+              aria-label={`Edit owner for ${props.risk.title}`}
+              placeholder="Owner"
+              value={editOwner()}
+              disabled={saving()}
+              onInput={(e) => setEditOwner(e.currentTarget.value)}
+            />
+            <Input
+              aria-label={`Edit mitigation for ${props.risk.title}`}
+              placeholder="Mitigation"
+              value={editMitigation()}
+              disabled={saving()}
+              onInput={(e) => setEditMitigation(e.currentTarget.value)}
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <Button type="submit" variant="primary" size="sm" loading={saving()}>
+              Save fields
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={saving()} onClick={closeEditor}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Show>
       <Show when={links().length > 0 || linkOptions().length > 0}>
         <div class="flex flex-wrap items-center gap-2">
           <For each={links()}>

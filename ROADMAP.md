@@ -60,9 +60,9 @@ implemented behind flags but off by default.
 - Projects risk lifecycle from the UI: status update/close shipped 2026-07-04
   (inline per-risk status control over `PATCH /api/projects/{id}/risks/{riskId}`,
   following the 2026-07-04 inline risk-capture form). Risk links to
-  tasks/issues/decisions shipped in the 2026-07-05 risk-linking slice.
-  Remaining: inline editing for non-status fields (title, likelihood, impact,
-  mitigation, owner) if operators need it.
+  tasks/issues/decisions shipped in the 2026-07-05 risk-linking slice. Inline
+  editing for non-status fields (title, likelihood, impact, mitigation, owner)
+  shipped in the 2026-07-09 risk-field-editing slice.
 
 ## Backlog
 
