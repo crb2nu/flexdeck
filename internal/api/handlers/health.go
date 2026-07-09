@@ -220,6 +220,7 @@ func (h *Handler) loomMillsMutationFeature() Feature {
 		Mode:    "enabled",
 	}
 	if feature.Enabled {
+		feature.Reason = "LOOM_MILLS_ADMIN_TOKEN is configured; operator token validity is verified on first mutation"
 		return feature
 	}
 	if h == nil || h.cfg == nil {

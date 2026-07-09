@@ -147,7 +147,7 @@ describe('Loom Mills surface', () => {
   it('shows and two-step-confirms the kill-switch for an admin when mutations are enabled', async () => {
     mocks.mutationsEnabled = true;
     mocks.mutationMode = 'enabled';
-    mocks.mutationReason = '';
+    mocks.mutationReason = 'LOOM_MILLS_ADMIN_TOKEN is configured; operator token validity is verified on first mutation';
     mocks.role = 'admin';
     const m = mount(() => <Mills />);
     cleanup = m.cleanup;
@@ -157,6 +157,7 @@ describe('Loom Mills surface', () => {
     await flush();
     const text = () => m.container.textContent ?? '';
     expect(text()).toContain('Controls enabled');
+    expect(text()).toContain('operator token validity is verified on first mutation');
     expect(text()).toContain('kill-switch'); // "Autonomy kill-switch"
 
     // First click arms the confirm without calling the API.

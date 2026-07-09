@@ -269,8 +269,9 @@ func TestHealthReportsMillsMutationReadiness(t *testing.T) {
 				AdminToken:       "secret",
 				MutationsEnabled: true,
 			},
-			wantOn:   true,
-			wantMode: "enabled",
+			wantOn:     true,
+			wantMode:   "enabled",
+			wantReason: "LOOM_MILLS_ADMIN_TOKEN is configured; operator token validity is verified on first mutation",
 		},
 	}
 
