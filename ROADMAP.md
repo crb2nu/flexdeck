@@ -46,7 +46,9 @@ implemented behind flags but off by default.
 
 - [ ] Enablement decision for the dark-launched, RBAC-gated Mills operational controls (#31):
   readiness metadata and UI shipped 2026-07-06; remaining decision is whether to
-  configure the admin token and flip `LOOM_MILLS_MUTATIONS_ENABLED`.
+  configure the admin token and flip `LOOM_MILLS_MUTATIONS_ENABLED`. Token
+  validity caveat shipped 2026-07-08; the current operator has no read-only
+  admin-token probe, so validity is verified on first mutation.
 - [ ] Audit Logs / Multi-Cluster enablement decisions (implemented, off by default) (#31):
   readiness cards shipped 2026-07-08; remaining decision is whether to enable
   `AUDIT_DISABLED=false` and `MULTICLUSTER_DISABLED=false` with their backing

@@ -40,7 +40,7 @@ function mutationReadiness(): { label: string; detail: string; tone: BadgeTone }
   const feature = mutationFeature();
   if (isLoomMutationsEnabled(healthStore.features)) {
     if (isCurrentUserAdmin()) {
-      return { label: 'Controls enabled', detail: 'Admin controls are available.', tone: 'ok' };
+      return { label: 'Controls enabled', detail: feature?.reason || 'Admin controls are available.', tone: 'ok' };
     }
     return { label: 'Admin role required', detail: 'Signed-in user is not an admin.', tone: 'warn' };
   }
