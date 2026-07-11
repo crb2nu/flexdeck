@@ -4,6 +4,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { formatTimeAgo } from '../../lib/format';
 import { k8s } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
+import { SkeletonRows } from '../shared/Skeleton';
 
 interface K8sEvent {
   metadata: { name: string; namespace: string; creationTimestamp: string };
@@ -72,11 +73,7 @@ const EventsFeed: Component = () => {
         <div class={`pointer-events-none sticky top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent transition-opacity duration-200 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
         <Show
           when={!stablePanel.showBlockingLoading()}
-          fallback={
-            <div class="flex items-center justify-center py-6">
-              <span class="text-xs text-text-dim animate-pulse">Loading events...</span>
-            </div>
-          }
+          fallback={<SkeletonRows count={4} />}
         >
           <Show when={stablePanel.showBlockingError()}>
             <div class="px-3 py-2 text-xs text-red-400">{sanitizeError(error())}</div>

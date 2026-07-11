@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta } from '../../lib/fiAccel';
 import { isK8sNodeReady } from '../../lib/k8sStatus';
+import { prefersReducedMotion } from '../../lib/motion';
+import { VIZ_TOKEN_HEX, tokenRgba } from '../../lib/vizTokens';
 import {
   buildTopologyGraphData,
   createTopologySimulation,
@@ -234,6 +236,9 @@ interface WorkerBuildPending {
 }
 
 const TopologyGraph: Component<Props> = (props) => {
+  // Gates decorative canvas motion (flow particles, selection pulse, scanline)
+  // while keeping the demand-driven draw loop and interactions intact.
+  const reducedMotion = prefersReducedMotion();
   let baseCanvasRef: HTMLCanvasElement | undefined;
   let overlayCanvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
@@ -1179,9 +1184,9 @@ const TopologyGraph: Component<Props> = (props) => {
     ctx.fillStyle = cachedGradient;
     ctx.fillRect(0, 0, width, height);
 
-    if (!underPressure && !isDense && isSimulationActiveNow && frameCount % 2 === 0) {
+    if (!reducedMotion && !underPressure && !isDense && isSimulationActiveNow && frameCount % 2 === 0) {
       const scanY = (frameCount * 2) % height;
-      ctx.fillStyle = 'rgba(0, 217, 255, 0.015)';
+      ctx.fillStyle = tokenRgba('info', 0.015);
       ctx.fillRect(0, scanY, width, 2);
     }
   };
@@ -1261,12 +1266,12 @@ const TopologyGraph: Component<Props> = (props) => {
             ctx.lineTo(target.x, target.y);
           }
           if (!reduceLinks && !isDense) {
-            ctx.strokeStyle = 'rgba(0, 217, 255, 0.06)';
+            ctx.strokeStyle = tokenRgba('info', 0.06);
             ctx.lineWidth = 5;
             ctx.setLineDash([]);
             ctx.stroke();
           }
-          ctx.strokeStyle = 'rgba(0, 217, 255, 0.28)';
+          ctx.strokeStyle = tokenRgba('info', 0.28);
           ctx.lineWidth = 1.5;
           ctx.setLineDash([]);
           ctx.stroke();
@@ -1284,12 +1289,12 @@ const TopologyGraph: Component<Props> = (props) => {
             ctx.lineTo(target.x, target.y);
           }
           if (!reduceLinks && !isDense) {
-            ctx.strokeStyle = 'rgba(168, 85, 247, 0.06)';
+            ctx.strokeStyle = tokenRgba('violet', 0.06);
             ctx.lineWidth = 4;
             ctx.setLineDash([]);
             ctx.stroke();
           }
-          ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
+          ctx.strokeStyle = tokenRgba('violet', 0.25);
           ctx.lineWidth = 1;
           ctx.setLineDash(reduceLinks ? [] : [4, 4]);
           ctx.stroke();
@@ -1450,7 +1455,7 @@ const TopologyGraph: Component<Props> = (props) => {
       const TAU = 2 * Math.PI;
 
       // Glow layer - cyan
-      ctx.fillStyle = 'rgba(0,217,255,0.25)';
+      ctx.fillStyle = tokenRgba('info', 0.25);
       ctx.beginPath();
       for (let i = 0; i < particleCount; i++) {
         const p = particlePositionsPool[i];
@@ -1459,7 +1464,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill();
 
       // Glow layer - purple
-      ctx.fillStyle = 'rgba(168,85,247,0.25)';
+      ctx.fillStyle = tokenRgba('violet', 0.25);
       ctx.beginPath();
       for (let i = 0; i < particleCount; i++) {
         const p = particlePositionsPool[i];
@@ -1468,7 +1473,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill();
 
       // Core layer - cyan
-      ctx.fillStyle = '#00c8ff';
+      ctx.fillStyle = VIZ_TOKEN_HEX.info;
       ctx.beginPath();
       for (let i = 0; i < particleCount; i++) {
         const p = particlePositionsPool[i];
@@ -1477,7 +1482,7 @@ const TopologyGraph: Component<Props> = (props) => {
       ctx.fill();
 
       // Core layer - purple
-      ctx.fillStyle = '#a855f7';
+      ctx.fillStyle = VIZ_TOKEN_HEX.violet;
       ctx.beginPath();
       for (let i = 0; i < particleCount; i++) {
         const p = particlePositionsPool[i];
@@ -1510,7 +1515,7 @@ const TopologyGraph: Component<Props> = (props) => {
       const radius = cached.r;
       const color = cached.color;
       const isSelected = node.id === selectedId;
-      const pulseScale = isSelected ? 1 + Math.sin(time * 2) * 0.15 : 1;
+      const pulseScale = isSelected && !reducedMotion ? 1 + Math.sin(time * 2) * 0.15 : 1;
       const glowRadius = (isSelected ? 12 : 6) * pulseScale;
 
       ctx.beginPath();
@@ -1643,7 +1648,7 @@ const TopologyGraph: Component<Props> = (props) => {
     const reduceNodeDetail = reduceDetail || zoomLevel < 0.6 || forceBudgetMode;
     const skipDecorativeNodeEffects = (isDense && !isUserInteracting) || forceBudgetMode;
     const simplifiedNodeRendering = reduceNodeDetail || skipDecorativeNodeEffects || isSimulationActive;
-    const allowParticles = isSimulationActive && !reduceLinks && !isDense && densityOverviewBlend < 0.15 && !forceBudgetMode;
+    const allowParticles = !reducedMotion && isSimulationActive && !reduceLinks && !isDense && densityOverviewBlend < 0.15 && !forceBudgetMode;
     syncDensityOverviewState(densityOverviewBlend);
 
     if (isSimulationActive) {
@@ -2146,7 +2151,7 @@ const TopologyGraph: Component<Props> = (props) => {
                 class="absolute -right-24 bottom-6 h-64 w-64 rounded-full bg-white/5 blur-3xl"
                 style={{ animation: 'topologyAuroraFloat 24s ease-in-out infinite' }}
             />
-            <div class="absolute inset-0 opacity-[0.06]" style={{ background: 'radial-gradient(circle at 20% 20%, rgba(0,217,255,0.18), transparent 32%), radial-gradient(circle at 80% 76%, rgba(168,85,247,0.16), transparent 30%)' }} />
+            <div class="absolute inset-0 opacity-[0.06]" style={{ background: 'radial-gradient(circle at 20% 20%, rgb(var(--info-rgb) / 0.18), transparent 32%), radial-gradient(circle at 80% 76%, rgb(var(--violet-rgb) / 0.16), transparent 30%)' }} />
         </div>
         <canvas
             ref={baseCanvasRef}

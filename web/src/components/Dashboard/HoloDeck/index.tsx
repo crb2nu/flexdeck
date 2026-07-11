@@ -5,6 +5,8 @@ import { diffFiAccelMetrics, getFiAccelMetricsSnapshot, type FiAccelMetricsDelta
 import { getNodeMetrics } from '../../../stores/metrics';
 import { formatPercent } from '../../../lib/format';
 import { isK8sNodeReady } from '../../../lib/k8sStatus';
+import { prefersReducedMotion } from '../../../lib/motion';
+import { VIZ_VIOLET_LIGHT, hexToInt, tokenHexInt } from '../../../lib/vizTokens';
 import {
     HOLO_THEME,
     HEALTH_HUB_CONFIG,
@@ -119,6 +121,9 @@ const HoloDeck: Component<Props> = (props) => {
   let traffic: TrafficManager;
   let renderLoop: HoloDeckRenderLoop;
   const clock = new THREE.Clock();
+  // Gates the decorative motion (auto-rotate, traffic packets, pulse/bob/spin)
+  // while keeping interaction, data-driven ring updates, and rendering live.
+  const reducedMotion = prefersReducedMotion();
 
   // Quality settings with auto-detection
   const getInitialQuality = (): QualityLevel => {
@@ -410,7 +415,7 @@ const HoloDeck: Component<Props> = (props) => {
       coreGroup.add(ring);
     }
     
-    const decRing = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.01, 8, 64), new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.15 }));
+    const decRing = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.01, 8, 64), new THREE.MeshBasicMaterial({ color: tokenHexInt('info'), transparent: true, opacity: 0.15 }));
     decRing.rotation.x = Math.PI / 2; decRing.position.y = 4;
     coreRings.push(decRing); coreGroup.add(decRing);
     engine.scene.add(coreGroup);
@@ -425,7 +430,7 @@ const HoloDeck: Component<Props> = (props) => {
     sharedGeoms.nodeScanner = markShared(new THREE.RingGeometry(2.8, 3, 32).rotateX(-Math.PI / 2));
     sharedGeoms.cpuRingBg = markShared(new THREE.RingGeometry(3.3, 3.5, 32).rotateX(-Math.PI / 2));
     sharedGeoms.memRingBg = markShared(new THREE.RingGeometry(3.0, 3.2, 32).rotateX(-Math.PI / 2));
-    sharedMats.ringBg = markShared(new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
+    sharedMats.ringBg = markShared(new THREE.MeshBasicMaterial({ color: HOLO_THEME.colors.rings.bg, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
     sharedGeoms.cpuProgress = markShared(new THREE.RingGeometry(3.3, 3.5, 64).rotateX(-Math.PI / 2));
     sharedGeoms.memProgress = markShared(new THREE.RingGeometry(3.0, 3.2, 64).rotateX(-Math.PI / 2));
     sharedGeoms.pod = markShared(new THREE.DodecahedronGeometry(0.4));
@@ -433,11 +438,11 @@ const HoloDeck: Component<Props> = (props) => {
     const hexS = new THREE.Shape();
     for(let j=0; j<6; j++){ const a = (j/6)*Math.PI*2 - Math.PI/6; const hx=Math.cos(a)*1.2, hz=Math.sin(a)*1.2; if(j===0) hexS.moveTo(hx,hz); else hexS.lineTo(hx,hz); }
     sharedGeoms.hex = markShared(new THREE.ExtrudeGeometry(hexS.closePath(), {depth:1.5, bevelEnabled:false}).rotateX(-Math.PI/2).translate(0, 0.75, 0));
-    sharedMats.hex = markShared(new THREE.MeshStandardMaterial({ color: 0xa855f7, transparent: true, opacity: 0.7, emissive: 0xa855f7, emissiveIntensity: 0.3 }));
+    sharedMats.hex = markShared(new THREE.MeshStandardMaterial({ color: HOLO_THEME.colors.service.primary, transparent: true, opacity: 0.7, emissive: HOLO_THEME.colors.service.primary, emissiveIntensity: 0.3 }));
     sharedGeoms.hexEdges = markShared(new THREE.EdgesGeometry(sharedGeoms.hex));
-    sharedMats.hexEdges = markShared(new THREE.LineBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.6 }));
+    sharedMats.hexEdges = markShared(new THREE.LineBasicMaterial({ color: hexToInt(VIZ_VIOLET_LIGHT), transparent: true, opacity: 0.6 }));
     sharedGeoms.glowRing = markShared(new THREE.RingGeometry(0.7, 1.0, 6).rotateX(-Math.PI/2));
-    sharedMats.glowRing = markShared(new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    sharedMats.glowRing = markShared(new THREE.MeshBasicMaterial({ color: HOLO_THEME.colors.service.primary, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
 
     // Interactions
     const onTouchStart = () => setInteractionType('touch');
@@ -463,7 +468,7 @@ const HoloDeck: Component<Props> = (props) => {
         engine.controls.autoRotate = false;
       } else {
         containerRef!.style.cursor = 'default'; setHoverInfo(null);
-        if (!selectedId()) engine.controls.autoRotate = true;
+        if (!selectedId() && !reducedMotion) engine.controls.autoRotate = true;
       }
     };
 
@@ -499,13 +504,15 @@ const HoloDeck: Component<Props> = (props) => {
       getDelta: () => Math.min(clock.getDelta(), 0.1),
       getElapsedTime: () => clock.getElapsedTime(),
       renderFrame: ({ delta, time }) => {
-        engine.gridMaterial.uniforms.uTime.value = time;
         engine.controls.update();
-        traffic.spawn(curves, serviceCurves);
-        traffic.update(delta, curves, serviceCurves);
+        if (!reducedMotion) {
+          engine.gridMaterial.uniforms.uTime.value = time;
+          traffic.spawn(curves, serviceCurves);
+          traffic.update(delta, curves, serviceCurves);
+        }
 
         const f = engine.renderer.info.render.frame;
-        if (f % 2 === 0) {
+        if (!reducedMotion && f % 2 === 0) {
           const scannerPulse = Math.sin(time * 2);
           const scannerScale = 1 + scannerPulse * 0.15;
           const scannerOpacity = 0.4 - scannerPulse * 0.15;
@@ -520,7 +527,7 @@ const HoloDeck: Component<Props> = (props) => {
         const shouldRefreshMetrics = f % 60 === 0;
         for (const node of nodeVisuals) {
           const coreRef = node.coreRef;
-          if (coreRef) {
+          if (coreRef && !reducedMotion) {
             coreRef.rotation.y += delta * 0.8;
             coreRef.rotation.x += delta * 0.4;
           }
@@ -533,23 +540,25 @@ const HoloDeck: Component<Props> = (props) => {
           if (node.memRingRef) node.memRingRef.material.uniforms.uProgress.value = metrics.memoryPercent / 100;
         }
 
-        for (const pod of podVisuals) {
-          const { mesh, initialY, waveOffset } = pod;
-          mesh.rotation.x += delta * 0.3;
-          mesh.rotation.y += delta * 0.2;
-          mesh.position.y = initialY + Math.sin(time * 0.8 + waveOffset) * 0.2;
-        }
+        if (!reducedMotion) {
+          for (const pod of podVisuals) {
+            const { mesh, initialY, waveOffset } = pod;
+            mesh.rotation.x += delta * 0.3;
+            mesh.rotation.y += delta * 0.2;
+            mesh.position.y = initialY + Math.sin(time * 0.8 + waveOffset) * 0.2;
+          }
 
-        for (const service of serviceVisuals) {
-          const { mesh, initialY, waveOffset } = service;
-          mesh.rotation.y += delta * 0.15;
-          mesh.position.y = initialY + Math.sin(time * 0.6 + waveOffset) * 0.3;
-        }
+          for (const service of serviceVisuals) {
+            const { mesh, initialY, waveOffset } = service;
+            mesh.rotation.y += delta * 0.15;
+            mesh.position.y = initialY + Math.sin(time * 0.6 + waveOffset) * 0.3;
+          }
 
-        engine.dustParticles.rotation.y = time * 0.03;
-        if (healthOrb) { healthOrb.rotation.y = time * 0.1; healthOrb.scale.setScalar(1 + Math.sin(time * 0.5) * 0.08); }
-        healthRingMaterials.forEach(m => m.uniforms.uTime.value = time);
-        coreRings.forEach(r => r.rotation.z = time * 0.05);
+          engine.dustParticles.rotation.y = time * 0.03;
+          if (healthOrb) { healthOrb.rotation.y = time * 0.1; healthOrb.scale.setScalar(1 + Math.sin(time * 0.5) * 0.08); }
+          healthRingMaterials.forEach(m => m.uniforms.uTime.value = time);
+          coreRings.forEach(r => r.rotation.z = time * 0.05);
+        }
 
         engine.composer.render();
       },
@@ -693,7 +702,7 @@ const HoloDeck: Component<Props> = (props) => {
 
   return (
     <div class="relative h-full w-full overflow-hidden">
-        <div ref={containerRef} class="h-full w-full bg-[#030508]" />
+        <div ref={containerRef} class="h-full w-full bg-bg-deep" />
         
         {/* Popups & Central Hub (Ported directly from original) */}
         <Show when={hoverInfo()}>
@@ -727,7 +736,7 @@ const HoloDeck: Component<Props> = (props) => {
         </Show>
 
         <div class="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
-            <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/85 px-5 py-4 shadow-[0_0_25px_rgba(0,240,255,0.18)]">
+            <div class="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/85 px-5 py-4 shadow-[var(--glow-active)]">
                 <div class="text-[9px] uppercase tracking-[0.4em] text-text-muted">Cluster Core</div>
                 <div class="flex items-end gap-2">
                     <span class={`text-3xl font-semibold ${healthState() === 'healthy' ? 'text-status-ok' : (healthState() === 'warning' ? 'text-status-warn' : 'text-status-error')}`}>{formatPercent(clusterHealth().healthPercent * 100, 0)}</span>

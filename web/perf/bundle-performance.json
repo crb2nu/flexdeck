@@ -3,7 +3,7 @@
   "metrics": [
     {
       "name": "bundle_landing_initial_js_gz",
-      "value": 105,
+      "value": 106,
       "unit": "KiB"
     },
     {
@@ -13,7 +13,7 @@
     },
     {
       "name": "bundle_total_chunks",
-      "value": 47,
+      "value": 50,
       "unit": "count"
     },
     {

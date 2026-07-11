@@ -2,7 +2,6 @@ import { Component, createMemo, createSignal, createEffect, Index, Show } from '
 import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from '../../stores/dashboardSummary';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
-import LoadingState from '../shared/LoadingState';
 import { formatBytes } from '../../lib/format';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
@@ -142,8 +141,20 @@ const NodeResourcePanel: Component = () => {
       </div>
 
       <Show when={stablePanel.showBlockingLoading()}>
-        <div class="flex items-center justify-center py-6">
-          <LoadingState variant="inline" size="sm" message="Loading node metrics…" />
+        {/* Node-card-shaped skeleton: name line + two metric bars per host. */}
+        <div class="space-y-2 p-3 animate-fade-in" aria-hidden="true">
+          <Index each={[0, 1]}>
+            {() => (
+              <div class="rounded-md bg-white/5 p-2.5 space-y-1.5">
+                <div class="flex items-center gap-2">
+                  <div class="skeleton h-1.5 w-1.5 flex-shrink-0 rounded-full" />
+                  <div class="skeleton h-3 w-32 rounded" />
+                </div>
+                <div class="skeleton h-1.5 w-full rounded-full" />
+                <div class="skeleton h-1.5 w-full rounded-full" />
+              </div>
+            )}
+          </Index>
         </div>
       </Show>
 

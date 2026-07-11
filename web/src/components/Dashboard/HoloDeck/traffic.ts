@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tokenHexInt } from '../../../lib/vizTokens';
 import { TRAFFIC_CONFIG, type TrafficType } from './config';
 import { trafficVertexShader, trafficFragmentShader } from './shaders';
 
@@ -81,7 +82,7 @@ export class TrafficManager {
 
     // --- SERVICE TRAFFIC ---
     const servicePacketGeom = new THREE.SphereGeometry(0.12, 6, 6);
-    const servicePacketMat = new THREE.MeshBasicMaterial({ color: 0xa855f7 });
+    const servicePacketMat = new THREE.MeshBasicMaterial({ color: tokenHexInt('violet') });
     this.serviceTrafficMesh = new THREE.InstancedMesh(servicePacketGeom, servicePacketMat, MAX_SERVICE_TRAFFIC);
     this.serviceTrafficMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < MAX_SERVICE_TRAFFIC; i++) {

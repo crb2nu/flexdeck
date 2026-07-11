@@ -128,9 +128,10 @@ const PulseCard: Component<PulseCardProps> = (props) => {
       {/* Content */}
       <div class="relative flex flex-1 flex-col justify-center">
         <Show when={props.loading && !stableState()}>
-          <div class="flex items-center gap-2 sm:gap-3">
-            <div class="h-4 w-4 sm:h-6 sm:w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
-            <span class="text-[10px] sm:text-xs text-text-dim">Loading...</span>
+          {/* Value/sub-shaped skeleton so the card doesn't jump when data lands. */}
+          <div class="flex flex-col gap-1.5" aria-hidden="true">
+            <div class={`skeleton rounded ${props.emphasis ? 'h-8 w-24 sm:h-9 sm:w-28' : 'h-6 w-16 sm:h-7 sm:w-20'}`} />
+            <div class="skeleton h-3 w-24 rounded sm:w-28" />
           </div>
         </Show>
 

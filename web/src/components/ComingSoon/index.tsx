@@ -1,5 +1,7 @@
 import { Component, onMount, onCleanup } from 'solid-js';
 import { useLocation } from '@solidjs/router';
+import { prefersReducedMotion } from '../../lib/motion';
+import { VIZ_TOKEN_HEX, tokenRgba } from '../../lib/vizTokens';
 
 const ComingSoon: Component = () => {
   const location = useLocation();
@@ -36,18 +38,18 @@ const ComingSoon: Component = () => {
     const chars = "01FLEXDECKxyz<>[]{}*&^%#@!"; 
     // const chars = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ"; // Classic Katakana if preferred
 
-    const draw = () => {
+    const drawFrame = () => {
       // Semi-transparent black to create trail effect
-      ctx.fillStyle = 'rgba(6, 12, 16, 0.05)';
+      ctx.fillStyle = tokenRgba('bgPrimary', 0.05);
       ctx.fillRect(0, 0, canvasRef!.width, canvasRef!.height);
 
-      ctx.fillStyle = '#00c8ff'; // Loom-core info
+      ctx.fillStyle = VIZ_TOKEN_HEX.info;
       ctx.font = `${fontSize}px monospace`;
 
       for (let i = 0; i < drops.length; i++) {
         // Random character
         const text = chars[Math.floor(Math.random() * chars.length)];
-        
+
         // x = column index * font size, y = drop value * font size
         ctx.fillText(text, i * fontSize, drops[i] * fontSize);
 
@@ -59,10 +61,19 @@ const ComingSoon: Component = () => {
 
         drops[i]++;
       }
-      animationId = requestAnimationFrame(draw);
     };
 
-    draw();
+    if (prefersReducedMotion()) {
+      // Paint a static rain field instead of running the loop
+      const staticFrames = Math.ceil(canvasRef.height / fontSize) + 30;
+      for (let i = 0; i < staticFrames; i++) drawFrame();
+    } else {
+      const draw = () => {
+        drawFrame();
+        animationId = requestAnimationFrame(draw);
+      };
+      draw();
+    }
 
     onCleanup(() => {
       window.removeEventListener('resize', resize);
@@ -71,11 +82,11 @@ const ComingSoon: Component = () => {
   });
 
   return (
-    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#050a14]">
+    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-bg-deep">
       <canvas ref={canvasRef} class="absolute inset-0 z-0 opacity-30" />
-      
+
       <div class="surface relative z-10 flex h-full items-center justify-center bg-transparent">
-        <div class="text-center p-12 border border-white/15 bg-[#050a14]/80 rounded-2xl">
+        <div class="text-center p-12 border border-white/15 bg-bg-deep/80 rounded-2xl">
           <div class="mb-6 flex justify-center">
              <div class="relative h-20 w-20 flex items-center justify-center rounded-full border-2 border-white/20 bg-white/10 animate-pulse">
                 <span class="text-4xl text-white">◈</span>
