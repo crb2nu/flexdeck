@@ -5,6 +5,7 @@ import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 import { computeFluxSyncState, type FluxSyncState } from './syncState';
 import { PageHeader, LoadingState, EmptyState, ErrorState } from '../shared';
+import { sanitizeError } from '../../lib/sanitizeError';
 
 const POLL_INTERVAL = 15_000;
 
@@ -107,6 +108,7 @@ const FluxStatus: Component = () => {
         title="Flux GitOps"
         onRefresh={fetchAll}
         refreshDisabled={loading()}
+        refreshing={loading()}
       >
         <Show when={!loading()}>
           <span class="text-sm text-text-dim">{readyCount()}/{totalCount()} in sync</span>
@@ -524,7 +526,7 @@ const FluxResourceRow: Component<{
                   <div class="px-3 py-2 text-[11px] text-text-dim animate-pulse">Loading values...</div>
                 }>
                   <Show when={props.hrValuesData?.error}>
-                    <div class="px-3 py-2 text-[11px] text-status-error">{props.hrValuesData.error}</div>
+                    <div class="px-3 py-2 text-[11px] text-status-error" role="alert">{sanitizeError(String(props.hrValuesData.error))}</div>
                   </Show>
                   <Show when={!props.hrValuesData?.error}>
                     <pre class="px-3 py-2 text-[11px] text-text-muted font-mono whitespace-pre-wrap break-all max-h-64 overflow-auto">

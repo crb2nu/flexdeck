@@ -8,11 +8,11 @@ interface GlassPanelProps {
 }
 
 const accentColors: Record<string, string> = {
-  blue: 'hover:border-l-[rgba(0,240,255,0.4)]',
-  violet: 'hover:border-l-[rgba(189,0,255,0.4)]',
-  emerald: 'hover:border-l-[rgba(10,255,104,0.4)]',
-  red: 'hover:border-l-[rgba(255,0,60,0.4)]',
-  amber: 'hover:border-l-[rgba(252,238,10,0.3)]',
+  blue: 'hover:border-l-[rgb(var(--info-rgb)/0.4)]',
+  violet: 'hover:border-l-[rgb(var(--violet-rgb)/0.4)]',
+  emerald: 'hover:border-l-[rgb(var(--success-rgb)/0.4)]',
+  red: 'hover:border-l-[rgb(var(--error-rgb)/0.4)]',
+  amber: 'hover:border-l-[rgb(var(--warning-rgb)/0.3)]',
 };
 
 const GlassPanel: Component<GlassPanelProps> = (props) => {

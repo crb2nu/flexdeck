@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-09T15:05:19.644Z",
+  "generatedAt": "2026-07-11T01:11:14.759Z",
   "budgets": {
     "landingJsGzBytes": 163840
   },
   "metrics": {
-    "entryInitialJsGzBytes": 31870,
-    "landingInitialJsGzBytes": 103208,
-    "totalChunks": 41
+    "entryInitialJsGzBytes": 33925,
+    "landingInitialJsGzBytes": 107030,
+    "totalChunks": 47
   },
   "deferredVendors": {
     "vendor-three": "deferred",

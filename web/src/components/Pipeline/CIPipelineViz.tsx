@@ -1073,7 +1073,7 @@ const CIPipelineViz: Component<{
                       {/* Enhanced Hover tooltip */}
                       <Show when={hoveredJob() === job.id}>
                         <div
-                          class="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full px-3 py-2 rounded-lg bg-black/95 border text-xs font-mono z-50 min-w-[160px]"
+                          class="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full px-3 py-2 rounded-lg bg-black/95 border text-xs font-mono z-tooltip min-w-[160px]"
                           style={{
                             'box-shadow': `0 4px 20px rgba(0,0,0,0.5), 0 0 20px ${getStatusColor(job.status, job.rawStatus)}20`,
                             'border-color': `${getStatusColor(job.status, job.rawStatus)}40`
@@ -1210,9 +1210,9 @@ const CIPipelineViz: Component<{
 
         /* Status transition animations */
         @keyframes success-burst {
-          0% { transform: scale(1); box-shadow: 0 0 0 rgba(34, 224, 118, 0); }
-          30% { transform: scale(1.08); box-shadow: 0 0 30px rgba(34, 224, 118, 0.4); }
-          100% { transform: scale(1); box-shadow: 0 0 10px rgba(34, 224, 118, 0.15); }
+          0% { transform: scale(1); box-shadow: 0 0 0 rgb(var(--success-rgb) / 0); }
+          30% { transform: scale(1.08); box-shadow: 0 0 30px rgb(var(--success-rgb) / 0.4); }
+          100% { transform: scale(1); box-shadow: 0 0 10px rgb(var(--success-rgb) / 0.15); }
         }
 
         @keyframes error-shake {

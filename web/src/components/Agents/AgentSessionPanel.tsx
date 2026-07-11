@@ -1,4 +1,4 @@
-import { Component, createSignal, For, Show } from 'solid-js';
+import { Component, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { Agent, AgentSession } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
@@ -73,8 +73,22 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
 
   createPolling(() => 'agent-sessions-' + props.agent.id, fetchSessions, 15_000);
 
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+  });
+
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${props.agent.name} sessions`}
+      class="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}
+    >
       <div class="surface w-full max-w-lg max-h-[85dvh] flex flex-col overflow-hidden">
         {/* Header */}
         <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
@@ -91,6 +105,7 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
             </span>
             <button
               onClick={props.onClose}
+              aria-label="Close session panel"
               class="rounded-md bg-white/10 px-2 py-1 text-sm text-text-muted hover:bg-white/20"
             >
               &times;

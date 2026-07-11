@@ -715,6 +715,7 @@ const Projects: Component = () => {
             const id = selectedId();
             if (id) loadDetail(id, false);
           }}
+          refreshing={listLoading()}
         />
 
         <Show when={listError()}>

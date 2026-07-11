@@ -2,6 +2,7 @@ import { Component, For, Show, createMemo } from 'solid-js';
 import type { RepoInfo } from '../../lib/api';
 import type { Pipeline } from './CIPipelineViz';
 import PipelineCard from './PipelineCard';
+import { LoadingState, EmptyState } from '../shared';
 import { sortPipelines, type PipelineSortConfig, type PipelineSortField, type RepoWithPipeline } from './utils';
 
 const SORT_OPTIONS: { value: PipelineSortField; label: string }[] = [
@@ -121,25 +122,23 @@ const PipelineListView: Component<{
       {/* Loading indicator */}
       <Show when={props.loading}>
         <div class="flex items-center justify-center p-8">
-          <div class="flex items-center gap-3 text-text-muted">
-            <div class="w-5 h-5 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
-            <span class="text-sm font-mono">Loading pipelines...</span>
-          </div>
+          <LoadingState variant="inline" message="Loading pipelines..." />
         </div>
       </Show>
 
       {/* Pipeline grid */}
       <div class="flex-1 overflow-y-auto p-4">
         <Show when={sortedPipelines().length > 0} fallback={
-          <div class="flex flex-col items-center justify-center h-64 text-center">
-            <div class="text-4xl mb-4 opacity-20">
-              <svg class="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <EmptyState
+            size="sm"
+            icon={
+              <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-            </div>
-            <div class="text-text-dim font-mono text-sm">No pipelines found</div>
-            <div class="text-text-dim/50 text-xs mt-1">Select a repository to view its pipeline</div>
-          </div>
+            }
+            title="No pipelines found"
+            subtitle="Select a repository to view its pipeline"
+          />
         }>
           <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             <For each={sortedPipelines()}>

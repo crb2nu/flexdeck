@@ -1,4 +1,5 @@
 import { Component, For, Show, createSignal, onCleanup, onMount, JSX } from 'solid-js';
+import TabBar from './TabBar';
 
 export interface DetailPanelTab {
   id: string;
@@ -34,23 +35,31 @@ const statusColors: Record<string, { bg: string; border: string; text: string }>
 
 const DetailPanel: Component<DetailPanelProps> = (props) => {
   const [activeTab, setActiveTab] = createSignal(props.tabs?.[0]?.id || '');
+  let panelRef: HTMLDivElement | undefined;
 
   const statusStyle = () => props.status ? statusColors[props.status] : null;
 
   onMount(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.onClose();
     };
     document.addEventListener('keydown', onKeyDown);
-    onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+    onCleanup(() => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    });
   });
 
   return (
     <div
+      ref={panelRef}
       role="dialog"
       aria-modal="true"
       aria-label={props.title}
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85dvh] lg:max-h-[60dvh]"
+      tabindex="-1"
+      class="fixed inset-x-0 bottom-0 z-modal flex flex-col bg-bg-dark border-t border-white/[0.08] shadow-elevated animate-slide-up max-h-[85dvh] lg:max-h-[60dvh] focus:outline-none"
     >
       {/* Header */}
       <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">
@@ -108,21 +117,14 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
 
       {/* Tabs */}
       <Show when={props.tabs && props.tabs.length > 0}>
-        <div class="flex gap-1 px-4 sm:px-6 py-2 border-b border-white/5 bg-white/[0.02] overflow-x-auto no-scrollbar">
-          <For each={props.tabs}>
-            {(tab) => (
-              <button
-                onClick={() => setActiveTab(tab.id)}
-                class="flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 border"
-                classList={{
-                  'bg-white/10 border-white/[0.08] text-white': activeTab() === tab.id,
-                  'border-transparent text-white/60 hover:text-white': activeTab() !== tab.id
-                }}
-              >
-                {tab.label}
-              </button>
-            )}
-          </For>
+        <div class="px-4 sm:px-6 py-2 border-b border-white/5 bg-white/[0.02]">
+          <TabBar
+            tabs={props.tabs!.map((tab) => ({ id: tab.id, label: tab.label }))}
+            active={activeTab()}
+            onChange={setActiveTab}
+            variant="pill"
+            size="sm"
+          />
         </div>
       </Show>
 

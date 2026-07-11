@@ -317,15 +317,9 @@ const Agents: Component = () => {
           <div class="min-w-0">
         <Show when={!isToolingSection()}>
           <ErrorBoundary fallback={(err) => (
-            <div class="surface border-status-error/20 p-4 text-sm text-status-error">
-              HUD error: {err.message}
-            </div>
+            <ErrorState message={`HUD error: ${err?.message ?? err}`} />
           )}>
-            <Suspense fallback={
-              <div class="flex items-center justify-center py-12">
-                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white" />
-              </div>
-            }>
+            <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
               <HUDTab focus={hudFocus()} />
             </Suspense>
           </ErrorBoundary>

@@ -108,11 +108,11 @@ const QualitySettings: Component<{
 
         {/* Dropdown */}
         <div
-          class="absolute top-full right-0 mt-2 min-w-[160px] rounded-lg overflow-hidden z-50 transition-all duration-200"
+          class="absolute top-full right-0 mt-2 min-w-[160px] rounded-lg overflow-hidden z-dropdown transition-all duration-200"
           style={{
             background: 'rgba(16, 28, 34, 0.98)',
-            border: '1px solid rgba(0, 200, 255, 0.2)',
-            'box-shadow': '0 10px 40px rgba(0, 0, 0, 0.5)',
+            border: '1px solid rgb(var(--info-rgb) / 0.2)',
+            'box-shadow': 'var(--shadow-lg)',
             opacity: isOpen() ? '1' : '0',
             transform: isOpen() ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.95)',
             'pointer-events': isOpen() ? 'auto' : 'none'
@@ -127,9 +127,9 @@ const QualitySettings: Component<{
                 }}
                 class="w-full px-4 py-3 text-left transition-all duration-150 hover:bg-white/5"
                 style={{
-                  background: quality() === option.level ? 'rgba(0, 200, 255, 0.1)' : 'transparent',
+                  background: quality() === option.level ? 'rgb(var(--info-rgb) / 0.1)' : 'transparent',
                   'border-left': quality() === option.level
-                    ? '2px solid #00c8ff'
+                    ? '2px solid var(--info)'
                     : '2px solid transparent'
                 }}
               >
@@ -137,7 +137,7 @@ const QualitySettings: Component<{
                   <span
                     class="font-mono text-sm font-bold"
                     style={{
-                      color: quality() === option.level ? '#00c8ff' : 'rgba(255, 255, 255, 0.8)'
+                      color: quality() === option.level ? 'var(--info)' : 'rgba(255, 255, 255, 0.8)'
                     }}
                   >
                     {option.label}
@@ -161,7 +161,7 @@ const QualitySettings: Component<{
       class="p-4 rounded-xl"
       style={{
         background: 'rgba(16, 28, 34, 0.8)',
-        border: '1px solid rgba(0, 200, 255, 0.1)'
+        border: '1px solid rgb(var(--info-rgb) / 0.1)'
       }}
     >
       <h3 class="text-sm font-mono uppercase tracking-wider text-text-muted mb-4">
@@ -177,13 +177,13 @@ const QualitySettings: Component<{
               class="flex-1 py-2 px-3 rounded-lg text-xs font-mono uppercase tracking-wider transition-all duration-200"
               style={{
                 background: quality() === option.level
-                  ? 'rgba(0, 200, 255, 0.2)'
+                  ? 'rgb(var(--info-rgb) / 0.2)'
                   : 'rgba(255, 255, 255, 0.05)',
                 border: quality() === option.level
-                  ? '1px solid rgba(0, 200, 255, 0.5)'
+                  ? '1px solid rgb(var(--info-rgb) / 0.5)'
                   : '1px solid rgba(255, 255, 255, 0.1)',
                 color: quality() === option.level
-                  ? '#00c8ff'
+                  ? 'var(--info)'
                   : 'rgba(255, 255, 255, 0.6)'
               }}
             >
@@ -205,7 +205,7 @@ const QualitySettings: Component<{
         </div>
         <div class="flex justify-between items-center text-text-dim">
           <span>Bloom Effect</span>
-          <span style={{ color: currentConfig().bloomEnabled ? '#22e076' : '#ff3d71' }}>
+          <span style={{ color: currentConfig().bloomEnabled ? 'var(--success)' : 'var(--error)' }}>
             {currentConfig().bloomEnabled ? 'ON' : 'OFF'}
           </span>
         </div>

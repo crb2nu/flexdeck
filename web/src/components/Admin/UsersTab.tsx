@@ -2,20 +2,30 @@ import {
   Component,
   createSignal,
   createResource,
+  createUniqueId,
   Show,
-  For,
 } from "solid-js";
 import { rbacApi } from "../../lib/api";
 import type { RBACUser } from "../../lib/types";
+import {
+  Button,
+  Input,
+  Select,
+  DataTable,
+  LoadingState,
+  ErrorState,
+  type ColumnDef,
+} from "../shared";
+import { showToast, ToastContainer } from "../shared/Toast";
+
+const ROLE_OPTIONS = [
+  { value: "viewer", label: "Viewer" },
+  { value: "editor", label: "Editor" },
+  { value: "admin", label: "Admin" },
+];
 
 const UsersTab: Component = () => {
-  const [users, { refetch }] = createResource(async () => {
-    try {
-      return await rbacApi.listUsers();
-    } catch {
-      return [];
-    }
-  });
+  const [users, { refetch }] = createResource(() => rbacApi.listUsers());
 
   const [showCreate, setShowCreate] = createSignal(false);
   const [newUsername, setNewUsername] = createSignal("");
@@ -25,20 +35,38 @@ const UsersTab: Component = () => {
   const [editUser, setEditUser] = createSignal<RBACUser | null>(null);
   const [editRole, setEditRole] = createSignal("");
   const [editDisabled, setEditDisabled] = createSignal(false);
+  const [updating, setUpdating] = createSignal(false);
+  const [deletingId, setDeletingId] = createSignal<string | null>(null);
+
+  const usernameId = createUniqueId();
+  const createRoleId = createUniqueId();
+  const editRoleId = createUniqueId();
+
+  const userRows = (): RBACUser[] => {
+    if (users.error) return [];
+    return users.latest ?? [];
+  };
+
+  const errorText = (e: unknown, fallback: string): string => {
+    if (e instanceof Error && e.message.trim() !== "") return e.message;
+    return fallback;
+  };
 
   const handleCreate = async () => {
     setCreating(true);
     try {
+      const username = newUsername();
       const result = await rbacApi.createUser({
-        username: newUsername(),
+        username,
         role: newRole(),
       });
       setCreatedToken(result.token);
       setNewUsername("");
       setNewRole("viewer");
+      showToast(`User "${username}" created`, "success");
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to create user");
+    } catch (e) {
+      showToast(errorText(e, "Failed to create user"), "error");
     }
     setCreating(false);
   };
@@ -46,26 +74,32 @@ const UsersTab: Component = () => {
   const handleUpdate = async () => {
     const user = editUser();
     if (!user) return;
+    setUpdating(true);
     try {
       await rbacApi.updateUser(user.id, {
         role: editRole(),
         disabled: editDisabled(),
       });
       setEditUser(null);
+      showToast(`User "${user.username}" updated`, "success");
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to update user");
+    } catch (e) {
+      showToast(errorText(e, "Failed to update user"), "error");
     }
+    setUpdating(false);
   };
 
   const handleDelete = async (id: string, username: string) => {
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    setDeletingId(id);
     try {
       await rbacApi.deleteUser(id);
+      showToast(`User "${username}" deleted`, "success");
       refetch();
-    } catch (e: any) {
-      alert(e.message || "Failed to delete user");
+    } catch (e) {
+      showToast(errorText(e, "Failed to delete user"), "error");
     }
+    setDeletingId(null);
   };
 
   const roleBadge = (role: string) => {
@@ -77,27 +111,103 @@ const UsersTab: Component = () => {
     return colors[role] || "bg-white/10 text-text-muted border-white/20";
   };
 
+  const columns: ColumnDef<RBACUser>[] = [
+    {
+      id: "username",
+      header: "Username",
+      accessor: (u) => u.username,
+      sortable: true,
+      mono: true,
+      cell: (value) => <span class="text-white">{value}</span>,
+    },
+    {
+      id: "role",
+      header: "Role",
+      accessor: (u) => u.role,
+      sortable: true,
+      cell: (value, u) => (
+        <span
+          class={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-mono ${roleBadge(u.role)}`}
+        >
+          {value}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessor: (u) => (u.disabled ? "DISABLED" : "ACTIVE"),
+      sortable: true,
+      cell: (_value, u) => (
+        <span
+          class={`text-[10px] font-mono ${u.disabled ? "text-red-400" : "text-status-ok"}`}
+        >
+          {u.disabled ? "DISABLED" : "ACTIVE"}
+        </span>
+      ),
+    },
+    {
+      id: "lastLogin",
+      header: "Last Login",
+      accessor: (u) => u.lastLogin ?? "",
+      sortable: true,
+      cell: (_value, u) => (
+        <span class="font-mono text-xs text-text-dim">
+          {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : "Never"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      accessor: () => "",
+      align: "right",
+      cell: (_value, u) => (
+        <span class="inline-flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setEditUser(u);
+              setEditRole(u.role);
+              setEditDisabled(u.disabled);
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            loading={deletingId() === u.id}
+            onClick={() => handleDelete(u.id, u.username)}
+          >
+            Delete
+          </Button>
+        </span>
+      ),
+    },
+  ];
+
   return (
     <div class="space-y-4">
       {/* Header */}
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-mono text-text-muted tracking-wider">
-          USER MANAGEMENT
-        </h3>
-        <button
-          class="rounded-md bg-white/10 border border-white/20 px-3 py-1.5 text-xs font-mono text-white hover:bg-white/15 transition-colors"
+        <h3 class="heading-label">User Management</h3>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => {
             setShowCreate(true);
             setCreatedToken("");
           }}
         >
-          + NEW USER
-        </button>
+          + New user
+        </Button>
       </div>
 
-      {/* Create modal */}
+      {/* Create panel */}
       <Show when={showCreate()}>
-        <div class="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+        <div class="surface p-4 space-y-3">
           <Show
             when={!createdToken()}
             fallback={
@@ -109,89 +219,87 @@ const UsersTab: Component = () => {
                   <code class="flex-1 text-xs text-white font-mono break-all">
                     {createdToken()}
                   </code>
-                  <button
-                    class="text-xs text-text-muted hover:text-white"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => navigator.clipboard.writeText(createdToken())}
                   >
                     Copy
-                  </button>
+                  </Button>
                 </div>
-                <button
-                  class="text-xs text-text-dim hover:text-white"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setShowCreate(false);
                     setCreatedToken("");
                   }}
                 >
                   Close
-                </button>
+                </Button>
               </div>
             }
           >
             <div class="flex items-end gap-3">
               <div class="flex-1">
-                <label class="text-[10px] text-text-dim block mb-1">
-                  USERNAME
+                <label for={usernameId} class="heading-label block mb-1">
+                  Username
                 </label>
-                <input
+                <Input
+                  id={usernameId}
                   type="text"
-                  class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                   value={newUsername()}
                   onInput={(e) => setNewUsername(e.currentTarget.value)}
                   placeholder="username"
                 />
               </div>
               <div>
-                <label class="text-[10px] text-text-dim block mb-1">ROLE</label>
-                <select
-                  class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
+                <label for={createRoleId} class="heading-label block mb-1">
+                  Role
+                </label>
+                <Select
+                  id={createRoleId}
+                  options={ROLE_OPTIONS}
                   value={newRole()}
                   onChange={(e) => setNewRole(e.currentTarget.value)}
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
-                  <option value="admin">Admin</option>
-                </select>
+                />
               </div>
-              <button
-                class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono hover:bg-white/15 disabled:opacity-50"
+              <Button
+                variant="primary"
+                loading={creating()}
+                disabled={!newUsername()}
                 onClick={handleCreate}
-                disabled={creating() || !newUsername()}
               >
-                {creating() ? "..." : "Create"}
-              </button>
-              <button
-                class="text-xs text-text-dim hover:text-white px-2 py-1.5"
-                onClick={() => setShowCreate(false)}
-              >
+                Create
+              </Button>
+              <Button variant="ghost" onClick={() => setShowCreate(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </Show>
         </div>
       </Show>
 
-      {/* Edit modal */}
+      {/* Edit panel */}
       <Show when={editUser()}>
         {(user) => (
-          <div class="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+          <div class="surface p-4 space-y-3">
             <div class="text-xs text-text-muted font-mono">
               Editing: {user().username}
             </div>
             <div class="flex items-end gap-3">
               <div>
-                <label class="text-[10px] text-text-dim block mb-1">ROLE</label>
-                <select
-                  class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono"
+                <label for={editRoleId} class="heading-label block mb-1">
+                  Role
+                </label>
+                <Select
+                  id={editRoleId}
+                  options={ROLE_OPTIONS}
                   value={editRole()}
                   onChange={(e) => setEditRole(e.currentTarget.value)}
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
-                  <option value="admin">Admin</option>
-                </select>
+                />
               </div>
-              <label class="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+              <label class="flex items-center gap-2 py-2 text-xs text-text-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={editDisabled()}
@@ -200,101 +308,49 @@ const UsersTab: Component = () => {
                 />
                 Disabled
               </label>
-              <button
-                class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono"
+              <Button
+                variant="primary"
+                loading={updating()}
                 onClick={handleUpdate}
               >
                 Save
-              </button>
-              <button
-                class="text-xs text-text-dim hover:text-white px-2 py-1.5"
-                onClick={() => setEditUser(null)}
-              >
+              </Button>
+              <Button variant="ghost" onClick={() => setEditUser(null)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </Show>
 
       {/* Users table */}
-      <div class="rounded-lg border border-white/5 overflow-hidden">
-        <table class="w-full text-xs">
-          <thead>
-            <tr class="border-b border-white/5 bg-white/[0.02]">
-              <th class="px-4 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                USERNAME
-              </th>
-              <th class="px-4 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                ROLE
-              </th>
-              <th class="px-4 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                STATUS
-              </th>
-              <th class="px-4 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                LAST LOGIN
-              </th>
-              <th class="px-4 py-2.5 text-right text-[10px] text-text-dim tracking-wider font-normal">
-                ACTIONS
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={users() || []} fallback={
-              <tr>
-                <td colspan="5" class="px-4 py-6 text-center text-text-dim">
-                  No users found
-                </td>
-              </tr>
-            }>
-              {(user) => (
-                <tr class="border-b border-white/5 hover:bg-white/[0.02]">
-                  <td class="px-4 py-2.5 font-mono text-white">
-                    {user.username}
-                  </td>
-                  <td class="px-4 py-2.5">
-                    <span
-                      class={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-mono ${roleBadge(user.role)}`}
-                    >
-                      {user.role}
-                    </span>
-                  </td>
-                  <td class="px-4 py-2.5">
-                    <span
-                      class={`text-[10px] font-mono ${user.disabled ? "text-red-400" : "text-status-ok"}`}
-                    >
-                      {user.disabled ? "DISABLED" : "ACTIVE"}
-                    </span>
-                  </td>
-                  <td class="px-4 py-2.5 text-text-dim font-mono">
-                    {user.lastLogin
-                      ? new Date(user.lastLogin).toLocaleString()
-                      : "Never"}
-                  </td>
-                  <td class="px-4 py-2.5 text-right space-x-2">
-                    <button
-                      class="text-text-dim hover:text-white transition-colors"
-                      onClick={() => {
-                        setEditUser(user);
-                        setEditRole(user.role);
-                        setEditDisabled(user.disabled);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      class="text-text-dim hover:text-red-400 transition-colors"
-                      onClick={() => handleDelete(user.id, user.username)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </div>
+      <Show
+        when={!users.error}
+        fallback={
+          <ErrorState
+            message={errorText(users.error, "Failed to load users")}
+            variant="banner"
+            onRetry={() => refetch()}
+          />
+        }
+      >
+        <Show
+          when={!users.loading || users.latest}
+          fallback={<LoadingState message="Loading users..." />}
+        >
+          <div class="surface overflow-hidden">
+            <DataTable
+              data={userRows()}
+              columns={columns}
+              rowKey={(u) => u.id}
+              stickyHeader={false}
+              emptyTitle="No users found"
+            />
+          </div>
+        </Show>
+      </Show>
+
+      <ToastContainer />
     </div>
   );
 };

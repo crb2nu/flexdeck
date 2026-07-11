@@ -6,6 +6,13 @@ import {
   For,
 } from "solid-js";
 import { auditApi } from "../../lib/api";
+import {
+  Button,
+  Input,
+  LoadingState,
+  ErrorState,
+  EmptyState,
+} from "../shared";
 
 const AuditTab: Component = () => {
   const [offset, setOffset] = createSignal(0);
@@ -20,18 +27,13 @@ const AuditTab: Component = () => {
       action: filterAction(),
       user: filterUser(),
     }),
-    async (params) => {
-      try {
-        return await auditApi.list({
-          offset: params.offset,
-          limit: params.limit,
-          action: params.action || undefined,
-          user: params.user || undefined,
-        });
-      } catch {
-        return { entries: [], total: 0 };
-      }
-    },
+    (params) =>
+      auditApi.list({
+        offset: params.offset,
+        limit: params.limit,
+        action: params.action || undefined,
+        user: params.user || undefined,
+      }),
   );
 
   const [stats] = createResource(async () => {
@@ -41,6 +43,21 @@ const AuditTab: Component = () => {
       return null;
     }
   });
+
+  const entries = () => {
+    if (data.error) return [];
+    return data.latest?.entries ?? [];
+  };
+
+  const total = () => {
+    if (data.error) return 0;
+    return data.latest?.total ?? 0;
+  };
+
+  const errorText = (e: unknown): string => {
+    if (e instanceof Error && e.message.trim() !== "") return e.message;
+    return "Failed to load audit log";
+  };
 
   const statusColor = (status: number) => {
     if (status >= 200 && status < 300) return "text-status-ok";
@@ -65,7 +82,7 @@ const AuditTab: Component = () => {
         {(s) => (
           <div class="flex items-center gap-4 rounded-lg border border-white/5 bg-white/[0.02] p-3">
             <div class="text-center px-4">
-              <div class="text-lg font-mono text-white">{s().total}</div>
+              <div class="num text-lg text-white">{s().total}</div>
               <div class="text-[9px] text-text-dim tracking-wider">
                 TOTAL EVENTS
               </div>
@@ -75,7 +92,7 @@ const AuditTab: Component = () => {
               <For each={Object.entries(s().byAction || {}).slice(0, 6)}>
                 {([action, count]) => (
                   <div class="text-center flex-shrink-0">
-                    <div class="text-sm font-mono text-white">
+                    <div class="num text-sm text-white">
                       {count as number}
                     </div>
                     <div class="text-[9px] text-text-dim truncate max-w-[80px]">
@@ -91,133 +108,143 @@ const AuditTab: Component = () => {
 
       {/* Filters */}
       <div class="flex items-center gap-3">
-        <h3 class="text-sm font-mono text-text-muted tracking-wider flex-1">
-          AUDIT LOG
-        </h3>
-        <input
+        <h3 class="heading-label flex-1">Audit Log</h3>
+        <Input
           type="text"
-          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none w-32"
+          class="w-32"
           placeholder="Action..."
+          aria-label="Filter by action"
           value={filterAction()}
           onInput={(e) => {
             setFilterAction(e.currentTarget.value);
             setOffset(0);
           }}
         />
-        <input
+        <Input
           type="text"
-          class="rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none w-32"
+          class="w-32"
           placeholder="User..."
+          aria-label="Filter by user"
           value={filterUser()}
           onInput={(e) => {
             setFilterUser(e.currentTarget.value);
             setOffset(0);
           }}
         />
-        <button
-          class="text-xs text-text-dim hover:text-white"
-          onClick={() => refetch()}
-        >
+        <Button variant="ghost" size="sm" onClick={() => refetch()}>
           Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Audit table */}
-      <div class="rounded-lg border border-white/5 overflow-hidden">
-        <table class="w-full text-xs">
-          <thead>
-            <tr class="border-b border-white/5 bg-white/[0.02]">
-              <th class="px-3 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                TIME
-              </th>
-              <th class="px-3 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                ACTION
-              </th>
-              <th class="px-3 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                METHOD
-              </th>
-              <th class="px-3 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                PATH
-              </th>
-              <th class="px-3 py-2.5 text-left text-[10px] text-text-dim tracking-wider font-normal">
-                USER
-              </th>
-              <th class="px-3 py-2.5 text-right text-[10px] text-text-dim tracking-wider font-normal">
-                STATUS
-              </th>
-              <th class="px-3 py-2.5 text-right text-[10px] text-text-dim tracking-wider font-normal">
-                DURATION
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <For
-              each={data()?.entries || []}
-              fallback={
-                <tr>
-                  <td colspan="7" class="px-4 py-6 text-center text-text-dim">
-                    No audit entries found
-                  </td>
-                </tr>
-              }
-            >
-              {(entry) => (
-                <tr class="border-b border-white/5 hover:bg-white/[0.02]">
-                  <td class="px-3 py-2 text-text-dim font-mono whitespace-nowrap">
-                    {new Date(entry.timestamp).toLocaleString()}
-                  </td>
-                  <td class="px-3 py-2 font-mono text-white">
-                    {entry.action}
-                  </td>
-                  <td class="px-3 py-2">
-                    <span class={`font-mono ${methodColor(entry.method)}`}>
-                      {entry.method}
-                    </span>
-                  </td>
-                  <td class="px-3 py-2 font-mono text-text-muted max-w-[200px] truncate">
-                    {entry.path}
-                  </td>
-                  <td class="px-3 py-2 font-mono text-text-muted">
-                    {entry.username || "-"}
-                  </td>
-                  <td
-                    class={`px-3 py-2 text-right font-mono ${statusColor(entry.status)}`}
-                  >
-                    {entry.status}
-                  </td>
-                  <td class="px-3 py-2 text-right font-mono text-text-dim">
-                    {entry.durationMs}ms
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </div>
+      <Show
+        when={!data.error}
+        fallback={
+          <ErrorState
+            message={errorText(data.error)}
+            variant="banner"
+            onRetry={() => refetch()}
+          />
+        }
+      >
+        <Show
+          when={!data.loading || data.latest}
+          fallback={<LoadingState message="Loading audit log..." />}
+        >
+          <Show
+            when={entries().length > 0}
+            fallback={<EmptyState title="No audit entries found" size="sm" />}
+          >
+            <div class="surface overflow-hidden">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="border-b border-white/5 bg-white/[0.02]">
+                    <th class="heading-label px-3 py-2.5 text-left">
+                      Time
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-left">
+                      Action
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-left">
+                      Method
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-left">
+                      Path
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-left">
+                      User
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-right">
+                      Status
+                    </th>
+                    <th class="heading-label px-3 py-2.5 text-right">
+                      Duration
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <For each={entries()}>
+                    {(entry) => (
+                      <tr class="hover:bg-white/[0.02]">
+                        <td class="px-3 py-2 text-text-dim font-mono whitespace-nowrap">
+                          {new Date(entry.timestamp).toLocaleString()}
+                        </td>
+                        <td class="px-3 py-2 font-mono text-white">
+                          {entry.action}
+                        </td>
+                        <td class="px-3 py-2">
+                          <span class={`font-mono ${methodColor(entry.method)}`}>
+                            {entry.method}
+                          </span>
+                        </td>
+                        <td class="px-3 py-2 font-mono text-text-muted max-w-[200px] truncate">
+                          {entry.path}
+                        </td>
+                        <td class="px-3 py-2 font-mono text-text-muted">
+                          {entry.username || "-"}
+                        </td>
+                        <td
+                          class={`num px-3 py-2 text-right ${statusColor(entry.status)}`}
+                        >
+                          {entry.status}
+                        </td>
+                        <td class="num px-3 py-2 text-right text-text-dim">
+                          {entry.durationMs}ms
+                        </td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+          </Show>
+        </Show>
+      </Show>
 
       {/* Pagination */}
-      <Show when={(data()?.total || 0) > limit()}>
+      <Show when={total() > limit()}>
         <div class="flex items-center justify-between text-xs text-text-dim">
           <span>
-            Showing {offset() + 1}-
-            {Math.min(offset() + limit(), data()?.total || 0)} of{" "}
-            {data()?.total}
+            Showing {offset() + 1}-{Math.min(offset() + limit(), total())} of{" "}
+            {total()}
           </span>
           <div class="flex gap-2">
-            <button
-              class="rounded border border-white/10 px-3 py-1 hover:text-white disabled:opacity-30"
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={offset() === 0}
               onClick={() => setOffset(Math.max(0, offset() - limit()))}
             >
               Prev
-            </button>
-            <button
-              class="rounded border border-white/10 px-3 py-1 hover:text-white disabled:opacity-30"
-              disabled={offset() + limit() >= (data()?.total || 0)}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={offset() + limit() >= total()}
               onClick={() => setOffset(offset() + limit())}
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </Show>

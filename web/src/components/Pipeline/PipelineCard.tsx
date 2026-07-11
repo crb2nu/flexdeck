@@ -50,7 +50,7 @@ const PipelineCard: Component<{
   return (
     <div
       onClick={props.onClick}
-      class="relative rounded-lg cursor-pointer transition-colors duration-150 hover:bg-white/[0.03] group border border-white/[0.08] bg-[rgba(16,28,34,0.95)]"
+      class="relative rounded-lg cursor-pointer transition-colors duration-150 hover:bg-white/[0.03] group border border-white/[0.08] bg-bg-panel"
       classList={{
         'ring-1 ring-white/20': isActive(),
       }}

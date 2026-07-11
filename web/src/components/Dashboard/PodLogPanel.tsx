@@ -177,7 +177,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
   });
 
   return (
-    <div class="fixed inset-y-0 right-0 w-full sm:w-[480px] z-50 animate-slide-in-right flex flex-col"
+    <div class="fixed inset-y-0 right-0 w-full sm:w-[480px] z-modal animate-slide-in-right flex flex-col"
          style={{
            background: 'linear-gradient(180deg, rgba(10, 16, 32, 0.98) 0%, rgba(5, 10, 20, 0.99) 100%)',
            'border-left': '1px solid rgba(0, 240, 255, 0.2)',
@@ -214,6 +214,7 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
           {/* Close button */}
           <button
             onClick={props.onClose}
+            aria-label="Close log panel"
             class="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-white/10 border border-white/10"
           >
             <span class="text-text-muted text-lg">×</span>

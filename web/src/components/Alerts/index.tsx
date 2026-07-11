@@ -1,10 +1,11 @@
-import { Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { Component, createSignal, createUniqueId, For, Show, createMemo } from 'solid-js';
 import { alertmanagerApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
 import type { AlertmanagerAlert, AlertmanagerSilence } from '../../lib/types';
 import { formatRelativeTime } from '../../lib/format';
-import { TabBar, LoadingState, ErrorState, EmptyState } from '../shared';
+import { TabBar, LoadingState, ErrorState, EmptyState, Button, Input, Select } from '../shared';
+import { showToast, ToastContainer } from '../shared/Toast';
 
 const Alerts: Component = () => {
   const [alerts, setAlerts] = createSignal<AlertmanagerAlert[]>([]);
@@ -21,6 +22,14 @@ const Alerts: Component = () => {
   const [silenceMatcherName, setSilenceMatcherName] = createSignal('alertname');
   const [silenceMatcherValue, setSilenceMatcherValue] = createSignal('');
   const [silenceDuration, setSilenceDuration] = createSignal('2h');
+  const [submitting, setSubmitting] = createSignal(false);
+  const [deletingSilenceId, setDeletingSilenceId] = createSignal<string | null>(null);
+
+  const matcherNameId = createUniqueId();
+  const matcherValueId = createUniqueId();
+  const durationId = createUniqueId();
+  const authorId = createUniqueId();
+  const commentId = createUniqueId();
 
   const fetchAll = async () => {
     try {
@@ -80,6 +89,7 @@ const Alerts: Component = () => {
   };
 
   const handleCreateSilence = async () => {
+    if (submitting()) return;
     const now = new Date();
     const match = silenceDuration().match(/^(\d+)([hmd])$/);
     if (!match) return;
@@ -87,6 +97,7 @@ const Alerts: Component = () => {
     const ms = parseInt(num) * ({ h: 3600000, m: 60000, d: 86400000 }[unit] || 3600000);
     const endsAt = new Date(now.getTime() + ms);
 
+    setSubmitting(true);
     try {
       await alertmanagerApi.createSilence({
         matchers: [{ name: silenceMatcherName(), value: silenceMatcherValue(), isRegex: false, isEqual: true }],
@@ -98,19 +109,24 @@ const Alerts: Component = () => {
       setShowSilenceForm(false);
       setSilenceComment('');
       setSilenceMatcherValue('');
+      showToast('Silence created', 'success');
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create silence');
+      showToast(err instanceof Error ? err.message : 'Failed to create silence', 'error');
     }
+    setSubmitting(false);
   };
 
   const handleDeleteSilence = async (id: string) => {
+    setDeletingSilenceId(id);
     try {
       await alertmanagerApi.deleteSilence(id);
+      showToast('Silence deleted', 'success');
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete silence');
+      showToast(err instanceof Error ? err.message : 'Failed to delete silence', 'error');
     }
+    setDeletingSilenceId(null);
   };
 
   return (
@@ -118,13 +134,13 @@ const Alerts: Component = () => {
       {/* Summary badges */}
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-status-error/10 text-status-error text-xs">
-          <span class="font-medium">{firingAlerts().length}</span> firing
+          <span class="num font-medium">{firingAlerts().length}</span> firing
         </div>
         <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 text-text-dim text-xs">
-          <span class="font-medium">{silencedAlerts().length}</span> silenced
+          <span class="num font-medium">{silencedAlerts().length}</span> silenced
         </div>
         <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 text-text-dim text-xs">
-          <span class="font-medium">{activeSilences().length}</span> active silences
+          <span class="num font-medium">{activeSilences().length}</span> active silences
         </div>
 
         {/* Tabs */}
@@ -207,79 +223,83 @@ const Alerts: Component = () => {
       {/* Silences tab */}
       <Show when={!loading() && tab() === 'silences'}>
         <div class="flex justify-end">
-          <button
-            class="px-3 py-1.5 text-xs bg-white/10 text-white rounded-md hover:bg-white/15"
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => setShowSilenceForm(!showSilenceForm())}
           >
             {showSilenceForm() ? 'Cancel' : 'Create Silence'}
-          </button>
+          </Button>
         </div>
 
         <Show when={showSilenceForm()}>
           <div class="surface p-4 space-y-3">
             <div class="flex gap-3">
               <div class="flex-1">
-                <label class="text-xs text-text-dim block mb-1">Matcher Name</label>
-                <input
+                <label for={matcherNameId} class="heading-label block mb-1">Matcher Name</label>
+                <Input
+                  id={matcherNameId}
                   type="text"
                   value={silenceMatcherName()}
                   onInput={(e) => setSilenceMatcherName(e.currentTarget.value)}
-                  class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main"
                 />
               </div>
               <div class="flex-1">
-                <label class="text-xs text-text-dim block mb-1">Matcher Value</label>
-                <input
+                <label for={matcherValueId} class="heading-label block mb-1">Matcher Value</label>
+                <Input
+                  id={matcherValueId}
                   type="text"
                   value={silenceMatcherValue()}
                   onInput={(e) => setSilenceMatcherValue(e.currentTarget.value)}
-                  class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main"
                 />
               </div>
             </div>
             <div class="flex gap-3">
               <div class="flex-1">
-                <label class="text-xs text-text-dim block mb-1">Duration</label>
-                <select
+                <label for={durationId} class="heading-label block mb-1">Duration</label>
+                <Select
+                  id={durationId}
                   value={silenceDuration()}
                   onChange={(e) => setSilenceDuration(e.currentTarget.value)}
-                  class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main"
-                >
-                  <option value="30m">30 minutes</option>
-                  <option value="1h">1 hour</option>
-                  <option value="2h">2 hours</option>
-                  <option value="4h">4 hours</option>
-                  <option value="8h">8 hours</option>
-                  <option value="1d">1 day</option>
-                </select>
+                  options={[
+                    { value: '30m', label: '30 minutes' },
+                    { value: '1h', label: '1 hour' },
+                    { value: '2h', label: '2 hours' },
+                    { value: '4h', label: '4 hours' },
+                    { value: '8h', label: '8 hours' },
+                    { value: '1d', label: '1 day' },
+                  ]}
+                />
               </div>
               <div class="flex-1">
-                <label class="text-xs text-text-dim block mb-1">Author</label>
-                <input
+                <label for={authorId} class="heading-label block mb-1">Author</label>
+                <Input
+                  id={authorId}
                   type="text"
                   value={silenceAuthor()}
                   onInput={(e) => setSilenceAuthor(e.currentTarget.value)}
-                  class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main"
                 />
               </div>
             </div>
             <div>
-              <label class="text-xs text-text-dim block mb-1">Comment</label>
-              <input
+              <label for={commentId} class="heading-label block mb-1">Comment</label>
+              <Input
+                id={commentId}
                 type="text"
                 value={silenceComment()}
                 onInput={(e) => setSilenceComment(e.currentTarget.value)}
-                class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main"
                 placeholder="Reason for silence..."
               />
             </div>
-            <button
-              class="px-3 py-1.5 text-xs bg-white/10 text-white rounded-md hover:bg-white/15"
-              onClick={handleCreateSilence}
+            <Button
+              variant="primary"
+              size="sm"
+              loading={submitting()}
               disabled={!silenceMatcherValue()}
+              onClick={handleCreateSilence}
             >
               Create
-            </button>
+            </Button>
           </div>
         </Show>
 
@@ -309,12 +329,14 @@ const Alerts: Component = () => {
                     Expires {formatRelativeTime(silence.endsAt)}
                   </div>
                   <Show when={silence.status?.state === 'active'}>
-                    <button
-                      class="text-xs text-status-error/70 hover:text-status-error"
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={deletingSilenceId() === silence.id}
                       onClick={() => handleDeleteSilence(silence.id)}
                     >
                       Delete
-                    </button>
+                    </Button>
                   </Show>
                 </div>
               </div>
@@ -325,6 +347,8 @@ const Alerts: Component = () => {
           </Show>
         </div>
       </Show>
+
+      <ToastContainer />
     </div>
   );
 };

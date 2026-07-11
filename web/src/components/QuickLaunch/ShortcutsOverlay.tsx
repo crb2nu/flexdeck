@@ -47,7 +47,10 @@ const ShortcutsOverlay: Component = () => {
   return (
     <Show when={visible()}>
       <div
-        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
+        class="fixed inset-0 z-overlay flex items-center justify-center bg-black/60 backdrop-blur-sm"
         onClick={() => setVisible(false)}
       >
         <div
@@ -62,6 +65,7 @@ const ShortcutsOverlay: Component = () => {
             </h2>
             <button
               onClick={() => setVisible(false)}
+              aria-label="Close shortcuts"
               class="text-text-dim hover:text-text-main transition-colors text-sm"
             >
               ✕

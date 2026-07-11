@@ -52,6 +52,7 @@ const Toast: Component<ToastProps> = (props) => {
 
   return (
     <div
+      role={props.type === 'error' ? 'alert' : undefined}
       class={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg transition-all duration-200 ${style.bg} ${style.border} ${
         exiting() ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
       }`}
@@ -63,6 +64,7 @@ const Toast: Component<ToastProps> = (props) => {
       <span class="text-sm text-text-main">{props.message}</span>
       <button
         onClick={dismiss}
+        aria-label="Dismiss notification"
         class="ml-2 text-text-dim hover:text-text-main transition-colors"
       >
         ✕
@@ -86,7 +88,12 @@ export function dismissToast(id: number) {
 
 export const ToastContainer: Component = () => {
   return (
-    <div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      class="fixed bottom-4 right-4 z-modal flex flex-col gap-2"
+    >
       <Show when={toasts().length > 0}>
         <For each={toasts()}>{toast => (
           <Toast

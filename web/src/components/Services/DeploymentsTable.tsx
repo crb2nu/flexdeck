@@ -92,9 +92,9 @@ const DeploymentsTable: Component<DeploymentsTableProps> = (props) => {
           const desired = d.spec?.replicas || 0;
           return (
             <div class="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1); }}>+</Button>
-              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1)); }}>-</Button>
-              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || ''); }}>↻</Button>
+              <Button variant="ghost" size="sm" aria-label="Scale up deployment" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', desired + 1); }}>+</Button>
+              <Button variant="ghost" size="sm" aria-label="Scale down deployment" onClick={(e) => { e.stopPropagation(); props.onScale(d.metadata?.namespace || 'default', d.metadata?.name || '', Math.max(0, desired - 1)); }}>-</Button>
+              <Button variant="ghost" size="sm" aria-label="Restart deployment" onClick={(e) => { e.stopPropagation(); props.onRestart(d.metadata?.namespace || 'default', d.metadata?.name || ''); }}>↻</Button>
             </div>
           );
         },

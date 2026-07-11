@@ -2,19 +2,18 @@ import {
   Component,
   createSignal,
   createResource,
+  createUniqueId,
   Show,
   For,
 } from "solid-js";
 import { clustersApi } from "../../lib/api";
+import { Button, Input, ErrorState, LoadingState, EmptyState } from "../shared";
+import { showToast, ToastContainer } from "../shared/Toast";
 
 const ClustersTab: Component = () => {
-  const [clusters, { refetch }] = createResource(async () => {
-    try {
-      return await clustersApi.list();
-    } catch {
-      return [];
-    }
-  });
+  // Surface list failures via clusters.error instead of masking them as an
+  // empty registry.
+  const [clusters, { refetch }] = createResource(() => clustersApi.list());
 
   const [showAdd, setShowAdd] = createSignal(false);
   const [newName, setNewName] = createSignal("");
@@ -23,6 +22,13 @@ const ClustersTab: Component = () => {
   const [newNamespace, setNewNamespace] = createSignal("default");
   const [testing, setTesting] = createSignal<string | null>(null);
   const [adding, setAdding] = createSignal(false);
+  const [settingDefaultId, setSettingDefaultId] = createSignal<string | null>(null);
+  const [deletingId, setDeletingId] = createSignal<string | null>(null);
+
+  const nameId = createUniqueId();
+  const hostId = createUniqueId();
+  const tokenId = createUniqueId();
+  const namespaceId = createUniqueId();
 
   const errorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message.trim() !== "") {
@@ -34,8 +40,9 @@ const ClustersTab: Component = () => {
   const handleAdd = async () => {
     setAdding(true);
     try {
+      const name = newName().trim();
       await clustersApi.create({
-        name: newName().trim(),
+        name,
         host: newHost().trim(),
         token: newToken().trim(),
         namespace: newNamespace().trim(),
@@ -45,9 +52,10 @@ const ClustersTab: Component = () => {
       setNewHost("");
       setNewToken("");
       setNewNamespace("default");
+      showToast(`Cluster "${name}" added`, "success");
       refetch();
     } catch (error) {
-      alert(errorMessage(error, "Failed to add cluster"));
+      showToast(errorMessage(error, "Failed to add cluster"), "error");
     }
     setAdding(false);
   };
@@ -57,34 +65,40 @@ const ClustersTab: Component = () => {
     try {
       const result = await clustersApi.test(id);
       if (result.ok) {
-        alert("Connection successful!");
+        showToast("Connection successful", "success");
       } else {
-        alert(`Connection failed: ${result.error}`);
+        showToast(`Connection failed: ${result.error}`, "error");
       }
       refetch();
     } catch (error) {
-      alert(errorMessage(error, "Test failed"));
+      showToast(errorMessage(error, "Test failed"), "error");
     }
     setTesting(null);
   };
 
   const handleSetDefault = async (id: string) => {
+    setSettingDefaultId(id);
     try {
       await clustersApi.setDefault(id);
+      showToast("Default cluster updated", "success");
       refetch();
     } catch (error) {
-      alert(errorMessage(error, "Failed to set default"));
+      showToast(errorMessage(error, "Failed to set default"), "error");
     }
+    setSettingDefaultId(null);
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete cluster "${name}"?`)) return;
+    setDeletingId(id);
     try {
       await clustersApi.delete(id);
+      showToast(`Cluster "${name}" deleted`, "success");
       refetch();
     } catch (error) {
-      alert(errorMessage(error, "Failed to delete cluster"));
+      showToast(errorMessage(error, "Failed to delete cluster"), "error");
     }
+    setDeletingId(null);
   };
 
   const statusColor = (status: string) => {
@@ -97,95 +111,100 @@ const ClustersTab: Component = () => {
     <div class="space-y-4">
       {/* Header */}
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-mono text-text-muted tracking-wider">
-          CLUSTER REGISTRY
-        </h3>
-        <button
-          class="rounded-md bg-white/10 border border-white/20 px-3 py-1.5 text-xs font-mono text-white hover:bg-white/15 transition-colors"
-          onClick={() => setShowAdd(true)}
-        >
-          + ADD CLUSTER
-        </button>
+        <h3 class="heading-label">Cluster Registry</h3>
+        <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+          + Add cluster
+        </Button>
       </div>
 
       {/* Add cluster form */}
       <Show when={showAdd()}>
-        <div class="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+        <div class="surface p-4 space-y-3">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-[10px] text-text-dim block mb-1">NAME</label>
-              <input
+              <label for={nameId} class="heading-label block mb-1">
+                Name
+              </label>
+              <Input
+                id={nameId}
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newName()}
                 onInput={(e) => setNewName(e.currentTarget.value)}
                 placeholder="production"
               />
             </div>
             <div>
-              <label class="text-[10px] text-text-dim block mb-1">HOST</label>
-              <input
+              <label for={hostId} class="heading-label block mb-1">
+                Host
+              </label>
+              <Input
+                id={hostId}
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newHost()}
                 onInput={(e) => setNewHost(e.currentTarget.value)}
                 placeholder="https://k8s.example.com:6443"
               />
             </div>
             <div>
-              <label class="text-[10px] text-text-dim block mb-1">
-                BEARER TOKEN
+              <label for={tokenId} class="heading-label block mb-1">
+                Bearer Token
               </label>
-              <input
+              <Input
+                id={tokenId}
                 type="password"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newToken()}
                 onInput={(e) => setNewToken(e.currentTarget.value)}
                 placeholder="eyJ..."
               />
             </div>
             <div>
-              <label class="text-[10px] text-text-dim block mb-1">
-                DEFAULT NAMESPACE
+              <label for={namespaceId} class="heading-label block mb-1">
+                Default Namespace
               </label>
-              <input
+              <Input
+                id={namespaceId}
                 type="text"
-                class="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white font-mono focus:border-white/20 focus:outline-none"
                 value={newNamespace()}
                 onInput={(e) => setNewNamespace(e.currentTarget.value)}
               />
             </div>
           </div>
           <div class="flex gap-2">
-            <button
-              class="rounded bg-white/10 border border-white/20 px-4 py-1.5 text-xs text-white font-mono hover:bg-white/15 disabled:opacity-50"
+            <Button
+              variant="primary"
+              loading={adding()}
+              disabled={!newName().trim() || !newHost().trim()}
               onClick={handleAdd}
-              disabled={!newName().trim() || !newHost().trim() || adding()}
             >
-              {adding() ? "Adding..." : "Add Cluster"}
-            </button>
-            <button
-              class="text-xs text-text-dim hover:text-white px-2 py-1.5"
-              onClick={() => setShowAdd(false)}
-            >
+              Add Cluster
+            </Button>
+            <Button variant="ghost" onClick={() => setShowAdd(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </Show>
 
       {/* Cluster cards */}
+      <Show when={clusters.error}>
+        <ErrorState message="Failed to load clusters." onRetry={() => refetch()} />
+      </Show>
+      <Show when={!clusters.error && clusters.loading && !clusters.latest}>
+        <LoadingState size="sm" />
+      </Show>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         <For
-          each={clusters() || []}
+          each={clusters.error ? [] : clusters.latest || []}
           fallback={
-            <div class="col-span-full text-center text-text-dim text-sm py-8">
-              No clusters registered
-            </div>
+            <Show when={!clusters.error && !clusters.loading}>
+              <div class="col-span-full">
+                <EmptyState size="sm" title="No clusters found" subtitle="Register a cluster to manage it from FlexDeck." />
+              </div>
+            </Show>
           }
         >
           {(cluster) => (
-            <div class="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3">
+            <div class="surface p-4 space-y-3">
               {/* Name + status */}
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -224,33 +243,41 @@ const ClustersTab: Component = () => {
               </div>
 
               {/* Actions */}
-              <div class="flex gap-2 pt-1 border-t border-white/5">
-                <button
-                  class="text-[10px] text-text-dim hover:text-white font-mono"
+              <div class="flex items-center gap-2 pt-2 border-t border-white/5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={testing() === cluster.id}
                   onClick={() => handleTest(cluster.id)}
-                  disabled={testing() === cluster.id}
                 >
-                  {testing() === cluster.id ? "TESTING..." : "TEST"}
-                </button>
+                  Test
+                </Button>
                 <Show when={!cluster.isDefault}>
-                  <button
-                    class="text-[10px] text-text-dim hover:text-white font-mono"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={settingDefaultId() === cluster.id}
                     onClick={() => handleSetDefault(cluster.id)}
                   >
-                    SET DEFAULT
-                  </button>
-                  <button
-                    class="text-[10px] text-text-dim hover:text-red-400 font-mono ml-auto"
+                    Set default
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    class="ml-auto"
+                    loading={deletingId() === cluster.id}
                     onClick={() => handleDelete(cluster.id, cluster.name)}
                   >
-                    DELETE
-                  </button>
+                    Delete
+                  </Button>
                 </Show>
               </div>
             </div>
           )}
         </For>
       </div>
+
+      <ToastContainer />
     </div>
   );
 };

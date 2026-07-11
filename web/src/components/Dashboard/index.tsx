@@ -1,5 +1,5 @@
 import { Component, createSignal, createMemo, onMount, onCleanup, Show, For, lazy, Suspense } from 'solid-js';
-import { PulseCard, TabBar, LoadingState } from '../shared';
+import { PulseCard, TabBar, LoadingState, EmptyState } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
@@ -466,13 +466,7 @@ const Dashboard: Component = () => {
           fallback={
             isLoading()
               ? <LoadingState message="Loading cluster data..." />
-              : <div class="flex h-full items-center justify-center">
-                  <div class="text-center">
-                    <div class="mb-4 text-6xl text-text-muted/30">⬡</div>
-                    <h3 class="mb-2 text-lg font-semibold text-text-main">Cluster Topology</h3>
-                    <p class="text-sm text-text-muted">No resources found</p>
-                  </div>
-                </div>
+              : <EmptyState icon="⬡" title="Cluster Topology" subtitle="No resources found" />
           }
         >
           <Show when={viewMode() === '2d'} fallback={

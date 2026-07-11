@@ -1,5 +1,5 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
-import { sanitizeError } from '../../lib/sanitizeError';
+import { LoadingState, EmptyState, ErrorState } from '../shared';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
@@ -197,25 +197,29 @@ const CatalogTab: Component = () => {
   return (
     <div class="flex flex-col gap-4">
       <Show when={error()}>
-        <div class="surface p-3 text-sm text-status-error">{sanitizeError(error())}</div>
+        <ErrorState message={error()} />
       </Show>
       <Show when={actionError()}>
-        <div class="surface p-3 text-sm text-status-error">{actionError()}</div>
+        <ErrorState message={actionError()} />
       </Show>
       <Show when={actionNotice()}>
         <div class="surface p-3 text-sm text-status-ok">{actionNotice()}</div>
       </Show>
 
       <Show when={loading() && catalogs().length === 0}>
-        <div class="surface flex items-center justify-center py-8">
-          <div class="text-text-dim animate-pulse">Loading model catalogs...</div>
+        <div class="surface">
+          <LoadingState variant="skeleton" />
         </div>
       </Show>
 
       <Show when={catalogs().length === 0 && !loading()}>
-        <div class="surface p-6 text-center">
-          <p class="text-text-dim text-sm">No ModelCatalog CRDs found.</p>
-          <p class="text-text-dim text-xs mt-1">Deploy ModelCatalog resources to your cluster to see them here.</p>
+        <div class="surface">
+          <EmptyState
+            size="sm"
+            icon="⬒"
+            title="No ModelCatalog CRDs found"
+            subtitle="Deploy ModelCatalog resources to your cluster to see them here."
+          />
         </div>
       </Show>
 

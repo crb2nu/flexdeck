@@ -14,15 +14,13 @@ const ClusterSelector: Component = () => {
   const [open, setOpen] = createSignal(false);
   const enabled = () => healthStore.features?.multi_cluster?.enabled ?? false;
 
+  // Let fetch failures surface via clusters.error — swallowing them here made
+  // a broken backend indistinguishable from "no clusters configured".
   const [clusters, { refetch }] = createResource(
     () => enabled(),
     async (isEnabled) => {
       if (!isEnabled) return [];
-      try {
-        return await clustersApi.list();
-      } catch {
-        return [];
-      }
+      return clustersApi.list();
     },
   );
 
@@ -54,8 +52,8 @@ const ClusterSelector: Component = () => {
 
   const statusColor = (status: string) => {
     if (status === "connected") return "bg-status-ok";
-    if (status === "disconnected") return "bg-red-500";
-    return "bg-yellow-500";
+    if (status === "disconnected") return "bg-status-error";
+    return "bg-status-warn";
   };
 
   const handleSelect = (id: string) => {
@@ -106,15 +104,25 @@ const ClusterSelector: Component = () => {
                 <div class="heading-label px-2">
                   Clusters
                 </div>
-                <button class="md:hidden p-2 text-text-dim" onClick={() => setOpen(false)}>✕</button>
+                <button class="md:hidden p-2 text-text-dim" aria-label="Close cluster selector" onClick={() => setOpen(false)}>✕</button>
               </div>
               <div class="max-h-64 md:max-h-48 overflow-y-auto p-2 md:p-1 flex flex-col gap-1">
+                <Show when={clusters.error}>
+                  <div class="px-3 py-4 md:py-2 text-[11px] text-status-error text-center" role="alert">
+                    Failed to load clusters.{" "}
+                    <button class="underline hover:text-status-error/80" onClick={() => refetch()}>
+                      Retry
+                    </button>
+                  </div>
+                </Show>
                 <For
-                  each={clusters() || []}
+                  each={clusters.error ? [] : clusters() || []}
                   fallback={
-                    <div class="px-3 py-4 md:py-2 text-[11px] text-text-dim text-center">
-                      No clusters available
-                    </div>
+                    <Show when={!clusters.error}>
+                      <div class="px-3 py-4 md:py-2 text-[11px] text-text-dim text-center">
+                        {clusters.loading ? "Loading clusters…" : "No clusters found"}
+                      </div>
+                    </Show>
                   }
                 >
                   {(cluster) => (
