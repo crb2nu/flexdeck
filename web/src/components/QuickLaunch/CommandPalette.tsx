@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
+import { Component, createSignal, createEffect, createUniqueId, onMount, onCleanup, Show, For } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { modelsApi } from '../../lib/api';
 import { fetchHealth } from '../../stores/health';
@@ -169,10 +169,15 @@ const CommandPalette: Component = () => {
     }
   });
 
+  const listboxId = `command-palette-results-${createUniqueId()}`;
+
   return (
     <Show when={isOpen()}>
-      <div 
-        class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-[20vh]"
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        class="fixed inset-0 z-modal flex items-start justify-center bg-black/50 backdrop-blur-sm pt-[20vh]"
         onClick={() => setIsOpen(false)}
       >
         <div 
@@ -185,6 +190,9 @@ const CommandPalette: Component = () => {
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls={listboxId}
               value={query()}
               onInput={e => setQuery(e.currentTarget.value)}
               placeholder="Type a command..."
@@ -201,12 +209,14 @@ const CommandPalette: Component = () => {
           </div>
 
           {/* Results */}
-          <div class="max-h-[60vh] overflow-y-auto p-2">
+          <div id={listboxId} role="listbox" aria-label="Commands" class="max-h-[60vh] overflow-y-auto p-2">
             <For each={filteredCommands()} fallback={
               <div class="p-8 text-center text-text-muted">No commands found.</div>
             }>
               {(cmd, i) => (
                 <div
+                  role="option"
+                  aria-selected={i() === selectedIndex()}
                   class={`flex cursor-pointer items-center justify-between rounded-lg px-4 py-3 transition-colors ${
                     i() === selectedIndex() ? 'bg-white/10' : 'hover:bg-white/5'
                   }`}

@@ -7,6 +7,7 @@ import { healthStore } from '../../stores/health';
 import { createAsyncStatusController } from '../../lib/asyncState';
 import type { HUDAgentPresence, HUDClaim, HUDTask, HUDWorkflow, HUDTimelineEvent, HUDHandoff, HUDSession, HUDSessionDetail, HUDSessionTrace } from '../../lib/types';
 import HUDActivityFeed from './HUDActivityFeed';
+import LoadingState from '../shared/LoadingState';
 import { getHudModeState } from '../../lib/featureFlags';
 import {
   feedConnectionLabel,
@@ -1038,7 +1039,7 @@ const HUDTab: Component<HUDTabProps> = (props) => {
       >
         <Show when={isInitialLoading()}>
           <div class="flex items-center justify-center py-10">
-            <div class="text-text-dim animate-pulse text-sm">Loading...</div>
+            <LoadingState variant="inline" size="sm" message="Loading HUD…" />
           </div>
         </Show>
 

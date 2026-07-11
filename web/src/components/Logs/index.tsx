@@ -210,7 +210,7 @@ const Logs: Component = () => {
               </div>
             </div>
           </div>
-          <div class="fixed inset-0 z-40 lg:hidden">
+          <div class="fixed inset-0 z-dropdown lg:hidden">
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSidebar(false)} />
             <div class="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-xl border-t border-white/10 bg-[rgba(8,14,28,0.94)] p-4 shadow-2xl">
               <div class="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
@@ -284,7 +284,7 @@ const Logs: Component = () => {
                     value={searchTerm()}
                     onInput={(e) => setSearchTerm(e.currentTarget.value)}
                     placeholder={searchRegex() ? 'Regex...' : 'Search...'}
-                    class={`w-20 sm:w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim focus:outline-none py-1 ${searchRegex() ? 'font-mono' : ''}`}
+                    class={`w-20 sm:w-28 bg-transparent border-none text-xs text-text-main placeholder-text-dim rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 py-1 ${searchRegex() ? 'font-mono' : ''}`}
                   />
                   <Show when={searchTerm()}>
                     <button
@@ -412,7 +412,7 @@ const Logs: Component = () => {
           const badge = getLogLevelBadge(log().line);
           return (
             <div
-              class={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-150 ${
+              class={`fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-150 ${
                 modalClosing() ? 'opacity-0' : 'animate-fade-in'
               }`}
               onClick={closeModal}

@@ -70,6 +70,8 @@ import {
 import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
 import PageHeader from '../shared/PageHeader';
+import ErrorState from '../shared/ErrorState';
+import { sanitizeError } from '../../lib/sanitizeError';
 import ModelTelemetryPanel from './ModelTelemetryPanel';
 import ModelTelemetryDrawer from './ModelTelemetryDrawer';
 import { stableListByKey } from '../../lib/stableList';
@@ -220,7 +222,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   };
   const telemetryStatNote = () => {
     if (!proxyEnabled()) return 'flexinfer proxy disabled';
-    if (proxyError() || routerError()) return proxyError() || routerError() || 'telemetry issue';
+    if (proxyError() || routerError()) return sanitizeError(proxyError() || routerError() || 'telemetry issue');
     return `${((proxyTotals()?.errorRate ?? 0) * 100).toFixed(2)}% errors · ${proxyTotals()?.queueDepth ?? 0} queued`;
   };
   const telemetryFocusStat = () => (!proxyEnabled() ? 'disabled' : `${proxyTotals()?.queueDepth ?? 0} queued`);
@@ -611,9 +613,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       </PageHeader>
 
       <Show when={controller.error()}>
-        <div class="surface border-status-error/20 p-4 text-sm text-status-error">
-          {controller.error()}
-        </div>
+        <ErrorState message={controller.error()!} />
       </Show>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -968,7 +968,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
               </table>
             </div>
             <Show when={routerError()}>
-              <div class="border-t border-white/5 px-4 py-3 text-[11px] text-status-error">{routerError()}</div>
+              <div class="border-t border-white/5 px-4 py-3 text-[11px] text-status-error" role="alert">{sanitizeError(routerError()!)}</div>
             </Show>
           </div>
 
@@ -1027,9 +1027,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
         />
 
         <Show when={catalogError()}>
-          <div class="surface border border-status-error/20 p-4 text-sm text-status-error">
-            {catalogError()}
-          </div>
+          <ErrorState message={catalogError()!} />
         </Show>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -1290,11 +1288,11 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
 
 const statCardBorder: Record<string, string> = {
   'text-text-muted': 'rgba(255,255,255,0.1)',
-  'text-status-ok': 'rgba(0,240,255,0.3)',
-  'text-status-warn': 'rgba(255,196,87,0.35)',
-  'text-status-error': 'rgba(255,76,114,0.35)',
-  'text-text-dim': 'rgba(189,0,255,0.3)',
-  'text-text-main': 'rgba(10,255,104,0.3)',
+  'text-status-ok': 'rgb(var(--info-rgb) / 0.3)',
+  'text-status-warn': 'rgb(var(--warning-rgb) / 0.35)',
+  'text-status-error': 'rgb(var(--error-rgb) / 0.35)',
+  'text-text-dim': 'rgb(var(--violet-rgb) / 0.3)',
+  'text-text-main': 'rgb(var(--success-rgb) / 0.3)',
 };
 
 const WorkbenchStatCard: Component<{ label: string; value: string; tone: string; note: string }> = (props) => (

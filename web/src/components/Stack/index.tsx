@@ -290,6 +290,7 @@ const Stack: Component = () => {
             lastUpdated={lastUpdated()}
             onRefresh={() => void loadInventory(true)}
             refreshDisabled={refreshing() || loading()}
+            refreshing={refreshing() || loading()}
           >
             <Badge tone={workspaceUnavailable() ? 'default' : error() ? 'warn' : 'info'}>
               {workspaceUnavailable() ? 'Unavailable here' : error() ? 'Stale data' : 'Read-only'}

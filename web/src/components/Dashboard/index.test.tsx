@@ -174,6 +174,12 @@ vi.mock('../../stores/metrics', () => ({
 vi.mock('../shared', () => ({
   DetailPanel: (props: { title: string }) => <div data-testid="detail-panel">{props.title}</div>,
   LoadingState: (props: { message?: string }) => <div data-testid="loading-state">{props.message ?? ''}</div>,
+  EmptyState: (props: { title: string; subtitle?: string }) => (
+    <div data-testid="empty-state">
+      {props.title}
+      {props.subtitle ?? ''}
+    </div>
+  ),
   PulseCard: dashboardMocks.pulseCardMock,
   TabBar: (props: { tabs: Array<{ id: string; label: string }>; active: string; onChange: (id: string) => void }) => (
     <div data-testid="tab-bar">

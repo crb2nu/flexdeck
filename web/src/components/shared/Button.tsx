@@ -10,10 +10,10 @@ export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement>
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-white/10 border-white/20 text-white hover:bg-white/15 hover:shadow-[0_0_12px_rgba(0,240,255,0.1)] active:bg-white/20',
+  primary: 'bg-white/10 border-white/20 text-white hover:bg-white/15 hover:shadow-[0_0_12px_rgb(var(--info-rgb)/0.1)] active:bg-white/20',
   secondary: 'bg-white/5 border-white/10 text-text-dim hover:bg-white/10 hover:text-white hover:border-white/15',
   ghost: 'bg-transparent border-transparent text-text-dim hover:bg-white/5 hover:text-white',
-  danger: 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(255,0,60,0.1)]',
+  danger: 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:shadow-[0_0_12px_rgb(var(--error-rgb)/0.1)]',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

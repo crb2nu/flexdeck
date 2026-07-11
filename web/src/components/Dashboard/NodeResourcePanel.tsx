@@ -2,6 +2,7 @@ import { Component, createMemo, createSignal, createEffect, Index, Show } from '
 import { dashboardSummary, dashboardSummaryLoading, dashboardSummaryError } from '../../stores/dashboardSummary';
 import { k8sStore, isNodeReady } from '../../stores/k8s';
 import Sparkline from '../shared/Sparkline';
+import LoadingState from '../shared/LoadingState';
 import { formatBytes } from '../../lib/format';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
 
@@ -142,7 +143,7 @@ const NodeResourcePanel: Component = () => {
 
       <Show when={stablePanel.showBlockingLoading()}>
         <div class="flex items-center justify-center py-6">
-          <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
+          <LoadingState variant="inline" size="sm" message="Loading node metrics…" />
         </div>
       </Show>
 

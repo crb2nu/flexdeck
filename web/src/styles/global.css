@@ -327,8 +327,8 @@ body {
 
 /* Glow pulse — subtle glow throb for active/important elements */
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(0, 200, 255, 0.1); }
-  50% { box-shadow: 0 0 16px rgba(0, 200, 255, 0.25); }
+  0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--info) 10%, transparent); }
+  50% { box-shadow: 0 0 16px color-mix(in srgb, var(--info) 25%, transparent); }
 }
 
 .animate-glow-pulse {
@@ -374,7 +374,7 @@ body {
 
 /* --- Selection --- */
 ::selection {
-  background: rgba(0, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--info) 20%, transparent);
   color: var(--text-main);
 }
 

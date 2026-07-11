@@ -1,6 +1,7 @@
 import { batch, Component, createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { grafanaApi, prom } from '../../lib/api';
 import Sparkline from '../shared/Sparkline';
+import LoadingState from '../shared/LoadingState';
 
 interface Dashboard {
   uid: string;
@@ -686,7 +687,7 @@ const GrafanaDashboards: Component = () => {
           </div>
 
           <div class="flex w-full flex-col gap-3 lg:max-w-md">
-            <label class="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+            <label class="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 transition-colors focus-within:border-border-focus">
               <span class="text-xs uppercase tracking-[0.18em] text-text-dim">Find</span>
               <input
                 value={searchQuery()}
@@ -722,9 +723,7 @@ const GrafanaDashboards: Component = () => {
       </Show>
 
       <Show when={loading()}>
-        <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
-        </div>
+        <LoadingState size="sm" />
       </Show>
 
       <Show when={!loading() && dashboards().length === 0 && !error()}>

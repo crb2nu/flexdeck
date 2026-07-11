@@ -18,23 +18,23 @@ export interface EnhancedTooltipProps {
 }
 
 const statusColors: Record<string, string> = {
-  ok: '#00c8ff',
-  warn: '#ffb830',
-  error: '#ff3d71',
-  running: '#22e076',
-  pending: '#b06cde',
-  info: 'rgba(212, 238, 244, 0.7)'
+  ok: 'var(--info)',
+  warn: 'var(--warning)',
+  error: 'var(--error)',
+  running: 'var(--success)',
+  pending: 'var(--color-violet)',
+  info: 'rgb(var(--fg-primary-rgb) / 0.7)'
 };
 
 const EnhancedTooltip: Component<EnhancedTooltipProps> = (props) => {
   const anchor = () => props.anchor || 'top';
-  const statusColor = () => props.status ? statusColors[props.status] : 'rgba(0, 240, 255, 0.5)';
+  const statusColor = () => props.status ? statusColors[props.status] : 'rgb(var(--info-rgb) / 0.5)';
 
   // Position styles based on anchor
   const positionStyle = (): JSX.CSSProperties => {
     const base: JSX.CSSProperties = {
       position: 'fixed',
-      'z-index': '9999'
+      'z-index': 'var(--z-tooltip)'
     };
 
     switch (anchor()) {
@@ -79,7 +79,7 @@ const EnhancedTooltip: Component<EnhancedTooltipProps> = (props) => {
       height: '10px',
       background: 'rgba(0, 0, 0, 0.95)',
       transform: 'rotate(45deg)',
-      'border-color': `${statusColor()}40`
+      'border-color': `color-mix(in srgb, ${statusColor()} 25%, transparent)`
     };
 
     switch (anchor()) {
@@ -133,8 +133,8 @@ const EnhancedTooltip: Component<EnhancedTooltipProps> = (props) => {
         class="relative px-3 py-2 rounded-lg text-xs font-mono min-w-[140px] max-w-[280px]"
         style={{
           background: 'rgba(0, 0, 0, 0.95)',
-          border: `1px solid ${statusColor()}40`,
-          'box-shadow': `0 4px 20px rgba(0, 0, 0, 0.5), 0 0 20px ${statusColor()}15`
+          border: `1px solid color-mix(in srgb, ${statusColor()} 25%, transparent)`,
+          'box-shadow': `0 4px 20px rgba(0, 0, 0, 0.5), 0 0 20px color-mix(in srgb, ${statusColor()} 8%, transparent)`
         }}
       >
         {/* Arrow */}

@@ -7,7 +7,7 @@ import {
   isLivePipelineId,
 } from './utils';
 import { usePipelineController } from './usePipelineController';
-import { TabBar, LoadingState } from '../shared';
+import { TabBar, LoadingState, ErrorState } from '../shared';
 import type { TabDef } from '../shared';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
@@ -188,9 +188,7 @@ const Pipeline: Component = () => {
             {/* Trends Tab */}
             <Show when={pageTab() === 'trends'}>
                 <ErrorBoundary fallback={(err) => (
-                    <div class="surface m-4 p-4 text-sm text-status-error border border-status-error/20">
-                        Failed to load Trends: {err.message}
-                    </div>
+                    <div class="m-4"><ErrorState message={`Failed to load Trends: ${err?.message ?? err}`} /></div>
                 )}>
                     <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
                         <PipelineTrends />
@@ -201,9 +199,7 @@ const Pipeline: Component = () => {
             {/* History Tab */}
             <Show when={pageTab() === 'history'}>
                 <ErrorBoundary fallback={(err) => (
-                    <div class="surface m-4 p-4 text-sm text-status-error border border-status-error/20">
-                        Failed to load History: {err.message}
-                    </div>
+                    <div class="m-4"><ErrorState message={`Failed to load History: ${err?.message ?? err}`} /></div>
                 )}>
                     <Suspense fallback={<LoadingState variant="inline" size="sm" />}>
                         <PipelineHistory repos={repos()} />

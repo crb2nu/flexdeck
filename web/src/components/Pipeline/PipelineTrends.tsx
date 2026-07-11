@@ -1,5 +1,5 @@
 import { Component, For, Show, createMemo } from 'solid-js';
-import { sanitizeError } from '../../lib/sanitizeError';
+import { LoadingState, ErrorState, EmptyState } from '../shared';
 import { ciApi } from '../../lib/api';
 import { createPolledResource } from '../../hooks/createPolledResource';
 import { formatDuration } from '../../lib/format';
@@ -93,25 +93,15 @@ const PipelineTrends: Component = () => {
       </div>
 
       <Show when={loading()}>
-        <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
-        </div>
+        <LoadingState size="sm" />
       </Show>
 
       <Show when={error()}>
-        <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-          <span>!</span>
-          {sanitizeError(error())}
-        </div>
+        <ErrorState message={error()} />
       </Show>
 
       <Show when={!loading() && trends().length === 0 && !error()}>
-        <div class="flex flex-col items-center justify-center py-12 text-text-muted">
-          <div class="text-lg mb-2">No Pipeline Trend Data</div>
-          <div class="text-sm text-text-dim">
-            Pipeline data will appear after the scraper collects execution history.
-          </div>
-        </div>
+        <EmptyState size="sm" title="No pipeline trend data found" subtitle="Pipeline data will appear after the scraper collects execution history." />
       </Show>
 
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

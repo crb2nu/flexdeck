@@ -7,6 +7,8 @@ export interface PageHeaderProps {
   lastUpdated?: string | number | Date | null;
   onRefresh?: () => void;
   refreshDisabled?: boolean;
+  /** While true, the refresh icon spins and the button is disabled. */
+  refreshing?: boolean;
   children?: JSX.Element;
 }
 
@@ -47,9 +49,15 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
           <button
             class="group/refresh inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-text-muted transition-all duration-150 hover:bg-white/10 hover:text-text-main hover:border-white/15 disabled:opacity-50 disabled:pointer-events-none"
             onClick={() => props.onRefresh!()}
-            disabled={props.refreshDisabled}
+            disabled={props.refreshDisabled || props.refreshing}
           >
-            <svg class="h-3 w-3 transition-transform duration-300 group-hover/refresh:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="h-3 w-3 transition-transform duration-300 group-hover/refresh:rotate-180"
+              classList={{ 'animate-spin': props.refreshing }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh

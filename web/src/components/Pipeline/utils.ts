@@ -9,6 +9,25 @@ import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
 const ACTIVE_JOB_STATUSES = new Set(['running', 'pending', 'created', 'preparing', 'waiting_for_resource', 'scheduled']);
 
+/**
+ * Raw hex mirrors of the canonical design tokens in styles/variables.css.
+ * getStatusColor cannot return `var(--x)` because its output feeds canvas 2D
+ * fillStyle/shadowColor (CIPipelineViz particle pool) and `${color}NN`
+ * hex-alpha string concatenations, where CSS var() does not resolve.
+ * Keep in sync with variables.css — single source of hex in this module.
+ */
+export const TOKEN_HEX = {
+  success: '#22e076', // --success
+  warning: '#ffb830', // --warning
+  error: '#ff3d71', // --error
+  info: '#00c8ff', // --info
+  accent: '#ff6b35', // --accent
+  accentLight: '#ff8c4d', // hover tint of --accent (no dedicated CSS token)
+  violet: '#b06cde', // --color-violet
+  fgPrimary: '#d4eef4', // --fg-primary
+  fgSecondary: '#8cc0cc', // --fg-secondary
+} as const;
+
 function normalizeRawStatus(status: string | undefined | null): string | undefined {
   const normalized = (status ?? '').trim().toLowerCase();
   return normalized || undefined;
@@ -28,30 +47,30 @@ export function getStatusColor(
   const token = getVisualStatusToken(status, rawStatus);
   switch (token) {
     case 'success':
-      return '#22e076'; // --success
+      return TOKEN_HEX.success;
     case 'running':
-      return '#8cc0cc'; // --fg-secondary (neutral)
+      return TOKEN_HEX.fgSecondary; // neutral
     case 'failed':
     case 'canceled':
     case 'cancelled':
     case 'canceling':
-      return '#ff3d71'; // --error
+      return TOKEN_HEX.error;
     case 'manual':
-      return '#b06cde'; // violet
+      return TOKEN_HEX.violet;
     case 'created':
-      return '#ffb830'; // --warning
+      return TOKEN_HEX.warning;
     case 'preparing':
-      return '#ff8c4d'; // accent-light
+      return TOKEN_HEX.accentLight;
     case 'waiting_for_resource':
-      return '#ff6b35'; // --accent
+      return TOKEN_HEX.accent;
     case 'scheduled':
-      return '#b06cde'; // violet
+      return TOKEN_HEX.violet;
     case 'pending':
-      return '#ffb830'; // --warning
+      return TOKEN_HEX.warning;
     case 'skipped':
-      return 'rgba(140,192,204,0.3)';
+      return 'rgba(140,192,204,0.3)'; // TOKEN_HEX.fgSecondary at 0.3 (rgba form: hex-alpha concat is never applied to 'skipped')
     default:
-      return '#d4eef4'; // --fg-primary
+      return TOKEN_HEX.fgPrimary;
   }
 }
 

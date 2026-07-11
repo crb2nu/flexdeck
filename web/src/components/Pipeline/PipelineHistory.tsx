@@ -1,5 +1,5 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
-import { sanitizeError } from '../../lib/sanitizeError';
+import { LoadingState, ErrorState, EmptyState } from '../shared';
 import { formatDuration as formatDurationMs, formatShortDateTime } from '../../lib/format';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import {
@@ -147,22 +147,15 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
       </div>
 
       <Show when={loading()}>
-        <div class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
-        </div>
+        <LoadingState size="sm" />
       </Show>
 
       <Show when={error()}>
-        <div class="surface flex items-center gap-3 p-4 text-sm text-status-error border border-status-error/20">
-          <span>!</span>
-          {sanitizeError(error())}
-        </div>
+        <ErrorState message={error()} />
       </Show>
 
       <Show when={!loading() && selectedProjectId() !== null && history().length === 0 && !error()}>
-        <div class="text-center py-8 text-text-muted">
-          No pipeline history available for this project.
-        </div>
+        <EmptyState size="sm" title="No pipeline history found" subtitle="Runs will appear here once this project's pipelines execute." />
       </Show>
 
       <Show when={!loading() && selectedProjectId() === null}>

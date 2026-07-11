@@ -70,7 +70,7 @@ const LoginScreen: Component = () => {
     <div class="flex h-full w-full items-center justify-center p-4">
       <form
         onSubmit={submit}
-        class="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-bg-dark/80 p-6 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur"
+        class="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-bg-dark/80 p-6 shadow-lg backdrop-blur"
       >
         <div class="mb-5 flex flex-col gap-1.5">
           <span class="text-sm font-semibold tracking-tight text-white">
@@ -94,19 +94,19 @@ const LoginScreen: Component = () => {
           onInput={(e) => setTokenInput(e.currentTarget.value)}
           placeholder="Paste token"
           disabled={submitting()}
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-text-main outline-none transition-colors placeholder:text-text-dim focus:border-[#00c8ff]/50 focus:bg-white/[0.06] disabled:opacity-60"
+          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-text-main outline-none transition-colors placeholder:text-text-dim focus:border-semantic-blue/50 focus:bg-white/[0.06] disabled:opacity-60"
         />
 
         <Switch>
           <Match when={error()}>
-            <p class="mt-2 text-xs text-[#ff6b8f]">{error()}</p>
+            <p class="mt-2 text-xs text-status-error">{error()}</p>
           </Match>
         </Switch>
 
         <button
           type="submit"
           disabled={submitting() || tokenInput().trim() === ''}
-          class="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#00c8ff]/30 bg-[#00c8ff]/10 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#00c8ff]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          class="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-semantic-blue/30 bg-semantic-blue/10 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-semantic-blue/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Switch fallback={<span>Continue</span>}>
             <Match when={submitting()}>

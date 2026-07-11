@@ -305,7 +305,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
   };
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in-scale">
+    <div class="fixed inset-0 z-modal flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in-scale">
       <div class="flex h-[90dvh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-xl border border-white/15 bg-[#060a14]">
         
         {/* Header */}
@@ -443,7 +443,7 @@ const AgentChat: Component<AgentChatProps> = (props) => {
 
         {/* Input Area */}
         <div class="border-t border-white/10 bg-[#030508] p-4">
-            <div class="relative flex items-end gap-2 rounded-xl border border-white/10 bg-white/5 p-2 focus-within:border-white/20 transition-all">
+            <div class="relative flex items-end gap-2 rounded-xl border border-white/10 bg-white/5 p-2 focus-within:border-white/20 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.1)] transition-all">
                 <textarea
                     ref={inputRef}
                     value={input()}

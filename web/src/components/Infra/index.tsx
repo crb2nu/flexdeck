@@ -42,6 +42,7 @@ const Infra: Component = () => {
         lastUpdated={lastUpdated() || null}
         onRefresh={trigger}
         refreshDisabled={refreshing()}
+        refreshing={refreshing()}
       >
         <span class={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase ${statusClass()}`}>
           {statusLabel()}

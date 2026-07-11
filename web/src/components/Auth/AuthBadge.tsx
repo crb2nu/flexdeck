@@ -16,7 +16,7 @@ const AuthBadge: Component = () => (
         <button
           type="button"
           onClick={() => logout()}
-          class="rounded px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition-colors hover:text-[#ff6b8f]"
+          class="rounded px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition-colors hover:text-status-error"
           title="Sign out"
         >
           Sign out
