@@ -5,27 +5,27 @@ import {
   operatorStateLabel,
   type OperatorState,
 } from '../../lib/freshness';
+import { VIZ_ACCENT_LIGHT, VIZ_TOKEN_HEX } from '../../lib/vizTokens';
 import type { PipelineJob, Pipeline } from './CIPipelineViz';
 
 const ACTIVE_JOB_STATUSES = new Set(['running', 'pending', 'created', 'preparing', 'waiting_for_resource', 'scheduled']);
 
 /**
- * Raw hex mirrors of the canonical design tokens in styles/variables.css.
  * getStatusColor cannot return `var(--x)` because its output feeds canvas 2D
  * fillStyle/shadowColor (CIPipelineViz particle pool) and `${color}NN`
  * hex-alpha string concatenations, where CSS var() does not resolve.
- * Keep in sync with variables.css — single source of hex in this module.
+ * Hex values come from lib/vizTokens (the app-wide token mirror).
  */
 export const TOKEN_HEX = {
-  success: '#22e076', // --success
-  warning: '#ffb830', // --warning
-  error: '#ff3d71', // --error
-  info: '#00c8ff', // --info
-  accent: '#ff6b35', // --accent
-  accentLight: '#ff8c4d', // hover tint of --accent (no dedicated CSS token)
-  violet: '#b06cde', // --color-violet
-  fgPrimary: '#d4eef4', // --fg-primary
-  fgSecondary: '#8cc0cc', // --fg-secondary
+  success: VIZ_TOKEN_HEX.success,
+  warning: VIZ_TOKEN_HEX.warning,
+  error: VIZ_TOKEN_HEX.error,
+  info: VIZ_TOKEN_HEX.info,
+  accent: VIZ_TOKEN_HEX.accent,
+  accentLight: VIZ_ACCENT_LIGHT,
+  violet: VIZ_TOKEN_HEX.violet,
+  fgPrimary: VIZ_TOKEN_HEX.fgPrimary,
+  fgSecondary: VIZ_TOKEN_HEX.fgSecondary,
 } as const;
 
 function normalizeRawStatus(status: string | undefined | null): string | undefined {

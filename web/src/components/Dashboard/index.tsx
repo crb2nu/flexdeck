@@ -465,7 +465,11 @@ const Dashboard: Component = () => {
           when={nodes().length > 0 || pods().length > 0}
           fallback={
             isLoading()
-              ? <LoadingState message="Loading cluster data..." />
+              ? (
+                <div class="flex flex-1 p-3 animate-fade-in" aria-hidden="true" data-testid="topology-skeleton">
+                  <div class="skeleton min-h-[320px] w-full flex-1 rounded-md" />
+                </div>
+              )
               : <EmptyState icon="⬡" title="Cluster Topology" subtitle="No resources found" />
           }
         >

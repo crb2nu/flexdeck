@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import type { K8sNode, K8sPod, K8sService } from '../../../lib/types';
 import { filterLabelSelectorMatches } from '../../../lib/fiAccel';
 import { isK8sNodeReady } from '../../../lib/k8sStatus';
+import { VIZ_SERIES_HEX } from '../../../lib/vizTokens';
 import type { TopologyNode, TopologyLink } from './types';
 
 export interface BuildInput {
@@ -51,10 +52,9 @@ export interface LayoutTuning {
   collisionStrength: number;
 }
 
-export const namespaceColors = [
-  '#00c8ff', '#b06cde', '#22e076', '#ff6b35', '#ff6b9d',
-  '#4693a6', '#ffb830', '#2f6170', '#b06cde', '#22e076'
-];
+// Categorical namespace palette — the canonical --viz-1..8 series (canvas
+// cannot resolve CSS var(), so the token-mirror hexes are used directly).
+export const namespaceColors = [...VIZ_SERIES_HEX];
 
 export const getNamespaceColor = (namespace: string, namespaceMap: Map<string, number>): string => {
   if (!namespaceMap.has(namespace)) {

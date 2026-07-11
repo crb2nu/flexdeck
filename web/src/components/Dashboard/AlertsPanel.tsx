@@ -4,6 +4,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { formatTimeAgo } from '../../lib/format';
 import { prom } from '../../lib/api';
 import { stablePanelStatusClasses, useStablePanelState } from '../shared/useStablePanelState';
+import { SkeletonRows } from '../shared/Skeleton';
 
 interface PrometheusAlert {
   labels: Record<string, string>;
@@ -118,11 +119,7 @@ const AlertsPanel: Component = () => {
           <div class={`pointer-events-none sticky top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent transition-opacity duration-200 ${stablePanel.isRefreshing() ? 'opacity-100' : 'opacity-0'}`} />
           <Show
             when={!stablePanel.showBlockingLoading()}
-            fallback={
-              <div class="flex items-center justify-center py-6">
-                <span class="text-xs text-text-dim animate-pulse">Checking alerts...</span>
-              </div>
-            }
+            fallback={<SkeletonRows count={3} />}
           >
             <Show when={stablePanel.showBlockingError()}>
               <div class="px-3 py-3 flex items-start gap-2 text-status-error">

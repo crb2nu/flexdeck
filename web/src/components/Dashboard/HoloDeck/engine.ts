@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { prefersReducedMotion } from '../../../lib/motion';
+import { tokenHexInt } from '../../../lib/vizTokens';
 import { HOLO_THEME, QUALITY_PRESETS, type QualityLevel } from './config';
 import { gridVertexShader, gridFragmentShader } from './shaders';
 
@@ -62,19 +64,19 @@ export class HoloEngine {
     this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
     this.controls.minDistance = 5;
     this.controls.maxDistance = 80;
-    this.controls.autoRotate = true;
+    this.controls.autoRotate = !prefersReducedMotion();
     this.controls.autoRotateSpeed = 0.6;
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.08);
     this.scene.add(ambientLight);
-    const spotLight = new THREE.SpotLight(0x00f0ff, 0.4);
+    const spotLight = new THREE.SpotLight(tokenHexInt('info'), 0.4);
     spotLight.position.set(0, 60, 0);
     this.scene.add(spotLight);
 
     // Grid
     this.gridMaterial = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x00f0ff) } },
+      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(tokenHexInt('info')) } },
       vertexShader: gridVertexShader,
       fragmentShader: gridFragmentShader,
       transparent: true,
@@ -94,8 +96,8 @@ export class HoloEngine {
     const geom = new THREE.BufferGeometry();
     const pos = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
-    const cyan = new THREE.Color(0x00f0ff);
-    const purple = new THREE.Color(0xa855f7);
+    const cyan = new THREE.Color(tokenHexInt('info'));
+    const purple = new THREE.Color(tokenHexInt('violet'));
 
     for (let i = 0; i < count; i++) {
       pos[i * 3] = (Math.random() - 0.5) * 120;

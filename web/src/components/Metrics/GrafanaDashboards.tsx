@@ -666,7 +666,7 @@ const GrafanaDashboards: Component = () => {
 
   return (
     <div class="flex flex-col gap-4">
-      <div class="surface overflow-hidden border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(255,255,255,0.04),rgba(168,85,247,0.12))]">
+      <div class="surface overflow-hidden border border-white/10 bg-[linear-gradient(135deg,rgb(var(--info-rgb)/0.14),rgba(255,255,255,0.04),rgb(var(--violet-rgb)/0.12))]">
         <div class="flex flex-col gap-4 p-4 lg:flex-row lg:items-end lg:justify-between">
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">

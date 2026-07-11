@@ -4,7 +4,7 @@ import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
 import type { AlertmanagerAlert, AlertmanagerSilence } from '../../lib/types';
 import { formatRelativeTime } from '../../lib/format';
-import { TabBar, LoadingState, ErrorState, EmptyState, Button, Input, Select } from '../shared';
+import { TabBar, ErrorState, EmptyState, Button, Input, Select, SkeletonRows } from '../shared';
 import { showToast, ToastContainer } from '../shared/Toast';
 
 const Alerts: Component = () => {
@@ -161,7 +161,7 @@ const Alerts: Component = () => {
       </Show>
 
       <Show when={loading()}>
-        <LoadingState message="Loading alerts..." />
+        <SkeletonRows surface count={4} />
       </Show>
 
       {/* Alerts tab */}

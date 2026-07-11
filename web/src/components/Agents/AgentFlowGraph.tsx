@@ -1,6 +1,8 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
 import * as d3 from 'd3';
 import type { AgentNode, AgentEdge, AgentType, AgentStatus } from '../../lib/types';
+import { prefersReducedMotion } from '../../lib/motion';
+import { VIZ_TOKEN_HEX, tokenRgba } from '../../lib/vizTokens';
 
 interface Props {
   nodes: AgentNode[];
@@ -27,9 +29,9 @@ interface D3AgentLink extends d3.SimulationLinkDatum<D3AgentNode> {
 }
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
-  healthy: '#22e076',
-  unhealthy: '#ff3d71',
-  unknown: '#5c8a96',
+  healthy: VIZ_TOKEN_HEX.success,
+  unhealthy: VIZ_TOKEN_HEX.error,
+  unknown: VIZ_TOKEN_HEX.fgMuted,
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -52,7 +54,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
     return isBuiltIn ? 32 : 26;
   };
 
-  const getStatusColor = (status: AgentStatus): string => STATUS_COLORS[status] || '#5c8a96';
+  const getStatusColor = (status: AgentStatus): string => STATUS_COLORS[status] || VIZ_TOKEN_HEX.fgMuted;
 
   const initGraph = () => {
     if (!svgRef || props.nodes.length === 0) return;
@@ -98,7 +100,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#22e076')
+      .attr('fill', VIZ_TOKEN_HEX.success)
       .attr('opacity', 0.6);
 
     // Arrow marker for unhealthy/unknown links
@@ -112,7 +114,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#5c8a96')
+      .attr('fill', VIZ_TOKEN_HEX.fgMuted)
       .attr('opacity', 0.4);
 
     // Glow filter
@@ -138,7 +140,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       .attr('fill', 'none')
       .attr('stroke', d => {
         const sourceNode = nodes.find(n => n.id === (typeof d.source === 'string' ? d.source : d.source.id));
-        return sourceNode?.status === 'healthy' ? 'rgba(0, 217, 255, 0.4)' : 'rgba(107, 114, 128, 0.3)';
+        return sourceNode?.status === 'healthy' ? tokenRgba('info', 0.4) : tokenRgba('fgMuted', 0.3);
       })
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', d => {
@@ -150,25 +152,28 @@ const AgentFlowGraph: Component<Props> = (props) => {
         return sourceNode?.status === 'healthy' ? 'url(#arrow-healthy)' : 'url(#arrow-dim)';
       });
 
-    // Animate dashes for healthy links
-    linkElements.filter(d => {
-      const sourceNode = nodes.find(n => n.id === (typeof d.source === 'string' ? d.source : d.source.id));
-      return sourceNode?.status === 'healthy';
-    })
-    .attr('stroke-dashoffset', 0)
-    .each(function () {
-      const el = this as SVGPathElement;
-      const animate = () => {
-        d3.select(el)
-          .attr('stroke-dashoffset', 0)
-          .transition()
-          .duration(1500)
-          .ease(d3.easeLinear)
-          .attr('stroke-dashoffset', -24)
-          .on('end', animate);
-      };
-      animate();
-    });
+    // Animate dashes for healthy links (d3 transitions ignore the global
+    // reduced-motion CSS override, so gate the marching explicitly)
+    if (!prefersReducedMotion()) {
+      linkElements.filter(d => {
+        const sourceNode = nodes.find(n => n.id === (typeof d.source === 'string' ? d.source : d.source.id));
+        return sourceNode?.status === 'healthy';
+      })
+      .attr('stroke-dashoffset', 0)
+      .each(function () {
+        const el = this as SVGPathElement;
+        const animate = () => {
+          d3.select(el)
+            .attr('stroke-dashoffset', 0)
+            .transition()
+            .duration(1500)
+            .ease(d3.easeLinear)
+            .attr('stroke-dashoffset', -24)
+            .on('end', animate);
+        };
+        animate();
+      });
+    }
 
     // Node groups
     const nodeGroup = g.append('g').attr('class', 'nodes');
@@ -202,8 +207,8 @@ const AgentFlowGraph: Component<Props> = (props) => {
     // Main circle background
     nodeElements.append('circle')
       .attr('r', d => getNodeRadius(d))
-      .attr('fill', '#0d161b')
-      .attr('stroke', d => d.type === 'cli-agent' ? '#b06cde' : getStatusColor(d.status))
+      .attr('fill', VIZ_TOKEN_HEX.bgSecondary)
+      .attr('stroke', d => d.type === 'cli-agent' ? VIZ_TOKEN_HEX.violet : getStatusColor(d.status))
       .attr('stroke-width', d => {
         const isBuiltIn = d.id === 'agent-builder' || d.tags?.includes('built-in');
         return isBuiltIn ? 2.5 : 1.5;
@@ -233,7 +238,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
     nodeElements.append('text')
       .attr('text-anchor', 'middle')
       .attr('y', d => getNodeRadius(d) + 14)
-      .attr('fill', '#8cc0cc')
+      .attr('fill', VIZ_TOKEN_HEX.fgSecondary)
       .attr('font-size', '10px')
       .attr('font-family', 'Inter, system-ui, sans-serif')
       .text(d => d.name.length > 16 ? d.name.slice(0, 14) + '...' : d.name);
@@ -344,7 +349,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
   });
 
   return (
-    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-[#060c10] rounded-lg border border-white/5">
+    <div ref={containerRef} class="relative h-full w-full overflow-hidden bg-bg-deep rounded-lg border border-white/5">
       <svg
         ref={svgRef}
         width={dimensions().width}
@@ -353,7 +358,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       />
 
       {/* Stats overlay */}
-      <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-[#0a1020]/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
+      <div class="absolute left-4 top-4 flex items-center gap-3 rounded-md bg-bg-dark/90 px-3 py-1.5 text-xs pointer-events-none border border-white/5">
         <span class="text-text-dim">Agents:</span>
         <span class="font-mono text-white">{props.nodes.length}</span>
         <span class="text-text-dim ml-2">Edges:</span>
@@ -361,11 +366,11 @@ const AgentFlowGraph: Component<Props> = (props) => {
       </div>
 
       {/* Legend */}
-      <div class="absolute bottom-4 left-4 rounded-lg bg-[#0a1020]/90 p-3 text-xs border border-white/5 pointer-events-none">
+      <div class="absolute bottom-4 left-4 rounded-lg bg-bg-dark/90 p-3 text-xs border border-white/5 pointer-events-none">
         <div class="mb-2 font-medium text-text-muted uppercase tracking-wider text-[10px]">Legend</div>
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
-            <div class="h-3 w-3 rounded-full border-2 border-status-ok bg-status-ok/20" />
+            <div class="h-3 w-3 rounded-full border-2 border-semantic-emerald bg-semantic-emerald/20" />
             <span class="text-text-dim">Healthy</span>
           </div>
           <div class="flex items-center gap-2">
@@ -377,7 +382,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
             <span class="text-text-dim">Unknown</span>
           </div>
           <div class="flex items-center gap-2">
-            <div class="h-3 w-3 rounded-full border-2 border-dashed border-purple-400 bg-purple-400/10" />
+            <div class="h-3 w-3 rounded-full border-2 border-dashed border-semantic-violet bg-semantic-violet/10" />
             <span class="text-text-dim">CLI Agent</span>
           </div>
           <div class="mt-1 border-t border-white/5 pt-2">
@@ -390,7 +395,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
       <Show when={hoverNode()}>
         {(node) => (
           <div
-            class="absolute z-50 rounded-lg bg-[#0a1020]/95 p-3 text-xs border border-white/10 shadow-xl pointer-events-none"
+            class="absolute z-tooltip rounded-lg bg-bg-dark/95 p-3 text-xs border border-white/10 shadow-xl pointer-events-none"
             style={{
               left: `${Math.min(tooltipPos().x, dimensions().width - 200)}px`,
               top: `${Math.max(tooltipPos().y - 80, 8)}px`,
@@ -406,7 +411,7 @@ const AgentFlowGraph: Component<Props> = (props) => {
               <div class="flex justify-between gap-4">
                 <span class="text-text-dim">Status</span>
                 <span class={`capitalize font-medium ${
-                  node().status === 'healthy' ? 'text-status-ok' :
+                  node().status === 'healthy' ? 'text-semantic-emerald' :
                   node().status === 'unhealthy' ? 'text-status-error' :
                   'text-text-dim'
                 }`}>

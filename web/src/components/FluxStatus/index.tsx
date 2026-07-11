@@ -4,7 +4,7 @@ import { stableListByKey } from '../../lib/stableList';
 import { fluxApi, type FluxResource, type FluxSource } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/format';
 import { computeFluxSyncState, type FluxSyncState } from './syncState';
-import { PageHeader, LoadingState, EmptyState, ErrorState } from '../shared';
+import { PageHeader, EmptyState, ErrorState, SkeletonRows } from '../shared';
 import { sanitizeError } from '../../lib/sanitizeError';
 
 const POLL_INTERVAL = 15_000;
@@ -122,7 +122,27 @@ const FluxStatus: Component = () => {
       <Show
         when={!loading()}
         fallback={
-          <LoadingState message="Loading Flux resources..." />
+          // Page-shaped skeleton: sync-summary chip bar + section panels with
+          // resource rows, so the layout doesn't jump when data arrives.
+          <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto animate-fade-in" aria-hidden="true">
+            <div class="surface px-4 py-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <For each={['in-sync', 'drifting', 'error', 'suspended']}>
+                  {() => <div class="skeleton h-6 w-24 rounded-md" />}
+                </For>
+              </div>
+            </div>
+            <For each={['sources', 'kustomizations', 'helmreleases']}>
+              {() => (
+                <div class="surface overflow-hidden">
+                  <div class="flex items-center gap-2 border-b border-white/5 px-4 py-2">
+                    <div class="skeleton h-3 w-32 rounded" />
+                  </div>
+                  <SkeletonRows count={3} />
+                </div>
+              )}
+            </For>
+          </div>
         }
       >
         <Show

@@ -1,5 +1,5 @@
 import { Component, Show } from 'solid-js';
-import { TabBar, LoadingState, ErrorState } from '../shared';
+import { TabBar, ErrorState, SkeletonTable } from '../shared';
 import PageHeader from '../shared/PageHeader';
 import Input from '../shared/Input';
 import Select from '../shared/Select';
@@ -100,7 +100,7 @@ const Services: Component = () => {
       {/* Content */}
       <div class="surface flex-1 overflow-auto">
         <Show when={loading()}>
-          <LoadingState size="lg" />
+          <SkeletonTable rows={8} />
         </Show>
 
         <Show when={!loading() && error()}>

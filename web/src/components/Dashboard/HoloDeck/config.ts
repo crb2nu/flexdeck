@@ -1,4 +1,8 @@
 // Configuration for HoloDeck
+// Colors are token-mirror ints from lib/vizTokens — three.js materials
+// cannot resolve CSS var(), so this is the sanctioned hex path.
+
+import { VIZ_TOKEN_HEX, VIZ_VIOLET_LIGHT, hexToInt, tokenHexInt } from '../../../lib/vizTokens';
 
 export type QualityLevel = 'low' | 'medium' | 'high';
 
@@ -17,33 +21,33 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualitySettings> = {
 
 export const HOLO_THEME = {
     colors: {
-        background: '#030508',
+        background: VIZ_TOKEN_HEX.bgPrimary,
         node: {
-            base: 0x111111,
-            tower: 0x050a10,
-            ready: 0x00f0ff,
-            error: 0xff0055,
-            edge: 0x00f0ff, // Fallback if no status
+            base: tokenHexInt('bgTertiary'),
+            tower: tokenHexInt('bgPrimary'),
+            ready: tokenHexInt('info'),
+            error: tokenHexInt('error'),
+            edge: tokenHexInt('info'), // Fallback if no status
         },
         pod: {
-            running: 0x22c55e,
-            pending: 0xeab308,
-            error: 0xef4444,
+            running: tokenHexInt('success'),
+            pending: tokenHexInt('warning'),
+            error: tokenHexInt('error'),
         },
         service: {
-            primary: 0xa855f7,
-            edge: 0xd8b4fe,
+            primary: tokenHexInt('violet'),
+            edge: hexToInt(VIZ_VIOLET_LIGHT),
         },
         traffic: {
             default: 0xffffff,
-            service: 0xa855f7,
+            service: tokenHexInt('violet'),
         },
         rings: {
-            cpu: 0x0aff68,
-            mem: 0x00f0ff,
-            warning: 0xfcee0a,
-            critical: 0xff003c,
-            bg: 0x222222
+            cpu: tokenHexInt('success'),
+            mem: tokenHexInt('info'),
+            warning: tokenHexInt('warning'),
+            critical: tokenHexInt('error'),
+            bg: tokenHexInt('bgElevated')
         }
     },
     dimensions: {
@@ -58,11 +62,11 @@ export const TRAFFIC_CONFIG = {
     TRAFFIC_SPAWN_INTERVAL: 120,
     SERVICE_SPAWN_INTERVAL: 200,
     colors: {
-        healthy: 0x00f0ff,   // Cyan - normal traffic flow
-        warning: 0xfcee0a,   // Yellow - elevated latency
-        error: 0xff003c,     // Red - failed requests
-        ingress: 0xa855f7,   // Purple - external traffic
-        internal: 0x0aff68,  // Green - pod-to-pod
+        healthy: tokenHexInt('info'),     // normal traffic flow
+        warning: tokenHexInt('warning'),  // elevated latency
+        error: tokenHexInt('error'),      // failed requests
+        ingress: tokenHexInt('violet'),   // external traffic
+        internal: tokenHexInt('success'), // pod-to-pod
     },
     typeWeights: {
         healthy: 0.70,
@@ -89,9 +93,9 @@ export const HEALTH_HUB_CONFIG = {
     ringRadii: [2.0, 3.0, 4.0],
     ringWidth: 0.15,
     colors: {
-        healthy: 0x0aff68,
-        warning: 0xfcee0a,
-        critical: 0xff003c,
+        healthy: tokenHexInt('success'),
+        warning: tokenHexInt('warning'),
+        critical: tokenHexInt('error'),
     },
     thresholds: {
         warning: 0.9,  // Below 90% = warning

@@ -26,11 +26,11 @@ export interface DetailPanelProps {
 }
 
 const statusColors: Record<string, { bg: string; border: string; text: string }> = {
-  ok: { bg: 'rgba(0, 240, 255, 0.08)', border: 'rgba(0, 240, 255, 0.2)', text: 'var(--color-blue)' },
-  warn: { bg: 'rgba(252, 238, 10, 0.08)', border: 'rgba(252, 238, 10, 0.2)', text: 'var(--color-amber)' },
-  error: { bg: 'rgba(255, 0, 60, 0.08)', border: 'rgba(255, 0, 60, 0.2)', text: 'var(--color-red)' },
-  running: { bg: 'rgba(10, 255, 104, 0.08)', border: 'rgba(10, 255, 104, 0.2)', text: 'var(--color-emerald)' },
-  pending: { bg: 'rgba(189, 0, 255, 0.08)', border: 'rgba(189, 0, 255, 0.2)', text: 'var(--color-violet)' },
+  ok: { bg: 'rgb(var(--color-blue-rgb) / 0.08)', border: 'rgb(var(--color-blue-rgb) / 0.2)', text: 'var(--color-blue)' },
+  warn: { bg: 'rgb(var(--color-amber-rgb) / 0.08)', border: 'rgb(var(--color-amber-rgb) / 0.2)', text: 'var(--color-amber)' },
+  error: { bg: 'rgb(var(--color-red-rgb) / 0.08)', border: 'rgb(var(--color-red-rgb) / 0.2)', text: 'var(--color-red)' },
+  running: { bg: 'rgb(var(--color-emerald-rgb) / 0.08)', border: 'rgb(var(--color-emerald-rgb) / 0.2)', text: 'var(--color-emerald)' },
+  pending: { bg: 'rgb(var(--color-violet-rgb) / 0.08)', border: 'rgb(var(--color-violet-rgb) / 0.2)', text: 'var(--color-violet)' },
 };
 
 const DetailPanel: Component<DetailPanelProps> = (props) => {

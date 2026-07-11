@@ -1,6 +1,7 @@
 import { Component, onMount, onCleanup, createEffect, createMemo, createSignal, Show } from 'solid-js';
 import { analyzeLogLines } from '../../lib/fiAccel';
 import { getLogLevel, getLogLevelColor, type LogLevel } from '../../lib/logUtils';
+import { tokenRgba } from '../../lib/vizTokens';
 
 export interface LogEntry {
   timestamp: string;
@@ -289,7 +290,7 @@ const LogStream: Component<Props> = (props) => {
     ctx.fillRect(0, 0, width, height);
 
     // Add scanline effect
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.02)';
+    ctx.fillStyle = tokenRgba('info', 0.02);
     const scanY = (time * 0.1) % height;
     ctx.fillRect(0, scanY, width, 2);
 

@@ -413,16 +413,16 @@ describe('Dashboard shell', () => {
     expect(pageText()).toContain('Inference 12.5');
     expect(pageText()).toContain('Agents 4');
     expect(document.querySelector('[data-testid="topology-graph"]')).toBeTruthy();
-    expect(pageText()).not.toContain('Loading cluster data...');
+    expect(document.querySelector('[data-testid="topology-skeleton"]')).toBeNull();
   });
 
-  it('shows the loading fallback while cluster data is still empty', () => {
+  it('shows the loading skeleton while cluster data is still empty', () => {
     dashboardMocks.k8sStore.lastUpdate = 0;
     dashboardMocks.k8sStore.connectionStatus = 'connected';
 
     cleanup = mount(() => <Dashboard />);
 
-    expect(pageText()).toContain('Loading cluster data...');
+    expect(document.querySelector('[data-testid="topology-skeleton"]')).toBeTruthy();
     expect(dashboardMocks.topologyGraphMock).not.toHaveBeenCalled();
   });
 
@@ -436,6 +436,6 @@ describe('Dashboard shell', () => {
     expect(pageText()).toContain('K8s API offline');
     expect(pageText()).toContain('OFFLINE');
     expect(pageText()).toContain('K8s API offline');
-    expect(pageText()).not.toContain('Loading cluster data...');
+    expect(document.querySelector('[data-testid="topology-skeleton"]')).toBeNull();
   });
 });

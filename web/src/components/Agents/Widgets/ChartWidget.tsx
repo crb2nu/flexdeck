@@ -1,4 +1,6 @@
 import { Component, For, Show, createSignal, onMount } from 'solid-js';
+import { prefersReducedMotion } from '../../../lib/motion';
+import { VIZ_TOKEN_HEX } from '../../../lib/vizTokens';
 
 interface ChartWidgetProps {
   data: {
@@ -57,7 +59,11 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
   };
 
   onMount(() => {
-    // Animate chart entry
+    // Animate chart entry (skipped straight to settled under reduced motion)
+    if (prefersReducedMotion()) {
+      setAnimProgress(1);
+      return;
+    }
     let frame = 0;
     const totalFrames = 30;
     const animate = () => {
@@ -80,7 +86,7 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
         vals: props.data.datasets.map(ds => ({
           label: ds.label,
           val: ds.data[idx],
-          color: ds.color || '#00c8ff',
+          color: ds.color || VIZ_TOKEN_HEX.info,
         })),
       });
     }
@@ -104,7 +110,7 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
           <For each={props.data.datasets}>
             {(ds) => (
               <div class="flex items-center gap-1.5 text-[10px] text-text-dim">
-                <span class="w-2 h-2 rounded-full" style={{ background: ds.color || '#00c8ff' }} />
+                <span class="w-2 h-2 rounded-full" style={{ background: ds.color || VIZ_TOKEN_HEX.info }} />
                 {ds.label}
               </div>
             )}
@@ -125,8 +131,8 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
             <For each={props.data.datasets}>
               {(ds, idx) => (
                 <linearGradient id={`area-grad-${idx()}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color={ds.color || '#00c8ff'} stop-opacity="0.3" />
-                  <stop offset="100%" stop-color={ds.color || '#00c8ff'} stop-opacity="0.02" />
+                  <stop offset="0%" stop-color={ds.color || VIZ_TOKEN_HEX.info} stop-opacity="0.3" />
+                  <stop offset="100%" stop-color={ds.color || VIZ_TOKEN_HEX.info} stop-opacity="0.02" />
                 </linearGradient>
               )}
             </For>
@@ -183,7 +189,7 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
                   <path
                     d={linePath(ds.data)}
                     fill="none"
-                    stroke={ds.color || '#00c8ff'}
+                    stroke={ds.color || VIZ_TOKEN_HEX.info}
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -196,7 +202,7 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
                         cx={scaleX(i())}
                         cy={scaleY(val)}
                         r={hovered()?.i === i() ? 4 : 2.5}
-                        fill={ds.color || '#00c8ff'}
+                        fill={ds.color || VIZ_TOKEN_HEX.info}
                         opacity={animProgress()}
                         class="transition-all duration-150"
                       />
@@ -222,7 +228,7 @@ const ChartWidget: Component<ChartWidgetProps> = (props) => {
                         x={x} y={y}
                         width={bw - 1} height={h}
                         rx="2"
-                        fill={ds.color || '#00c8ff'}
+                        fill={ds.color || VIZ_TOKEN_HEX.info}
                         opacity={hovered()?.i === i() ? 0.9 : 0.65}
                         class="transition-opacity duration-150"
                       />

@@ -1,5 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, For, Show, createEffect, createMemo } from 'solid-js';
 import { ciApi } from '../../lib/api';
+import { prefersReducedMotion } from '../../lib/motion';
 import { getStatusColor, getStatusLabel, isLivePipelineId, sortJobsByStatus } from './utils';
 
 // Types for pipeline data (based on .gitlab-ci.yml structure)
@@ -141,6 +142,9 @@ const CIPipelineViz: Component<{
   onActionStatus?: (notice: PipelineActionNotice) => void;
 }> = (props) => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
+  // Decorative flow particles are skipped under reduced motion; the loop
+  // itself keeps running for demo-mode progression and transition cleanup.
+  const reducedMotion = prefersReducedMotion();
   let containerRef: HTMLDivElement | undefined;
   let particleCanvasRef: HTMLCanvasElement | undefined;
   let particleCtx: CanvasRenderingContext2D | null = null;
@@ -709,7 +713,7 @@ const CIPipelineViz: Component<{
       }
     }
 
-    if (hasRunningJobs() && Math.random() < PARTICLE_SPAWN_CHANCE) {
+    if (!reducedMotion && hasRunningJobs() && Math.random() < PARTICLE_SPAWN_CHANCE) {
       spawnParticle(now);
       pipelinePerfCounters.particleSpawns++;
     }
