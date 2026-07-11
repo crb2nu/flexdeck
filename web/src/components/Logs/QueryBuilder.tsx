@@ -1,4 +1,5 @@
 import { Component, createSignal, For, Show } from 'solid-js';
+import { Input, Select } from '../shared';
 
 interface LabelSelector {
   key: string;
@@ -97,35 +98,38 @@ const QueryBuilder: Component<Props> = (props) => {
           <For each={labels()}>
             {(label, index) => (
               <div class="flex items-center gap-2">
-                <select
+                <Select
+                  size="sm"
+                  class="flex-1"
+                  aria-label="Label key"
+                  placeholder="Select label..."
                   value={label.key}
                   onChange={(e) => updateLabel(index(), 'key', e.currentTarget.value)}
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
-                >
-                  <option value="">Select label...</option>
-                  <For each={COMMON_LABELS}>
-                    {(l) => <option value={l}>{l}</option>}
-                  </For>
-                </select>
-                <select
+                  options={COMMON_LABELS.map((l) => ({ value: l, label: l }))}
+                />
+                <Select
+                  size="sm"
+                  class="w-16"
+                  aria-label="Label operator"
+                  selectClass="font-mono"
                   value={label.operator}
                   onChange={(e) => updateLabel(index(), 'operator', e.currentTarget.value as LabelSelector['operator'])}
-                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-white/20 focus:outline-none"
-                >
-                  <For each={LABEL_OPERATORS}>
-                    {(op) => <option value={op}>{op}</option>}
-                  </For>
-                </select>
-                <input
+                  options={LABEL_OPERATORS.map((op) => ({ value: op, label: op }))}
+                />
+                <Input
                   type="text"
+                  size="sm"
+                  class="flex-1"
+                  aria-label="Label value"
+                  inputClass="font-mono"
                   value={label.value}
                   onInput={(e) => updateLabel(index(), 'value', e.currentTarget.value)}
                   placeholder="value"
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none"
                 />
                 <Show when={labels().length > 1}>
                   <button
                     onClick={() => removeLabel(index())}
+                    aria-label="Remove label selector"
                     class="text-text-dim hover:text-status-error transition-colors p-1"
                   >
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,24 +158,28 @@ const QueryBuilder: Component<Props> = (props) => {
           <For each={lineFilters()}>
             {(filter, index) => (
               <div class="flex items-center gap-2">
-                <select
+                <Select
+                  size="sm"
+                  class="w-16"
+                  aria-label="Filter operator"
+                  selectClass="font-mono"
                   value={filter.operator}
                   onChange={(e) => updateLineFilter(index(), 'operator', e.currentTarget.value as LineFilter['operator'])}
-                  class="w-14 bg-black/40 border border-white/10 rounded px-1 py-1 text-xs text-text-main font-mono focus:border-white/20 focus:outline-none"
-                >
-                  <For each={LINE_OPERATORS}>
-                    {(op) => <option value={op}>{op}</option>}
-                  </For>
-                </select>
-                <input
+                  options={LINE_OPERATORS.map((op) => ({ value: op, label: op }))}
+                />
+                <Input
                   type="text"
+                  size="sm"
+                  class="flex-1"
+                  aria-label="Filter value"
+                  inputClass="font-mono"
                   value={filter.value}
                   onInput={(e) => updateLineFilter(index(), 'value', e.currentTarget.value)}
                   placeholder={filter.operator.includes('~') ? 'regex pattern' : 'contains text'}
-                  class="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main font-mono placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none"
                 />
                 <button
                   onClick={() => removeLineFilter(index())}
+                  aria-label="Remove line filter"
                   class="text-text-dim hover:text-status-error transition-colors p-1"
                 >
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,5 +1,6 @@
 import { Component, For, Show, createSignal, onCleanup, onMount, JSX } from 'solid-js';
 import TabBar from './TabBar';
+import { trapFocus } from '../../lib/focusTrap';
 
 export interface DetailPanelTab {
   id: string;
@@ -44,6 +45,7 @@ const DetailPanel: Component<DetailPanelProps> = (props) => {
     panelRef?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.onClose();
+      trapFocus(panelRef, e);
     };
     document.addEventListener('keydown', onKeyDown);
     onCleanup(() => {

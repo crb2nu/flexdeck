@@ -1,5 +1,5 @@
 import { Component, createSignal, createEffect, For, Show } from 'solid-js';
-import { LoadingState, ErrorState, EmptyState } from '../shared';
+import { LoadingState, ErrorState, EmptyState, Select } from '../shared';
 import { formatDuration as formatDurationMs, formatShortDateTime } from '../../lib/format';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import {
@@ -115,21 +115,16 @@ const PipelineHistory: Component<{ repos: RepoInfo[] }> = (props) => {
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <label class="text-xs text-text-dim uppercase tracking-wider">Project</label>
-          <select
-            class="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:border-white/20 focus:outline-none"
+          <label for="pipeline-history-project" class="text-xs text-text-dim uppercase tracking-wider">Project</label>
+          <Select
+            id="pipeline-history-project"
+            placeholder="Select a project..."
+            options={props.repos.map((repo) => ({ value: String(repo.id), label: repo.name }))}
             onChange={(e) => {
               const val = e.currentTarget.value;
               setSelectedProjectId(val ? parseInt(val) : null);
             }}
-          >
-            <option value="">Select a project...</option>
-            <For each={props.repos}>
-              {(repo) => (
-                <option value={repo.id}>{repo.name}</option>
-              )}
-            </For>
-          </select>
+          />
           <button
             type="button"
             disabled={selectedProjectId() === null || loading()}

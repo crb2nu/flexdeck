@@ -1,4 +1,5 @@
-import { Component, createSignal, onMount, onCleanup, For, Show } from 'solid-js';
+import { Component, createEffect, createSignal, onMount, onCleanup, For, Show } from 'solid-js';
+import { trapFocus } from '../../lib/focusTrap';
 
 const SHORTCUT_GROUPS = [
   {
@@ -28,10 +29,14 @@ const SHORTCUT_GROUPS = [
 
 const ShortcutsOverlay: Component = () => {
   const [visible, setVisible] = createSignal(false);
+  let dialogRef: HTMLDivElement | undefined;
+  let previouslyFocused: HTMLElement | null = null;
 
   const handleShow = () => setVisible(true);
   const handleHide = (e: KeyboardEvent) => {
+    if (!visible()) return;
     if (e.key === 'Escape') setVisible(false);
+    trapFocus(dialogRef, e);
   };
 
   onMount(() => {
@@ -44,9 +49,20 @@ const ShortcutsOverlay: Component = () => {
     document.removeEventListener('keydown', handleHide);
   });
 
+  createEffect(() => {
+    if (visible()) {
+      previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialogRef?.querySelector<HTMLElement>('button')?.focus();
+    } else {
+      previouslyFocused?.focus();
+      previouslyFocused = null;
+    }
+  });
+
   return (
     <Show when={visible()}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"

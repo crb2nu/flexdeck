@@ -7,7 +7,7 @@ import {
   isLivePipelineId,
 } from './utils';
 import { usePipelineController } from './usePipelineController';
-import { TabBar, LoadingState, ErrorState } from '../shared';
+import { TabBar, LoadingState, ErrorState, Input } from '../shared';
 import type { TabDef } from '../shared';
 
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
@@ -124,12 +124,14 @@ const Pipeline: Component = () => {
                       size="sm"
                     />
                     <h2 class="text-xs font-bold uppercase tracking-wider text-text-muted">Repositories</h2>
-                    <input
+                    <Input
                         type="text"
+                        size="sm"
                         placeholder="Filter..."
-                        class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-white/20 focus:outline-none"
+                        aria-label="Filter repositories"
                         value={repoFilter()}
                         onInput={(e) => setRepoFilter(e.currentTarget.value)}
+                        onClear={() => setRepoFilter('')}
                     />
                 </Show>
             </div>
@@ -314,9 +316,12 @@ const Pipeline: Component = () => {
                                   </Show>
                                 </Show>
                                 <div class="flex items-center gap-1">
-                                    <input
+                                    <Input
                                         type="text"
-                                        class="w-20 px-1.5 py-1 rounded text-[9px] sm:text-[10px] font-mono bg-black/40 border border-white/10 text-white focus:border-white/20 focus:outline-none"
+                                        size="sm"
+                                        class="w-20"
+                                        aria-label="Pipeline ref"
+                                        inputClass="font-mono"
                                         value={triggerRef()}
                                         onInput={(e) => setTriggerRef(e.currentTarget.value)}
                                         placeholder="ref"

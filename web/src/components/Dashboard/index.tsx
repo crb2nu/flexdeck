@@ -1,5 +1,5 @@
 import { Component, createSignal, createMemo, onMount, onCleanup, Show, For, lazy, Suspense } from 'solid-js';
-import { PulseCard, TabBar, LoadingState, EmptyState } from '../shared';
+import { PulseCard, TabBar, LoadingState, EmptyState, Input, Select } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
 import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
@@ -305,9 +305,9 @@ const Dashboard: Component = () => {
            <div class="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-[#0a1020]/85 px-2.5 py-1 sm:px-3">
              <div class={`w-2 h-2 rounded-full ${
                connectionStatus() === 'connected' ? 'bg-status-ok animate-pulse' :
-               connectionStatus() === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-               connectionStatus() === 'error' ? 'bg-red-500' :
-               'bg-gray-500'
+               connectionStatus() === 'connecting' ? 'bg-status-warn animate-pulse' :
+               connectionStatus() === 'error' ? 'bg-status-error' :
+               'bg-white/30'
              }`} />
              <span class="text-[10px] sm:text-xs text-text-dim">
                {connectionStatus() === 'connected' ? 'LIVE' :
@@ -320,6 +320,8 @@ const Dashboard: Component = () => {
            <Show when={viewMode() === '3d'}>
              <button
                onClick={() => setShowFilters(!showFilters())}
+               aria-expanded={showFilters()}
+               aria-label={`Toggle filters${hasActiveFilter() ? ' (filters active)' : ''}`}
                class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors ${
                  hasActiveFilter()
                    ? 'bg-white/10 border-white/20 text-white'
@@ -370,26 +372,15 @@ const Dashboard: Component = () => {
 
             {/* Search Input */}
             <div class="mb-3">
-              <label class="block text-[10px] text-text-dim mb-1 uppercase">Search</label>
-              <div class="relative">
-                <input
-                  type="text"
-                  placeholder="Pod or namespace name..."
-                  value={searchInput()}
-                  onInput={(e) => handleSearchChange(e.currentTarget.value)}
-                  class="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs text-text-main placeholder:text-text-dim/50 focus:border-white/20 focus:outline-none pr-6"
-                />
-                <Show when={searchInput()}>
-                  <button
-                    onClick={() => { setSearchInput(''); handleSearchChange(''); }}
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-main"
-                  >
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </Show>
-              </div>
+              <Input
+                type="text"
+                label="Search"
+                size="sm"
+                placeholder="Pod or namespace name..."
+                value={searchInput()}
+                onInput={(e) => handleSearchChange(e.currentTarget.value)}
+                onClear={() => { setSearchInput(''); handleSearchChange(''); }}
+              />
             </div>
 
             {/* Quick Status Chips */}
@@ -410,7 +401,7 @@ const Dashboard: Component = () => {
                   onClick={() => toggleStatusFilter('Pending')}
                   class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
                     isStatusActive('Pending')
-                      ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500'
+                      ? 'bg-status-warn/20 border-status-warn/50 text-status-warn'
                       : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
                   }`}
                 >
@@ -420,7 +411,7 @@ const Dashboard: Component = () => {
                   onClick={() => toggleStatusFilter('Failed')}
                   class={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
                     isStatusActive('Failed')
-                      ? 'bg-red-500/20 border-red-500/50 text-red-500'
+                      ? 'bg-status-error/20 border-status-error/50 text-status-error'
                       : 'bg-black/20 border-white/10 text-text-dim hover:text-text-main hover:border-white/20'
                   }`}
                 >
@@ -431,32 +422,26 @@ const Dashboard: Component = () => {
 
             {/* Namespace Filter */}
             <div class="mb-3">
-              <label class="block text-[10px] text-text-dim mb-1 uppercase">Namespace</label>
-              <select
+              <Select
+                label="Namespace"
+                size="sm"
+                placeholder="All Namespaces"
                 value={filter().namespace || ''}
                 onChange={(e) => setFilter({ ...filter(), namespace: e.currentTarget.value || undefined })}
-                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
-              >
-                <option value="">All Namespaces</option>
-                <For each={namespaceList()}>
-                  {ns => <option value={ns}>{ns}</option>}
-                </For>
-              </select>
+                options={namespaceList().map((ns) => ({ value: ns, label: ns }))}
+              />
             </div>
 
             {/* Node Filter */}
             <div>
-              <label class="block text-[10px] text-text-dim mb-1 uppercase">Node</label>
-              <select
+              <Select
+                label="Node"
+                size="sm"
+                placeholder="All Nodes"
                 value={filter().nodeName || ''}
                 onChange={(e) => setFilter({ ...filter(), nodeName: e.currentTarget.value || undefined })}
-                class="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-text-main focus:border-white/20 focus:outline-none"
-              >
-                <option value="">All Nodes</option>
-                <For each={nodeNameList()}>
-                  {name => <option value={name}>{name}</option>}
-                </For>
-              </select>
+                options={nodeNameList().map((name) => ({ value: name, label: name }))}
+              />
             </div>
           </div>
         </Show>
@@ -579,7 +564,7 @@ const Dashboard: Component = () => {
                       <For each={(item().data as K8sNode).status?.conditions || []}>
                         {condition => (
                           <div class="flex items-center gap-2 text-xs">
-                            <span class={`w-1.5 h-1.5 rounded-full ${condition.status === 'True' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span class={`w-1.5 h-1.5 rounded-full ${condition.status === 'True' ? 'bg-status-ok' : 'bg-status-error'}`} />
                             <span class="text-text-muted">{condition.type}</span>
                           </div>
                         )}
@@ -592,7 +577,7 @@ const Dashboard: Component = () => {
                       <For each={podsOnSelectedNode().slice(0, 20)}>
                         {p => (
                           <div class="flex items-center gap-2 text-[11px]">
-                            <span class={`w-1.5 h-1.5 rounded-full ${p.status.phase === 'Running' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                            <span class={`w-1.5 h-1.5 rounded-full ${p.status.phase === 'Running' ? 'bg-status-ok' : 'bg-status-warn'}`} />
                             <span class="text-text-muted truncate font-mono">{p.metadata.name}</span>
                           </div>
                         )}
@@ -641,9 +626,9 @@ const Dashboard: Component = () => {
                           const cs = () => (item().data as K8sPod).status.containerStatuses?.find(s => s.name === container.name);
                           return (
                             <div class="flex items-center gap-2 text-[11px]">
-                              <span class={`w-1.5 h-1.5 rounded-full ${cs()?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                              <span class={`w-1.5 h-1.5 rounded-full ${cs()?.ready ? 'bg-status-ok' : 'bg-status-error'}`} />
                               <span class="text-text-muted font-mono">{container.name}</span>
-                              <Show when={cs()?.restartCount}><span class="text-[10px] text-yellow-500">({cs()?.restartCount}R)</span></Show>
+                              <Show when={cs()?.restartCount}><span class="text-[10px] text-status-warn">({cs()?.restartCount}R)</span></Show>
                             </div>
                           );
                         }}
@@ -688,6 +673,7 @@ const Dashboard: Component = () => {
             </div>
             <button
               onClick={() => setShowObservability(false)}
+              aria-label="Close observability panel"
               class="h-8 w-8 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-text-dim"
             >
               ✕

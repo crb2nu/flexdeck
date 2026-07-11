@@ -7,6 +7,7 @@ import {
   flexinferProxyUpdatedAt,
 } from '../../stores/flexinferOperational';
 import { errorRateForModel } from '../Models/inferenceMetrics';
+import Input from '../shared/Input';
 import type { FlexInferProxyModelMetrics } from '../../lib/types';
 
 type SortKey = 'heat' | 'model' | 'requests' | 'rps' | 'p95' | 'queue' | 'conn' | 'err';
@@ -245,13 +246,15 @@ const ModelTelemetryPanel: Component<ModelTelemetryPanelProps> = (props) => {
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
           <div class="heading-label">Per-model telemetry</div>
           <div class="flex flex-wrap items-center gap-2">
-            <input
+            <Input
               type="search"
+              size="sm"
+              class="w-44"
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
+              onClear={() => setQuery('')}
               placeholder="Filter models…"
               aria-label="Filter models by name"
-              class="w-44 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-text-main placeholder:text-text-dim focus:border-white/20 focus:outline-none"
             />
             <button
               type="button"

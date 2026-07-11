@@ -1,5 +1,5 @@
 import { Component, createSignal, For, Show, createMemo } from 'solid-js';
-import { LoadingState, EmptyState, ErrorState } from '../shared';
+import { LoadingState, EmptyState, ErrorState, Input, Select } from '../shared';
 import { modelsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
 import { stableListByKey } from '../../lib/stableList';
@@ -226,29 +226,36 @@ const CatalogTab: Component = () => {
       <Show when={catalogs().length > 0}>
         <div class="surface p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-3">
-            <input
+            <Input
               type="text"
+              size="sm"
+              class="min-w-[220px] flex-1"
+              aria-label="Search catalog models"
               value={query()}
               onInput={(event) => setQuery(event.currentTarget.value)}
+              onClear={() => setQuery('')}
               placeholder="Search model, catalog, namespace, or tag..."
-              class="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-text-main placeholder:text-text-dim/60 focus:border-white/20 focus:outline-none"
             />
-            <select
+            <Select
+              size="sm"
+              aria-label="Filter by source"
               value={sourceFilter()}
               onChange={(event) => setSourceFilter(event.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-white/20 focus:outline-none"
-            >
-              <option value="all">All sources</option>
-              <For each={sourceOptions()}>{(source) => <option value={source}>{source}</option>}</For>
-            </select>
-            <select
+              options={[
+                { value: 'all', label: 'All sources' },
+                ...sourceOptions().map((source) => ({ value: source, label: source })),
+              ]}
+            />
+            <Select
+              size="sm"
+              aria-label="Filter by catalog"
               value={catalogFilter()}
               onChange={(event) => setCatalogFilter(event.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-text-main focus:border-white/20 focus:outline-none"
-            >
-              <option value="all">All catalogs</option>
-              <For each={catalogOptions()}>{(catalog) => <option value={catalog}>{catalog}</option>}</For>
-            </select>
+              options={[
+                { value: 'all', label: 'All catalogs' },
+                ...catalogOptions().map((catalog) => ({ value: catalog, label: catalog })),
+              ]}
+            />
             <button
               onClick={() => void fetchCatalogs()}
               class="rounded-md border border-white/20 bg-black/40 px-3 py-2 text-xs font-mono text-text-muted transition-colors hover:text-text-main"

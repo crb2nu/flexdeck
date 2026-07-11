@@ -309,7 +309,7 @@ const TrafficList: Component<{
       <Show
         when={props.items.length > 0}
         fallback={
-          <div class="px-4 py-6 text-center text-sm text-text-dim">No data</div>
+          <div class="px-4 py-6 text-center text-sm text-text-dim">No data found</div>
         }
       >
         <For each={props.items}>
