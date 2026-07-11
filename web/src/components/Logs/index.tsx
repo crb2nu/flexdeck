@@ -15,7 +15,7 @@ import {
   getLogLevelClassForLevel,
 } from '../../lib/logUtils';
 import { ToastContainer } from '../shared/Toast';
-import { TabBar, ErrorState } from '../shared';
+import { TabBar, ErrorState, Input, Select } from '../shared';
 import { LOG_TIME_RANGES, useLogsController } from './useLogsController';
 
 const Logs: Component = () => {
@@ -80,34 +80,30 @@ const Logs: Component = () => {
       <div class="surface p-4">
         <div class="flex flex-wrap items-center gap-4">
           <div class="flex-1 min-w-0 sm:min-w-[260px]">
-            <input
+            <Input
               type="text"
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder='{namespace="default"}'
-              class="w-full rounded-md border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder-white/30 focus:border-white/20 focus:outline-none focus:ring-1 focus:ring-white/15 transition-all font-mono"
+              aria-label="LogQL query"
+              inputClass="font-mono"
             />
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               value={timeRange()}
               onChange={(e) => setTimeRange(e.currentTarget.value)}
-              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
-            >
-              <For each={LOG_TIME_RANGES}>{(range) => <option value={range.value}>{range.label}</option>}</For>
-            </select>
+              aria-label="Time range"
+              options={LOG_TIME_RANGES.map((range) => ({ value: range.value, label: range.label }))}
+            />
 
-            <select
-              value={limit()}
+            <Select
+              value={String(limit())}
               onChange={(e) => setLimit(parseInt(e.currentTarget.value))}
-              class="rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
-            >
-              <option value="50">50</option>
-              <option value="100">100</option>
-              <option value="200">200</option>
-              <option value="500">500</option>
-            </select>
+              aria-label="Result limit"
+              options={['50', '100', '200', '500'].map((n) => ({ value: n, label: n }))}
+            />
           </div>
 
           <div class="flex items-center gap-2">

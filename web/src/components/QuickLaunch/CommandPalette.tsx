@@ -2,6 +2,7 @@ import { Component, createSignal, createEffect, createUniqueId, onMount, onClean
 import { useNavigate } from '@solidjs/router';
 import { modelsApi } from '../../lib/api';
 import { fetchHealth } from '../../stores/health';
+import { trapFocus } from '../../lib/focusTrap';
 
 interface Command {
   id: string;
@@ -17,6 +18,7 @@ const CommandPalette: Component = () => {
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const navigate = useNavigate();
   let inputRef: HTMLInputElement | undefined;
+  let dialogRef: HTMLDivElement | undefined;
 
   // Command Registry
   const commands: Command[] = [
@@ -135,6 +137,8 @@ const CommandPalette: Component = () => {
 
     if (!isOpen()) return;
 
+    trapFocus(dialogRef, e);
+
     if (e.key === 'Escape') {
       setIsOpen(false);
     } else if (e.key === 'ArrowDown') {
@@ -162,10 +166,15 @@ const CommandPalette: Component = () => {
     window.removeEventListener('keydown', handleKeyDown);
   });
 
+  let previouslyFocused: HTMLElement | null = null;
   createEffect(() => {
     if (isOpen()) {
+      previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setTimeout(() => inputRef?.focus(), 50);
       setSelectedIndex(0);
+    } else {
+      previouslyFocused?.focus();
+      previouslyFocused = null;
     }
   });
 
@@ -174,6 +183,7 @@ const CommandPalette: Component = () => {
   return (
     <Show when={isOpen()}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"

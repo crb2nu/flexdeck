@@ -150,7 +150,7 @@ const BacklogPanel: Component = () => {
   const backlog = createPolledResource<MillsBacklogItem[]>('mills-backlog', loomMillsApi.backlog, { key: 'ID' });
   const items = () => backlog.data() ?? [];
   return (
-    <Show when={items().length > 0} fallback={<PanelState error={backlog.error()} loaded={backlog.loaded()} empty="Backlog is empty." offlineLabel={MILLS_OFFLINE} />}>
+    <Show when={items().length > 0} fallback={<PanelState error={backlog.error()} loaded={backlog.loaded()} empty="No backlog items found." offlineLabel={MILLS_OFFLINE} />}>
       <div class="space-y-1">
         <For each={items()}>
           {(it) => (

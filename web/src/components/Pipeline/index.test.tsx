@@ -123,6 +123,7 @@ vi.mock('./PipelineListView', () => ({
 
 vi.mock('../shared', () => ({
   LoadingState: () => <div data-testid="loading-state">loading</div>,
+  Input: (props: { value?: string | number }) => <input data-testid="shared-input" value={props.value ?? ''} />,
   TabBar: (props: { tabs: Array<{ id: string; label: string }>; active: string; onChange: (id: any) => void }) => (
     <div data-testid="tab-bar">
       {props.tabs.map((tab) => (

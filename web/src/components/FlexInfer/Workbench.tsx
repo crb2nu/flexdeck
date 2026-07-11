@@ -69,6 +69,8 @@ import {
 } from '../Models/inferenceMetrics';
 import OperationsSidebarNav from '../shared/OperationsSidebarNav';
 import Button from '../shared/Button';
+import Input from '../shared/Input';
+import Select from '../shared/Select';
 import PageHeader from '../shared/PageHeader';
 import ErrorState from '../shared/ErrorState';
 import { sanitizeError } from '../../lib/sanitizeError';
@@ -1161,21 +1163,22 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
           <div class="surface p-4 xl:col-span-1">
             <div class="heading-label">Search</div>
             <div class="mt-3 space-y-3">
-              <select
+              <Select
+                aria-label="Search source"
                 value={controller.searchSource()}
                 onChange={(e) => controller.setSearchSource(e.currentTarget.value as 'huggingface' | 'civitai')}
-                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main focus:border-white/20 focus:outline-none"
-              >
-                <option value="huggingface">HuggingFace</option>
-                <option value="civitai">CivitAI</option>
-              </select>
-              <input
+                options={[
+                  { value: 'huggingface', label: 'HuggingFace' },
+                  { value: 'civitai', label: 'CivitAI' },
+                ]}
+              />
+              <Input
                 type="text"
+                aria-label="Search models"
                 value={controller.searchQuery()}
                 onInput={(e) => controller.setSearchQuery(e.currentTarget.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void controller.handleSearch()}
                 placeholder="Search models..."
-                class="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-text-main placeholder:text-text-dim/60 focus:border-white/20 focus:outline-none"
               />
             </div>
           </div>

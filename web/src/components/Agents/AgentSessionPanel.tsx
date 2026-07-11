@@ -2,6 +2,7 @@ import { Component, createSignal, For, onCleanup, onMount, Show } from 'solid-js
 import type { Agent, AgentSession } from '../../lib/types';
 import { agentsApi } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
+import { trapFocus } from '../../lib/focusTrap';
 
 interface AgentSessionPanelProps {
   agent: Agent;
@@ -73,16 +74,25 @@ const AgentSessionPanel: Component<AgentSessionPanelProps> = (props) => {
 
   createPolling(() => 'agent-sessions-' + props.agent.id, fetchSessions, 15_000);
 
+  let dialogRef: HTMLDivElement | undefined;
+
   onMount(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef?.querySelector<HTMLElement>('button:not([disabled])')?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.onClose();
+      trapFocus(dialogRef, e);
     };
     document.addEventListener('keydown', onKeyDown);
-    onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+    onCleanup(() => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    });
   });
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`${props.agent.name} sessions`}

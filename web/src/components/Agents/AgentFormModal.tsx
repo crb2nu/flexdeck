@@ -1,6 +1,7 @@
 import { Component, createUniqueId, onCleanup, onMount } from 'solid-js';
 import type { SetStoreFunction } from 'solid-js/store';
 import type { Agent } from '../../lib/types';
+import { trapFocus } from '../../lib/focusTrap';
 
 type EditableAgentType = 'langgraph' | 'custom';
 
@@ -28,17 +29,25 @@ const AgentFormModal: Component<AgentFormModalProps> = (props) => {
   const uid = createUniqueId();
   const fieldId = (name: string) => `agent-form-${uid}-${name}`;
   const titleId = fieldId('title');
+  let dialogRef: HTMLDivElement | undefined;
 
   onMount(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef?.querySelector<HTMLElement>('input:not([disabled])')?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.onClose();
+      trapFocus(dialogRef, e);
     };
     document.addEventListener('keydown', onKeyDown);
-    onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+    onCleanup(() => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    });
   });
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

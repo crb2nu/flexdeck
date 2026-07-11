@@ -2,7 +2,7 @@ import { Component, For, Show, createMemo } from 'solid-js';
 import type { RepoInfo } from '../../lib/api';
 import type { Pipeline } from './CIPipelineViz';
 import PipelineCard from './PipelineCard';
-import { LoadingState, EmptyState } from '../shared';
+import { LoadingState, EmptyState, Select } from '../shared';
 import { sortPipelines, type PipelineSortConfig, type PipelineSortField, type RepoWithPipeline } from './utils';
 
 const SORT_OPTIONS: { value: PipelineSortField; label: string }[] = [
@@ -98,17 +98,14 @@ const PipelineListView: Component<{
         {/* Sort controls */}
         <div class="flex items-center gap-2">
           <span class="text-[10px] text-text-dim uppercase tracking-wider">Sort by</span>
-          <select
+          <Select
+            size="sm"
+            aria-label="Sort pipelines by"
+            selectClass="font-mono"
             value={props.sort.field}
             onChange={(e) => handleSortFieldChange(e.currentTarget.value as PipelineSortField)}
-            class="rounded-md border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-text-main focus:border-white/20 focus:outline-none cursor-pointer"
-          >
-            <For each={SORT_OPTIONS}>
-              {(option) => (
-                <option value={option.value}>{option.label}</option>
-              )}
-            </For>
-          </select>
+            options={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          />
           <button
             onClick={toggleSortDirection}
             class="px-2 py-1.5 rounded-md border border-white/10 bg-black/50 text-xs font-mono text-text-muted hover:text-text-main hover:border-white/20 transition-colors"
