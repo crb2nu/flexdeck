@@ -2,6 +2,7 @@ import { Component, For, Show, createMemo, createResource } from 'solid-js';
 import DetailPanel from '../shared/DetailPanel';
 import { flexinferProxyMetrics } from '../../stores/flexinferOperational';
 import { errorRateForModel } from '../Models/inferenceMetrics';
+import ModelSwapTimeline from '../Models/ModelSwapTimeline';
 import { modelsApi } from '../../lib/api';
 import type { FlexInferProxyModelMetrics, InferenceMetrics } from '../../lib/types';
 
@@ -192,6 +193,23 @@ const ModelTelemetryDrawer: Component<ModelTelemetryDrawerProps> = (props) => {
             </div>
           ),
         },
+        ...(props.crd
+          ? [
+              {
+                id: 'gpu-sharing',
+                label: 'GPU sharing',
+                content: () => (
+                  <div class="space-y-2">
+                    <SectionLabel>Swap history (24h)</SectionLabel>
+                    <div class="text-[11px] text-text-dim">
+                      Shared-group state transitions for this model — who held the GPU, who queued, who preempted.
+                    </div>
+                    <ModelSwapTimeline namespace={props.crd!.namespace} name={props.crd!.name} />
+                  </div>
+                ),
+              },
+            ]
+          : []),
         {
           id: 'raw',
           label: 'Raw',

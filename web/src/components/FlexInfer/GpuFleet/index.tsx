@@ -5,6 +5,7 @@ import { stableListByKey } from '../../../lib/stableList';
 import { sanitizeError } from '../../../lib/sanitizeError';
 import type { GamingSession } from '../../../lib/types';
 import { formatUptime, nodeModeLabel, nodeModeTone, type FleetNode } from './fleet';
+import SharingGroups from './SharingGroups';
 import type { GpuFleetState } from './useGpuFleet';
 
 interface GpuFleetProps {
@@ -190,6 +191,9 @@ const GpuFleet: Component<GpuFleetProps> = (props) => {
           <For each={stableFleet()}>{(node) => <NodeCard node={node} now={state.now} />}</For>
         </div>
       </Show>
+
+      {/* GPU sharing state: who holds each shared GPU + swap history. */}
+      <SharingGroups models={state.models} />
     </div>
   );
 };
