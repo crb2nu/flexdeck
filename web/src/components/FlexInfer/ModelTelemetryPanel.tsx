@@ -1,6 +1,9 @@
 import { Component, For, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { useSearchParams } from '@solidjs/router';
+import { createPersistedSignal } from '../../hooks/createPersistedSignal';
 import { healthStore } from '../../stores/health';
+
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 import {
   flexinferProxyError,
   flexinferProxyHealth,
@@ -103,7 +106,8 @@ const ModelTelemetryPanel: Component<ModelTelemetryPanelProps> = (props) => {
   // land here with the model filter pre-applied. Initial-only.
   const [searchParams] = useSearchParams<{ q?: string }>();
   const [query, setQuery] = createSignal(searchParams.q ?? '');
-  const [hideIdle, setHideIdle] = createSignal(false);
+  // Hide-idle is a standing triage preference — it survives reloads.
+  const [hideIdle, setHideIdle] = createPersistedSignal('telemetry.hideIdle', false, isBoolean);
   const [sortKey, setSortKey] = createSignal<SortKey>('heat');
   const [sortDir, setSortDir] = createSignal<'asc' | 'desc'>('desc');
 

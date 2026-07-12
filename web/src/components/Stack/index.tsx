@@ -1,6 +1,7 @@
 import { Component, For, Show, createMemo, createSignal, onMount } from 'solid-js';
 import { useSearchParams } from '@solidjs/router';
 import { workspaceApi, type WorkspaceInventory, type WorkspaceRepository } from '../../lib/api';
+import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, Select, TabBar } from '../shared';
 import type { SelectOption, TabDef } from '../shared';
 import {
@@ -80,7 +81,12 @@ const Stack: Component = () => {
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
   const [adoptionFilter, setAdoptionFilter] = createSignal<StackAdoptionFilter>('all');
   const [contractFilter, setContractFilter] = createSignal<StackContractFilter>('all');
-  const [sortKey, setSortKey] = createSignal<StackSortKey>('concern');
+  // Sort order is a view preference — it survives reloads.
+  const [sortKey, setSortKey] = createPersistedSignal<StackSortKey>(
+    'stack.sort',
+    'concern',
+    oneOf(['concern', 'name', 'language', 'adoption', 'dirty']),
+  );
   const [languageFilter, setLanguageFilter] = createSignal('all');
 
   const loadInventory = async (silent = false) => {
