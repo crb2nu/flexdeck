@@ -12,6 +12,7 @@ export interface GpuFleetState {
   error: Accessor<string>;
   loaded: Accessor<boolean>;
   now: Accessor<number>;
+  models: Accessor<FlexInferModel[]>;
 }
 
 /**
@@ -58,5 +59,5 @@ export function useGpuFleet(models: Accessor<FlexInferModel[]>): GpuFleetState {
   const fleet = createMemo(() => buildFleet(nodes(), models(), sessions()));
   const summary = createMemo(() => summarizeFleet(fleet()));
 
-  return { fleet, summary, error, loaded, now };
+  return { fleet, summary, error, loaded, now, models };
 }

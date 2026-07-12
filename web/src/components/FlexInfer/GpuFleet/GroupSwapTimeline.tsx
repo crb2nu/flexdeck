@@ -1,10 +1,10 @@
 import { Component, createSignal, createMemo, For, Show } from 'solid-js';
-import { sanitizeError } from '../../lib/sanitizeError';
-import { modelsApi } from '../../lib/api';
-import { createPolling } from '../../hooks/createPolling';
-import type { GroupSwapHistoryResponse, GPUSwapEvent } from '../../lib/types';
+import { sanitizeError } from '../../../lib/sanitizeError';
+import { modelsApi } from '../../../lib/api';
+import { createPolling } from '../../../hooks/createPolling';
+import type { GroupSwapHistoryResponse, GPUSwapEvent } from '../../../lib/types';
 
-interface GPUGroupTimelineProps {
+interface GroupSwapTimelineProps {
   group: string;
   namespace: string;
 }
@@ -112,7 +112,7 @@ function timeAxisLabels(hours: number): string[] {
   return ['48h ago', '36h ago', '24h ago', '12h ago', 'now'];
 }
 
-const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
+const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
   const [data, setData] = createSignal<GroupSwapHistoryResponse | null>(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
@@ -130,7 +130,7 @@ const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
     }
   };
 
-  createPolling(`gpu-group-timeline-${props.group}`, fetchHistory, 60_000);
+  createPolling(() => `gpu-group-timeline-${props.namespace}-${props.group}`, fetchHistory, 60_000);
 
   const windowMs = createMemo(() => {
     const now = Date.now();
@@ -168,7 +168,11 @@ const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
                   'bg-white/10 text-white': hours() === h,
                   'text-text-muted hover:text-white hover:bg-white/5': hours() !== h,
                 }}
-                onClick={() => { setHours(h); setLoading(true); }}
+                onClick={() => {
+                  setHours(h);
+                  setLoading(true);
+                  void fetchHistory();
+                }}
               >
                 {h}h
               </button>
@@ -314,4 +318,4 @@ const GPUGroupTimeline: Component<GPUGroupTimelineProps> = (props) => {
   );
 };
 
-export default GPUGroupTimeline;
+export default GroupSwapTimeline;
