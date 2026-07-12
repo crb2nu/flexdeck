@@ -1,4 +1,5 @@
-import { Component, createSignal, For, Match, Switch } from 'solid-js';
+import { Component, createMemo, For, Match, Switch } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import Badge, { type BadgeTone } from '../shared/Badge';
 import PageScrollBody from '../shared/PageScrollBody';
 import TabBar, { type TabDef } from '../shared/TabBar';
@@ -42,8 +43,17 @@ function chipValue(s: LoomSourceHealth | undefined): string {
   return s.available ? 'live' : 'down';
 }
 
+function isLoomTab(value: unknown): value is LoomTab {
+  return TABS.some((t) => t.id === value);
+}
+
 const Loom: Component = () => {
-  const [active, setActive] = createSignal<LoomTab>('fleet');
+  // The active tab lives in the URL (?tab=plans) so refresh keeps your place
+  // and Mills/Flightdeck/Plans are deep-linkable (nav, palette, shared links).
+  // The default tab (fleet) keeps a clean URL.
+  const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
+  const active = createMemo<LoomTab>(() => (isLoomTab(searchParams.tab) ? searchParams.tab : 'fleet'));
+  const setActive = (tab: LoomTab) => setSearchParams({ tab: tab === 'fleet' ? undefined : tab });
 
   // Best-effort health strip: errors are ignored (each surface reports its
   // own), and reconcile keeps the chips from re-rendering on identical polls.
