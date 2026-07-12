@@ -1,6 +1,7 @@
 import { Component, createMemo, For, Match, Switch } from 'solid-js';
 import { useSearchParams } from '@solidjs/router';
 import Badge, { type BadgeTone } from '../shared/Badge';
+import PageHeader from '../shared/PageHeader';
 import PageScrollBody from '../shared/PageScrollBody';
 import TabBar, { type TabDef } from '../shared/TabBar';
 import { createPolledResource } from '../../hooks/createPolledResource';
@@ -64,8 +65,7 @@ const Loom: Component = () => {
   return (
     <div class="flex h-full min-h-0 flex-col gap-2">
       <div class="flex-shrink-0 space-y-2">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="heading-label">Loom Control Plane</span>
+        <PageHeader title="Loom" accent=" Control Plane" subtitle="Fleet, projects, plans, mills, and flightdeck">
           <div class="flex flex-wrap items-center gap-1.5">
             <For each={HEALTH_CHIPS}>
               {(c) => (
@@ -75,7 +75,7 @@ const Loom: Component = () => {
               )}
             </For>
           </div>
-        </div>
+        </PageHeader>
         <TabBar tabs={TABS} active={active()} onChange={setActive} variant="underline" />
       </div>
 

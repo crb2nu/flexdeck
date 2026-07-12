@@ -8,7 +8,7 @@ import {
   Suspense,
   ErrorBoundary,
 } from "solid-js";
-import { TabBar, LoadingState, ErrorState, EmptyState } from "../shared";
+import { PageHeader, TabBar, LoadingState, ErrorState, EmptyState } from "../shared";
 import type { TabDef } from "../shared";
 import PageScrollBody from "../shared/PageScrollBody";
 import {
@@ -51,7 +51,9 @@ const Metrics: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      {/* Header */}
+      <PageHeader title="Metrics" subtitle="Prometheus panels, Grafana dashboards, and alerts" />
+
+      {/* Tab + range controls */}
       <div class="surface flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Tab bar */}

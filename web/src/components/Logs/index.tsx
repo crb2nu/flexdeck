@@ -15,7 +15,7 @@ import {
   getLogLevelClassForLevel,
 } from '../../lib/logUtils';
 import { ToastContainer } from '../shared/Toast';
-import { TabBar, ErrorState, Input, Select } from '../shared';
+import { PageHeader, TabBar, ErrorState, Input, Select } from '../shared';
 import { LOG_TIME_RANGES, useLogsController } from './useLogsController';
 
 const Logs: Component = () => {
@@ -76,6 +76,8 @@ const Logs: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
+      <PageHeader title="Logs" subtitle="Loki log search across the cluster" />
+
       {/* Query Bar */}
       <div class="surface p-4">
         <div class="flex flex-wrap items-center gap-4">
