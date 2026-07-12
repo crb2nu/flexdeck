@@ -20,6 +20,7 @@ import { DetailPanel } from '../shared';
 import { dataStateLabel, resolveDashboardDataState } from './statusSemantics';
 import { useDashboardSummaryState } from './useDashboardSummaryState';
 import { useDashboardTopologyFilters } from './useDashboardTopologyFilters';
+import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 const DASHBOARD_STALE_AFTER_MS = METRICS_REFRESH_INTERVAL * 3;
@@ -30,7 +31,9 @@ interface SelectedItem {
 }
 
 const Dashboard: Component = () => {
-  const [viewMode, setViewMode] = createSignal<'2d' | '3d'>('2d');
+  // The 2D/3D choice survives reloads — picking the HoloDeck once means the
+  // dashboard comes back that way (and only then pays the three.js load).
+  const [viewMode, setViewMode] = createPersistedSignal<'2d' | '3d'>('dashboard.viewMode', '2d', oneOf(['2d', '3d']));
   const [showFilters, setShowFilters] = createSignal(false);
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
   const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);

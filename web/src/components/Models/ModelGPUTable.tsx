@@ -3,6 +3,7 @@ import { sanitizeError } from '../../lib/sanitizeError';
 import { createPolling } from '../../hooks/createPolling';
 import { api } from '../../lib/api';
 import { stableListByKey } from '../../lib/stableList';
+import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 import Sparkline from '../shared/Sparkline';
 import {
   aggregateModelGPUEntries,
@@ -55,9 +56,14 @@ const ModelGPUTable: Component = () => {
     models,
     (model) => `${model.modelName}@${model.node}`,
   );
-  // Busiest GPUs first by default — the table is a triage list.
-  const [sortKey, setSortKey] = createSignal<GpuSortKey>('util');
-  const [sortDir, setSortDir] = createSignal<GpuSortDir>('desc');
+  // Busiest GPUs first by default — the table is a triage list. The chosen
+  // sort survives reloads.
+  const [sortKey, setSortKey] = createPersistedSignal<GpuSortKey>(
+    'gpuTable.sortKey',
+    'util',
+    oneOf(['model', 'node', 'replicas', 'util', 'vram', 'temp', 'power']),
+  );
+  const [sortDir, setSortDir] = createPersistedSignal<GpuSortDir>('gpuTable.sortDir', 'desc', oneOf(['asc', 'desc']));
 
   // Sorting on top of the stable list keeps row identities, so reordering is
   // a move (sparkline history survives), never a rebuild.
