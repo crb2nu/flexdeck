@@ -332,6 +332,45 @@ export function compareByBindingConcern(left: WorkspaceRepository, right: Worksp
   return left.name.localeCompare(right.name);
 }
 
+export type StackSortKey = 'concern' | 'name' | 'language' | 'adoption' | 'dirty';
+
+export const STACK_SORT_OPTIONS: { value: StackSortKey; label: string }[] = [
+  { value: 'concern', label: 'Sort: concern' },
+  { value: 'name', label: 'Sort: name A–Z' },
+  { value: 'language', label: 'Sort: language' },
+  { value: 'adoption', label: 'Sort: most adopted' },
+  { value: 'dirty', label: 'Sort: dirtiest first' },
+];
+
+function adopterCount(repo: WorkspaceRepository): number {
+  return (repo.usedBy?.length ?? 0) + (repo.usedByLibs?.length ?? 0);
+}
+
+// compareRepositories orders the Stack list by the operator-chosen dimension.
+// 'concern' keeps the existing triage default (unhealthy first); the rest are
+// browse orders, each with a stable name tiebreak.
+export function compareRepositories(
+  left: WorkspaceRepository,
+  right: WorkspaceRepository,
+  key: StackSortKey,
+): number {
+  switch (key) {
+    case 'name':
+      return left.name.localeCompare(right.name);
+    case 'language':
+      return (
+        getRepositoryLanguage(left).localeCompare(getRepositoryLanguage(right)) ||
+        left.name.localeCompare(right.name)
+      );
+    case 'adoption':
+      return adopterCount(right) - adopterCount(left) || left.name.localeCompare(right.name);
+    case 'dirty':
+      return (right.git.dirtyCount ?? 0) - (left.git.dirtyCount ?? 0) || left.name.localeCompare(right.name);
+    default:
+      return compareByBindingConcern(left, right);
+  }
+}
+
 // matchesBindingFilter applies the Stack "Cluster" filter. Degraded is a subset
 // of verified surfaced on its own so operators can triage unhealthy services.
 export function matchesBindingFilter(repo: WorkspaceRepository, filter: StackBindingFilter): boolean {

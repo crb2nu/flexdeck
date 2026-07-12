@@ -50,6 +50,53 @@ export function aggregateModelGPUEntries(entries: ModelGPUEntry[]): AggregatedMo
   });
 }
 
+export type GpuSortKey = 'model' | 'node' | 'replicas' | 'util' | 'vram' | 'temp' | 'power';
+export type GpuSortDir = 'asc' | 'desc';
+
+// Missing telemetry (null) always sorts to the bottom regardless of direction,
+// so "sort by utilization" reads as a triage list, not a nulls sandwich.
+function compareNullable(a: number | null, b: number | null, dir: 1 | -1): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return (a - b) * dir;
+}
+
+export function compareGpuRows(
+  a: AggregatedModelGPUEntry,
+  b: AggregatedModelGPUEntry,
+  key: GpuSortKey,
+  dir: GpuSortDir,
+): number {
+  const sign = dir === 'asc' ? 1 : -1;
+  let delta: number;
+  switch (key) {
+    case 'model':
+      delta = a.modelName.localeCompare(b.modelName) * sign;
+      break;
+    case 'node':
+      delta = a.node.localeCompare(b.node) * sign;
+      break;
+    case 'replicas':
+      delta = (a.replicas - b.replicas) * sign;
+      break;
+    case 'util':
+      delta = compareNullable(a.gpuUtilization, b.gpuUtilization, sign);
+      break;
+    case 'vram':
+      delta = compareNullable(a.vramUsedPercent, b.vramUsedPercent, sign);
+      break;
+    case 'temp':
+      delta = compareNullable(a.temperature, b.temperature, sign);
+      break;
+    default:
+      delta = compareNullable(a.power, b.power, sign);
+  }
+  if (delta !== 0) return delta;
+  // Stable, deterministic tiebreak so equal rows never jitter between polls.
+  return a.modelName.localeCompare(b.modelName) || a.node.localeCompare(b.node);
+}
+
 export function hasAnyGPUData(entries: Array<ModelGPUEntry | AggregatedModelGPUEntry>): boolean {
   return entries.some(
     (entry) =>

@@ -3,6 +3,7 @@ import type { WorkspaceRepository } from '../../lib/api';
 import {
   bindingSeverity,
   compareByBindingConcern,
+  compareRepositories,
   contractDriftLabel,
   getRepoReadiness,
   hasContractDrift,
@@ -497,6 +498,42 @@ describe('stackUtils', () => {
       expect(matchesAdoptionFilter(adopted, 'adopted')).toBe(true);
       expect(matchesAdoptionFilter(service, 'unadopted')).toBe(false);
       expect(matchesAdoptionFilter(service, 'all')).toBe(true);
+    });
+  });
+
+  describe('compareRepositories', () => {
+    const alpha = makeRepo({ name: 'alpha', primaryLanguage: 'ts' });
+    const beta = makeRepo({ name: 'beta', primaryLanguage: 'go' });
+    const dirty = makeRepo({
+      name: 'zeta',
+      git: { isRepository: true, branch: 'main', clean: false, dirtyCount: 7, remotes: [] },
+    });
+
+    it('defaults to the binding-concern triage order', () => {
+      expect(compareRepositories(alpha, beta, 'concern')).toBe(compareByBindingConcern(alpha, beta));
+    });
+
+    it('sorts by name A-Z', () => {
+      expect(compareRepositories(beta, alpha, 'name')).toBeGreaterThan(0);
+      expect(compareRepositories(alpha, beta, 'name')).toBeLessThan(0);
+    });
+
+    it('sorts by language with a name tiebreak', () => {
+      expect(compareRepositories(alpha, beta, 'language')).toBeGreaterThan(0); // ts > go
+      const alsoGo = makeRepo({ name: 'aaa', primaryLanguage: 'go' });
+      expect(compareRepositories(beta, alsoGo, 'language')).toBeGreaterThan(0); // beta > aaa
+    });
+
+    it('sorts most-adopted libs first', () => {
+      const popular = makeRepo({ name: 'popular', usedBy: ['a', 'b'], usedByLibs: ['c'] });
+      const niche = makeRepo({ name: 'niche', usedBy: ['a'] });
+      expect(compareRepositories(popular, niche, 'adoption')).toBeLessThan(0);
+      expect(compareRepositories(niche, popular, 'adoption')).toBeGreaterThan(0);
+    });
+
+    it('sorts dirtiest repos first', () => {
+      expect(compareRepositories(dirty, alpha, 'dirty')).toBeLessThan(0);
+      expect(compareRepositories(alpha, dirty, 'dirty')).toBeGreaterThan(0);
     });
   });
 });

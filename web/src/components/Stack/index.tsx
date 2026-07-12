@@ -3,7 +3,8 @@ import { workspaceApi, type WorkspaceInventory, type WorkspaceRepository } from 
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, Select, TabBar } from '../shared';
 import type { SelectOption, TabDef } from '../shared';
 import {
-  compareByBindingConcern,
+  STACK_SORT_OPTIONS,
+  compareRepositories,
   contractDriftLabel,
   formatBucketLabel,
   getDocsCount,
@@ -27,6 +28,7 @@ import {
   type StackBucketFilter,
   type StackContractFilter,
   type StackReadinessFilter,
+  type StackSortKey,
 } from './stackUtils';
 
 interface StackSection {
@@ -74,6 +76,7 @@ const Stack: Component = () => {
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
   const [adoptionFilter, setAdoptionFilter] = createSignal<StackAdoptionFilter>('all');
   const [contractFilter, setContractFilter] = createSignal<StackContractFilter>('all');
+  const [sortKey, setSortKey] = createSignal<StackSortKey>('concern');
   const [languageFilter, setLanguageFilter] = createSignal('all');
 
   const loadInventory = async (silent = false) => {
@@ -221,7 +224,7 @@ const Stack: Component = () => {
       .filter((repo) => matchesAdoptionFilter(repo, selectedAdoption))
       .filter((repo) => matchesContractFilter(repo, selectedContract))
       .filter((repo) => repositoryMatches(repo, search))
-      .sort(compareByBindingConcern);
+      .sort((left, right) => compareRepositories(left, right, sortKey()));
   });
 
   const sections = createMemo<StackSection[]>(() => {
@@ -360,7 +363,7 @@ const Stack: Component = () => {
             </div>
 
             <div class="surface p-3">
-              <div class="grid gap-3 xl:grid-cols-[minmax(240px,1fr)_auto_auto_minmax(180px,220px)_auto] xl:items-center">
+              <div class="grid gap-3 xl:grid-cols-[minmax(240px,1fr)_auto_auto_minmax(180px,220px)_minmax(150px,190px)_auto] xl:items-center">
                 <Input
                   value={query()}
                   onInput={(event) => setQuery(event.currentTarget.value)}
@@ -375,6 +378,12 @@ const Stack: Component = () => {
                   options={languageOptions()}
                   aria-label="Filter by language"
                   onChange={(event) => setLanguageFilter(event.currentTarget.value)}
+                />
+                <Select
+                  value={sortKey()}
+                  options={STACK_SORT_OPTIONS}
+                  aria-label="Sort repositories"
+                  onChange={(event) => setSortKey(event.currentTarget.value as StackSortKey)}
                 />
                 <Button
                   type="button"
