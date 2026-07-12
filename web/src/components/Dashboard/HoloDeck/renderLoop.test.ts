@@ -46,6 +46,40 @@ describe('HoloDeck render loop', () => {
     expect(frames).toEqual([]);
   });
 
+  it('skips frames that arrive faster than minFrameMs without rendering', () => {
+    const queued: FrameRequestCallback[] = [];
+    const frames: unknown[] = [];
+    let now = 0;
+    const loop = createHoloDeckRenderLoop({
+      isPaused: () => false,
+      getDelta: () => 0.016,
+      getElapsedTime: () => 1,
+      renderFrame: (frame) => frames.push(frame),
+      requestFrame: (callback) => {
+        queued.push(callback);
+        return queued.length;
+      },
+      cancelFrame: () => undefined,
+      minFrameMs: 16,
+      getNow: () => now,
+    });
+
+    loop.start();
+    expect(frames).toHaveLength(1);
+
+    // A 144Hz-style frame ~7ms later is skipped but keeps the loop alive.
+    now = 7;
+    queued.shift()?.(now);
+    expect(frames).toHaveLength(1);
+    expect(loop.isRunning()).toBe(true);
+    expect(queued).toHaveLength(1);
+
+    // Once the frame budget elapses, rendering resumes.
+    now = 17;
+    queued.shift()?.(now);
+    expect(frames).toHaveLength(2);
+  });
+
   it('cancels a scheduled frame on stop', () => {
     const canceled: number[] = [];
     const loop = createHoloDeckRenderLoop({

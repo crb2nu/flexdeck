@@ -3,12 +3,12 @@
   "metrics": [
     {
       "name": "bundle_landing_initial_js_gz",
-      "value": 107,
+      "value": 112,
       "unit": "KiB"
     },
     {
       "name": "bundle_entry_initial_js_gz",
-      "value": 34,
+      "value": 35,
       "unit": "KiB"
     },
     {

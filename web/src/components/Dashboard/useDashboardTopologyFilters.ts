@@ -8,11 +8,10 @@ interface UseDashboardTopologyFiltersInput {
   nodes: Accessor<K8sNode[]>;
   pods: Accessor<K8sPod[]>;
   showFilters: Accessor<boolean>;
-  viewMode: Accessor<'2d' | '3d'>;
 }
 
 export function useDashboardTopologyFilters(input: UseDashboardTopologyFiltersInput) {
-  const { nodes, pods, showFilters, viewMode } = input;
+  const { nodes, pods, showFilters } = input;
   const [filter, setFilter] = createSignal<HoloDeckFilter>({});
   const [searchInput, setSearchInput] = createSignal('');
   let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -40,7 +39,9 @@ export function useDashboardTopologyFilters(input: UseDashboardTopologyFiltersIn
 
   const isStatusActive = (status: string) => filter().status?.includes(status) || false;
 
-  const shouldComputeFilterOptions = createMemo(() => viewMode() === '3d' && showFilters());
+  // Filters apply to both the 2D graph and the 3D HoloDeck; only compute the
+  // option lists while the filter panel is actually open.
+  const shouldComputeFilterOptions = createMemo(() => showFilters());
   const namespaceList = createMemo(() => {
     if (!shouldComputeFilterOptions()) return EMPTY_OPTIONS;
     return [...new Set(pods().map((pod) => pod.metadata?.namespace).filter(Boolean))].sort() as string[];

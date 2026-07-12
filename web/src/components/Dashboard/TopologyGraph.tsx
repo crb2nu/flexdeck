@@ -28,6 +28,8 @@ import {
   refreshTopologyNodeStyles,
   type TopologyNodeStyle,
 } from './topology/nodeVisuals';
+import { computeTopologyFilterMatches } from './topology/filtering';
+import type { HoloDeckFilter } from './HoloDeck/derivedState';
 
 // Debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
@@ -46,7 +48,10 @@ interface Props {
   services: K8sService[];
   topologyVersion: number;
   styleVersion: number;
-  onNodeClick?: (node: D3Node) => void;
+  filter?: HoloDeckFilter;
+  // Called with null when the user clicks empty canvas (selection cleared).
+  // When provided, the host owns selection UI and the built-in info card hides.
+  onNodeClick?: (node: D3Node | null) => void;
 }
 
 // Particle pool for zero-allocation animation
@@ -382,6 +387,10 @@ const TopologyGraph: Component<Props> = (props) => {
     framePressureScore: 0,
   };
 
+  // Active-filter match set: null = no filter (skip dimming work entirely).
+  // Recomputed on filter changes and graph rebuilds, never per-frame.
+  let filterMatches: Set<string> | null = null;
+
   // Node style cache - recomputed only when nodes change, not every frame
   // Includes pre-truncated labels to avoid string allocation every frame
   const nodeStylesCache = new Map<string, TopologyNodeStyle>();
@@ -685,6 +694,8 @@ const TopologyGraph: Component<Props> = (props) => {
     visibleNodeIndices.length = graphNodes.length;
     visibleHostsLinkIndices.length = hostsLinks.length;
     visibleSelectsLinkIndices.length = selectsLinks.length;
+
+    filterMatches = computeTopologyFilterMatches(graphNodes, props.pods, props.filter);
 
     // Stagger cache rebuilds across frames to avoid a single-frame stall.
     // Frame 0 (now): update positions + invalidate spatial grid (needed for interaction)
@@ -1316,7 +1327,10 @@ const TopologyGraph: Component<Props> = (props) => {
             cached.color,
             simplifiedNodeRendering ? 'simple' : 'full',
           );
+          const dimmed = filterMatches !== null && !filterMatches.has(node.id);
+          if (dimmed) ctx.globalAlpha = rawOpacity * 0.15;
           ctx.drawImage(sprite, nodeX - sprite.width / 2, nodeY - sprite.height / 2);
+          if (dimmed) ctx.globalAlpha = rawOpacity;
         }
 
         for (let i = 0; i < lastVisibleNodeCount; i++) {
@@ -1324,6 +1338,7 @@ const TopologyGraph: Component<Props> = (props) => {
           if (node.x === undefined || node.y === undefined) continue;
           if (!drawStructuralLabels || (node.type !== 'node' && node.type !== 'service')) continue;
           if (zoomLevel <= labelZoomThreshold) continue;
+          if (filterMatches !== null && !filterMatches.has(node.id)) continue;
 
           const cached = nodeStylesCache.get(node.id)!;
           const font = node.type === 'node' ? FONT_NODE : FONT_OTHER;
@@ -1809,6 +1824,7 @@ const TopologyGraph: Component<Props> = (props) => {
           props.onNodeClick?.(node);
       } else {
           setSelectedNode(null);
+          props.onNodeClick?.(null);
       }
       invalidateOverlayLayer();
       // Trigger redraw for selection visual feedback
@@ -2134,6 +2150,17 @@ const TopologyGraph: Component<Props> = (props) => {
     }, STYLE_REFRESH_DEBOUNCE_MS);
   });
 
+  // Filter changes only re-dim the base layer — no simulation or topology work.
+  createEffect(() => {
+    const filter = props.filter;
+    untrack(() => {
+      filterMatches = computeTopologyFilterMatches(graphNodes, props.pods, filter);
+      invalidateBaseLayer();
+      invalidateOverlayLayer();
+      startAnimationLoop();
+    });
+  });
+
   // Clean up init/style timeouts on unmount
   onCleanup(() => {
     if (initTimeoutId) clearTimeout(initTimeoutId);
@@ -2245,8 +2272,8 @@ const TopologyGraph: Component<Props> = (props) => {
             </div>
         </div>
 
-        {/* Selected Node Info */}
-        <Show when={selectedNode()}>
+        {/* Selected Node Info (hidden when the host handles selection via onNodeClick) */}
+        <Show when={!props.onNodeClick && selectedNode()}>
             {(node) => (
                 <div class="absolute right-4 top-4 max-w-xs rounded-lg bg-[#0a1020]/95 p-4 border border-white/10 shadow-xl z-10 transition-all duration-200">
                     <div class="mb-3 flex items-center gap-3">
