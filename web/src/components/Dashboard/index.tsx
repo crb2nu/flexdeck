@@ -5,6 +5,7 @@ import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '
 import { startDashboardSummaryPolling, stopDashboardSummaryPolling } from '../../stores/dashboardSummary';
 import { formatBytes, formatPercent } from '../../lib/format';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
+import type { TopologyNode } from './topology/types';
 import { isK8sNodeReady } from '../../lib/k8sStatus';
 import TopologyGraph from './TopologyGraph';
 // HoloDeck pulls in three.js (~200KB+ gzipped, the single heaviest dependency) and
@@ -78,7 +79,6 @@ const Dashboard: Component = () => {
     nodes,
     pods,
     showFilters,
-    viewMode,
   });
 
   const {
@@ -144,6 +144,15 @@ const Dashboard: Component = () => {
   // Handle selection from HoloDeck
   const handleSelect = (item: { type: 'node' | 'pod' | 'service'; data: K8sNode | K8sPod | K8sService } | null) => {
     setSelectedItem(item);
+  };
+
+  // Handle selection from the 2D topology graph — same detail panel as 3D.
+  const handleTopologyNodeClick = (node: TopologyNode | null) => {
+    if (!node) {
+      setSelectedItem(null);
+      return;
+    }
+    setSelectedItem({ type: node.type, data: node.data });
   };
 
   const nodeSummary = createMemo(() => {
@@ -354,23 +363,20 @@ const Dashboard: Component = () => {
              </span>
            </div>
 
-           {/* Filter toggle (only in 3D mode) */}
-           <Show when={viewMode() === '3d'}>
-             <button
-               onClick={() => setShowFilters(!showFilters())}
-               aria-expanded={showFilters()}
-               aria-label={`Toggle filters${hasActiveFilter() ? ' (filters active)' : ''}`}
-               class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors ${
-                 hasActiveFilter()
-                   ? 'bg-white/10 border-white/20 text-white'
-                   : showFilters()
-                   ? 'bg-black/40 border-white/20 text-text-main'
-                   : 'bg-black/40 border-white/10 text-text-dim hover:text-text-main'
-               }`}
-             >
-               FILTER {hasActiveFilter() ? '•' : ''}
-             </button>
-           </Show>
+           <button
+             onClick={() => setShowFilters(!showFilters())}
+             aria-expanded={showFilters()}
+             aria-label={`Toggle filters${hasActiveFilter() ? ' (filters active)' : ''}`}
+             class={`rounded-lg border px-2.5 py-1 text-[11px] sm:text-xs font-mono transition-colors ${
+               hasActiveFilter()
+                 ? 'bg-white/10 border-white/20 text-white'
+                 : showFilters()
+                 ? 'bg-black/40 border-white/20 text-text-main'
+                 : 'bg-black/40 border-white/10 text-text-dim hover:text-text-main'
+             }`}
+           >
+             FILTER {hasActiveFilter() ? '•' : ''}
+           </button>
 
            <TabBar
              tabs={[
@@ -394,7 +400,7 @@ const Dashboard: Component = () => {
         </button>
 
         {/* Filter Panel */}
-        <Show when={viewMode() === '3d' && showFilters()}>
+        <Show when={showFilters()}>
           <div class="absolute left-2 right-2 top-[92px] sm:left-4 sm:right-auto sm:top-4 z-10 rounded-lg border border-white/10 bg-[#0a1020]/90 p-3 min-w-0 sm:min-w-[240px] sm:w-auto">
             <div class="flex items-center justify-between mb-3">
               <span class="text-xs font-mono text-text-main uppercase tracking-wider">Filters</span>
@@ -515,6 +521,8 @@ const Dashboard: Component = () => {
                 services={services()}
                 topologyVersion={k8sStore.topologyVersion}
                 styleVersion={k8sStore.styleVersion}
+                filter={filter()}
+                onNodeClick={handleTopologyNodeClick}
             />
           </Show>
         </Show>
@@ -529,11 +537,17 @@ const Dashboard: Component = () => {
         <Show when={selectedItem()}>
           {item => (
             <DetailPanel
-              title={item().type === 'node' ? (item().data as K8sNode).metadata.name : (item().data as K8sPod).metadata.name}
-              subtitle={item().type === 'node' ? 'Cluster Node' : `Pod in ${(item().data as K8sPod).metadata.namespace}`}
-              status={item().type === 'node' 
+              title={item().data.metadata.name}
+              subtitle={item().type === 'node'
+                ? 'Cluster Node'
+                : item().type === 'service'
+                  ? `Service in ${(item().data as K8sService).metadata.namespace}`
+                  : `Pod in ${(item().data as K8sPod).metadata.namespace}`}
+              status={item().type === 'node'
                 ? (isK8sNodeReady(item().data as K8sNode) ? 'ok' : 'error')
-                : ((item().data as K8sPod).status.phase === 'Running' ? 'running' : (item().data as K8sPod).status.phase === 'Pending' ? 'warn' : 'error')
+                : item().type === 'service'
+                  ? 'ok'
+                  : ((item().data as K8sPod).status.phase === 'Running' ? 'running' : (item().data as K8sPod).status.phase === 'Pending' ? 'warn' : 'error')
               }
               onClose={() => setSelectedItem(null)}
               actions={[

@@ -95,6 +95,14 @@ const PERF_QUERY_PARAM = 'topologyPerf';
 const PERF_STORAGE_KEY = 'flexdeck.topologyPerf';
 const HOLO_PERF_QUERY_PARAM = 'holodeckPerf';
 const HOLO_PERF_STORAGE_KEY = 'flexdeck.holodeckPerf';
+// ~72fps ceiling: lets 60Hz displays render every frame while 120/144Hz
+// displays skip alternate frames instead of double-rendering a decorative scene.
+const HOLO_MAX_FPS_FRAME_MS = 13;
+const HOVER_RAYCAST_THROTTLE_MS = 32;
+// Sustained frames slower than this (in ms) trigger the one-way quality degrade.
+const SLOW_FRAME_MS = 26;
+const SLOW_FRAME_SUSTAIN_MS = 2000;
+const SELECTED_SCALE = 1.18;
 const EMPTY_FI_ACCEL_DELTA: FiAccelMetricsDelta = {
   initState: 'loading',
   logAnalyzeCalls: 0,
@@ -150,6 +158,7 @@ const HoloDeck: Component<Props> = (props) => {
   const [interactionType, setInteractionType] = createSignal<'mouse' | 'touch'>('mouse');
   const [perfEnabled, setPerfEnabled] = createSignal(false);
   const [perfSnapshot, setPerfSnapshot] = createSignal<HoloDeckPerfSnapshot | null>(null);
+  const [qualityReduced, setQualityReduced] = createSignal(false);
 
   const objectMap = new Map<string, THREE.Object3D>();
   const dataMap = new Map<string, K8sNode | K8sPod | K8sService>();
@@ -207,6 +216,15 @@ const HoloDeck: Component<Props> = (props) => {
   });
 
   const clusterHealth = createMemo<ClusterHealthData>(() => computeClusterHealth(props.nodes, props.pods));
+  const podsOnNodeCount = createMemo(() => {
+    const counts = new Map<string, number>();
+    for (const pod of props.pods) {
+      const nodeName = pod.spec.nodeName;
+      if (!nodeName) continue;
+      counts.set(nodeName, (counts.get(nodeName) ?? 0) + 1);
+    }
+    return counts;
+  });
   const healthState = createMemo(() => {
     const h = clusterHealth();
     if (h.healthPercent < HEALTH_HUB_CONFIG.thresholds.critical) return 'critical';
@@ -256,6 +274,22 @@ const HoloDeck: Component<Props> = (props) => {
         });
       }
     }
+  };
+
+  // Scales the selected object up so the current selection is visible in the
+  // scene itself, not only in the detail panel. Unscales the previous target
+  // first; safe to call against disposed objects after a rebuild.
+  let highlightedObject: THREE.Object3D | null = null;
+  const applySelectionHighlight = (id: string | null) => {
+    if (highlightedObject) {
+      highlightedObject.scale.multiplyScalar(1 / SELECTED_SCALE);
+      highlightedObject = null;
+    }
+    if (!id) return;
+    const obj = objectMap.get(id);
+    if (!obj) return;
+    obj.scale.multiplyScalar(SELECTED_SCALE);
+    highlightedObject = obj;
   };
 
   const updateHealthHub = (health: ClusterHealthData) => {
@@ -446,8 +480,15 @@ const HoloDeck: Component<Props> = (props) => {
 
     // Interactions
     const onTouchStart = () => setInteractionType('touch');
+    let lastHoverRaycastAt = 0;
     const onMouseMove = (e: MouseEvent) => {
       setInteractionType('mouse');
+      // Raycasting the full scene graph on every mousemove event is the most
+      // expensive interaction path — throttle it; hover feedback at ~30Hz is
+      // indistinguishable from per-event.
+      const now = performance.now();
+      if (now - lastHoverRaycastAt < HOVER_RAYCAST_THROTTLE_MS) return;
+      lastHoverRaycastAt = now;
       const rect = containerRef!.getBoundingClientRect();
       engine.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       engine.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -463,7 +504,31 @@ const HoloDeck: Component<Props> = (props) => {
         containerRef!.style.cursor = 'pointer';
         // Only show hover tooltip for mouse interactions
         if (interactionType() === 'mouse') {
-          setHoverInfo({ title: hit.userData.label, type: hit.userData.type, x: e.clientX - rect.left + 15, y: e.clientY - rect.top });
+          const data = resourceId ? dataMap.get(resourceId) : undefined;
+          const type = hit.userData.type as 'node' | 'pod' | 'service';
+          let namespace: string | undefined;
+          let status: string | undefined;
+          let podCount: number | undefined;
+          if (data) {
+            if (type === 'node') {
+              status = isK8sNodeReady(data as K8sNode) ? 'Ready' : 'NotReady';
+              podCount = podsOnNodeCount().get((data as K8sNode).metadata.name) ?? 0;
+            } else if (type === 'pod') {
+              namespace = (data as K8sPod).metadata.namespace;
+              status = (data as K8sPod).status.phase;
+            } else {
+              namespace = (data as K8sService).metadata.namespace;
+            }
+          }
+          setHoverInfo({
+            title: hit.userData.label,
+            type,
+            x: e.clientX - rect.left + 15,
+            y: e.clientY - rect.top,
+            namespace,
+            status,
+            podCount,
+          });
         }
         engine.controls.autoRotate = false;
       } else {
@@ -487,11 +552,14 @@ const HoloDeck: Component<Props> = (props) => {
         const id = hit.userData.resourceId as string | undefined;
         if (!id) return;
         setSelectedId(id);
+        applySelectionHighlight(id);
         // Clear hover info immediately on select (especially important for touch)
         setHoverInfo(null);
         if (props.onSelect) props.onSelect({ type: hit.userData.type, data: dataMap.get(id)! });
       } else {
-        setSelectedId(null); props.onSelect?.(null);
+        setSelectedId(null);
+        applySelectionHighlight(null);
+        props.onSelect?.(null);
       }
     };
 
@@ -499,11 +567,27 @@ const HoloDeck: Component<Props> = (props) => {
     containerRef.addEventListener('mousemove', onMouseMove);
     containerRef.addEventListener('click', onClick);
 
+    let slowFrameStreakMs = 0;
     renderLoop = createHoloDeckRenderLoop({
       isPaused: () => engine.paused,
       getDelta: () => Math.min(clock.getDelta(), 0.1),
       getElapsedTime: () => clock.getElapsedTime(),
+      minFrameMs: HOLO_MAX_FPS_FRAME_MS,
       renderFrame: ({ delta, time }) => {
+        // Sustained slow frames drop quality once (bloom off, 1x pixel ratio)
+        // instead of letting the whole dashboard tab crawl.
+        if (!engine.degraded) {
+          if (delta * 1000 > SLOW_FRAME_MS) {
+            slowFrameStreakMs += delta * 1000;
+            if (slowFrameStreakMs >= SLOW_FRAME_SUSTAIN_MS) {
+              engine.degrade();
+              setQualityReduced(true);
+              console.info('[HoloDeck] Sustained slow frames — reduced quality (bloom off, 1x pixel ratio).');
+            }
+          } else {
+            slowFrameStreakMs = 0;
+          }
+        }
         engine.controls.update();
         if (!reducedMotion) {
           engine.gridMaterial.uniforms.uTime.value = time;
@@ -566,22 +650,44 @@ const HoloDeck: Component<Props> = (props) => {
     renderLoop.start();
 
     let mounted = true;
+    let offscreen = false;
+    const resumeRendering = () => {
+      if (!mounted || offscreen || document.hidden) return;
+      engine.resume();
+      clock.getDelta(); // Discard elapsed time while paused
+      renderLoop.resumeIfStopped();
+    };
     const onVisibilityChange = () => {
       if (document.hidden) {
         engine.pause();
-      } else if (mounted) {
-        engine.resume();
-        clock.getDelta(); // Discard elapsed time while hidden
-        renderLoop.resumeIfStopped();
+      } else {
+        resumeRendering();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // The dashboard scrolls on mobile and sections are reorderable — stop
+    // burning GPU when the deck is out of the viewport.
+    let intersectionObserver: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      intersectionObserver = new IntersectionObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        offscreen = entry ? !entry.isIntersecting : false;
+        if (offscreen) {
+          engine.pause();
+        } else {
+          resumeRendering();
+        }
+      }, { threshold: 0.05 });
+      intersectionObserver.observe(containerRef);
+    }
 
     const handleResize = () => engine.resize();
     window.addEventListener('resize', handleResize);
 
     onCleanup(() => {
       mounted = false;
+      intersectionObserver?.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('resize', handleResize);
       containerRef?.removeEventListener('touchstart', onTouchStart);
@@ -663,6 +769,7 @@ const HoloDeck: Component<Props> = (props) => {
 
         rebuildVisualRefs();
         applyFilterVisuals();
+        applySelectionHighlight(selectedId());
       } else {
         // Full rebuild for first mount or major topology changes
         while (dataGroup.children.length > 0) { const c = dataGroup.children[0]; dataGroup.remove(c); disposeObject(c); }
@@ -679,6 +786,8 @@ const HoloDeck: Component<Props> = (props) => {
         curves = res.curves; serviceCurves = res.serviceCurves;
         rebuildVisualRefs();
         applyFilterVisuals();
+        highlightedObject = null; // old scene was disposed wholesale
+        applySelectionHighlight(selectedId());
         firstSceneBuild = false;
       }
     });
@@ -728,6 +837,11 @@ const HoloDeck: Component<Props> = (props) => {
                                     <Show when={info().status}><div class={`inline-block px-1 rounded ${info().status === 'Running' ? 'bg-green-500/20 text-green-400' : (info().status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400')}`}>{info().status}</div></Show>
                                 </div>
                             </Show>
+                            <Show when={info().type === 'service' && info().namespace}>
+                                <div class="text-[10px] mt-1 pt-1 border-t border-white/5">
+                                    <div class="text-text-dim">ns: <span class="text-text-muted">{info().namespace}</span></div>
+                                </div>
+                            </Show>
                             <div class="text-[9px] text-text-dim mt-1 opacity-60">Click to select</div>
                         </div>
                     </div>
@@ -749,6 +863,12 @@ const HoloDeck: Component<Props> = (props) => {
                 </div>
             </div>
         </div>
+
+        <Show when={qualityReduced()}>
+            <div class="absolute left-2 top-2 z-10 rounded border border-white/10 bg-black/80 px-2 py-1 text-[9px] font-mono uppercase tracking-wider text-text-dim pointer-events-none">
+                Performance mode · effects reduced
+            </div>
+        </Show>
 
         <Show when={perfEnabled() && perfSnapshot()}>
             {snapshot => (

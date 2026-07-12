@@ -20,6 +20,7 @@ export class HoloEngine {
   public raycaster = new THREE.Raycaster();
   public mouse = new THREE.Vector2();
   public paused = false;
+  public degraded = false;
 
   constructor(private container: HTMLDivElement, qualityLevel: QualityLevel) {
     this.init(qualityLevel);
@@ -120,6 +121,21 @@ export class HoloEngine {
 
   pause() {
     this.paused = true;
+  }
+
+  /**
+   * One-way quality drop for machines that can't hold the frame budget:
+   * disable bloom (the full-resolution post pass) and render at 1x pixel
+   * ratio. One-way on purpose — toggling back and forth would oscillate.
+   */
+  degrade() {
+    if (this.degraded) return;
+    this.degraded = true;
+    this.bloomPass.enabled = false;
+    this.bloomPass.strength = 0;
+    this.renderer.setPixelRatio(1);
+    this.composer.setPixelRatio(1);
+    this.resize();
   }
 
   resume() {
