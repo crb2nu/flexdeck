@@ -1,4 +1,5 @@
 import { Component, For, Show, createMemo, createSignal, onMount } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { workspaceApi, type WorkspaceInventory, type WorkspaceRepository } from '../../lib/api';
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, Select, TabBar } from '../shared';
 import type { SelectOption, TabDef } from '../shared';
@@ -70,7 +71,10 @@ const Stack: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
-  const [query, setQuery] = createSignal('');
+  // Deep-link support (?q=repo-name): the palette can land here with the
+  // search pre-applied. Initial-only — typing afterwards doesn't churn the URL.
+  const [searchParams] = useSearchParams<{ q?: string }>();
+  const [query, setQuery] = createSignal(searchParams.q ?? '');
   const [bucketFilter, setBucketFilter] = createSignal<StackBucketFilter>('all');
   const [readinessFilter, setReadinessFilter] = createSignal<StackReadinessFilter>('all');
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');

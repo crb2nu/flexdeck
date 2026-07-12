@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { render } from 'solid-js/web';
+import { HashRouter, Route } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceInventory, WorkspaceRepository } from '../../lib/api';
 
@@ -101,7 +102,12 @@ function makeInventory(): WorkspaceInventory {
 function mount() {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(() => <Stack />, container);
+  // Router context is required since Stack reads ?q= via useSearchParams.
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/" component={Stack} />
+    </HashRouter>
+  ), container);
   return () => {
     dispose();
     container.remove();

@@ -1,4 +1,5 @@
 import { Component, For, Show, createEffect, createMemo, createSignal } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { healthStore } from '../../stores/health';
 import {
   flexinferProxyError,
@@ -98,7 +99,10 @@ const ModelTelemetryPanel: Component<ModelTelemetryPanelProps> = (props) => {
   const totals = () => flexinferProxyMetrics()?.totals ?? null;
   const health = flexinferProxyHealth;
 
-  const [query, setQuery] = createSignal('');
+  // Deep-link support (/flexinfer?section=telemetry&q=model): the palette can
+  // land here with the model filter pre-applied. Initial-only.
+  const [searchParams] = useSearchParams<{ q?: string }>();
+  const [query, setQuery] = createSignal(searchParams.q ?? '');
   const [hideIdle, setHideIdle] = createSignal(false);
   const [sortKey, setSortKey] = createSignal<SortKey>('heat');
   const [sortDir, setSortDir] = createSignal<'asc' | 'desc'>('desc');

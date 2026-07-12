@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { healthStore } from '../../stores/health';
 import { api } from '../../lib/api';
 import { createPolling } from '../../hooks/createPolling';
@@ -43,8 +44,15 @@ export function useServicesController() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   const [namespaceFilter, setNamespaceFilter] = createSignal('');
-  const [searchTerm, setSearchTerm] = createSignal('');
-  const [activeTab, setActiveTab] = createSignal<TabType>('deployments');
+  // Deep-link support (?tab=services&q=name): the palette and shared links can
+  // land on a specific resource tab with the search pre-applied. Initial-only —
+  // typing afterwards doesn't churn the URL.
+  const [searchParams] = useSearchParams<{ q?: string; tab?: string }>();
+  const isTabType = (v: unknown): v is TabType =>
+    typeof v === 'string' &&
+    ['deployments', 'services', 'ingresses', 'statefulsets', 'daemonsets', 'jobs', 'storage', 'configmaps', 'secrets'].includes(v);
+  const [searchTerm, setSearchTerm] = createSignal(searchParams.q ?? '');
+  const [activeTab, setActiveTab] = createSignal<TabType>(isTabType(searchParams.tab) ? searchParams.tab : 'deployments');
 
   const isK8sEnabled = () => healthStore.features?.k8s?.enabled ?? false;
   const isReadOnly = () => healthStore.features?.k8s?.readOnly ?? true;
