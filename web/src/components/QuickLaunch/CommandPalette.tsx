@@ -4,6 +4,7 @@ import { modelsApi } from '../../lib/api';
 import { fetchHealth, healthStore } from '../../stores/health';
 import { trapFocus } from '../../lib/focusTrap';
 import { buildNavCommands, loadRecents, rankCommands, recordRecent, type PaletteCommand } from './commands';
+import { fetchEntityCommands } from './entities';
 
 interface RunnableCommand extends PaletteCommand {
   action: () => void | Promise<void>;
@@ -52,12 +53,23 @@ const CommandPalette: Component = () => {
     },
   ];
 
+  // Live entities (repos, workloads, models) load lazily on open — they only
+  // join the results once the user types, so the empty-query list stays a
+  // navigable command menu instead of a resource dump.
+  const [entities, setEntities] = createSignal<PaletteCommand[]>([]);
+  createEffect(() => {
+    if (!isOpen()) return;
+    void fetchEntityCommands().then(setEntities);
+  });
+
   const commands = createMemo<RunnableCommand[]>(() => {
-    const nav = buildNavCommands(healthStore.features || {}).map((cmd) => ({
+    const withNav = (cmd: PaletteCommand): RunnableCommand => ({
       ...cmd,
       action: () => navigate(cmd.href!),
-    }));
-    return [...nav, ...actionCommands];
+    });
+    const nav = buildNavCommands(healthStore.features || {}).map(withNav);
+    const entityCommands = query().trim() ? entities().map(withNav) : [];
+    return [...nav, ...actionCommands, ...entityCommands];
   });
 
   const filteredCommands = createMemo(() => rankCommands(commands(), query(), recents()) as RunnableCommand[]);
@@ -142,6 +154,12 @@ const CommandPalette: Component = () => {
         return '❋';
       case 'FlexInfer':
         return '▣';
+      case 'Repos':
+        return '⌥';
+      case 'Workloads':
+        return '◈';
+      case 'Models':
+        return '◉';
       default:
         return '➜';
     }

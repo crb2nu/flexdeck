@@ -11,7 +11,7 @@ export interface PaletteCommand {
   keywords: string[];
   /** Router target; commands without an href carry their own action. */
   href?: string;
-  section: 'Navigate' | 'FlexInfer' | 'Loom' | 'Actions';
+  section: 'Navigate' | 'FlexInfer' | 'Loom' | 'Actions' | 'Repos' | 'Workloads' | 'Models';
 }
 
 const NAV_KEYWORDS: Record<string, string[]> = {
