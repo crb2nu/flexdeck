@@ -9,7 +9,7 @@ import { useNavigate } from "@solidjs/router";
  *   g then t → Stack
  *   g then l → Logs
  *   g then m → FlexInfer
- *   g then a → Loom HUD
+ *   g then a → Loom
  *   g then f → Flux
  *   g then p → Pipeline
  *   g then w → Website metrics
@@ -30,7 +30,7 @@ export function useKeyboardShortcuts() {
     t: "/stack",
     l: "/logs",
     m: "/flexinfer",
-    a: "/loom-hud",
+    a: "/loom",
     f: "/flux",
     p: "/pipeline",
     w: "/website-metrics",
