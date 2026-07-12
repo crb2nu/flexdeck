@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, onMount, onCleanup, Show, For, lazy, Suspense } from 'solid-js';
+import { Component, createSignal, createMemo, onMount, onCleanup, Show, For, Switch, Match, lazy, Suspense } from 'solid-js';
 import { PulseCard, TabBar, LoadingState, EmptyState, Input, Select } from '../shared';
 import { k8sStore, connectK8sStream, disconnectK8sStream, connectionStatus } from '../../stores/k8s';
 import { getNodeMetrics, getPodMetrics, getUsageColor, getUsageGradient } from '../../stores/metrics';
@@ -21,6 +21,17 @@ import { dataStateLabel, resolveDashboardDataState } from './statusSemantics';
 import { useDashboardSummaryState } from './useDashboardSummaryState';
 import { useDashboardTopologyFilters } from './useDashboardTopologyFilters';
 import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
+import PinnedStrip from './PinnedStrip';
+import CustomizePanel from './CustomizePanel';
+import {
+  DEFAULT_LAYOUT,
+  isLayout,
+  moveEntry,
+  normalizeLayout,
+  toggleEntry,
+  type DashboardSectionId,
+  type LayoutEntry,
+} from './layout';
 
 const METRICS_REFRESH_INTERVAL = 30000; // 30 seconds for Prometheus metrics
 const DASHBOARD_STALE_AFTER_MS = METRICS_REFRESH_INTERVAL * 3;
@@ -34,6 +45,15 @@ const Dashboard: Component = () => {
   // The 2D/3D choice survives reloads — picking the HoloDeck once means the
   // dashboard comes back that way (and only then pays the three.js load).
   const [viewMode, setViewMode] = createPersistedSignal<'2d' | '3d'>('dashboard.viewMode', '2d', oneOf(['2d', '3d']));
+
+  // Section layout (order + visibility) persists per browser; normalizeLayout
+  // reconciles a stored arrangement with sections added or removed since.
+  const [storedLayout, setStoredLayout] = createPersistedSignal<LayoutEntry[]>('dashboard.layout', DEFAULT_LAYOUT, isLayout);
+  const layout = createMemo(() => normalizeLayout(storedLayout()));
+  const visibleSections = createMemo(() => layout().filter((e) => e.visible).map((e) => e.id));
+  const toggleSection = (id: DashboardSectionId) => setStoredLayout(toggleEntry(layout(), id));
+  const moveSection = (id: DashboardSectionId, delta: -1 | 1) => setStoredLayout(moveEntry(layout(), id, delta));
+  const resetLayout = () => setStoredLayout(DEFAULT_LAYOUT);
   const [showFilters, setShowFilters] = createSignal(false);
   const [selectedItem, setSelectedItem] = createSignal<SelectedItem | null>(null);
   const [logPanelPod, setLogPanelPod] = createSignal<K8sPod | null>(null);
@@ -172,9 +192,21 @@ const Dashboard: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto md:overflow-hidden p-2 sm:p-3 md:p-4">
-      {/* Pulse Cards — Cluster */}
-      <div class="space-y-3 min-w-0">
-        <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Home toolbar: section customization */}
+      <div class="flex items-center justify-end">
+        <CustomizePanel layout={layout()} onToggle={toggleSection} onMove={moveSection} onReset={resetLayout} />
+      </div>
+
+      <For each={visibleSections()}>
+        {(sectionId) => (
+          <Switch>
+            <Match when={sectionId === 'pinned'}>
+              <PinnedStrip />
+            </Match>
+
+            <Match when={sectionId === 'cluster'}>
+        {/* Pulse Cards — Cluster */}
+        <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-4 min-w-0">
           <PulseCard
             emphasis
             title="Pods"
@@ -222,9 +254,11 @@ const Dashboard: Component = () => {
             sparkData={memHistory()}
           />
         </div>
+            </Match>
 
+            <Match when={sectionId === 'ai-ops'}>
         {/* AI Operations */}
-        <div class="border-t border-white/[0.12] pt-4">
+        <div class="min-w-0">
           <div class="heading-section mb-2">AI Operations</div>
           <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 lg:grid-cols-3">
             <PulseCard
@@ -296,8 +330,9 @@ const Dashboard: Component = () => {
             />
           </div>
         </div>
-      </div>
+            </Match>
 
+            <Match when={sectionId === 'main'}>
       {/* Main Content: Visualization + Events */}
       <div class="flex flex-1 flex-col lg:flex-row gap-4 overflow-visible lg:overflow-hidden min-h-0">
       {/* Visualization Panel */}
@@ -698,6 +733,10 @@ const Dashboard: Component = () => {
         </div>
       </div>
       </div> {/* End Main Content */}
+            </Match>
+          </Switch>
+        )}
+      </For>
 
       {/* Pod Log Panel */}
       <Show when={logPanelPod()}>
