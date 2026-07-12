@@ -2,6 +2,7 @@
 
 import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
+import { HashRouter, Route } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { K8sNode, K8sPod, K8sService } from '../../lib/types';
 
@@ -274,7 +275,12 @@ import Dashboard from './index';
 function mount(factory: () => JSX.Element) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(factory, container);
+  // Router context is required since the pinned strip uses useNavigate.
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/" component={() => factory()} />
+    </HashRouter>
+  ), container);
   return () => {
     dispose();
     container.remove();
