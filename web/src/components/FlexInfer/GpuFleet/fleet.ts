@@ -81,6 +81,24 @@ export function isActiveGaming(session: GamingSession): boolean {
   return phase === 'active' || (session.status?.observedMode || '').toLowerCase() === 'gaming';
 }
 
+// A session in a terminal phase no longer owns the node: it must not force
+// "switching" mode (the live symptom: an Expired session kept a node badged
+// Switching while it was actually back in inference mode).
+const TERMINAL_SESSION_PHASES = new Set(['expired', 'completed', 'failed', 'terminated']);
+
+export function isTerminalSession(session: GamingSession): boolean {
+  return TERMINAL_SESSION_PHASES.has((session.status?.phase || '').toLowerCase());
+}
+
+/**
+ * Where a model runs. The operator does not populate status.gpu on current
+ * CRDs, so the spec's hostname pin is the placement source of truth; prefer
+ * the status field when a future operator version fills it in.
+ */
+export function modelNodeName(model: FlexInferModel): string | undefined {
+  return model.status?.gpu?.node || model.spec?.nodeSelector?.['kubernetes.io/hostname'] || undefined;
+}
+
 function computeMode(hasActiveGaming: boolean, hasSession: boolean, readyModels: number, totalModels: number): NodeMode {
   if (hasActiveGaming) return 'gaming';
   if (hasSession) return 'switching';
@@ -138,7 +156,7 @@ export function buildFleet(
   }
 
   for (const model of models) {
-    const nodeName = model.status?.gpu?.node;
+    const nodeName = modelNodeName(model);
     if (!nodeName) continue;
     const entry = ensure(nodeName);
     const phase = model.status?.phase || 'Unknown';
@@ -153,6 +171,7 @@ export function buildFleet(
   for (const session of sessions) {
     const nodeName = session.spec?.nodeName;
     if (!nodeName) continue;
+    if (isTerminalSession(session)) continue;
     const entry = ensure(nodeName);
     // Prefer the most-advanced session (Active over Pending) if several exist.
     if (!entry.session || (isActiveGaming(session) && !isActiveGaming(entry.session))) {

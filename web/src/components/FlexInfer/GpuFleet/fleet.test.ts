@@ -4,6 +4,8 @@ import {
   formatUptime,
   isActiveGaming,
   isGpuNode,
+  isTerminalSession,
+  modelNodeName,
   nodeModeLabel,
   nodeModeTone,
   parseUtilPercent,
@@ -171,3 +173,60 @@ describe('mode presentation', () => {
     expect(nodeModeLabel('switching')).toBe('Switching');
   });
 });
+describe('model placement fallback (operator does not populate status.gpu)', () => {
+  function pinnedModel(name: string, node: string, phase: string): FlexInferModel {
+    return {
+      name,
+      namespace: 'flexinfer-system',
+      spec: { backend: 'vllm', source: 'hf://x', nodeSelector: { 'kubernetes.io/hostname': node } } as FlexInferModel['spec'],
+      status: { phase },
+    } as FlexInferModel;
+  }
+
+  it('reads the spec nodeSelector hostname when status.gpu is absent', () => {
+    expect(modelNodeName(pinnedModel('dreamshaper', 'cblevins-gtx980ti', 'Ready'))).toBe('cblevins-gtx980ti');
+  });
+
+  it('prefers status.gpu.node when both are present', () => {
+    const m = pinnedModel('m', 'spec-node', 'Ready');
+    (m.status as { gpu?: { node?: string } }).gpu = { node: 'status-node' };
+    expect(modelNodeName(m)).toBe('status-node');
+  });
+
+  it('attaches nodeSelector-pinned models to their node card (the live regression)', () => {
+    const fleet = buildFleet(
+      [gpuNode('cblevins-gtx980ti', { vendor: 'NVIDIA', util: '100' })],
+      [pinnedModel('dreamshaper8-imagegen-gtx980ti', 'cblevins-gtx980ti', 'Ready')],
+      [],
+    );
+    expect(fleet).toHaveLength(1);
+    expect(fleet[0].mode).toBe('serving');
+    expect(fleet[0].models.map((m) => m.name)).toEqual(['dreamshaper8-imagegen-gtx980ti']);
+  });
+});
+
+describe('terminal gaming sessions', () => {
+  it('classifies terminal phases', () => {
+    expect(isTerminalSession(gamingSession('n', 'Expired'))).toBe(true);
+    expect(isTerminalSession(gamingSession('n', 'Completed'))).toBe(true);
+    expect(isTerminalSession(gamingSession('n', 'Failed'))).toBe(true);
+    expect(isTerminalSession(gamingSession('n', 'Active'))).toBe(false);
+    expect(isTerminalSession(gamingSession('n', 'Pending'))).toBe(false);
+  });
+
+  it('an Expired session no longer forces switching mode', () => {
+    const fleet = buildFleet(
+      [gpuNode('cblevins-7900xtx')],
+      [model('gemma', 'cblevins-7900xtx', 'Ready')],
+      [gamingSession('cblevins-7900xtx', 'Expired')],
+    );
+    expect(fleet[0].mode).toBe('serving');
+    expect(fleet[0].session).toBeNull();
+  });
+
+  it('a Pending session still reads as switching', () => {
+    const fleet = buildFleet([gpuNode('node-a')], [], [gamingSession('node-a', 'Pending')]);
+    expect(fleet[0].mode).toBe('switching');
+  });
+});
+
