@@ -21,6 +21,15 @@ interface TimelineSegment {
 type HoursOption = 6 | 12 | 24 | 48;
 const HOURS_OPTIONS: HoursOption[] = [6, 12, 24, 48];
 
+// Stale-while-revalidate: the last good response, stamped with the fetch time
+// and the window it was fetched for. Refetches (polls, hours changes) keep
+// rendering this snapshot until fresh data lands — the chart never blanks.
+interface Snapshot {
+  data: GroupSwapHistoryResponse;
+  at: number;
+  hours: HoursOption;
+}
+
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return '0s';
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -113,52 +122,70 @@ function timeAxisLabels(hours: number): string[] {
 }
 
 const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
-  const [data, setData] = createSignal<GroupSwapHistoryResponse | null>(null);
-  const [loading, setLoading] = createSignal(true);
+  const [snap, setSnap] = createSignal<Snapshot | null>(null);
+  const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
   const [hours, setHours] = createSignal<HoursOption>(24);
 
   const fetchHistory = async () => {
+    const requested = hours();
+    if (snap()) setRefreshing(true);
     try {
-      const result = await modelsApi.groupSwapHistory(props.group, props.namespace, hours());
-      setData(result);
+      const result = await modelsApi.groupSwapHistory(props.group, props.namespace, requested);
+      setSnap({ data: result, at: Date.now(), hours: requested });
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch swap history');
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
   createPolling(() => `gpu-group-timeline-${props.namespace}-${props.group}`, fetchHistory, 60_000);
 
+  // Window, axis, and segments all derive from the SNAPSHOT (not the live
+  // hours selection), so the rendered chart is always internally consistent —
+  // a pending hours change updates the display only when its data arrives.
   const windowMs = createMemo(() => {
-    const now = Date.now();
-    const start = now - hours() * 60 * 60 * 1000;
-    return { start, end: now };
+    const s = snap();
+    if (!s) return null;
+    return { start: s.at - s.hours * 60 * 60 * 1000, end: s.at };
   });
 
   const timelineData = createMemo(() => {
-    const d = data();
-    if (!d) return new Map<string, TimelineSegment[]>();
+    const s = snap();
+    const window = windowMs();
+    if (!s || !window) return new Map<string, TimelineSegment[]>();
 
-    const { start, end } = windowMs();
     const result = new Map<string, TimelineSegment[]>();
-
-    for (const model of d.models) {
-      result.set(model, buildTimelineSegments(d.events, model, start, end));
+    for (const model of s.data.models) {
+      result.set(model, buildTimelineSegments(s.data.events, model, window.start, window.end));
     }
-
     return result;
   });
 
-  const axisLabels = createMemo(() => timeAxisLabels(hours()));
+  const axisLabels = createMemo(() => {
+    const s = snap();
+    return timeAxisLabels(s ? s.hours : hours());
+  });
+
+  const loading = () => !snap() && !error();
 
   return (
     <div class="border-t border-white/5 bg-white/[0.02]">
       {/* Header: hours selector */}
       <div class="flex items-center justify-between px-4 py-2 border-b border-white/5">
-        <span class="text-[10px] font-medium text-text-dim uppercase tracking-wider">Swap Timeline</span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-medium text-text-dim uppercase tracking-wider">Swap Timeline</span>
+          <Show when={refreshing()}>
+            <span class="text-[9px] text-text-dim animate-pulse">updating</span>
+          </Show>
+          <Show when={!refreshing() && error() && snap()}>
+            <span class="rounded-md border border-status-warn/20 bg-status-warn/10 px-1.5 py-0.5 text-[9px] text-status-warn">
+              stale snapshot
+            </span>
+          </Show>
+        </div>
         <div class="flex gap-0.5 rounded bg-white/5 p-0.5">
           <For each={HOURS_OPTIONS}>
             {(h) => (
@@ -168,9 +195,10 @@ const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
                   'bg-white/10 text-white': hours() === h,
                   'text-text-muted hover:text-white hover:bg-white/5': hours() !== h,
                 }}
+                aria-pressed={hours() === h}
                 onClick={() => {
+                  if (hours() === h) return;
                   setHours(h);
-                  setLoading(true);
                   void fetchHistory();
                 }}
               >
@@ -181,37 +209,37 @@ const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
         </div>
       </div>
 
-      {/* Loading state */}
+      {/* Initial loading state (only before the first snapshot) */}
       <Show when={loading()}>
         <div class="px-4 py-6 text-center text-xs text-text-dim animate-pulse">Loading swap history...</div>
       </Show>
 
-      {/* Error state */}
-      <Show when={!loading() && error()}>
+      {/* Error state (only when there is no snapshot to keep showing) */}
+      <Show when={!snap() && error()}>
         <div class="px-4 py-4 text-center text-xs text-status-error">{sanitizeError(error())}</div>
       </Show>
 
       {/* Empty state */}
-      <Show when={!loading() && !error() && data() && data()!.events.length === 0}>
+      <Show when={snap() && snap()!.data.events.length === 0}>
         <div class="px-4 py-6 text-center text-xs text-text-dim">
-          No swap events in the last {hours()}h
+          No swap events in the last {snap()!.hours}h
         </div>
       </Show>
 
       {/* Content */}
-      <Show when={!loading() && !error() && data() && data()!.events.length > 0}>
+      <Show when={snap() && snap()!.data.events.length > 0}>
         {/* Summary stats */}
         <div class="flex items-center gap-4 px-4 py-2 border-b border-white/5 text-[10px] text-text-muted">
           <span>
-            <span class="font-mono text-text-main">{data()!.summary.totalSwaps}</span> swaps
+            <span class="font-mono text-text-main">{snap()!.data.summary.totalSwaps}</span> swaps
           </span>
           <span class="text-white/10">|</span>
           <span>
-            Avg queue wait: <span class="font-mono text-text-main">{formatDuration(data()!.summary.avgQueueWaitSec)}</span>
+            Avg queue wait: <span class="font-mono text-text-main">{formatDuration(snap()!.data.summary.avgQueueWaitSec)}</span>
           </span>
           <span class="text-white/10">|</span>
           <span>
-            <span class="font-mono text-text-main">{data()!.models.length}</span> model{data()!.models.length !== 1 ? 's' : ''}
+            <span class="font-mono text-text-main">{snap()!.data.models.length}</span> model{snap()!.data.models.length !== 1 ? 's' : ''}
           </span>
         </div>
 
@@ -235,7 +263,7 @@ const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
 
           {/* Model rows */}
           <div class="space-y-1 mt-1">
-            <For each={data()!.models}>
+            <For each={snap()!.data.models}>
               {(model) => {
                 const segments = () => timelineData().get(model) || [];
                 return (
@@ -288,9 +316,9 @@ const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
         {/* Per-model stats */}
         <div class="px-4 py-2 border-t border-white/5">
           <div class="grid gap-1">
-            <For each={data()!.models}>
+            <For each={snap()!.data.models}>
               {(model) => {
-                const stats = () => data()!.summary.modelStats[model];
+                const stats = () => snap()!.data.summary.modelStats[model];
                 return (
                   <Show when={stats()}>
                     <div class="flex items-center gap-3 text-[10px]">
