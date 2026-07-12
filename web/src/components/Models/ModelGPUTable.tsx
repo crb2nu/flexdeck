@@ -6,10 +6,23 @@ import { stableListByKey } from '../../lib/stableList';
 import Sparkline from '../shared/Sparkline';
 import {
   aggregateModelGPUEntries,
+  compareGpuRows,
   hasAnyGPUData,
   type AggregatedModelGPUEntry,
+  type GpuSortDir,
+  type GpuSortKey,
   type ModelGPUEntry,
 } from './modelGpuTableUtils';
+
+const GPU_COLUMNS: { key: GpuSortKey; label: string; align: 'left' | 'right' }[] = [
+  { key: 'model', label: 'Model', align: 'left' },
+  { key: 'node', label: 'Node', align: 'left' },
+  { key: 'replicas', label: 'Pods', align: 'right' },
+  { key: 'util', label: 'GPU Util', align: 'right' },
+  { key: 'vram', label: 'VRAM', align: 'right' },
+  { key: 'temp', label: 'Temp', align: 'right' },
+  { key: 'power', label: 'Power', align: 'right' },
+];
 
 interface ModelGPUHistory {
   utilization: number[];
@@ -42,6 +55,26 @@ const ModelGPUTable: Component = () => {
     models,
     (model) => `${model.modelName}@${model.node}`,
   );
+  // Busiest GPUs first by default — the table is a triage list.
+  const [sortKey, setSortKey] = createSignal<GpuSortKey>('util');
+  const [sortDir, setSortDir] = createSignal<GpuSortDir>('desc');
+
+  // Sorting on top of the stable list keeps row identities, so reordering is
+  // a move (sparkline history survives), never a rebuild.
+  const sortedModels = createMemo(() =>
+    stableModels().slice().sort((a, b) => compareGpuRows(a, b, sortKey(), sortDir())),
+  );
+
+  const toggleSort = (key: GpuSortKey) => {
+    if (sortKey() === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'model' || key === 'node' ? 'asc' : 'desc');
+    }
+  };
+
+  const sortIndicator = (key: GpuSortKey) => (sortKey() === key ? (sortDir() === 'asc' ? '↑' : '↓') : '');
 
   const fetchData = async () => {
     const hasSnapshot = models().length > 0;
@@ -129,18 +162,30 @@ const ModelGPUTable: Component = () => {
             <table class="w-full text-xs">
               <thead>
                 <tr class="text-text-dim border-b border-white/5">
-                  <th class="text-left py-1.5 pr-3 font-medium">Model</th>
-                  <th class="text-left py-1.5 pr-3 font-medium">Node</th>
-                  <th class="text-right py-1.5 pr-3 font-medium">Pods</th>
-                  <th class="text-right py-1.5 pr-3 font-medium">GPU Util</th>
-                  <th class="text-right py-1.5 pr-3 font-medium">VRAM</th>
-                  <th class="text-right py-1.5 pr-3 font-medium">Temp</th>
-                  <th class="text-right py-1.5 pr-3 font-medium">Power</th>
+                  <For each={GPU_COLUMNS}>
+                    {(col) => (
+                      <th
+                        class="py-1.5 pr-3 font-medium select-none"
+                        classList={{ 'text-left': col.align === 'left', 'text-right': col.align === 'right' }}
+                        aria-sort={sortKey() === col.key ? (sortDir() === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(col.key)}
+                          class="inline-flex items-center gap-1 transition-colors hover:text-text-main"
+                          classList={{ 'text-text-muted': sortKey() === col.key }}
+                        >
+                          <span>{col.label}</span>
+                          <span class="w-2 text-text-muted">{sortIndicator(col.key)}</span>
+                        </button>
+                      </th>
+                    )}
+                  </For>
                   <th class="text-center py-1.5 font-medium">Trend</th>
                 </tr>
               </thead>
               <tbody>
-                <For each={stableModels()}>
+                <For each={sortedModels()}>
                   {(m) => {
                     const hist = () => historyMap()[`${m.modelName}@${m.node}`];
                     return (

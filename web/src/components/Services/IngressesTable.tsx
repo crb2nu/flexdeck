@@ -21,6 +21,7 @@ const columns: ColumnDef<K8sIngress>[] = [
     id: 'hosts',
     header: 'Hosts',
     accessor: (i) => i.spec?.rules?.map((r) => r.host).filter(Boolean).join(', ') || '-',
+    sortable: true,
     cell: (_, i) => {
       const hosts = i.spec?.rules?.map((r) => r.host).filter(Boolean) || [];
       return (
@@ -45,6 +46,7 @@ const columns: ColumnDef<K8sIngress>[] = [
     id: 'class',
     header: 'Class',
     accessor: (i) => i.spec?.ingressClassName || '-',
+    sortable: true,
   },
 ];
 
