@@ -103,7 +103,7 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
   const proxyEnabled = () => healthStore.features?.flexinfer_proxy?.enabled ?? false;
   const modelCacheEnabled = () => healthStore.features?.modelcache?.enabled ?? false;
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams<{ section?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams<{ section?: string; q?: string }>();
   const activeSection = createMemo<WorkbenchSectionId>(() =>
     readWorkbenchSectionFromQueryValue(searchParams.section) ?? 'overview',
   );
@@ -187,6 +187,11 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
       { section: section === 'overview' ? undefined : section },
       { replace: true },
     );
+  };
+
+  // Jump to the telemetry section with its table pre-filtered to one model.
+  const openTelemetryFor = (model: string) => {
+    setSearchParams({ section: 'telemetry', q: model }, { replace: true });
   };
 
   const supplyChainSummary = () => flexinferSupplyChainSummary();
@@ -813,7 +818,14 @@ const FlexInferWorkbench: Component<WorkbenchProps> = (_props) => {
                       <div class="min-w-0 flex-1 space-y-1.5">
                         {/* Identity + live triage chips */}
                         <div class="flex flex-wrap items-center gap-1.5">
-                          <span class="font-medium text-text-main">{row.model.name}</span>
+                          <button
+                            type="button"
+                            class="font-medium text-text-main hover:underline"
+                            onClick={() => openTelemetryFor(row.model.name)}
+                            title={`Open ${row.model.name} in telemetry`}
+                          >
+                            {row.model.name}
+                          </button>
                           <Show when={queue() > 0}>
                             <span class={`num rounded-full px-2 py-0.5 text-[10px] font-semibold ${queueChipClass(queue())}`}>
                               Q {queue().toFixed(0)}

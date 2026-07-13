@@ -1,4 +1,5 @@
-import { createSignal, onCleanup, onMount } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onMount, untrack } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { createStore } from 'solid-js/store';
 import type { LogEntry, LogFilter } from './LogStream';
 import { showToast } from '../shared/Toast';
@@ -58,7 +59,11 @@ function buildLogEntries(streams: LokiStream[] | undefined): LogEntry[] {
 }
 
 export function useLogsController() {
-  const [query, setQuery] = createSignal(DEFAULT_QUERY);
+  // Deep-link support (?q=<LogQL>): entity surfaces (pod log drawers, gaming
+  // sessions) can land here with the query pre-applied and auto-run. URL →
+  // state only; editing the query afterwards doesn't churn the URL.
+  const [searchParams] = useSearchParams<{ q?: string }>();
+  const [query, setQuery] = createSignal(searchParams.q || DEFAULT_QUERY);
   const [logs, setLogs] = createStore<LogEntry[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -180,6 +185,16 @@ export function useLogsController() {
     });
     window.open(`/api/loki/export?${params}`, '_blank');
   };
+
+  // Deep-link arrival (mount or same-route navigation with a new ?q=):
+  // apply the query and run it, so entity links land on results, not a form.
+  // untrack keeps limit/timeRange reads inside fetchLogs from re-triggering.
+  createEffect(() => {
+    const q = searchParams.q;
+    if (!q) return;
+    setQuery(q);
+    untrack(() => void fetchLogs());
+  });
 
   onMount(() => {
     const handleKeydown = (event: KeyboardEvent) => {

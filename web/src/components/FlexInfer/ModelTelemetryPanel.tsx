@@ -102,10 +102,13 @@ const ModelTelemetryPanel: Component<ModelTelemetryPanelProps> = (props) => {
   const totals = () => flexinferProxyMetrics()?.totals ?? null;
   const health = flexinferProxyHealth;
 
-  // Deep-link support (/flexinfer?section=telemetry&q=model): the palette can
-  // land here with the model filter pre-applied. Initial-only.
+  // Deep-link support (/flexinfer?section=telemetry&q=model): the palette and
+  // model links can land here with the model filter pre-applied. URL → state
+  // only; the panel stays mounted across section switches, so re-apply on
+  // every param change rather than reading once.
   const [searchParams] = useSearchParams<{ q?: string }>();
   const [query, setQuery] = createSignal(searchParams.q ?? '');
+  createEffect(() => setQuery(searchParams.q ?? ''));
   // Hide-idle is a standing triage preference — it survives reloads.
   const [hideIdle, setHideIdle] = createPersistedSignal('telemetry.hideIdle', false, isBoolean);
   const [sortKey, setSortKey] = createSignal<SortKey>('heat');

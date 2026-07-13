@@ -1,4 +1,5 @@
 import { Component, createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
+import { A } from '@solidjs/router';
 import { loki } from '../../lib/api';
 import { formatClockTime } from '../../lib/format';
 
@@ -251,6 +252,15 @@ const PodLogPanel: Component<PodLogPanelProps> = (props) => {
         >
           Reconnect
         </button>
+
+        {/* Escape hatch to the full Logs explorer (history, filters, export) */}
+        <A
+          href={`/logs?q=${encodeURIComponent(buildQuery())}`}
+          class="px-3 py-1 text-[10px] font-mono uppercase rounded-lg bg-white/5 border border-white/10 text-text-muted hover:bg-white/10 transition-all"
+          title="Open this pod's query in the Logs explorer"
+        >
+          Open in Logs
+        </A>
 
         <div class="flex-1" />
 
