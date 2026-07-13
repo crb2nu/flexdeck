@@ -19,6 +19,7 @@ const Services: Component = () => {
   const {
     loading,
     error,
+    lastUpdated,
     namespaceFilter,
     setNamespaceFilter,
     searchTerm,
@@ -58,7 +59,7 @@ const Services: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      <PageHeader title="Services" />
+      <PageHeader title="Services" lastUpdated={lastUpdated() || null} />
 
       {/* Controls */}
       <div class="surface flex flex-col gap-3 px-4 py-3">

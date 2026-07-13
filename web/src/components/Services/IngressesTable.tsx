@@ -53,6 +53,7 @@ const columns: ColumnDef<K8sIngress>[] = [
 const IngressesTable: Component<{ ingresses: K8sIngress[] }> = (props) => (
   <DataTable
     data={props.ingresses}
+    persistKey="services.ingresses"
     columns={columns}
     rowKey={(i) => `${i.metadata?.namespace}/${i.metadata?.name}`}
     defaultSort={{ column: 'name', direction: 'asc' }}

@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { render } from 'solid-js/web';
+import { HashRouter, Route } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FeatureMap } from '../../lib/featureFlags';
@@ -38,7 +39,12 @@ function mount(features: FeatureMap) {
 
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(() => <Admin />, container);
+  // Router context is required since Admin reads ?tab= via useSearchParams.
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/" component={Admin} />
+    </HashRouter>
+  ), container);
 
   return () => {
     dispose();
@@ -73,10 +79,12 @@ describe('Admin', () => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
+    // Tab clicks write ?tab= into the hash; reset so tests stay independent.
+    window.location.hash = '';
     vi.restoreAllMocks();
   });
 
-  it('shows the Phase 4 rollout tabs in stable order and defaults to Users', () => {
+  it('shows the Phase 4 rollout tabs in stable order and defaults to Users', async () => {
     cleanup = mount({
       rbac: { enabled: true },
       audit: { enabled: true },
@@ -89,12 +97,17 @@ describe('Admin', () => {
     expect(document.querySelector('[data-testid="audit-tab"]')).toBeFalsy();
     expect(document.querySelector('[data-testid="clusters-tab"]')).toBeFalsy();
 
+    // Tab clicks navigate (?tab=) — the router applies params asynchronously.
     buttonByText('Audit Log').click();
-    expect(document.querySelector('[data-testid="audit-tab"]')).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="audit-tab"]')).toBeTruthy();
+    });
     expect(document.querySelector('[data-testid="users-tab"]')).toBeFalsy();
 
     buttonByText('Clusters').click();
-    expect(document.querySelector('[data-testid="clusters-tab"]')).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="clusters-tab"]')).toBeTruthy();
+    });
     expect(document.querySelector('[data-testid="audit-tab"]')).toBeFalsy();
   });
 

@@ -1,13 +1,6 @@
-import {
-  Component,
-  For,
-  Show,
-  createEffect,
-  createSignal,
-  onCleanup,
-  onMount,
-} from "solid-js";
+import { Component, For, Show, createEffect, createSignal, on } from "solid-js";
 import { trafficApi, type TrafficReportResponse } from "../../lib/api";
+import { createPolledResource } from "../../hooks/createPolledResource";
 import { ErrorState, LoadingState, TabBar } from "../shared";
 import type { TabDef } from "../shared";
 
@@ -26,46 +19,41 @@ const windowTabs: TabDef[] = TRAFFIC_WINDOWS.map((window) => ({
 
 const TrafficReport: Component = () => {
   const [selectedWindow, setSelectedWindow] = createSignal("24h");
-  const [report, setReport] = createSignal<TrafficReportResponse | null>(null);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal("");
+  const [refreshing, setRefreshing] = createSignal(false);
 
-  let refreshTimer: ReturnType<typeof setInterval> | undefined;
-  let requestId = 0;
+  // Latest-wins guard: a slow response for a superseded window returns the
+  // last good report instead of overwriting the newer window's data.
+  let lastGoodReport: TrafficReportResponse | null = null;
+  const fetchReport = async (): Promise<TrafficReportResponse> => {
+    const win = selectedWindow();
+    const nextReport = await trafficApi.report(win);
+    if (win !== selectedWindow() && lastGoodReport) return lastGoodReport;
+    lastGoodReport = nextReport;
+    return nextReport;
+  };
 
-  const fetchReport = async () => {
-    const currentRequest = ++requestId;
-    setLoading(true);
-    setError("");
+  // Polls via the shared primitive: reconcile keeps unchanged rows from
+  // remounting each tick, updatedAt feeds the freshness chip, and the last
+  // good report stays visible alongside any fetch error.
+  const res = createPolledResource<TrafficReportResponse>("traffic-report", fetchReport, {
+    interval: 60_000,
+  });
+  const report = () => res.data();
+  const loading = () => !res.loaded();
+  const error = () => res.error() ?? "";
 
+  const refresh = async () => {
+    setRefreshing(true);
     try {
-      const nextReport = await trafficApi.report(selectedWindow());
-      if (currentRequest !== requestId) return;
-      setReport(nextReport);
-    } catch (err) {
-      if (currentRequest !== requestId) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to load traffic report",
-      );
+      await res.refresh();
     } finally {
-      if (currentRequest === requestId) {
-        setLoading(false);
-      }
+      setRefreshing(false);
     }
   };
 
-  createEffect(() => {
-    selectedWindow();
-    void fetchReport();
-  });
-
-  onMount(() => {
-    refreshTimer = globalThis.setInterval(() => void fetchReport(), 60000);
-  });
-
-  onCleanup(() => {
-    if (refreshTimer) globalThis.clearInterval(refreshTimer);
-  });
+  // Window switches refetch immediately; deferred because the poller already
+  // ran the initial fetch when it registered.
+  createEffect(on(selectedWindow, () => void refresh(), { defer: true }));
 
   const totalRequests = () =>
     report()?.hosts.reduce((total, host) => total + host.requests, 0) ?? 0;
@@ -97,20 +85,25 @@ const TrafficReport: Component = () => {
               </span>
             )}
           </Show>
+          <Show when={res.updatedAt() > 0}>
+            <span class="text-xs text-text-dim">
+              Updated {new Date(res.updatedAt()).toLocaleTimeString()}
+            </span>
+          </Show>
         </div>
 
         <button
-          onClick={fetchReport}
-          disabled={loading()}
+          onClick={refresh}
+          disabled={refreshing()}
           class="flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white transition-all hover:bg-white/20 disabled:opacity-50"
         >
-          <span class={loading() ? "animate-spin" : ""}>↻</span>
+          <span class={refreshing() ? "animate-spin" : ""}>↻</span>
           Refresh
         </button>
       </div>
 
       <Show when={error()}>
-        <ErrorState message={error()} variant="banner" onRetry={fetchReport} />
+        <ErrorState message={error()} variant="banner" onRetry={refresh} />
       </Show>
 
       <Show when={loading() && !report()}>

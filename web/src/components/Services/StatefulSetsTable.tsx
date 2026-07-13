@@ -70,6 +70,7 @@ const columns: ColumnDef<K8sStatefulSet>[] = [
 const StatefulSetsTable: Component<{ statefulsets: K8sStatefulSet[] }> = (props) => (
   <DataTable
     data={props.statefulsets}
+    persistKey="services.statefulsets"
     columns={columns}
     rowKey={(s) => `${s.metadata?.namespace}/${s.metadata?.name}`}
     defaultSort={{ column: 'name', direction: 'asc' }}

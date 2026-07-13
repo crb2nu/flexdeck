@@ -341,6 +341,7 @@ const UsersTab: Component = () => {
           <div class="surface overflow-hidden">
             <DataTable
               data={userRows()}
+              persistKey="admin.users"
               columns={columns}
               rowKey={(u) => u.id}
               stickyHeader={false}

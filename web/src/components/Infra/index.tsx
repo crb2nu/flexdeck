@@ -1,4 +1,5 @@
-import { Component, Show, createSignal, createMemo } from 'solid-js';
+import { Component, Show, createMemo } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { useInfraController } from './useInfraController';
 import ComputeView from './ComputeView';
 import StorageView from './StorageView';
@@ -17,8 +18,15 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'capacity', label: 'Capacity', icon: '📊' },
 ];
 
+const isInfraTab = (value: unknown): value is Tab => TABS.some((tab) => tab.id === value);
+
 const Infra: Component = () => {
-  const [activeTab, setActiveTab] = createSignal<Tab>('compute');
+  // The active tab lives in the URL (?tab=storage) so refresh keeps your place
+  // and tabs are deep-linkable; deriving from searchParams also re-applies the
+  // tab on same-route navigations (palette). Default keeps a clean URL.
+  const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
+  const activeTab = createMemo<Tab>(() => (isInfraTab(searchParams.tab) ? searchParams.tab : 'compute'));
+  const setActiveTab = (tab: Tab) => setSearchParams({ tab: tab === 'compute' ? undefined : tab });
   const {
     snapshot,
     error,

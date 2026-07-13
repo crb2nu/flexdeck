@@ -65,6 +65,7 @@ const columns: ColumnDef<any>[] = [
 const PVCTable: Component<{ pvcs: any[] }> = (props) => (
   <DataTable
     data={props.pvcs}
+    persistKey="services.pvcs"
     columns={columns}
     rowKey={(pvc) => `${pvc.metadata?.namespace}/${pvc.metadata?.name}`}
     defaultSort={{ column: 'name', direction: 'asc' }}

@@ -35,6 +35,10 @@ const Agents: Component = () => {
   const stableAgents = stableListByKey(() => agents, (agent) => agent.id);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  // Epoch ms of the last successful registry fetch (0 until one lands) — feeds
+  // the PageHeader freshness chip on the tooling sections (the registry poll
+  // only runs there; HUD sections have their own freshness surfaces).
+  const [lastUpdated, setLastUpdated] = createSignal(0);
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [activeSection, setActiveSection] = createSignal<OperationsSection>('overview');
   const hudEntry = createMemo(() => getHudEntryState(healthStore.features || {}));
@@ -85,6 +89,7 @@ const Agents: Component = () => {
       }
 
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch agents');
     } finally {
@@ -275,7 +280,7 @@ const Agents: Component = () => {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      <PageHeader title="Agents">
+      <PageHeader title="Agents" lastUpdated={isToolingSection() ? lastUpdated() || null : null}>
         <Show when={hudEntry().directEntryEnabled && hudEntry().directUrl}>
           <Button
             variant="secondary"

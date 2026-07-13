@@ -1,6 +1,6 @@
 import { Component, For, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { useSearchParams } from '@solidjs/router';
-import { createPersistedSignal } from '../../hooks/createPersistedSignal';
+import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 import { healthStore } from '../../stores/health';
 
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
@@ -111,8 +111,14 @@ const ModelTelemetryPanel: Component<ModelTelemetryPanelProps> = (props) => {
   createEffect(() => setQuery(searchParams.q ?? ''));
   // Hide-idle is a standing triage preference — it survives reloads.
   const [hideIdle, setHideIdle] = createPersistedSignal('telemetry.hideIdle', false, isBoolean);
-  const [sortKey, setSortKey] = createSignal<SortKey>('heat');
-  const [sortDir, setSortDir] = createSignal<'asc' | 'desc'>('desc');
+  // The triage sort is a standing preference — it survives reloads (same
+  // pattern as ModelGPUTable).
+  const [sortKey, setSortKey] = createPersistedSignal<SortKey>(
+    'telemetry.sortKey',
+    'heat',
+    oneOf(['heat', 'model', 'requests', 'rps', 'p95', 'queue', 'conn', 'err']),
+  );
+  const [sortDir, setSortDir] = createPersistedSignal<'asc' | 'desc'>('telemetry.sortDir', 'desc', oneOf(['asc', 'desc']));
 
   // Client-sampled requests/sec: diff cumulative request counters between polls.
   const [rpsByModel, setRpsByModel] = createSignal<Record<string, number>>({});
