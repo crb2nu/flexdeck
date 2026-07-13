@@ -1,10 +1,11 @@
-import { Component, For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { Component, For, Show, createEffect, createMemo, createSignal, createUniqueId, onCleanup } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import Input from '../shared/Input';
+import { trapFocus } from '../../lib/focusTrap';
 import { buildNavCommands, rankCommands, type PaletteCommand } from '../QuickLaunch/commands';
 import { fetchEntityCommands } from '../QuickLaunch/entities';
 import { healthStore } from '../../stores/health';
-import { MAX_PINS, addPin, isPinned, pins, removePin, type PinnedItem } from '../../stores/pins';
+import { MAX_PINS, addPin, isPinned, movePin, pins, removePin, type PinnedItem } from '../../stores/pins';
 
 function pinIcon(section: string): string {
   switch (section) {
@@ -33,8 +34,13 @@ const PinnedStrip: Component = () => {
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [query, setQuery] = createSignal('');
   const [candidates, setCandidates] = createSignal<PaletteCommand[]>([]);
+  const [selectedIndex, setSelectedIndex] = createSignal(0);
   let pickerRef: HTMLDivElement | undefined;
+  let dialogRef: HTMLDivElement | undefined;
+  let listRef: HTMLDivElement | undefined;
   let inputRef: HTMLInputElement | undefined;
+  let triggerRef: HTMLButtonElement | undefined;
+  const listboxId = `pin-picker-results-${createUniqueId()}`;
 
   createEffect(() => {
     if (!pickerOpen()) return;
@@ -51,23 +57,22 @@ const PinnedStrip: Component = () => {
       .slice(0, 8);
   });
 
-  const closePicker = () => {
+  // Reset the highlight when the result list changes under the cursor.
+  createEffect(() => {
+    query();
+    setSelectedIndex(0);
+  });
+
+  const closePicker = (restoreFocus = false) => {
     setPickerOpen(false);
     setQuery('');
+    setSelectedIndex(0);
+    if (restoreFocus) triggerRef?.focus();
   };
 
-  const onDocumentClick = (event: MouseEvent) => {
-    if (pickerOpen() && pickerRef && !pickerRef.contains(event.target as Node)) closePicker();
+  const scrollSelectedIntoView = (index: number) => {
+    listRef?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' });
   };
-  const onDocumentKeydown = (event: KeyboardEvent) => {
-    if (pickerOpen() && event.key === 'Escape') closePicker();
-  };
-  document.addEventListener('click', onDocumentClick);
-  document.addEventListener('keydown', onDocumentKeydown);
-  onCleanup(() => {
-    document.removeEventListener('click', onDocumentClick);
-    document.removeEventListener('keydown', onDocumentKeydown);
-  });
 
   const pinCommand = (cmd: PaletteCommand) => {
     addPin({
@@ -77,8 +82,43 @@ const PinnedStrip: Component = () => {
       href: cmd.href!,
       section: cmd.section,
     });
-    closePicker();
+    closePicker(true);
   };
+
+  const onDocumentClick = (event: MouseEvent) => {
+    if (pickerOpen() && pickerRef && !pickerRef.contains(event.target as Node)) closePicker();
+  };
+  const onDocumentKeydown = (event: KeyboardEvent) => {
+    if (!pickerOpen()) return;
+    trapFocus(dialogRef, event);
+    if (event.key === 'Escape') {
+      closePicker(true);
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSelectedIndex((i) => {
+        const next = Math.min(i + 1, Math.max(results().length - 1, 0));
+        scrollSelectedIntoView(next);
+        return next;
+      });
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSelectedIndex((i) => {
+        const next = Math.max(i - 1, 0);
+        scrollSelectedIntoView(next);
+        return next;
+      });
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const cmd = results()[selectedIndex()];
+      if (cmd) pinCommand(cmd);
+    }
+  };
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeydown);
+  onCleanup(() => {
+    document.removeEventListener('click', onDocumentClick);
+    document.removeEventListener('keydown', onDocumentKeydown);
+  });
 
   return (
     <div class="space-y-2 min-w-0">
@@ -86,6 +126,7 @@ const PinnedStrip: Component = () => {
         <span class="heading-section">Pinned</span>
         <div class="relative" ref={pickerRef}>
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => (pickerOpen() ? closePicker() : setPickerOpen(true))}
             aria-expanded={pickerOpen()}
@@ -99,6 +140,7 @@ const PinnedStrip: Component = () => {
 
           <Show when={pickerOpen()}>
             <div
+              ref={dialogRef}
               role="dialog"
               aria-label="Pin a resource"
               class="absolute right-0 top-full z-dropdown mt-2 w-80 max-w-[90vw] overflow-hidden rounded-lg border border-white/10 bg-[#0a1020]/95 shadow-2xl"
@@ -108,13 +150,17 @@ const PinnedStrip: Component = () => {
                   ref={inputRef}
                   type="search"
                   size="sm"
+                  role="combobox"
+                  aria-expanded="true"
+                  aria-controls={listboxId}
+                  aria-activedescendant={results().length > 0 ? `${listboxId}-opt-${selectedIndex()}` : undefined}
                   value={query()}
                   onInput={(e) => setQuery(e.currentTarget.value)}
                   placeholder="Search repos, workloads, models, pages…"
                   aria-label="Search pinnable resources"
                 />
               </div>
-              <div class="max-h-72 overflow-y-auto p-1">
+              <div id={listboxId} ref={listRef} role="listbox" aria-label="Pinnable resources" class="max-h-72 overflow-y-auto p-1">
                 <For
                   each={results()}
                   fallback={
@@ -123,11 +169,17 @@ const PinnedStrip: Component = () => {
                     </div>
                   }
                 >
-                  {(cmd) => (
-                    <button
-                      type="button"
+                  {(cmd, i) => (
+                    <div
+                      id={`${listboxId}-opt-${i()}`}
+                      role="option"
+                      aria-selected={i() === selectedIndex()}
+                      data-index={i()}
                       onClick={() => pinCommand(cmd)}
-                      class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-white/5"
+                      onMouseEnter={() => setSelectedIndex(i())}
+                      class={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+                        i() === selectedIndex() ? 'bg-white/10' : 'hover:bg-white/5'
+                      }`}
                     >
                       <span class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs text-text-dim">
                         {pinIcon(cmd.section)}
@@ -136,7 +188,7 @@ const PinnedStrip: Component = () => {
                         <span class="block truncate text-xs font-medium text-text-main">{cmd.name}</span>
                         <span class="block truncate text-[10px] text-text-muted">{cmd.description}</span>
                       </span>
-                    </button>
+                    </div>
                   )}
                 </For>
               </div>
@@ -155,7 +207,7 @@ const PinnedStrip: Component = () => {
       >
         <div class="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           <For each={pins()}>
-            {(pin: PinnedItem) => (
+            {(pin: PinnedItem, i) => (
               <div class="surface group/pin flex items-center gap-2.5 p-2.5">
                 <button
                   type="button"
@@ -171,14 +223,35 @@ const PinnedStrip: Component = () => {
                     <span class="block truncate text-[10px] text-text-muted">{pin.description}</span>
                   </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => removePin(pin.id)}
-                  aria-label={`Unpin ${pin.name}`}
-                  class="flex-shrink-0 rounded-md px-1.5 py-0.5 text-xs text-text-dim opacity-0 transition-opacity hover:bg-white/10 hover:text-text-main focus-visible:opacity-100 group-hover/pin:opacity-100"
-                >
-                  ✕
-                </button>
+                {/* Always visible below lg (touch has no hover); hover/focus-revealed on desktop. */}
+                <div class="flex flex-shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover/pin:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => movePin(pin.id, -1)}
+                    disabled={i() === 0}
+                    aria-label={`Move ${pin.name} up`}
+                    class="rounded-md px-1 py-0.5 text-[10px] text-text-dim transition-colors hover:bg-white/10 hover:text-text-main disabled:opacity-30"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => movePin(pin.id, 1)}
+                    disabled={i() === pins().length - 1}
+                    aria-label={`Move ${pin.name} down`}
+                    class="rounded-md px-1 py-0.5 text-[10px] text-text-dim transition-colors hover:bg-white/10 hover:text-text-main disabled:opacity-30"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removePin(pin.id)}
+                    aria-label={`Unpin ${pin.name}`}
+                    class="rounded-md px-1.5 py-0.5 text-xs text-text-dim transition-colors hover:bg-white/10 hover:text-text-main"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             )}
           </For>

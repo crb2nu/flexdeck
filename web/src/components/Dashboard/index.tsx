@@ -206,7 +206,19 @@ const Dashboard: Component = () => {
         <CustomizePanel layout={layout()} onToggle={toggleSection} onMove={moveSection} onReset={resetLayout} />
       </div>
 
-      <For each={visibleSections()}>
+      {/* When the user hides every section, the home page would render blank —
+          keep an escape hatch to the default layout instead. */}
+      <For
+        each={visibleSections()}
+        fallback={
+          <EmptyState
+            icon="▦"
+            title="All sections hidden"
+            subtitle="Every dashboard section is hidden in the current layout."
+            action={{ label: 'Reset layout', onClick: resetLayout }}
+          />
+        }
+      >
         {(sectionId) => (
           <Switch>
             <Match when={sectionId === 'pinned'}>

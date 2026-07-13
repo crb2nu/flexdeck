@@ -49,3 +49,15 @@ export function addPin(item: PinnedItem): boolean {
 export function removePin(id: string): void {
   setPins((prev) => prev.filter((p) => p.id !== id));
 }
+
+/** Swap a pin with its neighbor (no-op at the ends or for unknown ids). */
+export function movePin(id: string, delta: -1 | 1): void {
+  setPins((prev) => {
+    const index = prev.findIndex((p) => p.id === id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= prev.length) return prev;
+    const next = [...prev];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+  });
+}

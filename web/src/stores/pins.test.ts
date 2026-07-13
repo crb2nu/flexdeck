@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MAX_PINS, addPin, isPinned, pins, removePin, type PinnedItem } from './pins';
+import { MAX_PINS, addPin, isPinned, movePin, pins, removePin, type PinnedItem } from './pins';
 
 function pin(id: string): PinnedItem {
   return { id, name: id, description: `desc ${id}`, href: `/stack?q=${id}`, section: 'Repos' };
@@ -29,6 +29,24 @@ describe('pins store', () => {
     expect(addPin(pin('overflow'))).toBe(false);
     expect(pins()).toHaveLength(MAX_PINS);
     expect(isPinned('overflow')).toBe(false);
+  });
+
+  it('reorders pins with movePin and clamps at the ends', () => {
+    addPin(pin('a'));
+    addPin(pin('b'));
+    addPin(pin('c'));
+
+    movePin('c', -1);
+    expect(pins().map((p) => p.id)).toEqual(['a', 'c', 'b']);
+
+    movePin('a', 1);
+    expect(pins().map((p) => p.id)).toEqual(['c', 'a', 'b']);
+
+    // No-ops: first pin up, last pin down, unknown id.
+    movePin('c', -1);
+    movePin('b', 1);
+    movePin('missing', 1);
+    expect(pins().map((p) => p.id)).toEqual(['c', 'a', 'b']);
   });
 
   it('persists to localStorage under the pref key', () => {

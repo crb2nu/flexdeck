@@ -188,6 +188,7 @@ const CommandPalette: Component = () => {
               role="combobox"
               aria-expanded="true"
               aria-controls={listboxId}
+              aria-activedescendant={filteredCommands().length > 0 ? `${listboxId}-opt-${selectedIndex()}` : undefined}
               value={query()}
               onInput={e => setQuery(e.currentTarget.value)}
               placeholder="Search pages, surfaces, actions..."
@@ -210,6 +211,7 @@ const CommandPalette: Component = () => {
             }>
               {(cmd, i) => (
                 <div
+                  id={`${listboxId}-opt-${i()}`}
                   role="option"
                   aria-selected={i() === selectedIndex()}
                   data-index={i()}
