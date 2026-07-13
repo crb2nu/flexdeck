@@ -1,5 +1,5 @@
-import { Component, For, Show, createMemo, createSignal, onMount } from 'solid-js';
-import { useSearchParams } from '@solidjs/router';
+import { Component, For, Show, createEffect, createMemo, createSignal, onMount } from 'solid-js';
+import { A, useSearchParams } from '@solidjs/router';
 import { workspaceApi, type WorkspaceInventory, type WorkspaceRepository } from '../../lib/api';
 import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, Select, TabBar } from '../shared';
@@ -23,6 +23,7 @@ import {
   repositoryMatches,
   summarizeAdoption,
   summarizeBinding,
+  remoteWebUrl,
   summarizeContractDrift,
   summarizeRemote,
   type StackAdoptionFilter,
@@ -73,9 +74,11 @@ const Stack: Component = () => {
   const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
   // Deep-link support (?q=repo-name): the palette can land here with the
-  // search pre-applied. Initial-only — typing afterwards doesn't churn the URL.
+  // search pre-applied. URL → state only; typing afterwards doesn't churn the
+  // URL, but a same-route navigation (palette, lib chips) re-applies the param.
   const [searchParams] = useSearchParams<{ q?: string }>();
   const [query, setQuery] = createSignal(searchParams.q ?? '');
+  createEffect(() => setQuery(searchParams.q ?? ''));
   const [bucketFilter, setBucketFilter] = createSignal<StackBucketFilter>('all');
   const [readinessFilter, setReadinessFilter] = createSignal<StackReadinessFilter>('all');
   const [bindingFilter, setBindingFilter] = createSignal<StackBindingFilter>('all');
@@ -477,6 +480,7 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
   const readiness = createMemo(() => getRepoReadiness(props.repo));
   const language = createMemo(() => getRepositoryLanguage(props.repo));
   const remote = createMemo(() => summarizeRemote(props.repo));
+  const remoteHref = createMemo(() => remoteWebUrl(props.repo));
   const binding = createMemo(() => summarizeBinding(props.repo));
   const dependsOn = createMemo(() => props.repo.dependsOn ?? []);
   const libraryContracts = createMemo(() => props.repo.libraryContracts ?? []);
@@ -571,7 +575,20 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
         <Show when={remote()}>
           <div class="flex min-w-0 items-center gap-2">
             <span class="heading-label min-w-[58px]">Remote</span>
-            <span class="truncate font-mono text-text-muted" title={remote()}>{remote()}</span>
+            <Show
+              when={remoteHref()}
+              fallback={<span class="truncate font-mono text-text-muted" title={remote()}>{remote()}</span>}
+            >
+              <a
+                href={remoteHref()}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="truncate font-mono text-text-muted underline decoration-white/20 underline-offset-2 hover:text-text-main hover:decoration-white/40"
+                title={`${remote()} — open in browser`}
+              >
+                {remote()}
+              </a>
+            </Show>
           </div>
         </Show>
         <Show when={binding()}>
@@ -619,7 +636,19 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
         <Show when={dependsOn().length > 0}>
           <div class="flex min-w-0 items-center gap-2">
             <span class="heading-label min-w-[58px]">Uses libs</span>
-            <span class="truncate font-mono text-text-muted" title={dependsOn().join(', ')}>{dependsOn().join(', ')}</span>
+            <span class="flex min-w-0 flex-wrap items-center gap-1">
+              <For each={dependsOn()}>
+                {(lib) => (
+                  <A
+                    href={`/stack?q=${encodeURIComponent(lib)}`}
+                    class="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-text-muted hover:bg-white/10 hover:text-text-main"
+                    title={`Filter stack to ${lib}`}
+                  >
+                    {lib}
+                  </A>
+                )}
+              </For>
+            </span>
           </div>
         </Show>
         <Show when={libraryContracts().length > 0}>

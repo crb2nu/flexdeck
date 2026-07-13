@@ -1,4 +1,5 @@
 import { Component, createMemo, For, Show, type Accessor } from 'solid-js';
+import { A } from '@solidjs/router';
 import Badge from '../../shared/Badge';
 import GPUMetricsPanel from '../../Models/GPUMetricsPanel';
 import { stableListByKey } from '../../../lib/stableList';
@@ -46,12 +47,18 @@ const GamingSessionPanel: Component<{ node: FleetNode; now: Accessor<number> }> 
         </div>
       </div>
       <Show when={session().status?.runtimePod}>
-        <div class="flex items-center gap-2 text-[11px]">
-          <span class="flex-shrink-0 text-text-dim">Runtime</span>
-          <span class="truncate font-mono text-text-muted" title={session().status?.runtimePod}>
-            {session().status?.runtimePod}
-          </span>
-        </div>
+        {(pod) => (
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="flex-shrink-0 text-text-dim">Runtime</span>
+            <A
+              href={`/logs?q=${encodeURIComponent(`{namespace="${session().namespace}", pod="${pod()}"}`)}`}
+              class="truncate font-mono text-text-muted underline decoration-white/20 underline-offset-2 hover:text-text-main hover:decoration-white/40"
+              title={`${pod()} — open logs`}
+            >
+              {pod()}
+            </A>
+          </div>
+        )}
       </Show>
       <Show when={session().status?.message}>
         <div class="text-[11px] text-text-dim">{session().status?.message}</div>
@@ -70,13 +77,14 @@ const HostedModels: Component<{ node: FleetNode }> = (props) => (
     <div class="flex flex-wrap gap-1">
       <For each={props.node.models}>
         {(m) => (
-          <span
-            class="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px]"
-            title={`${m.namespace}/${m.name} · ${m.phase}`}
+          <A
+            href={`/flexinfer?section=telemetry&q=${encodeURIComponent(m.name)}`}
+            class="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] hover:border-white/20 hover:bg-white/10"
+            title={`${m.namespace}/${m.name} · ${m.phase} — open telemetry`}
           >
             <span class="font-mono text-text-dim">{m.name}</span>
             <Badge tone={m.ready ? 'ok' : 'default'} size="sm">{m.phase}</Badge>
-          </span>
+          </A>
         )}
       </For>
     </div>

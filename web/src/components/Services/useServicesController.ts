@@ -45,14 +45,20 @@ export function useServicesController() {
   const [error, setError] = createSignal('');
   const [namespaceFilter, setNamespaceFilter] = createSignal('');
   // Deep-link support (?tab=services&q=name): the palette and shared links can
-  // land on a specific resource tab with the search pre-applied. Initial-only —
-  // typing afterwards doesn't churn the URL.
+  // land on a specific resource tab with the search pre-applied. URL → state
+  // only; typing afterwards doesn't churn the URL, but a same-route navigation
+  // (palette) re-applies the params.
   const [searchParams] = useSearchParams<{ q?: string; tab?: string }>();
   const isTabType = (v: unknown): v is TabType =>
     typeof v === 'string' &&
     ['deployments', 'services', 'ingresses', 'statefulsets', 'daemonsets', 'jobs', 'storage', 'configmaps', 'secrets'].includes(v);
   const [searchTerm, setSearchTerm] = createSignal(searchParams.q ?? '');
   const [activeTab, setActiveTab] = createSignal<TabType>(isTabType(searchParams.tab) ? searchParams.tab : 'deployments');
+  createEffect(() => setSearchTerm(searchParams.q ?? ''));
+  createEffect(() => {
+    const tab = searchParams.tab;
+    if (isTabType(tab)) setActiveTab(tab);
+  });
 
   const isK8sEnabled = () => healthStore.features?.k8s?.enabled ?? false;
   const isReadOnly = () => healthStore.features?.k8s?.readOnly ?? true;

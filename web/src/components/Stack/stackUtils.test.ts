@@ -21,6 +21,7 @@ import {
   summarizeAdoption,
   summarizeBinding,
   summarizeContractDrift,
+  remoteWebUrl,
   summarizeRemote,
 } from './stackUtils';
 
@@ -97,6 +98,49 @@ describe('stackUtils', () => {
         remotes: [{ name: 'origin', url: 'git@gitlab.example.com:libs/visual-kit.git' }],
       },
     }))).toBe('origin: gitlab.example.com/libs/visual-kit');
+  });
+
+  it('tolerates repos with missing searchable fields instead of throwing', () => {
+    const malformed = makeRepo({
+      // API shape drift: manifest missing `type`, remote missing `url`.
+      manifests: [{ path: 'go.mod' } as never],
+      git: {
+        isRepository: true,
+        clean: true,
+        remotes: [{ name: 'origin' } as never],
+      },
+    });
+
+    expect(() => repositoryMatches(malformed, 'anything')).not.toThrow();
+    expect(repositoryMatches(malformed, 'go.mod')).toBe(true);
+  });
+
+  it('derives a browser-openable remote URL, stripping credentials and .git', () => {
+    expect(remoteWebUrl(makeRepo())).toBe('https://gitlab.example.com/services/flexdeck');
+    expect(remoteWebUrl(makeRepo({
+      git: {
+        isRepository: true,
+        clean: true,
+        remotes: [{ name: 'origin', url: 'git@gitlab.example.com:libs/visual-kit.git' }],
+      },
+    }))).toBe('https://gitlab.example.com/libs/visual-kit');
+    expect(remoteWebUrl(makeRepo({
+      git: {
+        isRepository: true,
+        clean: true,
+        remotes: [{ name: 'origin', url: 'https://token:secret@gitlab.example.com/services/flexdeck.git' }],
+      },
+    }))).toBe('https://gitlab.example.com/services/flexdeck');
+    expect(remoteWebUrl(makeRepo({
+      git: {
+        isRepository: true,
+        clean: true,
+        remotes: [{ name: 'origin', url: 'ssh://git@gitlab.example.com/services/flexdeck.git' }],
+      },
+    }))).toBe('');
+    expect(remoteWebUrl(makeRepo({
+      git: { isRepository: true, clean: true, remotes: [] },
+    }))).toBe('');
   });
 
   it('summarizes an inferred service binding as namespace + flux source', () => {

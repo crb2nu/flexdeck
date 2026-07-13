@@ -75,7 +75,12 @@ export function repositoryMatches(repo: WorkspaceRepository, query: string): boo
     ]),
   ];
 
-  return searchable.some((value) => value.toLowerCase().includes(normalizedQuery));
+  // Tolerate missing fields (API shape drift): a single undefined entry must
+  // not throw — an exception here propagates into Solid's reactive flush and
+  // freezes the whole page.
+  return searchable.some(
+    (value) => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery),
+  );
 }
 
 // libAdoptionLabel describes how widely a library is adopted. Service adoption
@@ -383,6 +388,24 @@ export function matchesBindingFilter(repo: WorkspaceRepository, filter: StackBin
       return isInferredBinding(repo);
     default:
       return true;
+  }
+}
+
+/** Browser-openable URL for the repo's primary remote ('' when none derivable). */
+export function remoteWebUrl(repo: WorkspaceRepository): string {
+  const value = repo.git.remotes?.[0]?.url.trim() ?? '';
+  if (value === '') return '';
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    parsed.username = '';
+    parsed.password = '';
+    parsed.pathname = parsed.pathname.replace(/\.git$/, '');
+    return parsed.toString();
+  } catch {
+    const sshMatch = value.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+    return sshMatch ? `https://${sshMatch[1]}/${sshMatch[2]}` : '';
   }
 }
 
