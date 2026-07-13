@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
-import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
+import { HashRouter, Route } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pipelineMocks = vi.hoisted(() => {
@@ -62,7 +62,7 @@ const pipelineMocks = vi.hoisted(() => {
     repos: [selectedRepo],
     scheduleRefresh: vi.fn(),
     selectedJob: null as null | { id: string; name: string; stage: string; status: string },
-    selectedRepo,
+    selectedRepo: selectedRepo as typeof selectedRepo | null,
     selectRepo: vi.fn(),
     setAutoRefresh: vi.fn(),
     setPipelineSort: vi.fn(),
@@ -137,10 +137,16 @@ vi.mock('../shared', () => ({
 
 import Pipeline from './index';
 
-function mount(factory: () => JSX.Element) {
+// Router context is required since Pipeline reads ?repo=/?tab=/?view= via
+// useSearchParams. Set window.location.hash before mounting to deep-link.
+function mount() {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(factory, container);
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/" component={Pipeline} />
+    </HashRouter>
+  ), container);
   return () => {
     dispose();
     container.remove();
@@ -205,16 +211,19 @@ describe('Pipeline detail surface', () => {
     pipelineMocks.setSelectedJob.mockClear();
     pipelineMocks.setTriggerRef.mockClear();
     pipelineMocks.scheduleRefresh.mockClear();
+    pipelineMocks.selectedRepo = pipelineMocks.repos[0];
+    window.location.hash = '#/';
   });
 
   afterEach(() => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
+    window.location.hash = '#/';
   });
 
   it('shows the shared fallback badge in pipeline detail mode', async () => {
-    cleanup = mount(() => <Pipeline />);
+    cleanup = mount();
 
     clickButtonContaining('flexdeck');
 
@@ -234,7 +243,7 @@ describe('Pipeline detail surface', () => {
       message: 'Pipeline retry failed.',
     };
 
-    cleanup = mount(() => <Pipeline />);
+    cleanup = mount();
 
     clickButtonContaining('flexdeck');
 
@@ -251,7 +260,7 @@ describe('Pipeline detail surface', () => {
   });
 
   it('refreshes the selected repo and pushes an info notice when refresh is clicked', async () => {
-    cleanup = mount(() => <Pipeline />);
+    cleanup = mount();
 
     clickButtonContaining('flexdeck');
 
@@ -263,5 +272,46 @@ describe('Pipeline detail surface', () => {
 
     expect(pipelineMocks.fetchPipelineStatus).toHaveBeenCalledWith(42);
     expect(pipelineMocks.pushActionNotice).toHaveBeenCalledWith('info', 'Refreshing pipeline status...');
+  });
+
+  it('resolves a ?repo= deep link (by id) once repos are loaded', async () => {
+    pipelineMocks.selectedRepo = null;
+    window.location.hash = '#/?repo=42';
+
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(pipelineMocks.selectRepo).toHaveBeenCalledTimes(1);
+    });
+    expect(pipelineMocks.selectRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 42, name: 'flexdeck' }),
+    );
+  });
+
+  it('resolves a ?repo= deep link by group/name path', async () => {
+    pipelineMocks.selectedRepo = null;
+    window.location.hash = `#/?repo=${encodeURIComponent('flexdeck')}&view=detail`;
+
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(pipelineMocks.selectRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 42 }),
+      );
+    });
+  });
+
+  it('writes repo selection into the URL for deep-link sharing', async () => {
+    cleanup = mount();
+
+    clickButtonContaining('flexdeck');
+
+    await vi.waitFor(() => {
+      expect(window.location.hash).toContain('repo=42');
+      expect(window.location.hash).toContain('view=detail');
+    });
+    expect(pipelineMocks.selectRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 42 }),
+    );
   });
 });

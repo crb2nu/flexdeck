@@ -1,4 +1,5 @@
 import { Component, For, Show, createMemo } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { LoadingState, ErrorState, EmptyState } from '../shared';
 import { ciApi } from '../../lib/api';
 import { createPolledResource } from '../../hooks/createPolledResource';
@@ -22,6 +23,13 @@ interface TrendData {
 }
 
 const PipelineTrends: Component = () => {
+  // Same-route navigation: clicking a trend card drops the tab param (back to
+  // the pipelines tab) and opens that project's pipeline detail via ?repo=.
+  const [, setSearchParams] = useSearchParams<{ repo?: string; tab?: string; view?: string }>();
+  const openProjectDetail = (trend: TrendData) => {
+    setSearchParams({ tab: undefined, view: 'detail', repo: String(trend.project_id) });
+  };
+
   // Keyed reconcile keeps unchanged trend cards (and their sparklines) from
   // being torn down on every 60s poll.
   const res = createPolledResource<TrendData[]>('pipeline-trends', () => ciApi.getTrends(), {
@@ -90,6 +98,15 @@ const PipelineTrends: Component = () => {
             </span>
           </div>
         </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-all"
+            onClick={() => void res.refresh()}
+          >
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       <Show when={loading()}>
@@ -107,7 +124,12 @@ const PipelineTrends: Component = () => {
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <For each={trends()}>
           {(trend) => (
-            <div class="surface-hover p-4 flex flex-col gap-3">
+            <button
+              type="button"
+              class="surface-hover p-4 flex flex-col gap-3 text-left cursor-pointer"
+              title={`Open pipeline detail for ${trend.project_name || `project #${trend.project_id}`}`}
+              onClick={() => openProjectDetail(trend)}
+            >
               {/* Header */}
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-text-main font-mono truncate" title={trend.project_name || `Project #${trend.project_id}`}>
@@ -163,7 +185,7 @@ const PipelineTrends: Component = () => {
                   />
                 </div>
               </Show>
-            </div>
+            </button>
           )}
         </For>
       </div>

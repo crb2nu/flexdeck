@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
-import type { JSX } from 'solid-js';
 import { render } from 'solid-js/web';
+import { HashRouter, Route } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const trendsMocks = vi.hoisted(() => ({
@@ -27,10 +27,16 @@ vi.mock('../../hooks/createPolling', () => ({
 
 import PipelineTrends from './PipelineTrends';
 
-function mount(factory: () => JSX.Element) {
+// Router context is required since PipelineTrends writes ?repo=/?view= via
+// useSearchParams when a trend card is clicked.
+function mount() {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const dispose = render(factory, container);
+  const dispose = render(() => (
+    <HashRouter>
+      <Route path="/" component={PipelineTrends} />
+    </HashRouter>
+  ), container);
   return () => {
     dispose();
     container.remove();
@@ -47,29 +53,31 @@ describe('PipelineTrends', () => {
   beforeEach(() => {
     trendsMocks.getTrends.mockReset();
     trendsMocks.createPolling.mockClear();
+    window.location.hash = '#/';
   });
 
   afterEach(() => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
+    window.location.hash = '#/';
   });
 
-  it('renders shared operator state metadata after trends load', async () => {
-    trendsMocks.getTrends.mockImplementation(async () => [
-      {
-        project_id: 7,
-        project_name: 'flexdeck',
-        avg_duration_s: 42,
-        p95_duration_s: 84,
-        success_rate: 99.1,
-        total_runs: 12,
-        sparkline: [40, 42, 39, 41],
-        trend: 'down',
-      },
-    ]);
+  const sampleTrend = {
+    project_id: 7,
+    project_name: 'flexdeck',
+    avg_duration_s: 42,
+    p95_duration_s: 84,
+    success_rate: 99.1,
+    total_runs: 12,
+    sparkline: [40, 42, 39, 41],
+    trend: 'down',
+  };
 
-    cleanup = mount(() => <PipelineTrends />);
+  it('renders shared operator state metadata after trends load', async () => {
+    trendsMocks.getTrends.mockImplementation(async () => [sampleTrend]);
+
+    cleanup = mount();
 
     await vi.waitFor(() => {
       expect(pageText()).toContain('READY · 1 project');
@@ -79,5 +87,47 @@ describe('PipelineTrends', () => {
     expect(text).toContain('Execution trend telemetry');
     expect(text).toContain('READY · 1 project');
     expect(text).toContain('flexdeck');
+  });
+
+  it('deep-links a trend card click to that repo pipeline detail', async () => {
+    trendsMocks.getTrends.mockImplementation(async () => [sampleTrend]);
+
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('flexdeck');
+    });
+
+    const card = Array.from(document.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('flexdeck'),
+    ) as HTMLButtonElement | undefined;
+    expect(card).toBeTruthy();
+    card!.click();
+
+    await vi.waitFor(() => {
+      expect(window.location.hash).toContain('repo=7');
+      expect(window.location.hash).toContain('view=detail');
+    });
+  });
+
+  it('refetches trends when the manual refresh control is clicked', async () => {
+    trendsMocks.getTrends.mockImplementation(async () => [sampleTrend]);
+
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(pageText()).toContain('flexdeck');
+    });
+
+    const callsBefore = trendsMocks.getTrends.mock.calls.length;
+    const refresh = Array.from(document.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('Refresh'),
+    ) as HTMLButtonElement | undefined;
+    expect(refresh).toBeTruthy();
+    refresh!.click();
+
+    await vi.waitFor(() => {
+      expect(trendsMocks.getTrends.mock.calls.length).toBe(callsBefore + 1);
+    });
   });
 });
