@@ -85,6 +85,7 @@ const columns: ColumnDef<K8sJob>[] = [
 const JobsTable: Component<{ jobs: K8sJob[] }> = (props) => (
   <DataTable
     data={props.jobs}
+    persistKey="services.jobs"
     columns={columns}
     rowKey={(j) => `${j.metadata?.namespace}/${j.metadata?.name}`}
     defaultSort={{ column: 'name', direction: 'asc' }}

@@ -107,6 +107,7 @@ const DeploymentsTable: Component<DeploymentsTableProps> = (props) => {
   return (
     <DataTable
       data={props.deployments}
+      persistKey="services.deployments"
       columns={columns()}
       rowKey={(d) => `${d.metadata?.namespace}/${d.metadata?.name}`}
       defaultSort={{ column: 'name', direction: 'asc' }}

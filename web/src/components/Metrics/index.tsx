@@ -8,6 +8,7 @@ import {
   Suspense,
   ErrorBoundary,
 } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { PageHeader, TabBar, LoadingState, ErrorState, EmptyState } from "../shared";
 import type { TabDef } from "../shared";
 import PageScrollBody from "../shared/PageScrollBody";
@@ -29,8 +30,19 @@ const METRICS_TABS: TabDef<MetricsTabId>[] = [
   { id: "alerts", label: "Alerts", color: "white" },
 ];
 
+const isMetricsTab = (value: unknown): value is MetricsTabId =>
+  METRICS_TABS.some((tab) => tab.id === value);
+
 const Metrics: Component = () => {
-  const [metricsTab, setMetricsTab] = createSignal<MetricsTabId>("prometheus");
+  // The active tab lives in the URL (?tab=grafana) so refresh keeps your place
+  // and tabs are deep-linkable; deriving from searchParams also re-applies the
+  // tab on same-route navigations (palette). Default keeps a clean URL.
+  const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
+  const metricsTab = createMemo<MetricsTabId>(() =>
+    isMetricsTab(searchParams.tab) ? searchParams.tab : "prometheus",
+  );
+  const setMetricsTab = (tab: MetricsTabId) =>
+    setSearchParams({ tab: tab === "prometheus" ? undefined : tab });
   const {
     panels,
     loading,

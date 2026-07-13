@@ -1,5 +1,6 @@
 import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createPolling } from '../../hooks/createPolling';
+import { createPersistedSignal } from '../../hooks/createPersistedSignal';
 import { ciApi, type RepoInfo } from '../../lib/api';
 import type { Pipeline as VizPipeline, PipelineJob, PipelineStage } from './CIPipelineViz';
 import {
@@ -82,6 +83,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+const PIPELINE_SORT_FIELDS = ['activity', 'status', 'name', 'date'] as const;
+
+function isPipelineSortConfig(value: unknown): value is PipelineSortConfig {
+  return (
+    isRecord(value) &&
+    (PIPELINE_SORT_FIELDS as readonly string[]).includes(value.field as string) &&
+    (value.direction === 'asc' || value.direction === 'desc')
+  );
+}
+
 function readStringArray(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback;
   const strings = value.filter((item): item is string => typeof item === 'string');
@@ -114,10 +125,12 @@ export function usePipelineController() {
   const [traceLoading, setTraceLoading] = createSignal(false);
   const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [lastUpdate, setLastUpdate] = createSignal<Date | null>(null);
-  const [pipelineSort, setPipelineSort] = createSignal<PipelineSortConfig>({
-    field: 'activity',
-    direction: 'desc',
-  });
+  // The overview sort is a standing triage preference — it survives reloads.
+  const [pipelineSort, setPipelineSort] = createPersistedSignal<PipelineSortConfig>(
+    'pipeline.sort',
+    { field: 'activity', direction: 'desc' },
+    isPipelineSortConfig,
+  );
   const [pipelinesCache, setPipelinesCache] = createSignal<Map<number, VizPipeline>>(new Map());
   const [overviewLoading, setOverviewLoading] = createSignal(false);
   const [pipelineActionLoading, setPipelineActionLoading] = createSignal(false);

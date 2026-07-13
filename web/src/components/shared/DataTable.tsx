@@ -1,6 +1,7 @@
 import { For, Show, JSX, createSignal, createMemo } from 'solid-js';
 import EmptyState from './EmptyState';
 import { stableListByKey } from '../../lib/stableList';
+import { createPersistedSignal, oneOf } from '../../hooks/createPersistedSignal';
 
 export interface ColumnDef<T> {
   id: string;
@@ -23,11 +24,25 @@ export interface DataTableProps<T> {
   emptyIcon?: JSX.Element;
   emptyTitle?: string;
   stickyHeader?: boolean;
+  /**
+   * When set, the chosen sort survives reloads via createPersistedSignal
+   * (stored under `flexdeck.pref.<persistKey>.sortCol/.sortDir`). Read once
+   * at mount — give each table a unique, stable key.
+   */
+  persistKey?: string;
 }
 
+const isColumnId = (value: unknown): value is string => typeof value === 'string';
+
 function DataTable<T>(props: DataTableProps<T>): JSX.Element {
-  const [sortCol, setSortCol] = createSignal(props.defaultSort?.column ?? '');
-  const [sortDir, setSortDir] = createSignal<'asc' | 'desc'>(props.defaultSort?.direction ?? 'asc');
+  // A stored column id that no longer exists in `columns` is harmless: the
+  // sort memo below falls back to unsorted until the user picks a live column.
+  const [sortCol, setSortCol] = props.persistKey
+    ? createPersistedSignal<string>(`${props.persistKey}.sortCol`, props.defaultSort?.column ?? '', isColumnId)
+    : createSignal(props.defaultSort?.column ?? '');
+  const [sortDir, setSortDir] = props.persistKey
+    ? createPersistedSignal<'asc' | 'desc'>(`${props.persistKey}.sortDir`, props.defaultSort?.direction ?? 'asc', oneOf(['asc', 'desc']))
+    : createSignal<'asc' | 'desc'>(props.defaultSort?.direction ?? 'asc');
 
   const handleSort = (colId: string) => {
     if (sortCol() === colId) {

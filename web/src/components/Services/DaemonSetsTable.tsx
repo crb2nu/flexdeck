@@ -74,6 +74,7 @@ const columns: ColumnDef<K8sDaemonSet>[] = [
 const DaemonSetsTable: Component<{ daemonsets: K8sDaemonSet[] }> = (props) => (
   <DataTable
     data={props.daemonsets}
+    persistKey="services.daemonsets"
     columns={columns}
     rowKey={(d) => `${d.metadata?.namespace}/${d.metadata?.name}`}
     defaultSort={{ column: 'name', direction: 'asc' }}

@@ -43,6 +43,9 @@ export function useServicesController() {
   const [revealedKeys, setRevealedKeys] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  // Epoch ms of the last successful fetch (0 until one lands) — feeds the
+  // PageHeader freshness chip.
+  const [lastUpdated, setLastUpdated] = createSignal(0);
   const [namespaceFilter, setNamespaceFilter] = createSignal('');
   // Deep-link support (?tab=services&q=name): the palette and shared links can
   // land on a specific resource tab with the search pre-applied. URL → state
@@ -128,6 +131,7 @@ export function useServicesController() {
       setConfigmaps(Array.isArray(configMapData) ? configMapData : (configMapData?.items || []));
       setSecrets(Array.isArray(secretList) ? secretList : (secretList?.items || []));
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -234,6 +238,7 @@ export function useServicesController() {
   return {
     loading,
     error,
+    lastUpdated,
     namespaceFilter,
     setNamespaceFilter,
     searchTerm,

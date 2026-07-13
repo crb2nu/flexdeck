@@ -1,4 +1,5 @@
-import { Component, createEffect, createMemo, createSignal, For, Show, lazy, Suspense } from "solid-js";
+import { Component, createMemo, For, Show, lazy, Suspense } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { healthStore } from "../../stores/health";
 import UsersTab from "./UsersTab";
 import AuditTab from "./AuditTab";
@@ -49,24 +50,24 @@ const Admin: Component = () => {
   // Default to the first enabled tab
   const defaultTab = (): Tab => getDefaultAdminTab(healthStore.features || {});
 
-  const [activeTab, setActiveTab] = createSignal<Tab>(defaultTab());
-
   const tabs = () => getAdminTabs(healthStore.features || {});
+
+  // The active tab lives in the URL (?tab=audit) so refresh keeps your place
+  // and tabs are deep-linkable; deriving from searchParams also re-applies the
+  // tab on same-route navigations (palette). A requested tab that isn't
+  // enabled (flag off, stale link) falls back to the first enabled tab.
+  const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
+  const activeTab = createMemo<Tab>(() => {
+    const requested = searchParams.tab;
+    return tabs().some((tab) => tab.id === requested) ? (requested as Tab) : defaultTab();
+  });
+  const setActiveTab = (tab: Tab) => setSearchParams({ tab });
   const readinessItems = createMemo<ReadinessItem[]>(() => {
     const items: ReadinessItem[] = [
       { key: "audit", label: "Audit Logs", feature: healthStore.features?.audit },
       { key: "multi_cluster", label: "Multi-Cluster", feature: healthStore.features?.multi_cluster },
     ];
     return items.filter((item) => item.feature && !item.feature.enabled && (item.feature.mode || item.feature.reason));
-  });
-
-  createEffect(() => {
-    const enabledTabs = tabs();
-    if (enabledTabs.length === 0) return;
-    const isActiveEnabled = enabledTabs.some((tab) => tab.id === activeTab());
-    if (!isActiveEnabled) {
-      setActiveTab(enabledTabs[0].id);
-    }
   });
 
   return (

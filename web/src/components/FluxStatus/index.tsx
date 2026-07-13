@@ -15,6 +15,9 @@ const FluxStatus: Component = () => {
   const [sources, setSources] = createSignal<FluxSource[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
+  // Epoch ms of the last successful fetch (0 until one lands) — feeds the
+  // PageHeader freshness chip.
+  const [lastUpdated, setLastUpdated] = createSignal(0);
   const [reconciling, setReconciling] = createSignal<string | null>(null);
   const [suspending, setSuspending] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal('');
@@ -33,8 +36,9 @@ const FluxStatus: Component = () => {
       setHelmReleases(hr);
       setSources(src);
       setError('');
+      setLastUpdated(Date.now());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load Flux resources');
+      setError(err instanceof Error ? sanitizeError(err) : 'Failed to load Flux resources');
     } finally {
       setLoading(false);
     }
@@ -106,6 +110,7 @@ const FluxStatus: Component = () => {
       {/* Header */}
       <PageHeader
         title="Flux GitOps"
+        lastUpdated={lastUpdated() || null}
         onRefresh={fetchAll}
         refreshDisabled={loading()}
         refreshing={loading()}
