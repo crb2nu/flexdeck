@@ -180,6 +180,24 @@ describe('Stack Explorer', () => {
     });
   });
 
+  it('links the CI badge through to the Pipeline page for that repo', async () => {
+    stackMocks.getRepos.mockResolvedValue(makeInventory());
+    cleanup = mount();
+
+    await vi.waitFor(() => {
+      expect(repoCard('services', 'flexdeck')).toBeTruthy();
+    });
+
+    const card = repoCard('services', 'flexdeck')!;
+    const ciLink = Array.from(card.querySelectorAll('a')).find((anchor) =>
+      anchor.getAttribute('href')?.includes('/pipeline?repo='),
+    );
+    expect(ciLink).toBeTruthy();
+    expect(ciLink!.getAttribute('href')).toContain(`repo=${encodeURIComponent('services/flexdeck')}`);
+    expect(ciLink!.getAttribute('href')).toContain('view=detail');
+    expect(ciLink!.textContent).toContain('CI');
+  });
+
   it('surfaces library adoption coverage and filters to unadopted libs', async () => {
     const inventory: WorkspaceInventory = {
       root: '/workspace',

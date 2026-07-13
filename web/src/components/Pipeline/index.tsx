@@ -1,4 +1,6 @@
-import { Component, createSignal, Show, lazy, Suspense, ErrorBoundary, createMemo, For } from 'solid-js';
+import { Component, createEffect, createSignal, Show, lazy, Suspense, ErrorBoundary, createMemo, For } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
+import type { RepoInfo } from '../../lib/api';
 import CIPipelineViz from './CIPipelineViz';
 import PipelineListView from './PipelineListView';
 import {
@@ -13,11 +15,29 @@ import type { TabDef } from '../shared';
 const PipelineTrends = lazy(() => import('./PipelineTrends'));
 const PipelineHistory = lazy(() => import('./PipelineHistory'));
 
+type PageTab = 'pipelines' | 'trends' | 'history';
+type ViewMode = 'overview' | 'detail';
+
+const isPageTab = (v: unknown): v is PageTab =>
+  typeof v === 'string' && ['pipelines', 'trends', 'history'].includes(v);
+const isViewMode = (v: unknown): v is ViewMode =>
+  typeof v === 'string' && ['overview', 'detail'].includes(v);
+
 const Pipeline: Component = () => {
   const [activeTab, setActiveTab] = createSignal<'config' | 'logs'>('logs');
   const [repoFilter, setRepoFilter] = createSignal('');
-  const [viewMode, setViewMode] = createSignal<'overview' | 'detail'>('overview');
-  const [pageTab, setPageTab] = createSignal<'pipelines' | 'trends' | 'history'>('pipelines');
+  // Page tab, view mode, and selected repo live in the URL
+  // (?repo=<id|group/name>&tab=<pipelines|trends|history>&view=<overview|detail>)
+  // so other surfaces (Stack CI badges, trend cards, palette, shared links) can
+  // deep-link here, and same-route navigations re-apply state. Defaults keep a
+  // clean URL; a repo param alone implies detail view.
+  const [searchParams, setSearchParams] = useSearchParams<{ repo?: string; tab?: string; view?: string }>();
+  const pageTab = createMemo<PageTab>(() => (isPageTab(searchParams.tab) ? searchParams.tab : 'pipelines'));
+  const setPageTab = (tab: PageTab) => setSearchParams({ tab: tab === 'pipelines' ? undefined : tab });
+  const viewMode = createMemo<ViewMode>(() =>
+    isViewMode(searchParams.view) ? searchParams.view : searchParams.repo ? 'detail' : 'overview',
+  );
+  const setViewMode = (view: ViewMode) => setSearchParams({ view });
   const [mobileSidebarOpen, setMobileSidebarOpen] = createSignal(false);
   const {
     actionNotice,
@@ -53,6 +73,23 @@ const Pipeline: Component = () => {
 
   const filteredRepos = () => {
     return repos().filter(r => r.name.toLowerCase().includes(repoFilter().toLowerCase()));
+  };
+
+  // URL → state: resolve ?repo= (numeric GitLab id or group/name path) once the
+  // repo list is loaded. Re-runs on same-route navigation with new params.
+  createEffect(() => {
+    const param = searchParams.repo;
+    if (!param) return;
+    const match = repos().find((r) => String(r.id) === param || r.name === param);
+    if (match && selectedRepo()?.id !== match.id) {
+      void selectRepo(match);
+    }
+  });
+
+  // State → URL: user-driven repo selection writes the canonical (id) form.
+  const openRepoDetail = (repo: RepoInfo) => {
+    void selectRepo(repo);
+    setSearchParams({ repo: String(repo.id), view: 'detail' });
   };
 
   const closeSidebarOnMobile = () => {
@@ -151,8 +188,7 @@ const Pipeline: Component = () => {
                                         : 'text-text-dim hover:bg-white/5'
                                 }`}
                                 onClick={() => {
-                                    setViewMode('detail');
-                                    selectRepo(repo);
+                                    openRepoDetail(repo);
                                     setSelectedJob(null);
                                     closeSidebarOnMobile();
                                 }}
@@ -217,8 +253,7 @@ const Pipeline: Component = () => {
                     sort={pipelineSort()}
                     onSortChange={setPipelineSort}
                     onSelectPipeline={(repo) => {
-                      setViewMode('detail');
-                      selectRepo(repo);
+                      openRepoDetail(repo);
                     }}
                     loading={overviewLoading()}
                 />

@@ -529,7 +529,16 @@ const RepoCard: Component<{ repo: WorkspaceRepository }> = (props) => {
           </Badge>
         </Show>
         <Show when={hasManifest(props.repo, 'gitlab-ci')}>
-          <Badge tone="ok">CI</Badge>
+          {/* Deep link into the Pipeline page; ?repo= accepts the GitLab
+              group/name path (binding when verified, bucket/name otherwise). */}
+          <A
+            href={`/pipeline?repo=${encodeURIComponent(
+              props.repo.binding?.gitlabProject ?? `${props.repo.bucket}/${props.repo.name}`,
+            )}&view=detail`}
+            title={`Open CI pipeline detail for ${props.repo.name}`}
+          >
+            <Badge tone="ok">CI</Badge>
+          </A>
         </Show>
       </div>
 
