@@ -2,6 +2,7 @@ import { Component, createSignal, createMemo, For, Show } from 'solid-js';
 import { sanitizeError } from '../../../lib/sanitizeError';
 import { modelsApi } from '../../../lib/api';
 import { createPolling } from '../../../hooks/createPolling';
+import { createPersistedSignal } from '../../../hooks/createPersistedSignal';
 import type { GroupSwapHistoryResponse, GPUSwapEvent } from '../../../lib/types';
 
 interface GroupSwapTimelineProps {
@@ -20,6 +21,10 @@ interface TimelineSegment {
 
 type HoursOption = 6 | 12 | 24 | 48;
 const HOURS_OPTIONS: HoursOption[] = [6, 12, 24, 48];
+
+function isHoursOption(value: unknown): value is HoursOption {
+  return typeof value === 'number' && (HOURS_OPTIONS as number[]).includes(value);
+}
 
 // Stale-while-revalidate: the last good response, stamped with the fetch time
 // and the window it was fetched for. Refetches (polls, hours changes) keep
@@ -125,19 +130,26 @@ const GroupSwapTimeline: Component<GroupSwapTimelineProps> = (props) => {
   const [snap, setSnap] = createSignal<Snapshot | null>(null);
   const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal('');
-  const [hours, setHours] = createSignal<HoursOption>(24);
+  const [hours, setHours] = createPersistedSignal<HoursOption>('flexinfer.swapHours', 24, isHoursOption);
 
+  // Latest-wins: rapid hours switches fire overlapping fetches, and a slow
+  // wide-window response must not overwrite a newer narrow one. Each fetch
+  // takes a sequence token and drops its resolution if it's no longer newest.
+  let fetchSeq = 0;
   const fetchHistory = async () => {
     const requested = hours();
+    const seq = ++fetchSeq;
     if (snap()) setRefreshing(true);
     try {
       const result = await modelsApi.groupSwapHistory(props.group, props.namespace, requested);
+      if (seq !== fetchSeq) return;
       setSnap({ data: result, at: Date.now(), hours: requested });
       setError('');
     } catch (err) {
+      if (seq !== fetchSeq) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch swap history');
     } finally {
-      setRefreshing(false);
+      if (seq === fetchSeq) setRefreshing(false);
     }
   };
 

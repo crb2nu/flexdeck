@@ -175,10 +175,15 @@ vi.mock('../../stores/metrics', () => ({
 vi.mock('../shared', () => ({
   DetailPanel: (props: { title: string }) => <div data-testid="detail-panel">{props.title}</div>,
   LoadingState: (props: { message?: string }) => <div data-testid="loading-state">{props.message ?? ''}</div>,
-  EmptyState: (props: { title: string; subtitle?: string }) => (
+  EmptyState: (props: { title: string; subtitle?: string; action?: { label: string; onClick: () => void } }) => (
     <div data-testid="empty-state">
       {props.title}
       {props.subtitle ?? ''}
+      {props.action ? (
+        <button type="button" onClick={() => props.action!.onClick()}>
+          {props.action.label}
+        </button>
+      ) : null}
     </div>
   ),
   PulseCard: dashboardMocks.pulseCardMock,
@@ -371,6 +376,7 @@ describe('Dashboard shell', () => {
     cleanup();
     cleanup = () => undefined;
     document.body.innerHTML = '';
+    localStorage.removeItem('flexdeck.pref.dashboard.layout');
   });
 
   it('wires dashboard summary cards and topology props from the shell', () => {
@@ -430,6 +436,30 @@ describe('Dashboard shell', () => {
 
     expect(document.querySelector('[data-testid="topology-skeleton"]')).toBeTruthy();
     expect(dashboardMocks.topologyGraphMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a reset escape hatch instead of a blank page when every section is hidden', () => {
+    localStorage.setItem(
+      'flexdeck.pref.dashboard.layout',
+      JSON.stringify([
+        { id: 'pinned', visible: false },
+        { id: 'cluster', visible: false },
+        { id: 'ai-ops', visible: false },
+        { id: 'main', visible: false },
+      ]),
+    );
+
+    cleanup = mount(() => <Dashboard />);
+
+    expect(pageText()).toContain('All sections hidden');
+    expect(dashboardMocks.pulseCardMock).not.toHaveBeenCalled();
+
+    const reset = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Reset layout');
+    expect(reset).toBeTruthy();
+    reset!.click();
+
+    expect(pageText()).not.toContain('All sections hidden');
+    expect(document.querySelector('[data-testid="pulse-Pods"]')).toBeTruthy();
   });
 
   it('surfaces an offline cluster error through the summary cards', () => {
