@@ -7,6 +7,7 @@ import PanelState from '../../shared/PanelState';
 import TabBar, { type TabDef } from '../../shared/TabBar';
 import { createPolledResource } from '../../../hooks/createPolledResource';
 import { formatCompact, formatMs, formatSeconds } from '../../../lib/format';
+import { sanitizeError } from '../../../lib/sanitizeError';
 import {
   loomFlightdeckApi,
   type FlightdeckCatalogEntry,
@@ -64,13 +65,23 @@ const CATALOG_COLUMNS: MiniColumn<FlightdeckCatalogEntry>[] = [
   },
 ];
 
+const StaleSnapshotNotice: Component<{ error: string }> = (props) => (
+  <div class="surface border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-xs text-status-warn" role="status" aria-live="polite">
+    Showing the last successful Flightdeck snapshot. Refresh failed: {sanitizeError(props.error)}
+  </div>
+);
+
 const StallBoard: Component = () => {
   const summary = createPolledResource<FlightdeckSummary>('fd-summary', loomFlightdeckApi.summary, { interval: 10000 });
   const stalls = createPolledResource<FlightdeckStalls>('fd-stalls', loomFlightdeckApi.stalls, { key: 'stall_id' });
   const s = () => stalls.data();
+  const degraded = () => stalls.degraded() ?? summary.degraded();
 
   return (
     <div class="space-y-3">
+      <Show when={degraded()}>
+        {(state) => <StaleSnapshotNotice error={state().error} />}
+      </Show>
       <div class="grid gap-2 sm:grid-cols-3">
         <MetricTile label="Human-wait today" value={summary.data() ? `${Math.round(summary.data()!.wait_minutes_today)}m` : '—'} tone="warn" />
         <MetricTile

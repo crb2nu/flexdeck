@@ -5,6 +5,7 @@ import ListRow from '../../shared/ListRow';
 import MetricTile from '../../shared/MetricTile';
 import PanelState from '../../shared/PanelState';
 import TabBar, { type TabDef } from '../../shared/TabBar';
+import { sanitizeError } from '../../../lib/sanitizeError';
 import { createPolledResource } from '../../../hooks/createPolledResource';
 import { formatShortDateTime, formatUSD } from '../../../lib/format';
 import { isLoomMutationsEnabled } from '../../../lib/featureFlags';
@@ -105,12 +106,21 @@ const MutationReadiness: Component = () => {
   );
 };
 
+const StaleSnapshotNotice: Component<{ error: string }> = (props) => (
+  <div class="surface border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-xs text-status-warn" role="status" aria-live="polite">
+    Showing the last successful Mills snapshot. Refresh failed: {sanitizeError(props.error)}
+  </div>
+);
+
 const OverviewPanel: Component = () => {
   const status = createPolledResource<MillsStatus>('mills-status', loomMillsApi.status, { interval: 10000 });
   return (
     <Show when={status.data()} fallback={<PanelState error={status.error()} loaded={status.loaded()} empty="No status." offlineLabel={MILLS_OFFLINE} />}>
       {(s) => (
         <div class="space-y-3">
+          <Show when={status.degraded()}>
+            {(degraded) => <StaleSnapshotNotice error={degraded().error} />}
+          </Show>
           <div class="grid gap-2 sm:grid-cols-3">
             <MetricTile label="Autonomy" value={s().autonomy_ready ? 'ready' : 'blocked'} tone={s().autonomy_ready ? 'ok' : 'warn'} />
             <MetricTile label="Active pipelines" value={String(s().active_pipeline_runs ?? 0)} />
