@@ -65,6 +65,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			cfg.TokenCookie,
 			cfg.CookieSecure,
 			cfg.TokenCookieTTL,
+			cfg.TrustedCIDRs,
 		)
 	}
 

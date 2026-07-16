@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/flexinfer/flexdeck/internal/trustednetwork"
 )
 
 type contextKey string
@@ -29,21 +31,30 @@ type Middleware struct {
 	cookieName   string
 	cookieSecure bool
 	cookieTTL    time.Duration
+	trustedNets  trustednetwork.Allowlist
 }
 
 // NewMiddleware creates RBAC middleware.
-func NewMiddleware(registry *Registry, cookieName string, cookieSecure bool, cookieTTL time.Duration) *Middleware {
+func NewMiddleware(registry *Registry, cookieName string, cookieSecure bool, cookieTTL time.Duration, trustedCIDRs string) *Middleware {
 	return &Middleware{
 		registry:     registry,
 		cookieName:   cookieName,
 		cookieSecure: cookieSecure,
 		cookieTTL:    cookieTTL,
+		trustedNets:  trustednetwork.Parse(trustedCIDRs),
 	}
 }
 
 // Handler authenticates the request, stores the user in context, and sets the auth cookie.
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if m.trustedNets.Contains(r) {
+			user := &User{ID: "trusted-network", Username: "Trusted network", Role: RoleAdmin, AuthVia: "network"}
+			ctx := ContextWithUser(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		token := extractToken(r, m.cookieName)
 		if token == "" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)

@@ -37,6 +37,43 @@ func TestRouter_Phase4RoutesRegisterWhenEnabled(t *testing.T) {
 	assertAuthenticatedStatus(t, router, http.MethodGet, "/api/clusters/", http.StatusOK)
 }
 
+func TestRouter_TrustedNetworkAuthenticatesAsAdmin(t *testing.T) {
+	t.Parallel()
+
+	router := newPhase4Router(t, false, "192.168.50.0/24")
+	req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+	req.Header.Set("X-Real-IP", "192.168.50.153")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trusted-network /api/rbac/me status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var user rbac.User
+	if err := json.Unmarshal(rec.Body.Bytes(), &user); err != nil {
+		t.Fatalf("trusted-network response is not valid JSON: %v", err)
+	}
+	if user.ID != "trusted-network" || user.Role != rbac.RoleAdmin || user.AuthVia != "network" {
+		t.Fatalf("trusted-network user = %#v, want synthetic admin", user)
+	}
+}
+
+func TestRouter_TrustedNetworkRejectsOffSubnetAndPodIPs(t *testing.T) {
+	t.Parallel()
+
+	router := newPhase4Router(t, false, "192.168.50.0/24")
+	for _, ip := range []string{"203.0.113.9", "10.42.12.8"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+		req.Header.Set("X-Real-IP", ip)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("client IP %s status = %d, want %d", ip, rec.Code, http.StatusUnauthorized)
+		}
+	}
+}
+
 func TestRouter_Phase4RoutesStayUnavailableWhenDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +161,7 @@ func newPhase4RouterWithMissingDeps(t *testing.T) http.Handler {
 	return NewRouterWithDeps(cfg, nil, nil, nil, nil)
 }
 
-func newPhase4Router(t *testing.T, disabled bool) http.Handler {
+func newPhase4Router(t *testing.T, disabled bool, trustedCIDRs ...string) http.Handler {
 	t.Helper()
 
 	tempDir := t.TempDir()
@@ -149,6 +186,9 @@ func newPhase4Router(t *testing.T, disabled bool) http.Handler {
 			Disabled:     disabled,
 			RegistryPath: filepath.Join(tempDir, "clusters.json"),
 		},
+	}
+	if len(trustedCIDRs) > 0 {
+		cfg.TrustedCIDRs = trustedCIDRs[0]
 	}
 
 	if disabled {
