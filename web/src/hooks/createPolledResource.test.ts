@@ -58,10 +58,29 @@ describe('createPolledResource', () => {
       await runTask('t-err');
       expect(res.error()).toBe('boom');
       expect(res.data()).toEqual([{ id: 'a' }]); // stale-on-error
+      expect(res.degraded()).toMatchObject({ stale: true, error: 'boom' });
+      expect(res.degraded()?.updatedAt).toBeGreaterThan(0);
 
       fail = false;
       await runTask('t-err');
       expect(res.error()).toBeNull();
+      expect(res.degraded()).toBeNull();
+      dispose();
+    });
+  });
+
+  it('does not report retained stale data before the first successful load', async () => {
+    await createRoot(async (dispose) => {
+      const res = createPolledResource('t-initial-err', async () => {
+        throw new Error('offline');
+      });
+
+      await runTask('t-initial-err');
+
+      expect(res.loaded()).toBe(true);
+      expect(res.error()).toBe('offline');
+      expect(res.data()).toBeNull();
+      expect(res.degraded()).toBeNull();
       dispose();
     });
   });

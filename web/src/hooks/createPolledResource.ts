@@ -14,12 +14,23 @@ export interface PolledResourceOptions {
   enabled?: boolean | (() => boolean);
 }
 
+export interface PolledResourceDegraded {
+  /** A previous successful payload is being retained after a failed refresh. */
+  stale: true;
+  /** Sanitization is a presentation concern; callers may display this if appropriate. */
+  error: string;
+  /** Epoch ms of the retained successful payload. */
+  updatedAt: number;
+}
+
 export interface PolledResource<T> {
   data: () => T | null;
   error: () => string | null;
   loaded: () => boolean;
   /** Epoch ms of the last successful fetch (0 until one lands) — feeds freshness/staleness chips. */
   updatedAt: () => number;
+  /** Non-null when rendering retained data after a failed refresh. */
+  degraded: () => PolledResourceDegraded | null;
   /** Fetch immediately, outside the poll schedule (e.g. after a filter change or mutation). */
   refresh: () => Promise<void>;
 }
@@ -68,6 +79,12 @@ export function createPolledResource<T>(
     error,
     loaded,
     updatedAt,
+    degraded: () => {
+      const currentError = error();
+      const lastSuccess = updatedAt();
+      if (!currentError || lastSuccess === 0 || state.value == null) return null;
+      return { stale: true, error: currentError, updatedAt: lastSuccess };
+    },
     refresh: run,
   };
 }

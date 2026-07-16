@@ -24,7 +24,9 @@ const mocks = vi.hoisted(() => ({
   resumePipelineRun: vi.fn(async () => ({})),
   escalatePipelineRun: vi.fn(async () => ({})),
   killSwitch: vi.fn(async () => ({})),
+  tasks: new Map<string, () => Promise<void> | void>(),
   createPolling: vi.fn((_id: string, task: () => Promise<void> | void) => {
+    mocks.tasks.set(_id, task);
     queueMicrotask(() => {
       void task();
     });
@@ -91,6 +93,13 @@ function mount(factory: () => JSX.Element) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+async function runPollTask(id: string): Promise<void> {
+  const task = mocks.tasks.get(id);
+  if (!task) throw new Error(`poll task "${id}" not found`);
+  await task();
+  await flush();
+}
+
 function clickButton(container: HTMLElement, label: string): void {
   const btn = Array.from(container.querySelectorAll('button')).find(
     (b) => b.textContent?.trim() === label,
@@ -103,6 +112,17 @@ describe('Loom Mills surface', () => {
   let cleanup = () => {};
   afterEach(() => {
     cleanup();
+    cleanup = () => {};
+    mocks.tasks.clear();
+    mocks.status.mockReset();
+    mocks.status.mockImplementation(
+      async (): Promise<MillsStatus> => ({
+        autonomy_ready: true,
+        active_pipeline_runs: 2,
+        autonomy_blockers: [],
+        capabilities: [{ id: 'sqlite_store', status: 'green' }],
+      }),
+    );
     mocks.mutationsEnabled = false;
     mocks.mutationMode = 'dark_launch';
     mocks.mutationReason = 'LOOM_MILLS_MUTATIONS_ENABLED is false';
@@ -126,6 +146,36 @@ describe('Loom Mills surface', () => {
     // Only the active (Overview) panel mounts — backlog/pipelines aren't fetched.
     expect(mocks.backlog).not.toHaveBeenCalled();
     expect(mocks.pipelineRuns).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Overview snapshot visible and discloses a stale refresh failure until recovery', async () => {
+    const m = mount(() => <Mills />);
+    cleanup = m.cleanup;
+    await flush();
+
+    expect(m.container.textContent ?? '').toContain('sqlite_store');
+    expect(m.container.textContent ?? '').not.toContain('Showing the last successful Mills snapshot');
+
+    mocks.status.mockRejectedValueOnce(new Error('operator disabled'));
+    await runPollTask('mills-status');
+
+    let text = m.container.textContent ?? '';
+    expect(text).toContain('sqlite_store');
+    expect(text).toContain('Showing the last successful Mills snapshot');
+    expect(text).toContain('operator disabled');
+    expect(m.container.querySelectorAll('[role="status"]')).toHaveLength(1);
+
+    mocks.status.mockResolvedValueOnce({
+      autonomy_ready: false,
+      active_pipeline_runs: 1,
+      autonomy_blockers: ['token'],
+      capabilities: [{ id: 'redis_cache', status: 'yellow' }],
+    });
+    await runPollTask('mills-status');
+
+    text = m.container.textContent ?? '';
+    expect(text).not.toContain('Showing the last successful Mills snapshot');
+    expect(text).toContain('redis_cache');
   });
 
   it('hides the Policy kill-switch when mutations are disabled (even for an admin)', async () => {
