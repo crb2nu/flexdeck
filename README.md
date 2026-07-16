@@ -69,6 +69,7 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `FLEXDECK_TOKEN_COOKIE` | `flexdeck_token` | Auth cookie name |
 | `FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS` | `30` | Auth cookie TTL in days |
 | `FLEXDECK_TOKEN_COOKIE_SECURE` | `false` | Set secure cookie flag |
+| `FLEXDECK_TRUSTED_CIDRS` | | Comma-separated client CIDRs granted admin access without a token; trust only ingress-reported LAN ranges |
 
 ### Kubernetes + observability
 

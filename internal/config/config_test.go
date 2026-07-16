@@ -46,6 +46,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "warn")
 	t.Setenv("FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS", "7")
 	t.Setenv("FLEXDECK_TOKEN_COOKIE_SECURE", "yes")
+	t.Setenv("FLEXDECK_TRUSTED_CIDRS", "192.168.50.0/24")
 	t.Setenv("ALLOWED_ORIGINS", "https://one.example,https://two.example")
 	t.Setenv("LITELLM_SCRAPE_INTERVAL", "42")
 	t.Setenv("REDIS_DB", "12")
@@ -68,6 +69,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if !cfg.CookieSecure {
 		t.Fatal("expected cookie secure=true when FLEXDECK_TOKEN_COOKIE_SECURE=yes")
+	}
+	if cfg.TrustedCIDRs != "192.168.50.0/24" {
+		t.Fatalf("expected trusted CIDR override, got %q", cfg.TrustedCIDRs)
 	}
 	if cfg.LiteLLM.ScrapeInterval != 42*time.Second {
 		t.Fatalf("expected LITELLM_SCRAPE_INTERVAL=42s, got %s", cfg.LiteLLM.ScrapeInterval)

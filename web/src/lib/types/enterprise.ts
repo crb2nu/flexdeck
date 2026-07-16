@@ -7,6 +7,7 @@ export interface RBACUser {
   updatedAt: string;
   lastLogin?: string;
   disabled: boolean;
+  authVia?: "network" | "token";
 }
 
 export interface RBACRole {

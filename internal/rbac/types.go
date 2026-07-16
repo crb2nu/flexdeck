@@ -43,4 +43,5 @@ type User struct {
 	UpdatedAt time.Time  `json:"updatedAt"`
 	LastLogin *time.Time `json:"lastLogin,omitempty"`
 	Disabled  bool       `json:"disabled"`
+	AuthVia   string     `json:"authVia,omitempty"`
 }

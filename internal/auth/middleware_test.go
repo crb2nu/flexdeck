@@ -15,7 +15,10 @@ func TestMiddleware_Handler(t *testing.T) {
 		token          string
 		authHeader     string
 		cookieValue    string
+		trustedCIDRs   string
+		xRealIP        string
 		expectedStatus int
+		expectedCookie bool
 	}{
 		{
 			name:           "No token configured (bypass)",
@@ -27,6 +30,7 @@ func TestMiddleware_Handler(t *testing.T) {
 			token:          "secret-token",
 			authHeader:     "Bearer secret-token",
 			expectedStatus: http.StatusOK,
+			expectedCookie: true,
 		},
 		{
 			name:           "Invalid Bearer token",
@@ -39,11 +43,26 @@ func TestMiddleware_Handler(t *testing.T) {
 			token:          "secret-token",
 			cookieValue:    "secret-token",
 			expectedStatus: http.StatusOK,
+			expectedCookie: true,
 		},
 		{
 			name:           "Invalid Cookie",
 			token:          "secret-token",
 			cookieValue:    "wrong-token",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "Trusted network bypass",
+			token:          "secret-token",
+			trustedCIDRs:   "192.168.50.0/24",
+			xRealIP:        "192.168.50.153",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Pod network is not trusted",
+			token:          "secret-token",
+			trustedCIDRs:   "192.168.50.0/24",
+			xRealIP:        "10.42.12.8",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
@@ -60,6 +79,7 @@ func TestMiddleware_Handler(t *testing.T) {
 				TokenCookie:    "auth_token",
 				TokenCookieTTL: 1 * time.Hour,
 				CookieSecure:   false,
+				TrustedCIDRs:   tt.trustedCIDRs,
 			}
 			m := NewMiddleware(cfg)
 
@@ -73,6 +93,9 @@ func TestMiddleware_Handler(t *testing.T) {
 			if tt.authHeader != "" {
 				req.Header.Set("Authorization", tt.authHeader)
 			}
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
 			if tt.cookieValue != "" {
 				req.AddCookie(&http.Cookie{Name: "auth_token", Value: tt.cookieValue})
 			}
@@ -85,7 +108,7 @@ func TestMiddleware_Handler(t *testing.T) {
 			}
 
 			// Check if cookie was set on success
-			if tt.expectedStatus == http.StatusOK && tt.token != "" {
+			if tt.expectedCookie {
 				cookies := rr.Result().Cookies()
 				found := false
 				for _, c := range cookies {
