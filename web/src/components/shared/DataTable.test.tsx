@@ -70,7 +70,8 @@ describe('DataTable', () => {
 
     // Click Name header to toggle to descending
     const nameHeader = container.querySelector('thead th') as HTMLElement;
-    nameHeader.click();
+    const sortButton = nameHeader.querySelector('button') as HTMLButtonElement;
+    sortButton.click();
 
     const cells = container.querySelectorAll('tbody td:first-child');
     expect(cells[0].textContent).toBe('Charlie');
@@ -83,12 +84,34 @@ describe('DataTable', () => {
 
     // Click Value header (second th)
     const headers = container.querySelectorAll('thead th');
-    (headers[1] as HTMLElement).click();
+    (headers[1].querySelector('button') as HTMLButtonElement).click();
 
     const valueCells = container.querySelectorAll('tbody td:nth-child(2)');
     expect(valueCells[0].textContent).toBe('10');
     expect(valueCells[1].textContent).toBe('20');
     expect(valueCells[2].textContent).toBe('30');
+  });
+
+  it('renders sortable headers as native buttons for keyboard activation', () => {
+    mount();
+
+    const headers = Array.from(container.querySelectorAll<HTMLTableCellElement>('thead th'));
+    const sortButtons = headers.map((header) => header.querySelector('button'));
+
+    expect(sortButtons).toHaveLength(2);
+    expect(sortButtons.every((button) => button instanceof HTMLButtonElement)).toBe(true);
+    expect(sortButtons.every((button) => button?.type === 'button')).toBe(true);
+  });
+
+  it('exposes the active sort direction with aria-sort', () => {
+    mount({ defaultSort: { column: 'name', direction: 'asc' } });
+
+    const headers = container.querySelectorAll<HTMLTableCellElement>('thead th');
+    expect(headers[0].getAttribute('aria-sort')).toBe('ascending');
+    expect(headers[1].hasAttribute('aria-sort')).toBe(false);
+
+    (headers[0].querySelector('button') as HTMLButtonElement).click();
+    expect(headers[0].getAttribute('aria-sort')).toBe('descending');
   });
 
   it('reuses row DOM nodes across refreshes with stable rowKey (no flicker)', () => {

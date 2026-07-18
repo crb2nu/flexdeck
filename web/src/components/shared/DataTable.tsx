@@ -53,6 +53,11 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
     }
   };
 
+  const ariaSort = (col: ColumnDef<T>): 'ascending' | 'descending' | undefined => {
+    if (!col.sortable || sortCol() !== col.id) return undefined;
+    return sortDir() === 'asc' ? 'ascending' : 'descending';
+  };
+
   // rowKey was previously declared but unused, so every poll that handed
   // DataTable a fresh array of equal-content objects made <For> tear down and
   // remount every row (the K8s resource tables flickered on each refresh).
@@ -98,21 +103,37 @@ function DataTable<T>(props: DataTableProps<T>): JSX.Element {
             <For each={props.columns}>
               {(col) => (
                 <th
-                  class="px-4 py-3 font-medium"
+                  scope="col"
+                  aria-sort={ariaSort(col)}
+                  class="font-medium"
                   classList={{
+                    'px-4 py-3': !col.sortable,
                     'text-right': col.align === 'right',
-                    'cursor-pointer select-none hover:text-text-dim transition-colors': !!col.sortable,
                     'text-text-muted border-b border-white/20': col.sortable && sortCol() === col.id,
                   }}
                   style={col.width ? { width: col.width } : undefined}
-                  onClick={col.sortable ? () => handleSort(col.id) : undefined}
                 >
-                  <span class="inline-flex items-center gap-1">
-                    {col.header}
-                    <Show when={col.sortable && sortCol() === col.id}>
-                      <span class="text-text-dim">{sortDir() === 'asc' ? '\u2191' : '\u2193'}</span>
-                    </Show>
-                  </span>
+                  <Show
+                    when={col.sortable}
+                    fallback={<span class="inline-flex items-center gap-1">{col.header}</span>}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.id)}
+                      class="flex w-full cursor-pointer select-none items-center gap-1 px-4 py-3 text-inherit transition-colors hover:text-text-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+                      classList={{
+                        'justify-end': col.align === 'right',
+                        'justify-start': col.align !== 'right',
+                      }}
+                    >
+                      {col.header}
+                      <Show when={sortCol() === col.id}>
+                        <span aria-hidden="true" class="text-text-dim">
+                          {sortDir() === 'asc' ? '\u2191' : '\u2193'}
+                        </span>
+                      </Show>
+                    </button>
+                  </Show>
                 </th>
               )}
             </For>
