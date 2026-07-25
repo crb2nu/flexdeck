@@ -17,12 +17,13 @@ type Config struct {
 	WorkspaceDir string
 
 	// Auth
-	Token          string
-	TokenCookie    string
-	TokenCookieTTL time.Duration
-	CookieSecure   bool
-	TrustedCIDRs   string
-	AllowedOrigins []string
+	Token             string
+	TokenCookie       string
+	TokenCookieTTL    time.Duration
+	CookieSecure      bool
+	TrustedCIDRs      string
+	TrustedProxyCIDRs string
+	AllowedOrigins    []string
 
 	// K8s
 	K8s K8sConfig
@@ -249,11 +250,12 @@ func Load() (*Config, error) {
 		UIConfigDir:  getEnv("UI_CONFIG_DIR", "/config"),
 		WorkspaceDir: getEnv("WORKSPACE_DIR", os.Getenv("HOME")+"/workspace"),
 
-		Token:          getEnv("FLEXDECK_TOKEN", ""),
-		TokenCookie:    getEnv("FLEXDECK_TOKEN_COOKIE", "flexdeck_token"),
-		TokenCookieTTL: parseDuration(getEnv("FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS", "30")) * 24 * time.Hour,
-		CookieSecure:   parseBool(getEnv("FLEXDECK_TOKEN_COOKIE_SECURE", "false")),
-		TrustedCIDRs:   getEnv("FLEXDECK_TRUSTED_CIDRS", ""),
+		Token:             getEnv("FLEXDECK_TOKEN", ""),
+		TokenCookie:       getEnv("FLEXDECK_TOKEN_COOKIE", "flexdeck_token"),
+		TokenCookieTTL:    parseDuration(getEnv("FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS", "30")) * 24 * time.Hour,
+		CookieSecure:      parseBool(getEnv("FLEXDECK_TOKEN_COOKIE_SECURE", "false")),
+		TrustedCIDRs:      getEnv("FLEXDECK_TRUSTED_CIDRS", ""),
+		TrustedProxyCIDRs: getEnv("FLEXDECK_TRUSTED_PROXY_CIDRS", ""),
 
 		K8s: K8sConfig{
 			Disabled:      parseBool(getEnv("K8S_DISABLED", "false")),

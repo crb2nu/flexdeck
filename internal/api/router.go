@@ -21,6 +21,7 @@ import (
 	"github.com/flexinfer/flexdeck/internal/litellm"
 	"github.com/flexinfer/flexdeck/internal/metrics"
 	"github.com/flexinfer/flexdeck/internal/rbac"
+	"github.com/flexinfer/flexdeck/internal/trustednetwork"
 )
 
 func NewRouter(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) chi.Router {
@@ -41,7 +42,11 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Proxy-aware replacement for chi's middleware.RealIP: forwarding headers
+	// are honored only when the direct peer is a configured trusted proxy
+	// (the ingress), so spoofed X-Real-IP/X-Forwarded-For from clients that
+	// reach the pod without the ingress cannot impersonate LAN addresses.
+	r.Use(trustednetwork.NewTrust(cfg.TrustedCIDRs, cfg.TrustedProxyCIDRs).RealIPHandler)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
@@ -66,6 +71,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 			cfg.CookieSecure,
 			cfg.TokenCookieTTL,
 			cfg.TrustedCIDRs,
+			cfg.TrustedProxyCIDRs,
 		)
 	}
 

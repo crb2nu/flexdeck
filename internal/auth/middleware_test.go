@@ -11,14 +11,16 @@ import (
 
 func TestMiddleware_Handler(t *testing.T) {
 	tests := []struct {
-		name           string
-		token          string
-		authHeader     string
-		cookieValue    string
-		trustedCIDRs   string
-		xRealIP        string
-		expectedStatus int
-		expectedCookie bool
+		name              string
+		token             string
+		authHeader        string
+		cookieValue       string
+		trustedCIDRs      string
+		trustedProxyCIDRs string
+		remoteAddr        string
+		xRealIP           string
+		expectedStatus    int
+		expectedCookie    bool
 	}{
 		{
 			name:           "No token configured (bypass)",
@@ -52,17 +54,46 @@ func TestMiddleware_Handler(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "Trusted network bypass",
-			token:          "secret-token",
-			trustedCIDRs:   "192.168.50.0/24",
-			xRealIP:        "192.168.50.153",
-			expectedStatus: http.StatusOK,
+			name:              "Trusted network bypass via ingress",
+			token:             "secret-token",
+			trustedCIDRs:      "192.168.50.0/24",
+			trustedProxyCIDRs: "10.42.0.0/16",
+			remoteAddr:        "10.42.0.8:8080",
+			xRealIP:           "192.168.50.153",
+			expectedStatus:    http.StatusOK,
 		},
 		{
-			name:           "Pod network is not trusted",
+			name:              "Direct LAN peer is trusted without headers",
+			token:             "secret-token",
+			trustedCIDRs:      "192.168.50.0/24",
+			trustedProxyCIDRs: "10.42.0.0/16",
+			remoteAddr:        "192.168.50.153:44321",
+			expectedStatus:    http.StatusOK,
+		},
+		{
+			name:              "Pod network is not trusted",
+			token:             "secret-token",
+			trustedCIDRs:      "192.168.50.0/24",
+			trustedProxyCIDRs: "10.42.0.0/16",
+			remoteAddr:        "10.42.0.8:8080",
+			xRealIP:           "10.42.12.8",
+			expectedStatus:    http.StatusUnauthorized,
+		},
+		{
+			name:              "Spoofed header from untrusted peer is rejected",
+			token:             "secret-token",
+			trustedCIDRs:      "192.168.50.0/24",
+			trustedProxyCIDRs: "10.42.0.0/16",
+			remoteAddr:        "203.0.113.9:31234",
+			xRealIP:           "192.168.50.153",
+			expectedStatus:    http.StatusUnauthorized,
+		},
+		{
+			name:           "Spoofed header without proxy allowlist is rejected",
 			token:          "secret-token",
 			trustedCIDRs:   "192.168.50.0/24",
-			xRealIP:        "10.42.12.8",
+			remoteAddr:     "10.42.0.8:8080",
+			xRealIP:        "192.168.50.153",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
@@ -75,11 +106,12 @@ func TestMiddleware_Handler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Token:          tt.token,
-				TokenCookie:    "auth_token",
-				TokenCookieTTL: 1 * time.Hour,
-				CookieSecure:   false,
-				TrustedCIDRs:   tt.trustedCIDRs,
+				Token:             tt.token,
+				TokenCookie:       "auth_token",
+				TokenCookieTTL:    1 * time.Hour,
+				CookieSecure:      false,
+				TrustedCIDRs:      tt.trustedCIDRs,
+				TrustedProxyCIDRs: tt.trustedProxyCIDRs,
 			}
 			m := NewMiddleware(cfg)
 
@@ -90,6 +122,9 @@ func TestMiddleware_Handler(t *testing.T) {
 			handler := m.Handler(next)
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.remoteAddr != "" {
+				req.RemoteAddr = tt.remoteAddr
+			}
 			if tt.authHeader != "" {
 				req.Header.Set("Authorization", tt.authHeader)
 			}

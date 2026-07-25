@@ -46,17 +46,11 @@ func Parse(value string) Allowlist {
 	return Allowlist{networks: networks}
 }
 
-// Contains reports whether the request's client IP is in the allowlist.
-func (a Allowlist) Contains(r *http.Request) bool {
-	if len(a.networks) == 0 {
-		return false
-	}
-
-	ip := ClientIP(r)
+// ContainsIP reports whether the IP is inside the allowlist.
+func (a Allowlist) ContainsIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
-
 	for _, network := range a.networks {
 		if network.Contains(ip) {
 			return true
@@ -65,13 +59,61 @@ func (a Allowlist) Contains(r *http.Request) bool {
 	return false
 }
 
-// ClientIP returns the ingress-reported client IP, falling back to RemoteAddr.
-// The deployment trusts its nginx ingress to replace these forwarding headers.
-func ClientIP(r *http.Request) net.IP {
+// Trust pairs the trusted-client allowlist with the reverse proxies whose
+// forwarding headers may be believed. X-Real-IP / X-Forwarded-For are honored
+// only when the direct peer (RemoteAddr) is a configured proxy; otherwise the
+// peer address itself is the client IP. An empty proxy list means forwarding
+// headers are never trusted, so a deployment reachable without its ingress
+// (NodePort, port-forward, direct pod access) cannot spoof a trusted client.
+type Trust struct {
+	clients Allowlist
+	proxies Allowlist
+}
+
+// NewTrust parses the client and proxy CIDR lists into a Trust.
+func NewTrust(clientCIDRs, proxyCIDRs string) Trust {
+	return Trust{clients: Parse(clientCIDRs), proxies: Parse(proxyCIDRs)}
+}
+
+// Trusted reports whether the request's client IP is in the client allowlist.
+func (t Trust) Trusted(r *http.Request) bool {
+	return t.clients.ContainsIP(t.ClientIP(r))
+}
+
+// ClientIP resolves the request's client IP. Forwarding headers are consulted
+// only for requests arriving from a trusted proxy.
+func (t Trust) ClientIP(r *http.Request) net.IP {
 	if r == nil {
 		return nil
 	}
 
+	peer := peerIP(r.RemoteAddr)
+	if !t.proxies.ContainsIP(peer) {
+		return peer
+	}
+
+	if ip := forwardedIP(r); ip != nil {
+		return ip
+	}
+	return peer
+}
+
+// RealIPHandler rewrites RemoteAddr to the proxy-reported client IP, but only
+// when the direct peer is a trusted proxy. Drop-in replacement for chi's
+// middleware.RealIP, which trusts the headers unconditionally.
+func (t Trust) RealIPHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if t.proxies.ContainsIP(peerIP(r.RemoteAddr)) {
+			if ip := forwardedIP(r); ip != nil {
+				r.RemoteAddr = ip.String()
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// forwardedIP extracts the client IP asserted by a reverse proxy's headers.
+func forwardedIP(r *http.Request) net.IP {
 	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
 		if ip := net.ParseIP(value); ip != nil {
 			return ip
@@ -85,8 +127,13 @@ func ClientIP(r *http.Request) net.IP {
 		}
 	}
 
-	host := r.RemoteAddr
-	if parsedHost, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+	return nil
+}
+
+// peerIP parses the transport-level peer address, with or without a port.
+func peerIP(remoteAddr string) net.IP {
+	host := remoteAddr
+	if parsedHost, _, err := net.SplitHostPort(remoteAddr); err == nil {
 		host = parsedHost
 	}
 	return net.ParseIP(strings.TrimSpace(host))
