@@ -31,24 +31,24 @@ type Middleware struct {
 	cookieName   string
 	cookieSecure bool
 	cookieTTL    time.Duration
-	trustedNets  trustednetwork.Allowlist
+	trustedNets  trustednetwork.Trust
 }
 
 // NewMiddleware creates RBAC middleware.
-func NewMiddleware(registry *Registry, cookieName string, cookieSecure bool, cookieTTL time.Duration, trustedCIDRs string) *Middleware {
+func NewMiddleware(registry *Registry, cookieName string, cookieSecure bool, cookieTTL time.Duration, trustedCIDRs, trustedProxyCIDRs string) *Middleware {
 	return &Middleware{
 		registry:     registry,
 		cookieName:   cookieName,
 		cookieSecure: cookieSecure,
 		cookieTTL:    cookieTTL,
-		trustedNets:  trustednetwork.Parse(trustedCIDRs),
+		trustedNets:  trustednetwork.NewTrust(trustedCIDRs, trustedProxyCIDRs),
 	}
 }
 
 // Handler authenticates the request, stores the user in context, and sets the auth cookie.
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if m.trustedNets.Contains(r) {
+		if m.trustedNets.Trusted(r) {
 			user := &User{ID: "trusted-network", Username: "Trusted network", Role: RoleAdmin, AuthVia: "network"}
 			ctx := ContextWithUser(r.Context(), user)
 			next.ServeHTTP(w, r.WithContext(ctx))

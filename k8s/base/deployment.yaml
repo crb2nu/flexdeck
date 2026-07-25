@@ -132,6 +132,17 @@ spec:
             # in-cluster callers must continue presenting their own tokens.
             - name: FLEXDECK_TRUSTED_CIDRS
               value: "192.168.50.0/24"
+            # Reverse proxies whose X-Real-IP / X-Forwarded-For may be believed
+            # (the ingress-nginx pods, which live in the k3s pod network).
+            # Headers from any other peer are ignored and the TCP peer address
+            # is used instead, so a client reaching the pod without the ingress
+            # (NodePort, port-forward, direct pod IP) cannot spoof a LAN client.
+            # If unset, forwarding headers are NEVER trusted (fail closed) and
+            # the LAN bypass above only works for direct LAN connections.
+            # Residual risk: any pod in this CIDR can assert a forwarded client
+            # IP; keep it as tight as the ingress deployment allows.
+            - name: FLEXDECK_TRUSTED_PROXY_CIDRS
+              value: "10.42.0.0/16"
             # AI namespace for FlexInfer CRDs
             - name: AI_NAMESPACE
               value: "flexinfer-system"

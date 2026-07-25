@@ -42,6 +42,7 @@ func TestRouter_TrustedNetworkAuthenticatesAsAdmin(t *testing.T) {
 
 	router := newPhase4Router(t, false, "192.168.50.0/24")
 	req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+	req.RemoteAddr = "10.42.0.8:8080" // ingress pod peer
 	req.Header.Set("X-Real-IP", "192.168.50.153")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -63,14 +64,28 @@ func TestRouter_TrustedNetworkRejectsOffSubnetAndPodIPs(t *testing.T) {
 	t.Parallel()
 
 	router := newPhase4Router(t, false, "192.168.50.0/24")
+
+	// Off-subnet and pod client IPs reported by the real ingress are rejected.
 	for _, ip := range []string{"203.0.113.9", "10.42.12.8"} {
 		req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+		req.RemoteAddr = "10.42.0.8:8080" // ingress pod peer
 		req.Header.Set("X-Real-IP", ip)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("client IP %s status = %d, want %d", ip, rec.Code, http.StatusUnauthorized)
 		}
+	}
+
+	// A client that reaches the service without the ingress in front cannot
+	// spoof a trusted LAN address via forwarding headers.
+	req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+	req.RemoteAddr = "203.0.113.9:31234"
+	req.Header.Set("X-Real-IP", "192.168.50.153")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("spoofed X-Real-IP from untrusted peer status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
 
@@ -189,6 +204,8 @@ func newPhase4Router(t *testing.T, disabled bool, trustedCIDRs ...string) http.H
 	}
 	if len(trustedCIDRs) > 0 {
 		cfg.TrustedCIDRs = trustedCIDRs[0]
+		// Forwarding headers are only believed from the ingress pod network.
+		cfg.TrustedProxyCIDRs = "10.42.0.0/16"
 	}
 
 	if disabled {

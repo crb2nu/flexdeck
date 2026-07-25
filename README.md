@@ -70,6 +70,7 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS` | `30` | Auth cookie TTL in days |
 | `FLEXDECK_TOKEN_COOKIE_SECURE` | `false` | Set secure cookie flag |
 | `FLEXDECK_TRUSTED_CIDRS` | | Comma-separated client CIDRs granted admin access without a token; trust only ingress-reported LAN ranges |
+| `FLEXDECK_TRUSTED_PROXY_CIDRS` | | Comma-separated reverse-proxy CIDRs whose `X-Real-IP`/`X-Forwarded-For` are believed (the ingress). Unset = forwarding headers are never trusted, so the trusted-CIDR bypass only applies to direct connections |
 
 ### Kubernetes + observability
 

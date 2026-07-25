@@ -15,7 +15,7 @@ type Middleware struct {
 	cookieName   string
 	cookieSecure bool
 	cookieTTL    time.Duration
-	trustedNets  trustednetwork.Allowlist
+	trustedNets  trustednetwork.Trust
 }
 
 func NewMiddleware(cfg *config.Config) *Middleware {
@@ -24,7 +24,7 @@ func NewMiddleware(cfg *config.Config) *Middleware {
 		cookieName:   cfg.TokenCookie,
 		cookieSecure: cfg.CookieSecure,
 		cookieTTL:    cfg.TokenCookieTTL,
-		trustedNets:  trustednetwork.Parse(cfg.TrustedCIDRs),
+		trustedNets:  trustednetwork.NewTrust(cfg.TrustedCIDRs, cfg.TrustedProxyCIDRs),
 	}
 }
 
@@ -34,7 +34,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if m.trustedNets.Contains(r) {
+		if m.trustedNets.Trusted(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
