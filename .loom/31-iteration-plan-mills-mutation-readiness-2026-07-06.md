@@ -1,5 +1,10 @@
 # RALPH Iteration Plan
 
+> Correction (2026-08-01): loom-core commit `2971df9b` already exposed the
+> admin-gated `POST /api/mills/squads/{name}/route-test` diagnostic dry-run.
+> FlexDeck still does not proxy it. The original plan below overstated the
+> operator limitation at this slice's closeout.
+
 ## Review
 
 - Roadmap milestone: Loom control-plane stabilization and enablement follow-through (#31, P2).

@@ -1,5 +1,10 @@
 # RALPH Slice Handoff
 
+> Correction (2026-08-01): loom-core commit `2971df9b` already exposed the
+> admin-gated `POST /api/mills/squads/{name}/route-test` diagnostic dry-run.
+> FlexDeck still does not proxy it. The original handoff below overstated the
+> operator limitation at this slice's closeout.
+
 ## Slice Summary
 
 - Milestone: Loom control-plane stabilization and Mills enablement follow-through (#31).
