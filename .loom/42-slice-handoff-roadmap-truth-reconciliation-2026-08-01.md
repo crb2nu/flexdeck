@@ -4,7 +4,7 @@
 
 - Milestone: issue #31 stabilization closeout and rollout-decision queue
 - Slice: Roadmap/spec truth reconciliation
-- Status: partial — implementation and local validation complete; branch CI pending
+- Status: complete
 
 ## What Landed
 
@@ -31,16 +31,15 @@
   - focused commit-ancestry and source/test evidence checks passed
   - `git diff --check` passed
   - pre-commit passed for every file in this slice
-  - self-review counted 518 changed lines; the required plan/handoff account for 148 lines
+  - self-review exceeded 500 lines because the required RALPH plan/handoff add about 150 lines
   - the remaining interdependent roadmap/spec corrections stay atomic to avoid contradictory planning truth
   - full `pre-commit run --all-files` exposed pre-existing repository-wide issues
-  - branch pipeline: pending
+  - branch pipeline `21687` passed for substantive commit `10acc1b`
 
 ## What Is Still Open
 
 - Remaining acceptance criteria:
-  - verify the branch pipeline reaches a successful terminal state
-  - update this handoff with the MR and pipeline evidence
+  - none
 - Known issues:
   - all-files pre-commit rewrites unrelated historical whitespace and EOFs
   - the global `check-yaml` hook rejects existing multi-document K8s manifests
@@ -70,5 +69,5 @@
   - `.loom/30-implementation-plan.md`
   - `.loom/31-iteration-plan-roadmap-truth-reconciliation-2026-08-01.md`
 - GitLab issue: https://gitlab.flexinfer.ai/services/flexdeck/-/issues/31
-- Merge request: pending
-- Branch pipeline: pending
+- Merge request: https://gitlab.flexinfer.ai/services/flexdeck/-/merge_requests/277
+- Branch pipeline: https://gitlab.flexinfer.ai/services/flexdeck/-/pipelines/21687 (`success`)
