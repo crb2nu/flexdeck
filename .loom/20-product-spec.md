@@ -1,5 +1,13 @@
 # Product Spec — FlexInfer Navigation Stability And Shared Sidebar Primitive Upgrade (2026-04-12)
 
+> Status: Completed on `main` with one documented implementation deviation
+> Shipped: `633f782` (`fix(flexinfer): stabilize sidebar routing`)
+> Closeout: The production-equivalent `HashRouter` workbench tests and shared
+> sidebar tests cover the user-visible contract. Overview cards use the local
+> `changeSection` callback, while sidebar links navigate declaratively. Both use
+> the same `?section=` router contract rather than one shared function.
+> Lifecycle: The requirements below remain the accepted historical contract.
+
 ## Summary
 Fix the FlexInfer page so section changes do not fight the app router, do not flicker, and do not break deep links. Use that work to harden the shared sidebar primitive so it can support both local button-style panels and router-aware link navigation without forcing every screen into the same interaction model.
 
@@ -55,6 +63,7 @@ Fix the FlexInfer page so section changes do not fight the app router, do not fl
 - Clicking FlexInfer sidebar items no longer causes route loss or visible route flicker.
 - A section change preserves the FlexInfer route and updates the active workbench state consistently.
 - Overview focus cards and sidebar items use the same section-change path.
+  - Accepted deviation: they use separate callback/link mechanisms over the same route-safe `?section=` contract.
 - `OperationsSidebarNav` can render router-aware links without breaking existing button-mode consumers.
 - Tests fail if a future change reintroduces bare-fragment replacement under `HashRouter`.
 
@@ -69,12 +78,13 @@ Fix the FlexInfer page so section changes do not fight the app router, do not fl
 - If tests continue to run outside the real routing mode, the regression can return unnoticed.
 
 ## Sources
-- `web/src/index.tsx:3-47`
-- `web/src/lib/featureFlags.ts:38-68`
-- `web/src/hooks/useKeyboardShortcuts.ts:25-34`
-- `web/src/components/QuickLaunch/CommandPalette.tsx:44-50`
-- `web/src/components/FlexInfer/Workbench.tsx:156-215`
-- `web/src/components/FlexInfer/Workbench.tsx:391-472`
-- `web/src/components/FlexInfer/Workbench.tsx:1186-1200`
-- `web/src/components/shared/OperationsSidebarNav.tsx:3-86`
-- `web/src/components/FlexInfer/Workbench.test.tsx:236-346`
+- `web/src/index.tsx:38-47`
+- `web/src/components/FlexInfer/Workbench.tsx:105-110`
+- `web/src/components/FlexInfer/Workbench.tsx:185-195`
+- `web/src/components/FlexInfer/Workbench.tsx:525-586`
+- `web/src/components/FlexInfer/Workbench.tsx:695-725`
+- `web/src/components/shared/OperationsSidebarNav.tsx:74-95`
+- `web/src/components/shared/OperationsSidebarNav.tsx:127-167`
+- `web/src/components/FlexInfer/Workbench.test.tsx:246-255`
+- `web/src/components/FlexInfer/Workbench.test.tsx:378-443`
+- `web/src/components/shared/OperationsSidebarNav.test.tsx:53-119`

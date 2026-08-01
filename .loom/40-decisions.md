@@ -15,6 +15,31 @@ Record decisions as they are made, with date, rationale, and sources.
 
 ---
 
+### 2026-08-01: Reconcile planning truth before accepting another implementation slice
+
+- Decision: Treat the route-stability spec, version-drift detection, and shared-primitives follow-through as completed history. Keep the three rollout decisions operator-owned.
+- Decision: Accept the route-stability plan's M2 deviation. Sidebar links and overview cards share one URL contract through separate semantic mechanisms.
+- Rationale: `main` satisfies the checked-in product spec. The live repo backlog contains only issue #31. The health contract reports three configuration-disabled capabilities.
+- Rationale: The canonical cross-repo plan separately retains monitoring and functional-health work. This slice does not duplicate that active program.
+- Rationale: Replaying shipped work would create churn. Flipping flags or provisioning credentials exceeds this slice's authorization.
+- Alternatives considered:
+  - Revive an old linked worktree (all relevant trees are stale or patch-equivalent to `main`).
+  - Invent another shared-primitives hardening change (no unmet acceptance criterion was found).
+  - Enable a dormant capability during reconciliation (requires an operator choice, prerequisites, smoke plan, and rollback owner).
+- Consequences: The roadmap becomes a truthful decision queue. The next #31 implementation cycle starts after one rollout decision is approved and scoped.
+- Consequences: Cross-repo monitoring and functional-health work continues under its existing plan rather than moving into issue #31.
+- Sources:
+  - [S1] `ROADMAP.md`
+  - [S2] `.loom/20-product-spec.md`
+  - [S3] `.loom/30-implementation-plan.md`
+  - [S4] [Live health endpoint](https://deck.flexinfer.ai/api/health) (2026-08-01)
+  - [S5] [GitLab issue #31](https://gitlab.flexinfer.ai/services/flexdeck/-/issues/31)
+  - [S6] commits `633f782` and `58f79fc`
+  - [S7] `agent_plan_get(plan_id="plan-workspace-portfolio-refresh-2026-h2-roadmaps-quality-baselin-f3db23")`
+  - [S8] `web/src/components/FlexInfer/Workbench.tsx:185-190`
+  - [S9] `web/src/components/FlexInfer/Workbench.tsx:525-586`
+  - [S10] `web/src/components/shared/OperationsSidebarNav.tsx:127-155`
+
 ### 2026-07-06: Keep Mills mutations dark-launched while exposing readiness metadata
 
 - Decision: Add non-secret readiness metadata (`mode` and `reason`) to the existing `loom_control_plane_mutations` health feature and surface it in the Mills UI, instead of flipping the mutation flag or adding another endpoint.
@@ -23,7 +48,8 @@ Record decisions as they are made, with date, rationale, and sources.
   - Enable `LOOM_MILLS_MUTATIONS_ENABLED` during the slice (too risky; this is an operations decision).
   - Add a dedicated readiness endpoint (more surface area than needed for configuration-only metadata).
   - Keep controls silently hidden (leaves operators guessing why the dark launch is still inactive).
-- Consequences: Mills controls remain fail-safe and admin-only. The UI now distinguishes backend readiness from the user's RBAC role, but upstream admin-token validity is still only proven when an action is attempted.
+- Consequences: Mills controls remain fail-safe and admin-only. FlexDeck first observes upstream token validity on an action.
+- Correction (2026-08-01): loom-core commit `2971df9b` already exposed admin-gated `POST /api/mills/squads/{name}/route-test` as a diagnostic dry-run. FlexDeck does not proxy it.
 - Sources:
   - [S1] `internal/api/handlers/health.go`
   - [S2] `web/src/components/Loom/Mills/index.tsx`
