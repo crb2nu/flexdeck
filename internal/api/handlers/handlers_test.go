@@ -53,3 +53,21 @@ func TestNewWithDepsFallsBackToMetricsStoreCache(t *testing.T) {
 		t.Fatal("expected handler cache to be initialized from metrics store")
 	}
 }
+
+func TestNewWithDepsPublicOnlySkipsPrivateClients(t *testing.T) {
+	t.Parallel()
+
+	handler := NewWithDeps(&config.Config{
+		PublicAPIOnly: true,
+		Qdrant:        config.QdrantConfig{URL: "http://qdrant.internal", APIKey: "secret"},
+		Mills:         config.MillsConfig{URL: "http://mills.internal", AdminToken: "secret"},
+		Flightdeck:    config.FlightdeckConfig{URL: "http://flightdeck.internal", Token: "secret"},
+	}, nil, nil, nil, nil)
+
+	if handler.qdrant != nil || handler.millsClient != nil || handler.flightdeckClient != nil {
+		t.Fatal("public-only handler must not initialize private upstream clients")
+	}
+	if handler.gitlabClient == nil {
+		t.Fatal("public-only handler still needs the public CI HTTP client")
+	}
+}

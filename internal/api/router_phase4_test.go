@@ -89,6 +89,22 @@ func TestRouter_TrustedNetworkRejectsOffSubnetAndPodIPs(t *testing.T) {
 	}
 }
 
+func TestRouter_DefaultConfigRejectsForgedLANHeadersFromPodNetwork(t *testing.T) {
+	t.Parallel()
+
+	router := newPhase4Router(t, false)
+	for _, header := range []string{"X-Real-IP", "X-Forwarded-For"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/rbac/me", nil)
+		req.RemoteAddr = "10.42.0.8:8080"
+		req.Header.Set(header, "192.168.50.153")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("forged %s from pod network status = %d, want %d", header, rec.Code, http.StatusUnauthorized)
+		}
+	}
+}
+
 func TestRouter_Phase4RoutesStayUnavailableWhenDisabled(t *testing.T) {
 	t.Parallel()
 

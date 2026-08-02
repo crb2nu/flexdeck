@@ -9,6 +9,7 @@ import (
 
 func TestLoadUsesExpectedDefaults(t *testing.T) {
 	t.Setenv("HOME", "/tmp/flexdeck-home")
+	t.Setenv("PUBLIC_API_ONLY", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -29,6 +30,9 @@ func TestLoadUsesExpectedDefaults(t *testing.T) {
 	}
 	if cfg.TokenCookieTTL != 30*24*time.Hour {
 		t.Fatalf("expected default token cookie ttl of 30 days, got %s", cfg.TokenCookieTTL)
+	}
+	if cfg.PublicAPIOnly {
+		t.Fatal("expected public API only mode to be disabled by default")
 	}
 	if !strings.Contains(strings.Join(cfg.AllowedOrigins, ","), "*") {
 		t.Fatalf("expected default allowed origins to include *, got %v", cfg.AllowedOrigins)
@@ -53,6 +57,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("REDIS_DB", "12")
 	t.Setenv("LOOM_HUD_URL", "")
 	t.Setenv("LOOM_HUD_DIRECT_URL", "https://hud.flexinfer.ai")
+	t.Setenv("PUBLIC_API_ONLY", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -88,6 +93,9 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.LoomHUD.DirectURL != "https://hud.flexinfer.ai" {
 		t.Fatalf("expected LOOM_HUD_DIRECT_URL override, got %q", cfg.LoomHUD.DirectURL)
+	}
+	if !cfg.PublicAPIOnly {
+		t.Fatal("expected PUBLIC_API_ONLY=true to enable public API only mode")
 	}
 	if len(cfg.AllowedOrigins) != 2 || cfg.AllowedOrigins[0] != "https://one.example" || cfg.AllowedOrigins[1] != "https://two.example" {
 		t.Fatalf("unexpected ALLOWED_ORIGINS parse result: %v", cfg.AllowedOrigins)

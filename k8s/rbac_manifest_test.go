@@ -198,8 +198,36 @@ func TestPublicDeploymentUsesLimitedServiceAccount(t *testing.T) {
 	if env["K8S_READONLY"] != "true" {
 		t.Fatalf("expected K8S_READONLY=true, got %q", env["K8S_READONLY"])
 	}
+	if env["PUBLIC_API_ONLY"] != "true" {
+		t.Fatalf("expected PUBLIC_API_ONLY=true, got %q", env["PUBLIC_API_ONLY"])
+	}
 	if _, ok := env["GITLAB_TOKEN"]; ok {
 		t.Fatal("public deployment must not mount GITLAB_TOKEN")
+	}
+}
+
+func TestPrimaryDeploymentDisablesIPBasedAdminBypass(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("base", "deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read deployment manifest: %v", err)
+	}
+
+	var deployment deploymentManifest
+	if err := yaml.Unmarshal(content, &deployment); err != nil {
+		t.Fatalf("decode deployment manifest: %v", err)
+	}
+	if len(deployment.Spec.Template.Spec.Containers) == 0 {
+		t.Fatal("expected at least one container")
+	}
+
+	env := map[string]string{}
+	for _, item := range deployment.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item.Value
+	}
+	for _, name := range []string{"FLEXDECK_TRUSTED_CIDRS", "FLEXDECK_TRUSTED_PROXY_CIDRS"} {
+		if got := strings.TrimSpace(env[name]); got != "" {
+			t.Fatalf("%s must be empty in the primary deployment; got %q", name, got)
+		}
 	}
 }
 

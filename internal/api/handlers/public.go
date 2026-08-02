@@ -28,6 +28,15 @@ import (
 // - Secrets and environment variables
 // - Internal service endpoints
 
+// PublicHealth is the minimal liveness/readiness contract for public-only
+// deployments. It intentionally omits feature flags and internal service URLs.
+func (h *Handler) PublicHealth(w http.ResponseWriter, _ *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"service": "flexdeck-public",
+	})
+}
+
 // =============================================================================
 // PUBLIC TOPOLOGY - Sanitized K8s cluster view
 // =============================================================================
