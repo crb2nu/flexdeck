@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Port         string
-	LogLevel     slog.Level
-	StaticDir    string
-	UIConfigDir  string
-	WorkspaceDir string
+	Port          string
+	LogLevel      slog.Level
+	StaticDir     string
+	UIConfigDir   string
+	WorkspaceDir  string
+	PublicAPIOnly bool
 
 	// Auth
 	Token             string
@@ -246,9 +247,10 @@ func Load() (*Config, error) {
 		Port:     getEnv("PORT", "8080"),
 		LogLevel: parseLogLevel(getEnv("LOG_LEVEL", "info")),
 
-		StaticDir:    getEnv("STATIC_DIR", "./web/dist"),
-		UIConfigDir:  getEnv("UI_CONFIG_DIR", "/config"),
-		WorkspaceDir: getEnv("WORKSPACE_DIR", os.Getenv("HOME")+"/workspace"),
+		StaticDir:     getEnv("STATIC_DIR", "./web/dist"),
+		UIConfigDir:   getEnv("UI_CONFIG_DIR", "/config"),
+		WorkspaceDir:  getEnv("WORKSPACE_DIR", os.Getenv("HOME")+"/workspace"),
+		PublicAPIOnly: parseBool(getEnv("PUBLIC_API_ONLY", "false")),
 
 		Token:             getEnv("FLEXDECK_TOKEN", ""),
 		TokenCookie:       getEnv("FLEXDECK_TOKEN_COOKIE", "flexdeck_token"),

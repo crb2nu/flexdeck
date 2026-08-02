@@ -25,6 +25,42 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type runtimePlan struct {
+	metricsScraper  bool
+	pipelineScraper bool
+	materializer    bool
+	modelRegistry   bool
+	modelManagement bool
+	agents          bool
+	rbac            bool
+	audit           bool
+	multiCluster    bool
+	hud             bool
+	infra           bool
+	swapObserver    bool
+}
+
+func runtimePlanFor(cfg *config.Config) runtimePlan {
+	if cfg == nil {
+		return runtimePlan{}
+	}
+	privateRuntime := !cfg.PublicAPIOnly
+	return runtimePlan{
+		metricsScraper:  privateRuntime && !cfg.LiteLLM.Disabled,
+		pipelineScraper: privateRuntime,
+		materializer:    privateRuntime,
+		modelRegistry:   !cfg.Models.Disabled,
+		modelManagement: privateRuntime && !cfg.Models.Disabled,
+		agents:          privateRuntime && !cfg.Agents.Disabled,
+		rbac:            privateRuntime && !cfg.RBAC.Disabled,
+		audit:           privateRuntime && !cfg.Audit.Disabled,
+		multiCluster:    privateRuntime && !cfg.MultiCluster.Disabled,
+		hud:             privateRuntime && !cfg.LoomHUD.Disabled,
+		infra:           privateRuntime,
+		swapObserver:    privateRuntime,
+	}
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -36,6 +72,10 @@ func main() {
 		Level: cfg.LogLevel,
 	}))
 	slog.SetDefault(logger)
+	runtime := runtimePlanFor(cfg)
+	if cfg.PublicAPIOnly {
+		slog.Info("public API only mode enabled; private subsystems and persistent workers are disabled")
+	}
 
 	var k8sClient *k8s.Client
 	if !cfg.K8s.Disabled {
@@ -73,7 +113,7 @@ func main() {
 		litellmClient = litellm.NewClient(cfg.LiteLLM.URL, cfg.LiteLLM.APIKey)
 		slog.Info("litellm client initialized", "url", cfg.LiteLLM.URL)
 
-		if metricsStore != nil {
+		if runtime.metricsScraper && metricsStore != nil {
 			metricsScraper = metrics.NewScraper(cfg.LiteLLM, metricsStore)
 			go metricsScraper.Start(context.Background())
 		} else {
@@ -85,7 +125,7 @@ func main() {
 
 	// Initialize pipeline scraper if GitLab token is configured and Redis is available
 	var pipelineScraper *metrics.PipelineScraper
-	if cfg.GitLab.Token != "" && metricsStore != nil {
+	if runtime.pipelineScraper && cfg.GitLab.Token != "" && metricsStore != nil {
 		pipelineScraper = metrics.NewPipelineScraper(cfg.GitLab, metricsStore)
 		go pipelineScraper.Start(context.Background())
 		slog.Info("pipeline scraper started")
@@ -93,7 +133,7 @@ func main() {
 
 	// Background materializer keeps Redis summary keys warm
 	var materializer *metrics.Materializer
-	if metricsStore != nil {
+	if runtime.materializer && metricsStore != nil {
 		materializer = metrics.NewMaterializer(metricsStore, cfg.Prom.URL)
 		go materializer.Start(context.Background())
 	}
@@ -103,7 +143,7 @@ func main() {
 	if sharedCache != nil {
 		handlerDeps = &handlers.HandlerDeps{Cache: sharedCache}
 	}
-	if !cfg.Models.Disabled {
+	if runtime.modelRegistry {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -116,36 +156,40 @@ func main() {
 			handlerDeps.ModelsRegistry = modelsRegistry
 			slog.Info("models registry initialized", "path", cfg.Models.RegistryPath)
 
-			// Initialize downloader
-			handlerDeps.ModelsDownloader = models.NewDownloader(
-				cfg.Models.DownloadPath,
-				cfg.Models.HFToken,
-				cfg.Models.CivitAIKey,
-				modelsRegistry,
-			)
+			if runtime.modelManagement {
+				// Initialize downloader
+				handlerDeps.ModelsDownloader = models.NewDownloader(
+					cfg.Models.DownloadPath,
+					cfg.Models.HFToken,
+					cfg.Models.CivitAIKey,
+					modelsRegistry,
+				)
+			}
 		}
 
-		// Initialize HuggingFace client
-		handlerDeps.HFClient = models.NewHuggingFaceClient(cfg.Models.HFToken)
-		slog.Info("huggingface client initialized")
+		if runtime.modelManagement {
+			// Initialize HuggingFace client
+			handlerDeps.HFClient = models.NewHuggingFaceClient(cfg.Models.HFToken)
+			slog.Info("huggingface client initialized")
 
-		// Initialize CivitAI client
-		if cfg.Models.CivitAIKey != "" {
-			handlerDeps.CivitClient = models.NewCivitAIClient(cfg.Models.CivitAIKey)
-			slog.Info("civitai client initialized")
-		}
+			// Initialize CivitAI client
+			if cfg.Models.CivitAIKey != "" {
+				handlerDeps.CivitClient = models.NewCivitAIClient(cfg.Models.CivitAIKey)
+				slog.Info("civitai client initialized")
+			}
 
-		// Initialize GitOps generator
-		if cfg.Models.GitOpsRepoPath != "" {
-			handlerDeps.GitOpsGen = models.NewGitOpsGenerator(cfg.Models.GitOpsRepoPath, cfg.Models.AINamespace)
-			slog.Info("gitops generator initialized", "path", cfg.Models.GitOpsRepoPath)
+			// Initialize GitOps generator
+			if cfg.Models.GitOpsRepoPath != "" {
+				handlerDeps.GitOpsGen = models.NewGitOpsGenerator(cfg.Models.GitOpsRepoPath, cfg.Models.AINamespace)
+				slog.Info("gitops generator initialized", "path", cfg.Models.GitOpsRepoPath)
+			}
 		}
 	} else {
 		slog.Info("models subsystem disabled")
 	}
 
 	// Initialize agents subsystem
-	if !cfg.Agents.Disabled {
+	if runtime.agents {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -163,7 +207,7 @@ func main() {
 	}
 
 	// Initialize RBAC subsystem
-	if !cfg.RBAC.Disabled {
+	if runtime.rbac {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -194,7 +238,7 @@ func main() {
 	}
 
 	// Initialize audit store (requires Redis)
-	if !cfg.Audit.Disabled && redisClient != nil {
+	if runtime.audit && redisClient != nil {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -204,7 +248,7 @@ func main() {
 	}
 
 	// Initialize multi-cluster subsystem
-	if !cfg.MultiCluster.Disabled {
+	if runtime.multiCluster {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -219,7 +263,7 @@ func main() {
 	}
 
 	// Initialize HUD client and push store (independent of agents registry)
-	if !cfg.LoomHUD.Disabled {
+	if runtime.hud {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -238,7 +282,7 @@ func main() {
 
 	// Initialize infra snapshot worker whenever Kubernetes is available.
 	// Redis is optional: the worker can still serve live-built snapshots without cache backing.
-	if k8sClient != nil {
+	if runtime.infra && k8sClient != nil {
 		if handlerDeps == nil {
 			handlerDeps = &handlers.HandlerDeps{}
 		}
@@ -249,7 +293,7 @@ func main() {
 	// Start GPU swap observer (requires k8s + Redis)
 	swapCtx, swapCancel := context.WithCancel(context.Background())
 	defer swapCancel()
-	if k8sClient != nil && metricsStore != nil {
+	if runtime.swapObserver && k8sClient != nil && metricsStore != nil {
 		aiNS := cfg.Models.AINamespace
 		if aiNS == "" {
 			aiNS = "ai"

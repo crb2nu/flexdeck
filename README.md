@@ -64,13 +64,14 @@ Environment variables (source of truth: `internal/config/config.go`):
 | `STATIC_DIR` | `./web/dist` | Static files directory |
 | `UI_CONFIG_DIR` | `/config` | UI config directory mounted in container |
 | `WORKSPACE_DIR` | `$HOME/workspace` | Workspace root for local integrations |
+| `PUBLIC_API_ONLY` | `false` | Serve only sanitized `/api/health` and `GET /api/public/*`; omit private routes, SPA, `/metrics`, private clients, and persistent private workers |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS allowlist |
 | `FLEXDECK_TOKEN` | | Bearer token for API auth |
 | `FLEXDECK_TOKEN_COOKIE` | `flexdeck_token` | Auth cookie name |
 | `FLEXDECK_TOKEN_COOKIE_MAX_AGE_DAYS` | `30` | Auth cookie TTL in days |
 | `FLEXDECK_TOKEN_COOKIE_SECURE` | `false` | Set secure cookie flag |
-| `FLEXDECK_TRUSTED_CIDRS` | | Comma-separated client CIDRs granted admin access without a token; trust only ingress-reported LAN ranges |
-| `FLEXDECK_TRUSTED_PROXY_CIDRS` | | Comma-separated reverse-proxy CIDRs whose `X-Real-IP`/`X-Forwarded-For` are believed (the ingress). Unset = forwarding headers are never trusted, so the trusted-CIDR bypass only applies to direct connections |
+| `FLEXDECK_TRUSTED_CIDRS` | | Opt-in client CIDRs granted admin access without a token. Leave empty in production unless the network boundary is independently authenticated |
+| `FLEXDECK_TRUSTED_PROXY_CIDRS` | | Opt-in reverse-proxy CIDRs whose `X-Real-IP`/`X-Forwarded-For` are believed. Never use a shared pod CIDR; unset means forwarding headers are never trusted |
 
 ### Kubernetes + observability
 

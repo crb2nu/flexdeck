@@ -109,15 +109,13 @@ type HandlerDeps struct {
 
 func New(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store) *Handler {
 	h := &Handler{
-		cfg:              cfg,
-		k8s:              k8sClient,
-		litellm:          litellmClient,
-		metricsStore:     metricsStore,
-		gitlabClient:     newGitLabClient(),
-		qdrant:           newQdrantClient(cfg),
-		millsClient:      newMillsClient(cfg),
-		flightdeckClient: newFlightdeckClient(cfg),
+		cfg:          cfg,
+		k8s:          k8sClient,
+		litellm:      litellmClient,
+		metricsStore: metricsStore,
+		gitlabClient: newGitLabClient(),
 	}
+	initializePrivateClients(h, cfg)
 	if metricsStore != nil {
 		h.cache = cache.New(metricsStore.RedisClient(), "flexdeck:")
 	}
@@ -147,15 +145,13 @@ func newFlightdeckClient(cfg *config.Config) *loomupstream.FlightdeckClient {
 // NewWithDeps creates a handler with all dependencies
 func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litellm.Client, metricsStore *metrics.Store, deps *HandlerDeps) *Handler {
 	h := &Handler{
-		cfg:              cfg,
-		k8s:              k8sClient,
-		litellm:          litellmClient,
-		metricsStore:     metricsStore,
-		gitlabClient:     newGitLabClient(),
-		qdrant:           newQdrantClient(cfg),
-		millsClient:      newMillsClient(cfg),
-		flightdeckClient: newFlightdeckClient(cfg),
+		cfg:          cfg,
+		k8s:          k8sClient,
+		litellm:      litellmClient,
+		metricsStore: metricsStore,
+		gitlabClient: newGitLabClient(),
 	}
+	initializePrivateClients(h, cfg)
 
 	if deps != nil && deps.Cache != nil {
 		h.cache = deps.Cache
@@ -182,6 +178,15 @@ func NewWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient *litel
 	}
 
 	return h
+}
+
+func initializePrivateClients(h *Handler, cfg *config.Config) {
+	if cfg.PublicAPIOnly {
+		return
+	}
+	h.qdrant = newQdrantClient(cfg)
+	h.millsClient = newMillsClient(cfg)
+	h.flightdeckClient = newFlightdeckClient(cfg)
 }
 
 // k8sForRequest returns the K8s client for the requested cluster.

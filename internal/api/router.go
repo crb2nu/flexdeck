@@ -58,13 +58,13 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 
 	// Create audit logger with optional Redis persistence
 	var auditLogger *apimiddleware.AuditLogger
-	if deps != nil && deps.AuditStore != nil {
+	if !cfg.PublicAPIOnly && deps != nil && deps.AuditStore != nil {
 		auditLogger = apimiddleware.NewAuditLogger(nil, deps.AuditStore)
 	}
 
 	// Create RBAC middleware when enabled
 	var rbacMiddleware *rbac.Middleware
-	if !cfg.RBAC.Disabled && deps != nil && deps.RBACRegistry != nil {
+	if !cfg.PublicAPIOnly && !cfg.RBAC.Disabled && deps != nil && deps.RBACRegistry != nil {
 		rbacMiddleware = rbac.NewMiddleware(
 			deps.RBACRegistry,
 			cfg.TokenCookie,
@@ -78,7 +78,7 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 	h := handlers.NewWithDeps(cfg, k8sClient, litellmClient, metricsStore, deps)
 
 	// Start infra cache worker on startup (non-blocking)
-	if deps != nil && deps.InfraWorker != nil {
+	if !cfg.PublicAPIOnly && deps != nil && deps.InfraWorker != nil {
 		go func() {
 			time.Sleep(3 * time.Second)
 			deps.InfraWorker.Start(context.Background())
@@ -109,11 +109,19 @@ func NewRouterWithDeps(cfg *config.Config, k8sClient *k8s.Client, litellmClient 
 		}()
 	}
 
-	r.Get("/api/health", h.Health)
-	r.Handle("/metrics", promhttp.Handler())
+	if cfg.PublicAPIOnly {
+		r.Get("/api/health", h.PublicHealth)
+	} else {
+		r.Get("/api/health", h.Health)
+	}
 
 	// Public API routes - no auth required, sanitized read-only data
 	registerPublicRoutes(r, h)
+	if cfg.PublicAPIOnly {
+		return r
+	}
+
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Helper: audit-aware LogFunc — uses persistent audit logger when available
 	logFunc := apimiddleware.LogFunc
