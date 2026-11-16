@@ -53,3 +53,11 @@ build-errors.log
 
 # Claude Desktop app config (local)
 claude_desktop_config/
+
+# Planning notes under .loom/ stay out of the repository (2026-11-16).
+# Files that tooling reads stay tracked.
+.loom/**/*.md
+.loom/**/*.txt
+.loom/**/*.html
+.loom/**/*.log
+.loom/**/*.csv
